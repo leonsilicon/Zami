@@ -77,6 +77,7 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | Path | What it is |
 | --- | --- |
 | `apps/zami` | The Expo app (`@-apps/zami`) |
+| `apps/site` | https://zami.leonsilicon.com, the app's home page and OAuth `client_uri` (`@-apps/site`, Cloudflare Workers) |
 | `packages/com/leonsilicon/zami/ports` | `_zami`: maps upstream files to Zami versions, syncs and checks them |
 | `packages/com/leonsilicon/zami/metro` | Metro config: resolves only `.zami.` files in Zam's tree; compiles rune modules; handles Vite's build-time features |
 | `packages/com/leonsilicon/zami/vite` | The same for Vite, so upstream's tests run against the Zami files |

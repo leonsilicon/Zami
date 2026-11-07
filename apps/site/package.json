@@ -1,0 +1,7 @@
+{
+  "name": "@-apps/site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "zami.leonsilicon.com: Zami's home page, and the client_uri the app registers with Matrix Authentication Service.",
+  "type": "module"
+}

@@ -15,6 +15,10 @@
         "vite-plus": "catalog:",
       },
     },
+    "apps/site": {
+      "name": "@-apps/site",
+      "version": "0.0.0",
+    },
     "apps/zami": {
       "name": "@-apps/zami",
       "version": "0.1.0",
@@ -464,6 +468,8 @@
     "@-/com.leonsilicon.zami.vite": ["@-/com.leonsilicon.zami.vite@workspace:packages/com/leonsilicon/zami/vite"],
 
     "@-/com.leonsilicon.zami.webcrypto": ["@-/com.leonsilicon.zami.webcrypto@workspace:packages/com/leonsilicon/zami/webcrypto"],
+
+    "@-apps/site": ["@-apps/site@workspace:apps/site"],
 
     "@-apps/zami": ["@-apps/zami@workspace:apps/zami"],
 
