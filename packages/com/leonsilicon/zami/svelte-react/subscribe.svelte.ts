@@ -25,15 +25,34 @@ export function createRuneStore<T>(read: () => T, deep = false): RuneStore<T> {
         if (deep) trackDeep(value, new Set());
         if (first) {
           first = false;
+          // Nothing rendered yet: this is the snapshot.
+          if (snapshot === undefined) {
+            snapshot = { value };
+            return;
+          }
           // Unchanged since the render that took the snapshot.
-          if (snapshot === undefined || Object.is(snapshot.value, value)) return;
+          if (Object.is(snapshot.value, value)) return;
         }
+        // A getter that derives a primitive (a badge's flag from a tick that changes on
+        // every sync) re-runs often to the same value: nothing to re-render. An object
+        // can be the same `$state` proxy with different contents, so it always counts.
+        if (
+          !deep &&
+          isPrimitive(value) &&
+          snapshot !== undefined &&
+          Object.is(snapshot.value, value)
+        )
+          return;
         snapshot = { value };
         untrack(onChange);
       });
     });
   };
   return { subscribe, getSnapshot };
+}
+
+function isPrimitive(value: unknown): boolean {
+  return value === null || (typeof value !== "object" && typeof value !== "function");
 }
 
 /** Reads every property of plain objects and arrays, so the running effect depends on them. */

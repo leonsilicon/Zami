@@ -73,6 +73,32 @@ describe("createRuneStore", () => {
     watcher.stop();
   });
 
+  test("doesn't change when a derived primitive stays the same", () => {
+    const state = createState();
+    const store = createRuneStore(() => state.count > 10);
+    const watcher = watch(store);
+    state.count = 1;
+    flushSync();
+    expect(watcher.changes()).toBe(0);
+    state.count = 11;
+    flushSync();
+    expect(watcher.changes()).toBe(1);
+    watcher.stop();
+  });
+
+  test("still changes when it returns the same object with new contents", () => {
+    const state = createState();
+    const store = createRuneStore(() => {
+      void state.byRoom["!a"]?.events.length;
+      return state.byRoom;
+    });
+    const watcher = watch(store);
+    state.byRoom["!a"] = { events: [] };
+    flushSync();
+    expect(watcher.changes()).toBe(1);
+    watcher.stop();
+  });
+
   test("stops notifying after unsubscribing", () => {
     const state = createState();
     const store = createRuneStore(() => state.toasts);
