@@ -96,7 +96,8 @@ export function shouldEncryptUpload(roomEncrypted: boolean): boolean {
 
 /** Where an attachment upload landed: a plaintext `url` or an EncryptedFile. */
 export type UploadedAttachment =
-    { url: string } | { file: EncryptedFileInfo & { url: string } };
+    | { url: string }
+    | { file: EncryptedFileInfo & { url: string } };
 
 /**
  * Map an uploaded thumbnail to its `info` fields: `thumbnail_url` for a

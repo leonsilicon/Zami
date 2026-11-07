@@ -25,7 +25,12 @@ export type CandidateType = "host" | "srflx" | "prflx" | "relay";
  * between this device and the TURN server — the one a local network shapes.
  */
 export type CallPath =
-    "udp" | "tcp" | "relay-udp" | "relay-tcp" | "relay-tls" | "unknown";
+    | "udp"
+    | "tcp"
+    | "relay-udp"
+    | "relay-tcp"
+    | "relay-tls"
+    | "unknown";
 
 export interface AudioInSummary {
     packetsReceived: number;
@@ -263,7 +268,11 @@ export function summarizeTransport(
 
 /** What a sent or received track carries (LiveKit's Track.Source). */
 export type StreamSource =
-    "microphone" | "camera" | "screen_share" | "screen_share_audio" | "unknown";
+    | "microphone"
+    | "camera"
+    | "screen_share"
+    | "screen_share_audio"
+    | "unknown";
 
 /** Whose track an RTP stream belongs to, keyed by MediaStreamTrack id. */
 export interface StreamOwner {

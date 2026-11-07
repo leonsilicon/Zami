@@ -8,7 +8,8 @@ export type OpfsSinkRequest =
     | { id: number; kind: "close" };
 
 export type OpfsSinkResponse =
-    { id: number; ok: true } | { id: number; ok: false; error: string };
+    | { id: number; ok: true }
+    | { id: number; ok: false; error: string };
 
 interface AccessHandle {
     write(data: Uint8Array, options: { at: number }): number;

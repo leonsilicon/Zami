@@ -66,10 +66,10 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | Path | What it is |
 | --- | --- |
 | `apps/zami` | The Expo app (`@-apps/zami`) |
-| `packages/com/leonsilicon/zami/ports` | `_zami`: maps upstream files to Zami versions, syncs, checks, formats and lints them |
+| `packages/com/leonsilicon/zami/ports` | `_zami`: maps upstream files to Zami versions, syncs and checks them |
 | `packages/com/leonsilicon/zami/metro` | Metro config: resolves only `.zami.` files in Zam's tree; compiles rune modules; handles Vite's build-time features |
 | `packages/com/leonsilicon/zami/vite` | The same for Vite, so upstream's tests run against the Zami files |
-| `packages/com/leonsilicon/zami/sveltekit` | Stand-ins for `$app/environment`, `$app/navigation` and `$app/state` |
+| `packages/com/leonsilicon/zami/sveltekit` | Stand-ins for `$app/environment`, `$app/navigation` and `$app/state`, and for the tsconfig `svelte-kit sync` generates |
 | `packages/com/leonsilicon/zami/svelte-react` | `useRune`: React components re-render when Svelte runes change |
 | `packages/com/leonsilicon/zami/dev` | `_dev`: builds, installs and runs the app with its dev server |
 | `zami-ports.json` | Which upstream files have a Zami version (all but the unused configuration in `exclude`), and the override (`package.json`) |
@@ -82,19 +82,35 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 ## Checks
 
 ```sh
-vp check              # Zami's own code: lint, format, types
+vp check              # format, lint and types: Zami's own code and the Zami files
+vp fmt                # format them (`vp lint` lints them)
 vp run typecheck
 vp run test           # Zami's tooling tests, then upstream Zam's tests against the Zami files
 vp run test:zam       # only upstream's tests
-vp run check:zam      # Zami files: Prettier with Zam's options, oxlint, `_zami check`
 vp run bundle         # bundle the app's JS for iOS and Android with Metro
+vpx _zami check       # the porting invariants
 vpx _zami status      # how many files are ported, stale or missing
 ```
 
-Vite+ only covers `apps/` and `packages/`. Every other top-level path is Zam's; its
-`.zami.` files are formatted and linted by `_zami fmt` and `_zami lint`, which use Zam's
-own options so unchanged copies stay byte-identical to upstream. At the root, use
-`vp run test` rather than a bare `vp test`, which would pick up Zam's `vitest.config.ts`.
+Vite+ covers Zami's own code (`apps/`, `packages/`) and the `.zami.` files in Zam's tree,
+never Zam's own files. The root `vite.config.js` ignores everything in Zam's tree except
+the Zami files, and among those it skips whatever Zam's `.prettierignore` skips (such as
+the vendored code in `static/`).
+
+- **Formatting:** Zami files use Zam's own Prettier options (4-space indent, 80 columns),
+  so most copies stay byte-identical to upstream. Oxfmt formats a few constructs
+  differently from Prettier, so a few dozen copies differ from upstream only in
+  formatting. `package.zami.json` isn't formatted: Prettier formats `package.json` the way
+  `JSON.stringify` does, which oxfmt can't.
+- **Linting:** copies skip Flatcap's rules and the ones Zam's code doesn't follow;
+  translations add React's. Type-aware rules read Zam's `tsconfig.json`, which extends
+  `.svelte-kit/tsconfig.json`. Zami's postinstall writes that file, in place of
+  `svelte-kit sync`, from `@-/com.leonsilicon.zami.sveltekit`'s
+  `tsconfig.svelte-kit.json`. It gives type information without type-checking Zam's code
+  (`noCheck`). `vp run typecheck` type-checks the Zami files the app imports.
+
+At the root, use `vp run test` rather than a bare `vp test`, which would pick up Zam's
+`vitest.config.ts`.
 
 ## Upstream's tests
 

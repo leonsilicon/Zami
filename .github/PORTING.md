@@ -38,7 +38,7 @@ people and for the Claude migration bot alike.
 [`zami-ports.lock.json`](../zami-ports.lock.json) records, for each Zami file, the upstream
 commit it was last synced with. Don't edit it by hand: `vpx _zami done <file>` updates it
 once a file reflects upstream as merged. Keeping that out of the files means a Zami
-version nobody has changed is byte-identical to upstream, which git stores only once.
+version nobody has changed is usually byte-identical to upstream, which git stores only once.
 
 Copies of `.github/workflows/*.yml` are real workflow files to GitHub; Zami disables every
 workflow whose name doesn't start with `zami-`.
@@ -62,9 +62,12 @@ upstream, and one both sides changed is flagged as a conflict.
   keep the change small and local, and mark it with a `Zami:` comment saying why. Small
   edits merge cleanly; reformatting or reordering doesn't. The six lines at the top of
   `src/app.zami.css`, which switch the stylesheet to Uniwind, are the example.
-- **Formatting** (`vpx _zami fmt`) runs Prettier on each Zami file exactly as Zam formats
-  its upstream original: Zam's options, the parser for the upstream file name, and Zam's
-  ignore files. So an unedited copy stays byte-identical to upstream.
+- **Formatting:** run `vp fmt` (or `vp check --fix`). Zami files in Zam's tree are
+  formatted with Zam's own Prettier options and skip what its `.prettierignore` skips, so
+  most unedited copies stay byte-identical to upstream. Oxfmt formats a few constructs
+  (some long unions, for one) differently from Prettier, so a few dozen copies differ
+  from upstream only there. After a sync, `vp fmt` reformats any new upstream code like
+  that.
 
 ## Translations (Svelte → React Native)
 

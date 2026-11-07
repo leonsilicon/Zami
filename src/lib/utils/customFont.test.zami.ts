@@ -85,7 +85,8 @@ describe("putStoredFont", () => {
                 put: () => {
                     queueMicrotask(() => {
                         const handler = tx[`on${outcome}`] as
-                            (() => void) | undefined;
+                            | (() => void)
+                            | undefined;
                         handler?.();
                     });
                 },

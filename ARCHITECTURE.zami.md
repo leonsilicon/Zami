@@ -185,7 +185,7 @@ All Svelte 5 `$state`, living outside components in `src/lib/stores/`. The ones 
 
 - **`accounts.svelte.ts`** — the multi-account registry, persisted to
   `localStorage["matrix_accounts"]` as `{version, activeUserId, accounts:[{userId, accessToken,
-deviceId, homeserverUrl, displayName?, avatarUrl?}]}`. Defensively parsed: a bad version or a
+  deviceId, homeserverUrl, displayName?, avatarUrl?}]}`. Defensively parsed: a bad version or a
   non-array resets to empty; a dangling `activeUserId` is nulled without dropping the accounts.
 - **`auth.svelte.ts`** — an in-memory mirror (`isAuthenticated`, `userId`, `syncState`, `error`, …).
   It persists **nothing** session-shaped; every write delegates to the registry

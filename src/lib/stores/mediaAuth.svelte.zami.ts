@@ -76,7 +76,8 @@ export function isTransientMediaStatus(status: number): boolean {
  * `transient` failures (network error, 5xx, 429, 408) may succeed later.
  */
 export type MediaBlobResult =
-    { url: string } | { url: null; transient: boolean };
+    | { url: string }
+    | { url: null; transient: boolean };
 
 /**
  * Fetch authed media with the token → object URL, or why it isn't available.

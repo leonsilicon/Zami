@@ -760,7 +760,8 @@ export function getActiveVoiceRoomId(): string | null {
 export async function configuredRtcFoci(): Promise<unknown[]> {
     if (!matrixClient) return [];
     let wk = matrixClient.getClientWellKnown() as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
     if (!wk) {
         // startClient() doesn't pass clientWellKnownPollPeriod, so the SDK
         // never fetches .well-known on its own and getClientWellKnown()
@@ -2364,7 +2365,8 @@ function videoTrackDebug(
         | undefined;
     const mst = track?.mediaStreamTrack;
     const settings = (identity === null ? mst?.getSettings() : undefined) as
-        (MediaTrackSettings & { displaySurface?: string }) | undefined;
+        | (MediaTrackSettings & { displaySurface?: string })
+        | undefined;
     const els = (track?.attachedElements ?? []).filter(
         (el): el is HTMLVideoElement => el instanceof HTMLVideoElement,
     );

@@ -760,7 +760,8 @@ interface CryptoSyncHooks {
 export async function ensureRoomCryptoConfigured(room: Room): Promise<void> {
     if (!cryptoAvailable) return;
     const crypto = getClient()?.getCrypto() as
-        (CryptoSyncHooks | undefined) | undefined;
+        | (CryptoSyncHooks | undefined)
+        | undefined;
     if (!crypto?.onCryptoEvent) return;
     if (crypto.roomEncryptors?.[room.roomId]) return;
     const event = room
@@ -2347,11 +2348,9 @@ export async function setupRecovery(
         // never reads 4S).
         const status = await crypto.getCrossSigningStatus();
         const local = status.privateKeysCachedLocally;
-        if (!(
-            local.masterKey &&
-            local.selfSigningKey &&
-            local.userSigningKey
-        )) {
+        if (
+            !(local.masterKey && local.selfSigningKey && local.userSigningKey)
+        ) {
             await crypto.bootstrapCrossSigning({
                 setupNewCrossSigning: true,
                 authUploadDeviceSigningKeys,

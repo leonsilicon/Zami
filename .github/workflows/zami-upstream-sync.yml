@@ -101,7 +101,7 @@ jobs:
         id: check
         if: steps.merge.outputs.changed == 'true'
         run: |
-          vpx _zami fmt
+          vp fmt
           if vpx _zami check > node_modules/.cache/zami/check.txt 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
           cat node_modules/.cache/zami/check.txt
 

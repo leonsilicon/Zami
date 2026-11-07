@@ -1,0 +1,30 @@
+{
+  // Zami's stand-in for the tsconfig `svelte-kit sync` generates. Zam's tsconfig.json extends
+  // `.svelte-kit/tsconfig.json` (which Zam's .gitignore ignores), and Zami's postinstall
+  // writes one there that extends this file. So tools that read Zam's tsconfig, such as
+  // Vite+'s type-aware lint and editors, resolve the `.zami.` files the way the app does.
+  "compilerOptions": {
+    // Type information, but no type-checking: Zam's code is checked by svelte-check
+    // upstream, not by plain TypeScript. `vp run typecheck` checks the Zami files the app
+    // imports (apps/zami/tsconfig.json).
+    "noCheck": true,
+    "noEmit": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    // `import "./foo"` resolves to `foo.zami.ts`, as under Metro.
+    "moduleSuffixes": [".zami", ""],
+    "paths": {
+      "$lib": ["../../../../../src/lib"],
+      "$lib/*": ["../../../../../src/lib/*"],
+      "$app/environment": ["./+app__environment.ts"],
+      "$app/navigation": ["./+app__navigation.ts"],
+      "$app/state": ["./+app__state.ts"]
+    },
+    "types": ["svelte"]
+  },
+  "include": ["../../../../../**/*.zami.*"],
+  "exclude": ["../../../../../node_modules", "../../../../../static"]
+}

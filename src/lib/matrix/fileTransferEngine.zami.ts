@@ -61,7 +61,10 @@ const ACK_HEARTBEAT_MS = 1_000;
 export class TransferError extends Error {
     constructor(
         readonly reason:
-            "stalled" | "corrupt" | "write-failed" | "storage-full",
+            | "stalled"
+            | "corrupt"
+            | "write-failed"
+            | "storage-full",
     ) {
         super(reason);
         this.name = "TransferError";

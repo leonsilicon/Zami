@@ -11,7 +11,8 @@ export interface MemoryProcess {
 }
 
 export type MemorySample = { at: number } & (
-    { processes: MemoryProcess[] } | { error: string }
+    | { processes: MemoryProcess[] }
+    | { error: string }
 );
 
 export interface Range {

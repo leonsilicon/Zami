@@ -42,7 +42,6 @@
       "livekit-client": "2.22.3",
       "matrix-js-sdk": "45.0.0",
       "mp4box": "2.4.1",
-      "prettier": "3.9.9",
       "react": "19.3.0",
       "react-native": "0.88.1",
       "react-native-get-random-values": "2.1.0",
@@ -68,7 +67,6 @@
     "@types/node": "catalog:",
     "eslint-plugin-flatcap": "catalog:",
     "jsdom": "catalog:",
-    "prettier": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },

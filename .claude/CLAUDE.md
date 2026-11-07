@@ -19,7 +19,8 @@ changing anything.
 - Run the app with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
 - Test with `vp run test`: it includes upstream's own tests, run against the
   Zami files. A failing upstream test means the Zami file is wrong, not the test.
-- Format Zami files with `vpx _zami fmt` and lint them with `vpx _zami lint`. Never run
-  Prettier, oxfmt or oxlint on upstream files.
+- Format and lint with Vite+: `vp fmt`, `vp lint`, `vp check`. The root `vite.config.js`
+  scopes them to Zami's own code and the Zami files (with Zam's formatting options). Never
+  run Prettier, oxfmt or oxlint directly, or on upstream files.
 - After migrating a file to the merged upstream version, run `vpx _zami done <file>`.
   It updates `zami-ports.lock.json`; don't edit that by hand.

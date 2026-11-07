@@ -73,7 +73,8 @@ export function parseVoiceContent(content: unknown): VoiceContent | null {
     if (!isVoice) return null;
 
     const audio = (c["org.matrix.msc1767.audio"] ?? c["m.audio"]) as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
 
     let waveform: number[] = [];
     const rawWave = audio?.waveform;

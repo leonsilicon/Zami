@@ -10,12 +10,8 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
-    "lib": [
-      "esnext"
-    ],
+    "types": ["node"],
+    "lib": ["esnext"],
     "allowJs": true
   },
   "include": [

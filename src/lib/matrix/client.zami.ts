@@ -4585,7 +4585,8 @@ export async function getRoomVersionCapability(): Promise<{
 }> {
     const caps = await getServerCapabilities();
     const cap = caps["m.room_versions"] as
-        { default?: string; available?: Record<string, unknown> } | undefined;
+        | { default?: string; available?: Record<string, unknown> }
+        | undefined;
     return {
         default: typeof cap?.default === "string" ? cap.default : "",
         available: cap?.available ? Object.keys(cap.available) : [],
@@ -5281,7 +5282,8 @@ const pushRuleWriteQueue = createSerialQueue({
 
 function getGlobalPushRules(): Record<string, any[]> | undefined {
     return (matrixClient as any)?.pushRules?.global as
-        Record<string, any[]> | undefined;
+        | Record<string, any[]>
+        | undefined;
 }
 
 function findRule(ruleId: string): any | undefined {
@@ -6420,7 +6422,8 @@ export interface SpaceLayout {
 export function getSpaceLayout(): SpaceLayout {
     if (!matrixClient) return { order: [], folders: {} };
     const layout = lookupAccountData(SPACE_LAYOUT_KEY)?.getContent() as
-        SpaceLayout | undefined;
+        | SpaceLayout
+        | undefined;
     if (layout?.order?.length) return layout;
     // Migrate from old space_order key
     const oldOrder =
@@ -6738,7 +6741,8 @@ const pendingFollowUps = createPendingFollowUps();
 async function writeDmDirectory(userId: string, roomId: string): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     const cur = matrixClient.getAccountData(EventType.Direct)?.getContent() as
-        Record<string, string[]> | undefined;
+        | Record<string, string[]>
+        | undefined;
     await matrixClient.setAccountData(
         EventType.Direct,
         addToMDirect(cur, userId, roomId),
@@ -7234,7 +7238,8 @@ export async function acceptInvite(roomId: string): Promise<void> {
     if (isDirect && inviter) {
         const cur =
             (matrixClient.getAccountData(EventType.Direct)?.getContent() as
-                Record<string, string[]> | undefined) ?? {};
+                | Record<string, string[]>
+                | undefined) ?? {};
         await matrixClient
             .setAccountData(
                 EventType.Direct,
@@ -8295,7 +8300,8 @@ function getUserEmoteContent(): RoomEmoteContent {
     if (!matrixClient) return {};
     return (
         (matrixClient.getAccountData("im.ponies.user_emotes")?.getContent() as
-            RoomEmoteContent | undefined) ?? {}
+            | RoomEmoteContent
+            | undefined) ?? {}
     );
 }
 

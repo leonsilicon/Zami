@@ -53,7 +53,8 @@ export function entryFromEvent(ev: IndexSourceEvent): IndexEntry | null {
     const content = ev.content;
     if (!eventId || !sender || !content) return null;
     const rel = content["m.relates_to"] as
-        { rel_type?: unknown; event_id?: unknown } | undefined;
+        | { rel_type?: unknown; event_id?: unknown }
+        | undefined;
     const isEdit =
         rel?.rel_type === "m.replace" && typeof rel.event_id === "string";
     const source = isEdit

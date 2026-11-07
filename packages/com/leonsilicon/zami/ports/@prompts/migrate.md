@@ -36,8 +36,8 @@ synced in `zami-ports.lock.json`; never edit that file by hand.
 - Only create or edit `.zami.` files, and Zami's own code under `apps/` and `packages/`. Never change any other
   file; CI rejects the pull request if you do.
 - Keep diffs minimal. Don't reformat or reorganize code you aren't changing.
-- Format what you changed: `vpx _zami fmt <files>`.
-- Run `vpx _zami check`, `vp run typecheck` and `vp run test:zam` at the
+- Format what you changed: `vp fmt <files>`.
+- Run `vp check`, `vpx _zami check`, `vp run typecheck` and `vp run test:zam` at the
   end. `test:zam` runs upstream's own tests against the Zami files, so a failure in a
   test covering a file you changed means the migration is wrong; fix the migration,
   not the test. Fix anything else these report in files you touched.
