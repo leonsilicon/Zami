@@ -1,7 +1,6 @@
-import { openLink } from "@-/com.leonsilicon.zami.rn";
+import { Details, openLink } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { ChevronDown, ChevronRight } from "lucide-svelte";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import {
@@ -47,33 +46,6 @@ import {
     updateBannerState,
 } from "$lib/stores/updateBanner.svelte";
 import { webBundleApply, webBundleSetAuto } from "$lib/androidWebBundle";
-
-// Zami: <details>/<summary> → a pressable summary, with the browser's disclosure
-// marker, that shows or hides the body (as in WhatsNew's translation).
-function Details({
-    summary,
-    children,
-}: {
-    summary: ReactNode;
-    children?: ReactNode;
-}) {
-    const [open, setOpen] = useState(false);
-    const Marker = open ? ChevronDown : ChevronRight;
-    return (
-        <View>
-            <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setOpen(!open)}
-                className="flex-row items-center gap-1"
-            >
-                <Marker size={14} className="text-discord-textMuted" />
-                {summary}
-            </Pressable>
-            <View className={open ? undefined : "hidden"}>{children}</View>
-        </View>
-    );
-}
 
 // Zami: links (`<a target="_blank">`) open with the system, through openLink.
 export default function AboutSettings() {
@@ -544,11 +516,8 @@ export default function AboutSettings() {
             {/* Attribution for the bundled sound bank's sources. Collapsed: it's
                 for the record, not something anyone needs to see day to day. */}
             <Details
-                summary={
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide cursor-pointer select-none hover:text-discord-textPrimary">
-                        {t("aboutSettings.credits")}
-                    </Text>
-                }
+                summary={t("aboutSettings.credits")}
+                summaryTextClassName="text-xs font-semibold text-discord-textMuted uppercase tracking-wide cursor-pointer select-none hover:text-discord-textPrimary"
             >
                 <View className="py-2 gap-1">
                     <Text className="text-sm text-discord-textPrimary">

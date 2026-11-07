@@ -2,21 +2,25 @@
   "name": "@-/com.leonsilicon.zami.rn",
   "version": "0.0.0",
   "private": true,
-  "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images, form controls, inline SVG icons, picked files and confirm().",
+  "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images and videos, form controls, disclosure widgets, inline SVG icons, picked files, notification permission and confirm().",
   "type": "module",
   "imports": {
     "#anchor": "./anchor.ts",
     "#animation": "./animation.tsx",
     "#checkbox": "./checkbox.tsx",
     "#confirm-alert": "./confirm-alert.ts",
+    "#details": "./details.tsx",
     "#html": "./html.tsx",
     "#html-tree": "./html-tree.ts",
     "#image": "./image.tsx",
+    "#notification-permission": "./notification-permission.ts",
     "#picked-file": "./picked-file.ts",
     "#portal": "./portal.tsx",
+    "#radio": "./radio.tsx",
     "#range": "./range.tsx",
     "#select": "./select.tsx",
-    "#svg-icon": "./svg-icon.tsx"
+    "#svg-icon": "./svg-icon.tsx",
+    "#video": "./video.tsx"
   },
   "exports": {
     ".": "./+.ts"
@@ -27,6 +31,8 @@
     "expo-file-system": "catalog:",
     "expo-image": "catalog:",
     "expo-image-picker": "catalog:",
+    "expo-notifications": "catalog:",
+    "expo-video": "catalog:",
     "htmlparser2": "catalog:",
     "lucide-react-native": "catalog:",
     "react-native-gesture-handler": "catalog:",

@@ -10,6 +10,7 @@ import {
     GestureDetector,
     ScrollView,
     usePanGesture,
+    type PanGestureConfig,
 } from "react-native-gesture-handler";
 import Animated, {
     cancelAnimation,
@@ -44,7 +45,7 @@ const SETTLE_MS = 200;
 const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
 const RUBBER_BAND = 0.25;
 
-interface SheetDragParams {
+export interface SheetDragParams {
     onDismiss: () => void;
     /** Whether transitions may animate (reduced motion => false). */
     animate: boolean;
@@ -57,6 +58,8 @@ interface SheetDragParams {
      * at the top, so scrolling a long list is left alone.
      */
     scrollY?: SharedValue<number>;
+    /** Where on the view a drag can start (all of it by default). */
+    hitSlop?: PanGestureConfig["hitSlop"];
 }
 
 // Zami: the `sheetDrag` action, as a pan gesture that runs on the UI thread. Its
@@ -64,12 +67,14 @@ interface SheetDragParams {
 // worklets, with its constants. The pan engages only for a mostly-vertical downward
 // move (activeOffsetY / failOffsetX / failOffsetY), and an engaged drag cancels the
 // press of a menu button under the finger, as sheetDrag's click suppression does.
-function useSheetDrag({
+// Exported for PickerDock, which drags its dock the same way.
+export function useSheetDrag({
     onDismiss,
     animate,
     offset,
     height,
     scrollY,
+    hitSlop,
 }: SheetDragParams) {
     const engaged = useSharedValue(false);
     const start = useSharedValue(0);
@@ -77,6 +82,7 @@ function useSheetDrag({
         activeOffsetY: ENGAGE_PX,
         failOffsetY: -ENGAGE_PX,
         failOffsetX: [-ENGAGE_PX, ENGAGE_PX],
+        hitSlop,
         onActivate: () => {
             "worklet";
             engaged.value = !scrollY || scrollY.value <= 0;

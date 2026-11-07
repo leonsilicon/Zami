@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, type NumberProp } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 
 // As for lucide icons (@-/com.leonsilicon.zami.icons): with no color class, Zam's
@@ -15,15 +15,23 @@ export interface SvgIconProps {
   viewBox?: string;
   /** Width and height, in place of `w-*`/`h-*` classes. */
   size?: number;
-  /** The `<svg>`'s classes: `w-*`/`h-*` size it, and its `text-*` color fills it. */
+  /** The `<svg>`'s classes: `w-*`/`h-*` size it, and its `text-*` color is `currentColor`. */
   className?: string;
+  /** The `<svg>`'s `fill`: `currentColor` (the default), `none` or a color. */
+  fill?: string;
+  /** The `<svg>`'s `stroke`, as `fill` (none by default). */
+  stroke?: string;
+  strokeWidth?: NumberProp;
+  strokeLinecap?: "butt" | "round" | "square";
+  strokeLinejoin?: "miter" | "round" | "bevel";
 }
 
 /**
- * Zam's inline `<svg fill="currentColor" viewBox="0 0 24 24"><path d="…" /></svg>`.
- * `className` sizes and places it, and its text color fills it, as `currentColor`
- * would. It's decorative: screen readers skip it, as upstream marks such icons
- * `aria-hidden`.
+ * Zam's inline `<svg fill="currentColor" viewBox="0 0 24 24"><path d="…" /></svg>`, or a
+ * stroked one (`fill="none" stroke="currentColor" stroke-width="2"`). `className` sizes
+ * and places it, and its text color is `currentColor`, which the `<svg>`'s `fill` and
+ * `stroke` and its paths' own can name. It's decorative: screen readers skip it, as
+ * upstream marks such icons `aria-hidden`.
  */
 export function SvgIcon({
   d,
@@ -31,9 +39,16 @@ export function SvgIcon({
   viewBox = "0 0 24 24",
   size,
   className = "",
+  fill = "currentColor",
+  stroke,
+  strokeWidth,
+  strokeLinecap,
+  strokeLinejoin,
 }: SvgIconProps): ReactNode {
   const fallback = useResolveClassNames(FALLBACK_COLOR);
   const { color } = useResolveClassNames(className);
+  const current = (color ?? fallback.color) as string | undefined;
+  const paint = (value: string | undefined) => (value === "currentColor" ? current : value);
   return (
     <View
       className={className}
@@ -41,7 +56,17 @@ export function SvgIcon({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <Svg width="100%" height="100%" viewBox={viewBox} fill={color ?? fallback.color}>
+      <Svg
+        width="100%"
+        height="100%"
+        viewBox={viewBox}
+        color={current}
+        fill={paint(fill)}
+        stroke={paint(stroke)}
+        strokeWidth={strokeWidth}
+        strokeLinecap={strokeLinecap}
+        strokeLinejoin={strokeLinejoin}
+      >
         {d === undefined ? null : <Path d={d} />}
         {children}
       </Svg>

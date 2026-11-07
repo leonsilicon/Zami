@@ -1,16 +1,18 @@
 import {
     Checkbox,
+    Details,
     Image,
     mediaSource,
     pickedFile,
     Portal,
+    Radio,
     Select,
     SvgIcon,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, ChevronDown, ChevronRight, Circle } from "lucide-svelte";
+import { ArrowLeft, ChevronRight, Circle } from "lucide-svelte";
 import type { Room, RoomMember } from "matrix-js-sdk";
 import {
     useCallback,
@@ -34,7 +36,7 @@ import {
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useResolveClassNames, withUniwind } from "uniwind";
+import { withUniwind } from "uniwind";
 import { t } from "$lib/i18n";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import InvitePanel from "./InvitePanel.svelte";
@@ -1366,11 +1368,6 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
     const tabs = roomSettingsTabs({ isSpace });
 
-    // Zami: `fill="currentColor"` of the notification level's dot, whose parent
-    // is `text-discord-accent`.
-    const accent = useResolveClassNames("text-discord-accent").color as
-        | string
-        | undefined;
     // Zami: Zam's panel fills the viewport on mobile (`h-[100dvh]`); here it
     // keeps clear of the status bar, notch and home indicator.
     const insets = useSafeAreaInsets();
@@ -2292,7 +2289,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     <Details
                                                                         className="rounded border border-discord-divider px-3 py-2"
                                                                         summary={
-                                                                            <Text className="text-sm text-discord-textPrimary">
+                                                                            <Text className="shrink text-sm text-discord-textPrimary">
                                                                                 {t(
                                                                                     "roomSettings.additionalCreators",
                                                                                 )}{" "}
@@ -2426,14 +2423,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             ]) => (
                                                                 <Radio
                                                                     key={value}
-                                                                    checked={
-                                                                        joinRule ===
+                                                                    value={
                                                                         value
                                                                     }
-                                                                    onSelect={() =>
-                                                                        setJoinRuleChoice(
-                                                                            value,
-                                                                        )
+                                                                    group={
+                                                                        joinRule
+                                                                    }
+                                                                    onChange={
+                                                                        setJoinRuleChoice
                                                                     }
                                                                     label={
                                                                         label
@@ -2450,14 +2447,12 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             ),
                                                         )}
                                                         <Radio
-                                                            checked={
-                                                                joinRule ===
+                                                            value={
                                                                 RESTRICTED_JOIN_RULE
                                                             }
-                                                            onSelect={() =>
-                                                                setJoinRuleChoice(
-                                                                    RESTRICTED_JOIN_RULE,
-                                                                )
+                                                            group={joinRule}
+                                                            onChange={
+                                                                setJoinRuleChoice
                                                             }
                                                             label={
                                                                 parentSpaceNames
@@ -2527,14 +2522,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             ]) => (
                                                                 <Radio
                                                                     key={value}
-                                                                    checked={
-                                                                        historyVisibility ===
+                                                                    value={
                                                                         value
                                                                     }
-                                                                    onSelect={() =>
-                                                                        setHistoryVisibilityChoice(
-                                                                            value,
-                                                                        )
+                                                                    group={
+                                                                        historyVisibility
+                                                                    }
+                                                                    onChange={
+                                                                        setHistoryVisibilityChoice
                                                                     }
                                                                     label={
                                                                         label
@@ -3119,9 +3114,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                             size={
                                                                                 8
                                                                             }
-                                                                            fill={
-                                                                                accent
-                                                                            }
+                                                                            fill="currentColor"
                                                                             className="text-discord-accent"
                                                                         />
                                                                     )}
@@ -3757,86 +3750,4 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 // The `space-y-1` between member rows.
 function MemberGap() {
     return <View className="h-1" />;
-}
-
-/**
- * Zami: `<label><input type="radio" bind:group> text</label>`, drawn as the
- * shared Checkbox draws a checkbox: a ring that shows a dot while selected,
- * then the label. Pressing anywhere on it selects it. `className` is the
- * label's layout (it's a row).
- */
-function Radio({
-    checked,
-    onSelect,
-    label,
-    disabled = false,
-    className = "items-center gap-2",
-}: {
-    checked: boolean;
-    onSelect: () => void;
-    label: string;
-    disabled?: boolean;
-    className?: string;
-}) {
-    return (
-        <Pressable
-            accessibilityRole="radio"
-            accessibilityState={{ checked, disabled }}
-            disabled={disabled}
-            onPress={onSelect}
-            className={`flex-row ${className}`}
-        >
-            <View
-                className={`w-3.5 h-3.5 rounded-full border items-center justify-center ${
-                    checked
-                        ? "border-discord-accent"
-                        : "border-discord-textMuted"
-                }`}
-            >
-                {checked ? (
-                    <View className="w-2 h-2 rounded-full bg-discord-accent" />
-                ) : null}
-            </View>
-            <Text className="shrink text-sm text-discord-textPrimary">
-                {label}
-            </Text>
-        </Pressable>
-    );
-}
-
-/**
- * Zami: `<details><summary>…</summary>…</details>`: the summary, with the
- * disclosure triangle, toggles the rest. Closed at first, as `<details>` is.
- */
-function Details({
-    summary,
-    className = "",
-    children,
-}: {
-    summary: ReactNode;
-    className?: string;
-    children: ReactNode;
-}) {
-    const [open, setOpen] = useState(false);
-    return (
-        <View className={className}>
-            <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setOpen(!open)}
-                className="flex-row items-center gap-1"
-            >
-                {open ? (
-                    <ChevronDown size={14} className="text-discord-textMuted" />
-                ) : (
-                    <ChevronRight
-                        size={14}
-                        className="rtl:-scale-x-100 text-discord-textMuted"
-                    />
-                )}
-                {summary}
-            </Pressable>
-            {open ? children : null}
-        </View>
-    );
 }

@@ -2,7 +2,6 @@ import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
-import { useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
 import {
@@ -37,11 +36,6 @@ export default function ThreadsListPanel({
     onOpenThread,
 }: Props) {
     const isMobile = useRune(() => interfaceState.isMobile);
-    // Zami: `fill="currentColor"` of the participated dot, whose parent is
-    // `text-discord-accent`.
-    const accent = useResolveClassNames("text-discord-accent").color as
-        | string
-        | undefined;
 
     const [threadsTick, setThreadsTick] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -203,7 +197,7 @@ export default function ThreadsListPanel({
                                     >
                                         <Circle
                                             size={8}
-                                            fill={accent}
+                                            fill="currentColor"
                                             className="text-discord-accent"
                                         />
                                     </View>

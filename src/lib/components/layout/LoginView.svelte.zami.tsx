@@ -1,4 +1,4 @@
-import { Checkbox, openLink } from "@-/com.leonsilicon.zami.rn";
+import { Checkbox, openLink, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as WebBrowser from "expo-web-browser";
 import {
@@ -817,7 +817,7 @@ export default function LoginView({
                                     accessibilityLiveRegion="polite"
                                     className="mb-4 p-3 bg-discord-accent/10 border border-discord-accent/30 rounded-lg flex-row items-center gap-3"
                                 >
-                                    <View className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                                    <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full flex-shrink-0" />
                                     <Text className="flex-1 text-discord-accent text-sm">
                                         {statusMsg}
                                     </Text>
@@ -1246,7 +1246,7 @@ export default function LoginView({
                                                 pointerEvents="none"
                                                 className="absolute inset-y-0 end-3 justify-center pointer-events-none"
                                             >
-                                                <View className="w-4 h-4 border-2 border-discord-textMuted/40 border-t-discord-textMuted rounded-full animate-spin" />
+                                                <Spin className="w-4 h-4 border-2 border-discord-textMuted/40 border-t-discord-textMuted rounded-full" />
                                             </View>
                                         ) : null}
                                     </View>
@@ -1550,7 +1550,7 @@ export default function LoginView({
                                         >
                                             {isLoading ? (
                                                 <View className="flex-row items-center justify-center gap-2">
-                                                    <View className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                    <Spin className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full" />
                                                     <Text className="text-white font-semibold text-sm">
                                                         {statusMsg ||
                                                             t(
@@ -1619,7 +1619,7 @@ export default function LoginView({
                                     >
                                         {isLoading ? (
                                             <View className="flex-row items-center justify-center gap-2">
-                                                <View className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                <Spin className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full" />
                                                 <Text className="text-white font-semibold text-sm">
                                                     {statusMsg ||
                                                         t(

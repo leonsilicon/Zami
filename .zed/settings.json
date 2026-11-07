@@ -241,6 +241,7 @@
     "src/lib/components/messages/MessageEditBox.svelte",
     "src/lib/components/messages/MessageEmbed.svelte",
     "src/lib/components/messages/MessageInput.svelte",
+    "src/lib/components/messages/MessageItem.svelte",
     "src/lib/components/messages/MessageRedactAction.svelte",
     "src/lib/components/messages/MessageReportAction.svelte",
     "src/lib/components/messages/MessageVideo.svelte",

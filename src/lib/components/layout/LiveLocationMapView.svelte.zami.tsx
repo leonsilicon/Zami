@@ -1,10 +1,8 @@
-import { openLink, Portal } from "@-/com.leonsilicon.zami.rn";
+import { openLink, Portal, Pulse, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
 import { ExternalLink } from "lucide-svelte";
@@ -144,7 +142,7 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                 <View className="flex-shrink-0 border-t border-discord-divider bg-discord-backgroundSecondary px-4 py-3 flex flex-col gap-2">
                     {ownShare && (
                         <View className="flex-row items-center gap-2">
-                            <View className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger animate-pulse" />
+                            <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger" />
                             {/* Same three states as the banner: stopping / stop-failed /
                                 sharing. A failed stop reads as an error because the
                                 beacon really is still broadcasting. */}
@@ -247,16 +245,5 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                 </View>
             </View>
         </Portal>
-    );
-}
-
-/** Zami: Zam's inline `<svg fill="currentColor"><path d=…/></svg>`. `className`
- *  sizes and places it, and its text color fills it, as `currentColor` would. */
-function SvgIcon({ d, className }: { d: string; className: string }) {
-    const { color, ...style } = useResolveClassNames(className);
-    return (
-        <Svg viewBox="0 0 24 24" fill={color} style={style}>
-            <Path d={d} />
-        </Svg>
     );
 }

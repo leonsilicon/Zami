@@ -132,7 +132,8 @@ same order, same names, same branches.
 - **Icons.** Import them from `lucide-svelte` as upstream does; Metro resolves it to
   `@-/com.leonsilicon.zami.icons`. Icons take `size` and `className`. On the web an icon
   is its parent's text color; here nothing inherits, so give it that color:
-  `<X size={16} className="text-discord-textMuted" />`.
+  `<X size={16} className="text-discord-textMuted" />`. `fill="currentColor"` fills it in
+  that color, as upstream writes it.
 - **Overlays.** `Portal` → `Portal` from `@-/com.leonsilicon.zami.rn` (the app root
   renders its `PortalHost`). Use the translated `ModalDialog` and `BottomSheet` as
   upstream does. A backdrop that closes on click → a `Pressable` filling the layer.
@@ -160,10 +161,15 @@ same order, same names, same branches.
   out with a `// Zami: not ported:` comment.
 - **Form controls.** Use these from `@-/com.leonsilicon.zami.rn` (its README lists
   their props) rather than hand-rolling them: `<select>` → `Select`,
-  `<input type="checkbox">` (with its `<label>`) → `Checkbox`, `<input type="range">` →
-  `Range`, an inline `<svg fill="currentColor"><path d="…"></svg>` icon → `SvgIcon`,
-  `<input type="file">` → `expo-image-picker` or `expo-document-picker` with
-  `pickedFile(asset)` for the `File`, and `confirm()` → `await confirmAlert(…)`.
+  `<input type="checkbox">` (with its `<label>`) → `Checkbox`, `<input type="radio">`
+  (with its `<label>`) → `Radio`, `<input type="range">` → `Range`,
+  `<details>`/`<summary>` → `Details`, `<video>` → `Video` (`use:rememberVolume` →
+  `use={rememberVolume}`; upstream's `videoFrameUrl` → `videoFrameThumbnail`), an inline
+  `<svg>` icon (`fill="currentColor"`, or `fill="none" stroke="currentColor"`) →
+  `SvgIcon`, `<input type="file">` → `expo-image-picker` or `expo-document-picker` with
+  `pickedFile(asset)` for the `File`, `Notification.permission`/`requestPermission()` →
+  `notificationPermission()`/`requestNotificationPermission()`, and `confirm()` →
+  `await confirmAlert(…)`.
 - **DOM-only actions.** `use:focusTrap`, `use:clickOutside`, `use:tooltip` and the like
   have no React Native equivalent: drop them, keeping what they do for touch (a backdrop
   `Pressable` for click-outside).

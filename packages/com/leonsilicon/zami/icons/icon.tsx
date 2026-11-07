@@ -10,9 +10,10 @@ const FALLBACK_COLOR = "text-discord-textPrimary";
 /**
  * A lucide-react-native icon that also takes a `className`: `w-*`/`h-*`/`size-*` set its
  * size (unless `size` is given) and a `text-*` color its stroke (unless `color` is).
+ * `fill="currentColor"` fills it in that color too.
  */
 export function withClassName(name: string, Icon: ComponentType<LucideProps>) {
-  function Wrapped({ className, size, color, style, ...rest }: LucideProps): ReactNode {
+  function Wrapped({ className, size, color, fill, style, ...rest }: LucideProps): ReactNode {
     const fallback = useResolveClassNames(FALLBACK_COLOR);
     const {
       color: classColor,
@@ -20,11 +21,14 @@ export function withClassName(name: string, Icon: ComponentType<LucideProps>) {
       height,
       ...classStyle
     } = useResolveClassNames(className ?? "");
+    const current = color ?? (classColor as string | undefined) ?? (fallback.color as string);
     return (
       <Icon
         {...rest}
         size={size ?? (width as number | undefined) ?? (height as number | undefined) ?? 24}
-        color={color ?? (classColor as string | undefined) ?? (fallback.color as string)}
+        color={current}
+        // Only when given: an undefined `fill` would replace lucide's default "none".
+        {...(fill === undefined ? {} : { fill: fill === "currentColor" ? current : fill })}
         style={[classStyle, style]}
       />
     );

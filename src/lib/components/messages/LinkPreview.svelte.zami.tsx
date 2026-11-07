@@ -1,14 +1,5 @@
-import { useEventListener } from "expo";
+import type { VideoThumbnail } from "expo-video";
 import {
-    createVideoPlayer,
-    useVideoPlayer,
-    VideoView,
-    type VideoPlayer,
-    type VideoSource,
-    type VideoThumbnail,
-} from "expo-video";
-import {
-    useEffect,
     useLayoutEffect,
     useMemo,
     useReducer,
@@ -25,13 +16,14 @@ import {
 } from "react-native";
 import { Path } from "react-native-svg";
 import { WebView } from "react-native-webview";
-import { useResolveClassNames } from "uniwind";
 import {
     Image,
     Pulse,
     SvgIcon,
+    Video,
     mediaSource,
     openLink,
+    videoFrameThumbnail,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -582,8 +574,13 @@ export default function LinkPreview({ url }: Props) {
                         className="w-4 h-4 text-discord-warning"
                     />
                 ) : (
-                    <OutlineIcon
-                        paths={[STAR]}
+                    <SvgIcon
+                        d={STAR}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                         className="w-4 h-4 text-white"
                     />
                 )}
@@ -655,7 +652,7 @@ export default function LinkPreview({ url }: Props) {
                         muted
                         loop
                         className="w-full h-full rounded-lg"
-                        onSize={(w, h) => {
+                        onResize={(w, h) => {
                             // Zami: the <video>'s own size, which a remounted
                             // row reads back (learnedMediaSize above).
                             if (videoSize || learnedMediaSize(preview.videoUrl))
@@ -675,7 +672,7 @@ export default function LinkPreview({ url }: Props) {
                         src={preview.videoUrl}
                         poster={posterUrl}
                         className="w-full h-full rounded-lg bg-black"
-                        rememberVolume
+                        use={rememberVolume}
                         controls
                         autoplay={videoPlaying}
                         onLoadedMetadata={(player) => {
@@ -753,7 +750,7 @@ export default function LinkPreview({ url }: Props) {
                 <Video
                     src={directEmbed.videoUrl}
                     className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-black"
-                    rememberVolume
+                    use={rememberVolume}
                     controls
                 />
             );
@@ -929,7 +926,9 @@ export default function LinkPreview({ url }: Props) {
                                                                 style={
                                                                     cellStyle
                                                                 }
-                                                                rememberVolume
+                                                                use={
+                                                                    rememberVolume
+                                                                }
                                                                 controls
                                                                 autoplay
                                                                 onLoadedMetadata={(
@@ -1289,10 +1288,18 @@ export default function LinkPreview({ url }: Props) {
                     onPress={() => setRevealedFor(url)}
                     className="mt-1 self-start flex-row items-center gap-1.5 rounded border border-discord-divider bg-discord-backgroundSecondary px-2 py-1 transition-colors hover:border-discord-accent/50"
                 >
-                    <OutlineIcon
-                        paths={EYE}
+                    <SvgIcon
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                         className="w-3.5 h-3.5 text-discord-textSecondary"
-                    />
+                    >
+                        {EYE.map((d) => (
+                            <Path key={d} d={d} />
+                        ))}
+                    </SvgIcon>
                     <Text className="text-xs text-discord-textSecondary">
                         {t("linkPreview.loadPreviewMedia")}
                     </Text>
@@ -1336,213 +1343,6 @@ function fitStyle(
 /** Zami: an image source for a poster: a URL, or a frame expo-video grabbed. */
 function posterSource(poster: string | VideoThumbnail | null | undefined) {
     return typeof poster === "string" ? mediaSource(poster) : poster;
-}
-
-/** Zami: Zam's stroked inline icons (`<svg fill="none" stroke="currentColor"
- *  stroke-width="2">` with round caps), through the shared SvgIcon, stroked in
- *  the text color of `className` (the button's, which the icon inherits). */
-function OutlineIcon({
-    paths,
-    className,
-}: {
-    paths: readonly string[];
-    className: string;
-}) {
-    const { color } = useResolveClassNames(className);
-    return (
-        <SvgIcon className={className}>
-            {paths.map((d) => (
-                <Path
-                    key={d}
-                    d={d}
-                    fill="none"
-                    stroke={color ?? "white"}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
-            ))}
-        </SvgIcon>
-    );
-}
-
-/** Zami: a URL as the player's source, with the headers mediaSource gives an
- *  authenticated Matrix media URL (what Zam's service worker adds). */
-function videoSourceFor(url: string): VideoSource {
-    const source = mediaSource(url);
-    return source?.headers
-        ? { uri: url, headers: source.headers }
-        : { uri: url };
-}
-
-// Zami: mediaAuth's videoFrameUrl draws a video's first frame through a
-// <video> and a <canvas>. expo-video grabs it natively instead: a player made
-// for the source is asked, once it has loaded, for the frame at 0 s fitted in
-// the box, and released. Kept like videoFrameUrl's cache (the latest 50, by box
-// and URL), so a row mounted again shows it at once.
-const FRAMES_MAX = 50;
-const FRAME_TIMEOUT_MS = 15_000;
-const frames = new Map<string, Promise<VideoThumbnail | null>>();
-
-function videoFrameThumbnail(
-    src: string,
-    maxW: number,
-    maxH: number,
-): Promise<VideoThumbnail | null> {
-    const key = `${maxW}x${maxH} ${src}`;
-    const known = frames.get(key);
-    if (known) {
-        frames.delete(key);
-        frames.set(key, known);
-        return known;
-    }
-    const player = createVideoPlayer(videoSourceFor(src));
-    player.muted = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const frame = Promise.race([
-        new Promise<void>((resolve, reject) => {
-            if (player.status === "readyToPlay") return resolve();
-            const sub = player.addListener("statusChange", ({ status }) => {
-                if (status === "readyToPlay") {
-                    sub.remove();
-                    resolve();
-                } else if (status === "error") {
-                    sub.remove();
-                    reject(new Error("video failed to load"));
-                }
-            });
-        })
-            .then(() =>
-                player.generateThumbnailsAsync(0, {
-                    maxWidth: maxW,
-                    maxHeight: maxH,
-                }),
-            )
-            .then((thumbs) => thumbs[0] ?? null),
-        new Promise<null>((resolve) => {
-            timer = setTimeout(() => resolve(null), FRAME_TIMEOUT_MS);
-        }),
-    ])
-        .catch(() => null)
-        .then((thumb) => {
-            clearTimeout(timer);
-            player.release();
-            // Only a frame is remembered; a failure is tried again next time.
-            if (!thumb) frames.delete(key);
-            return thumb;
-        });
-    if (frames.size >= FRAMES_MAX) frames.delete(frames.keys().next().value!);
-    frames.set(key, frame);
-    return frame;
-}
-
-interface VideoProps {
-    src: string;
-    /** Shown over the player until its first frame. */
-    poster?: string | VideoThumbnail | null;
-    controls?: boolean;
-    autoplay?: boolean;
-    muted?: boolean;
-    loop?: boolean;
-    /** `use:rememberVolume`. */
-    rememberVolume?: boolean;
-    /** The element's classes, on the box the player fills. */
-    className?: string;
-    style?: ViewStyle;
-    /** `onloadedmetadata`, with the player to seek. */
-    onLoadedMetadata?: (player: VideoPlayer) => void;
-    /** The video's own size, once its track is known. */
-    onSize?: (width: number, height: number) => void;
-}
-
-/**
- * Zami: a `<video>`: one expo-video player for `src`, filling the box that
- * `className` and `style` lay out (object-contain), with `poster` over it until
- * its first frame. Without `controls` it takes no touches, as upstream's
- * gif-style `pointer-events-none` one.
- */
-function Video({
-    src,
-    poster,
-    controls = false,
-    autoplay = false,
-    muted = false,
-    loop = false,
-    rememberVolume: remember = false,
-    className = "",
-    style,
-    onLoadedMetadata,
-    onSize,
-}: VideoProps) {
-    const source = useMemo(() => videoSourceFor(src), [src]);
-    const player = useVideoPlayer(source, (p) => {
-        p.muted = muted;
-        p.loop = loop;
-        if (autoplay) p.play();
-    });
-    useEffect(() => {
-        if (!remember) return;
-        // rememberVolume reads and writes an element's volume and mute, and
-        // listens for its volumechange; the player stands in for the element.
-        const subscriptions: { remove(): void }[] = [];
-        const el = {
-            get volume() {
-                return player.volume;
-            },
-            set volume(v: number) {
-                player.volume = v;
-            },
-            get muted() {
-                return player.muted;
-            },
-            set muted(m: boolean) {
-                player.muted = m;
-            },
-            addEventListener(_type: string, listener: () => void) {
-                subscriptions.push(
-                    player.addListener("volumeChange", listener),
-                    player.addListener("mutedChange", listener),
-                );
-            },
-            removeEventListener() {
-                for (const s of subscriptions.splice(0)) s.remove();
-            },
-        } as unknown as HTMLMediaElement;
-        return rememberVolume(el).destroy;
-    }, [player, remember]);
-    useEventListener(player, "sourceLoad", ({ availableVideoTracks }) => {
-        onLoadedMetadata?.(player);
-        const size = availableVideoTracks[0]?.size;
-        if (size) onSize?.(size.width, size.height);
-    });
-    const [firstFrame, setFirstFrame] = useState(false);
-    return (
-        <View
-            className={`overflow-hidden ${className}`}
-            style={style}
-            pointerEvents={controls ? "auto" : "none"}
-            // A tap on the controls is the player's: it doesn't press an
-            // enclosing link (upstream's preventDefault on the click).
-            onStartShouldSetResponder={() => controls}
-        >
-            <VideoView
-                player={player}
-                nativeControls={controls}
-                contentFit="contain"
-                onFirstFrameRender={() => setFirstFrame(true)}
-                style={StyleSheet.absoluteFill}
-            />
-            {poster && !firstFrame ? (
-                <Image
-                    source={posterSource(poster)}
-                    accessible={false}
-                    pointerEvents="none"
-                    contentFit="contain"
-                    style={StyleSheet.absoluteFill}
-                />
-            ) : null}
-        </View>
-    );
 }
 
 /** Zami: escapes text for an HTML attribute value. */

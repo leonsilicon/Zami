@@ -1,14 +1,7 @@
-import {
-    useEffect,
-    useEffectEvent,
-    useRef,
-    useState,
-    type ReactNode,
-} from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { ChevronDown, ChevronRight } from "lucide-svelte";
-import { Select } from "@-/com.leonsilicon.zami.rn";
+import { Details, Select } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import {
@@ -225,7 +218,7 @@ const smallButtonClass =
 const smallButtonTextClass = "text-xs font-semibold text-discord-textPrimary";
 
 // Zami: Text classes sit on each Text; a `<pre>` is a nested ScrollView of selectable
-// Text, and `<details>` a pressable summary (Details, below).
+// Text, and `<details>` the shared Details.
 export default function GpuDebug() {
     const desktop = !!window.desktop?.gpu;
     const [report, setReport] = useState<GpuReport | null>(null);
@@ -1055,11 +1048,8 @@ export default function GpuDebug() {
 
                             <Details
                                 className="mt-3"
-                                summary={
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
-                                        {t("gpuDebug.details")}
-                                    </Text>
-                                }
+                                summary={t("gpuDebug.details")}
+                                summaryTextClassName="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
                             >
                                 <Pre className="mt-1 max-h-80" wrap>
                                     {reportJson}
@@ -1105,34 +1095,5 @@ function Pre({
                 </ScrollView>
             )}
         </ScrollView>
-    );
-}
-
-// Zami: <details>/<summary> → a pressable summary, with the browser's disclosure
-// marker, that shows or hides the body.
-function Details({
-    className,
-    summary,
-    children,
-}: {
-    className: string;
-    summary: ReactNode;
-    children?: ReactNode;
-}) {
-    const [open, setOpen] = useState(false);
-    const Marker = open ? ChevronDown : ChevronRight;
-    return (
-        <View className={className}>
-            <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setOpen(!open)}
-                className="flex-row items-center gap-1"
-            >
-                <Marker size={14} className="text-discord-textMuted" />
-                {summary}
-            </Pressable>
-            {open && children}
-        </View>
     );
 }

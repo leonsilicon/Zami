@@ -1,8 +1,7 @@
 import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet } from "react-native";
-import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
+import { GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-    cancelAnimation,
     Easing,
     makeMutable,
     SlideInDown,
@@ -11,16 +10,10 @@ import Animated, {
     withTiming,
     type EntryExitAnimationFunction,
     type ExitAnimationsValues,
-    type SharedValue,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import { t } from "$lib/i18n";
 import Portal from "$lib/components/ui/Portal.svelte";
-import {
-    DISMISS_FRACTION,
-    DISMISS_VELOCITY,
-    ENGAGE_PX,
-} from "$lib/actions/sheetDrag";
+import { useSheetDrag } from "$lib/components/ui/BottomSheet.svelte";
 import { motionOK } from "$lib/utils/motionPreference";
 
 // Switching tabs (emoji → GIF) swaps one picker's dock for another's in the
@@ -68,84 +61,12 @@ interface Props {
     children?: ReactNode;
 }
 
-// sheetDrag's settle animation and its upward damping (`RUBBER_BAND`).
-const SETTLE_MS = 200;
-const EASE = Easing.bezier(0.2, 0.8, 0.2, 1);
-const RUBBER_BAND = 0.25;
 // Zami: how far down the dock a drag can start: about the picker's tab and search
-// rows. See useDockDrag.
+// rows. Not ported: a drag from the picker's grid when it is scrolled to the top. The
+// grid is the picker's own list, whose scroll position the dock can't see; a drag there
+// would scroll it and move the dock at once, so on the dock only the header rows drag
+// it (BottomSheet's useSheetDrag, the `sheetDrag` action as a pan gesture).
 const HEADER_PX = 96;
-
-interface DockDragParams {
-    onDismiss: () => void;
-    /** Whether transitions may animate (reduced motion => false). */
-    animate: boolean;
-    /** How far the dock is dragged down, in px. */
-    offset: SharedValue<number>;
-    /** The dock's height, in px. */
-    height: SharedValue<number>;
-    /** Only a drag that starts this far from the top of the view engages. */
-    headerPx?: number;
-}
-
-// Zami: the `sheetDrag` action, as a pan gesture that runs on the UI thread, like
-// BottomSheet's useSheetDrag (its helpers inlined as worklets, with its constants).
-// It engages only for a mostly-vertical downward move, and an engaged drag cancels
-// the press of a button under the finger, as sheetDrag's click suppression does.
-// Not ported: a drag from the picker's grid when it is scrolled to the top. The grid
-// is the picker's own list, whose scroll position the dock can't see; a drag there
-// would scroll it and move the dock at once, so on the dock only the header rows
-// (`headerPx`) drag it.
-function useDockDrag({
-    onDismiss,
-    animate,
-    offset,
-    height,
-    headerPx,
-}: DockDragParams) {
-    const start = useSharedValue(0);
-    return usePanGesture({
-        activeOffsetY: ENGAGE_PX,
-        failOffsetY: -ENGAGE_PX,
-        failOffsetX: [-ENGAGE_PX, ENGAGE_PX],
-        hitSlop:
-            headerPx === undefined ? undefined : { top: 0, height: headerPx },
-        onActivate: () => {
-            "worklet";
-            // A new drag during a settle takes over from wherever it is.
-            cancelAnimation(offset);
-            start.value = offset.value;
-        },
-        onUpdate: (e) => {
-            "worklet";
-            const dy = start.value + e.translationY;
-            // 1:1 downward, damped upward.
-            offset.value = dy >= 0 ? dy : dy * RUBBER_BAND;
-        },
-        onDeactivate: (e) => {
-            "worklet";
-            const dockHeight = height.value || 1;
-            // px/s here, px/ms in sheetDrag.
-            const dismiss =
-                !e.canceled &&
-                (offset.value > dockHeight * DISMISS_FRACTION ||
-                    e.velocityY / 1000 > DISMISS_VELOCITY);
-            const to = dismiss ? dockHeight : 0;
-            if (!animate) {
-                offset.value = to;
-                if (dismiss) scheduleOnRN(onDismiss);
-                return;
-            }
-            offset.value = withTiming(
-                to,
-                { duration: SETTLE_MS, easing: EASE },
-                (finished) => {
-                    if (finished && dismiss) scheduleOnRN(onDismiss);
-                },
-            );
-        },
-    });
-}
 
 export default function PickerDock({
     onClose,
@@ -171,18 +92,18 @@ export default function PickerDock({
     }, [swiped]);
 
     const animate = motionOK();
-    const backdropDrag = useDockDrag({
+    const backdropDrag = useSheetDrag({
         onDismiss: dismissBySwipe,
         animate,
         offset,
         height,
     });
-    const dockDrag = useDockDrag({
+    const dockDrag = useSheetDrag({
         onDismiss: dismissBySwipe,
         animate,
         offset,
         height,
-        headerPx: HEADER_PX,
+        hitSlop: { top: 0, height: HEADER_PX },
     });
     const dockStyle = useAnimatedStyle(() => ({
         transform: [{ translateY: offset.value }],

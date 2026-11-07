@@ -1,7 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
-import { ChevronDown, ChevronRight } from "lucide-svelte";
-import { openLink } from "@-/com.leonsilicon.zami.rn";
+import { useEffect, useState } from "react";
+import { Text, View } from "react-native";
+import { Details, openLink } from "@-/com.leonsilicon.zami.rn";
 import { intlLocale, t } from "$lib/i18n";
 import { APP_VERSION, fetchReleaseList } from "$lib/update";
 import {
@@ -10,35 +9,6 @@ import {
 } from "$lib/utils/changelog";
 import { GITHUB_OWNER, GITHUB_REPO } from "$lib/utils/androidUpdate";
 import ReleaseNotesBody from "./ReleaseNotesBody.svelte";
-
-// Zami: <details>/<summary> → a pressable summary, with the browser's disclosure
-// marker, that shows or hides the body.
-function Details({
-    className,
-    summary,
-    children,
-}: {
-    className: string;
-    summary: ReactNode;
-    children?: ReactNode;
-}) {
-    const [open, setOpen] = useState(false);
-    const Marker = open ? ChevronDown : ChevronRight;
-    return (
-        <View className={className}>
-            <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setOpen(!open)}
-                className="flex-row items-center gap-1"
-            >
-                <Marker size={14} className="text-discord-textPrimary" />
-                {summary}
-            </Pressable>
-            {open && children}
-        </View>
-    );
-}
 
 export default function WhatsNew() {
     const [releases, setReleases] = useState<ChangelogRelease[]>([]);

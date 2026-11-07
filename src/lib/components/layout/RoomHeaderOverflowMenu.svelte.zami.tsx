@@ -1,6 +1,5 @@
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
 import { t, type MessageKey } from "$lib/i18n";
 import Portal from "$lib/components/ui/Portal.svelte";
 import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
@@ -222,16 +221,5 @@ export default function RoomHeaderOverflowMenu({
                 </View>
             </BottomSheet>
         </Portal>
-    );
-}
-
-/** Zami: Zam's inline `<svg fill="currentColor"><path d=…/></svg>`. `className`
- *  sizes and places it, and its text color fills it, as `currentColor` would. */
-function SvgIcon({ d, className }: { d: string; className: string }) {
-    const { color, ...style } = useResolveClassNames(className);
-    return (
-        <Svg viewBox="0 0 24 24" fill={color} style={style}>
-            <Path d={d} />
-        </Svg>
     );
 }

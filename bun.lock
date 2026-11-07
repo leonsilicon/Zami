@@ -183,6 +183,8 @@
         "expo-file-system": "catalog:",
         "expo-image": "catalog:",
         "expo-image-picker": "catalog:",
+        "expo-notifications": "catalog:",
+        "expo-video": "catalog:",
         "htmlparser2": "catalog:",
         "lucide-react-native": "catalog:",
         "react-native-gesture-handler": "catalog:",

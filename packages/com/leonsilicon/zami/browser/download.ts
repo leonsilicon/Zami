@@ -9,8 +9,21 @@ function safeName(name: string): string {
   return name.replace(/[\\/:]/g, "_").replace(/^\.+/, "_") || "download";
 }
 
+/**
+ * The name, with the extension of a `file:` source when it has none. Zam adds one from
+ * the type of the blob it reads back from an object URL, which expo's `fetch` of a file
+ * doesn't always give (on iOS a `file:` response has no headers); the Blob polyfill names
+ * an object URL's file for its type, and the share sheet offers Save Image or Video by it.
+ */
+function withSourceExtension(name: string, href: string): string {
+  if (/\.[a-z0-9]{2,5}$/i.test(name) || !href.startsWith("file:")) return name;
+  const extension = /\.[a-z0-9]{2,5}$/i.exec(href.split(/[?#]/)[0])?.[0];
+  return extension ? `${name}${extension}` : name;
+}
+
 /** Saves what `href` points at (a `file:`, `data:`, `blob:` or `http(s):` URL) as `name`. */
-export async function shareDownload(href: string, name: string): Promise<void> {
+export async function shareDownload(href: string, suggested: string): Promise<void> {
+  const name = withSourceExtension(suggested, href);
   const saved = new File(Paths.cache, safeName(name));
   if (saved.exists) saved.delete();
   if (href.startsWith("file:")) {

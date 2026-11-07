@@ -14,3 +14,4 @@ so it also takes a `className`. Its `w-*`/`h-*` classes set the size unless `siz
 given, and its `text-*` color sets the stroke unless `color` is given. An icon on the web
 inherits its parent's text color; in React Native nothing does, so give the icon the text
 color class its parent has. Without one it falls back to Zam's primary text color.
+`fill="currentColor"` (`<Circle size={8} fill="currentColor" />`) fills it in that color.

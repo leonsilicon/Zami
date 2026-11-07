@@ -1,6 +1,10 @@
-import { Range, Select } from "@-/com.leonsilicon.zami.rn";
+import {
+    notificationPermission,
+    Range,
+    requestNotificationPermission,
+    Select,
+} from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import * as Notifications from "expo-notifications";
 import { useEffect, useRef, useState } from "react";
 import {
     AppState,
@@ -86,7 +90,7 @@ import {
     playRingBlip,
     playRingPreview,
 } from "$lib/audio/soundEffects";
-// Zami: requestNotificationPermission is this file's own (below).
+// Zami: requestNotificationPermission is the shared one, through expo-notifications.
 import { callAlertHint } from "$lib/utils/notifyPermission";
 import {
     setVoiceInputDevice,
@@ -141,28 +145,6 @@ function getUserMedia(
 ): Promise<MediaStream> {
     void constraints;
     return Promise.reject(new Error("Zami: no getUserMedia"));
-}
-
-// Zami: the Notification API's permission is expo-notifications' here, in the web
-// API's terms: one the system will still prompt for is "default".
-function toNotificationPermission(
-    status: Notifications.NotificationPermissionsStatus,
-): NotificationPermission {
-    if (status.granted) return "granted";
-    return status.canAskAgain ? "default" : "denied";
-}
-
-// Zami: $lib/utils/notifyPermission's, through expo-notifications.
-async function requestNotificationPermission(): Promise<
-    NotificationPermission | "unsupported"
-> {
-    try {
-        return toNotificationPermission(
-            await Notifications.requestPermissionsAsync(),
-        );
-    } catch {
-        return "denied";
-    }
 }
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -497,18 +479,9 @@ export default function VoiceAudioSettings() {
         }
     }
 
-    // Zami: expo-notifications in place of `Notification.permission`, which is
-    // asynchronous here.
-    async function currentNotifyPermission(): Promise<
-        NotificationPermission | "unsupported"
-    > {
-        try {
-            return toNotificationPermission(
-                await Notifications.getPermissionsAsync(),
-            );
-        } catch {
-            return "unsupported";
-        }
+    // Zami: `Notification.permission` is asynchronous here.
+    function currentNotifyPermission() {
+        return notificationPermission();
     }
 
     useEffect(() => {

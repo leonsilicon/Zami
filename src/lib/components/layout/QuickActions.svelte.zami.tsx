@@ -1,13 +1,6 @@
-import { Checkbox, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Checkbox, Details, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { ChevronDown, ChevronRight } from "lucide-svelte";
-import {
-    useImperativeHandle,
-    useMemo,
-    useState,
-    type ReactNode,
-    type Ref,
-} from "react";
+import { useImperativeHandle, useMemo, useState, type Ref } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import {
@@ -67,36 +60,6 @@ interface Props {
      *  keyboard shortcuts in AppShell). */
     headless?: boolean;
     ref?: Ref<QuickActionsHandle>;
-}
-
-// Zami: <details>/<summary> → a pressable summary, with the browser's disclosure
-// marker, that shows or hides the body. A closed <details> keeps its content, so
-// the body stays mounted (hidden) rather than unmounting.
-function Details({
-    className,
-    summary,
-    children,
-}: {
-    className: string;
-    summary: ReactNode;
-    children?: ReactNode;
-}) {
-    const [open, setOpen] = useState(false);
-    const Marker = open ? ChevronDown : ChevronRight;
-    return (
-        <View className={className}>
-            <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ expanded: open }}
-                onPress={() => setOpen(!open)}
-                className="flex-row items-center gap-1"
-            >
-                <Marker size={14} className="text-discord-textPrimary" />
-                {summary}
-            </Pressable>
-            <View className={open ? undefined : "hidden"}>{children}</View>
-        </View>
-    );
 }
 
 // Zami: `style="padding-inline-start: 0.5rem;"` on the action buttons → `ps-2`.

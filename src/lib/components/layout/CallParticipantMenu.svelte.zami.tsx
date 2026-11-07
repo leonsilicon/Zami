@@ -15,7 +15,6 @@ import {
     type PressableInstance,
     type ViewStyle,
 } from "react-native";
-import { useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 import Portal from "$lib/components/ui/Portal.svelte";
 import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
@@ -433,8 +432,9 @@ export default function CallParticipantMenu({
                             >
                                 <View className="w-3 flex-row items-center justify-center">
                                     {!audioInputDeviceId && (
-                                        <FilledCircle
+                                        <Circle
                                             size={8}
+                                            fill="currentColor"
                                             className="text-discord-textSecondary"
                                         />
                                     )}
@@ -455,8 +455,9 @@ export default function CallParticipantMenu({
                                 >
                                     <View className="w-3 flex-row items-center justify-center">
                                         {audioInputDeviceId === m.id && (
-                                            <FilledCircle
+                                            <Circle
                                                 size={8}
+                                                fill="currentColor"
                                                 className="text-discord-textSecondary"
                                             />
                                         )}
@@ -518,8 +519,9 @@ export default function CallParticipantMenu({
                             >
                                 <View className="w-3 flex-row items-center justify-center">
                                     {!audioOutputDeviceId && (
-                                        <FilledCircle
+                                        <Circle
                                             size={8}
+                                            fill="currentColor"
                                             className="text-discord-textSecondary"
                                         />
                                     )}
@@ -540,8 +542,9 @@ export default function CallParticipantMenu({
                                 >
                                     <View className="w-3 flex-row items-center justify-center">
                                         {audioOutputDeviceId === s.id && (
-                                            <FilledCircle
+                                            <Circle
                                                 size={8}
+                                                fill="currentColor"
                                                 className="text-discord-textSecondary"
                                             />
                                         )}
@@ -669,8 +672,9 @@ export default function CallParticipantMenu({
                     >
                         <View className="w-3 flex-row items-center justify-center">
                             {audio.muted && (
-                                <FilledCircle
+                                <Circle
                                     size={8}
+                                    fill="currentColor"
                                     className="text-discord-textSecondary"
                                 />
                             )}
@@ -689,8 +693,9 @@ export default function CallParticipantMenu({
                     >
                         <View className="w-3 flex-row items-center justify-center">
                             {audio.videoHidden && (
-                                <FilledCircle
+                                <Circle
                                     size={8}
+                                    fill="currentColor"
                                     className="text-discord-textSecondary"
                                 />
                             )}
@@ -827,16 +832,3 @@ const styles = StyleSheet.create({
     // Sized by its content, up to the menu's max height.
     scroll: { flexGrow: 0, flexShrink: 1 },
 });
-
-// Zami: `<Circle fill="currentColor" />`: the fill is the color its class gives the
-// stroke, as there's no currentColor.
-function FilledCircle({
-    size,
-    className,
-}: {
-    size: number;
-    className: string;
-}) {
-    const { color } = useResolveClassNames(className);
-    return <Circle size={size} className={className} fill={color as string} />;
-}

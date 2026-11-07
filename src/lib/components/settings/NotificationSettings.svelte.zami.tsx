@@ -1,6 +1,9 @@
-import { Select } from "@-/com.leonsilicon.zami.rn";
+import {
+    notificationPermission,
+    requestNotificationPermission,
+    Select,
+} from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import * as Notifications from "expo-notifications";
 import { useEffect, useState } from "react";
 import {
     AppState,
@@ -49,8 +52,8 @@ import {
     canFlashTaskbar,
     type DesktopAlertMode,
 } from "$lib/utils/desktopAlert";
-// Zami: requestWebPushPermission (the Notification API) is expo-notifications'
-// permission request here; see requestPermission.
+// Zami: requestWebPushPermission (the Notification API) is the shared
+// requestNotificationPermission here (expo-notifications); see requestPermission.
 import { initWebPush } from "$lib/webPush";
 import {
     checkNativeNotificationPermission,
@@ -66,15 +69,6 @@ import {
     type UnifiedPushStatus,
 } from "$lib/unifiedPush";
 import { Capacitor } from "@capacitor/core";
-
-// Zami: the Notification API's permission, as expo-notifications reports it, in the
-// web API's terms: one the system will still prompt for is "default".
-function toNotificationPermission(
-    status: Notifications.NotificationPermissionsStatus,
-): NotificationPermission {
-    if (status.granted) return "granted";
-    return status.canAskAgain ? "default" : "denied";
-}
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text. `data-setting-anchor`
@@ -106,18 +100,9 @@ export default function NotificationSettings() {
     }
     const taskbarFlash = canFlashTaskbar();
 
-    // Zami: expo-notifications in place of `Notification.permission`, which is
-    // asynchronous here.
-    async function currentPermission(): Promise<
-        NotificationPermission | "unsupported"
-    > {
-        try {
-            return toNotificationPermission(
-                await Notifications.getPermissionsAsync(),
-            );
-        } catch {
-            return "unsupported";
-        }
+    // Zami: `Notification.permission` is asynchronous here.
+    function currentPermission() {
+        return notificationPermission();
     }
 
     // Native starts as "granted" so the row doesn't flash in before the
@@ -218,11 +203,9 @@ export default function NotificationSettings() {
             setPermissionLoading(false);
             return;
         }
-        // Zami: expo-notifications' prompt in place of requestWebPushPermission.
+        // Zami: the system's prompt in place of requestWebPushPermission.
         let next: NotificationPermission | "unsupported" =
-            await Notifications.requestPermissionsAsync()
-                .then(toNotificationPermission)
-                .catch(currentPermission);
+            await requestNotificationPermission();
         setPermission(next);
         if (next === "granted") {
             const client = getClient();

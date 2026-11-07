@@ -1,7 +1,3 @@
-import { useEventListener } from "expo";
-import { File as FsFile, Paths } from "expo-file-system";
-import * as Sharing from "expo-sharing";
-import { useVideoPlayer, VideoView, type VideoSource } from "expo-video";
 import {
     Fragment,
     useEffect,
@@ -9,21 +5,15 @@ import {
     useState,
     type ReactNode,
 } from "react";
-import {
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
-    type ViewStyle,
-} from "react-native";
-import { Image, SvgIcon, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Pressable, Text, View, type ViewStyle } from "react-native";
+import { Image, SvgIcon, Video, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import {
     mxcToHttp,
     fetchAttachmentBlob,
     fetchDecryptedAttachmentBlob,
 } from "$lib/matrix/client";
-import { revokeLater, withExtension } from "$lib/utils/saveFile";
+import { revokeLater, saveObjectUrl } from "$lib/utils/saveFile";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import {
     videoSource,
@@ -254,11 +244,7 @@ export default function MessageVideo({ content, filename }: Props) {
                       )))
                     : await fetchAttachmentBlob(mxcToHttp(src.mxc)!);
             try {
-                await saveObjectUrl(
-                    blobUrl,
-                    filename || "video",
-                    videoMimetype,
-                );
+                await saveObjectUrl(blobUrl, filename || "video");
             } finally {
                 // The playing copy is owned by the decrypt effect.
                 if (blobUrl !== encryptedVideoUrl) revokeLater(blobUrl);
@@ -635,15 +621,6 @@ function ratioValue(ratio: string): number {
     return w > 0 && h > 0 ? w / h : 16 / 9;
 }
 
-/** Zami: a URL as the player's source, with the headers mediaSource gives an
- *  authenticated Matrix media URL (what Zam's service worker adds). */
-function videoSourceFor(url: string): VideoSource {
-    const source = mediaSource(url);
-    return source?.headers
-        ? { uri: url, headers: source.headers }
-        : { uri: url };
-}
-
 interface AuthedVideoSrcParams {
     url: string | null;
     mimetype?: string | null;
@@ -655,12 +632,13 @@ interface AuthedVideoSrcParams {
 }
 
 /**
- * Zami: the `authedVideoSrc` action, as the source it would give the element.
+ * Zami: the `authedVideoSrc` action, as the `src` it would give the element.
  * React Native has no MediaSource to stream through, and needs none: the
  * player streams the URL itself, with the account's token in its request
- * headers. A file that must be checked before it plays (an encrypted one, or
- * `forceBlob`) is downloaded whole, decrypted and verified, and played from its
- * object URL, as videoStream.ts's blob fallback does.
+ * headers (the shared Video adds them). A file that must be checked before it
+ * plays (an encrypted one, or `forceBlob`) is downloaded whole, decrypted and
+ * verified, and played from its object URL, as videoStream.ts's blob fallback
+ * does.
  */
 function useAuthedVideoSrc({
     url,
@@ -670,7 +648,7 @@ function useAuthedVideoSrc({
     expectedSize,
     onProgress,
     forceBlob,
-}: AuthedVideoSrcParams): VideoSource | null {
+}: AuthedVideoSrcParams): string | null {
     const whole = !!url && (!!forceBlob || !!decrypt);
     const [blob, setBlob] = useState<{ key: string; url: string } | null>(null);
     // The latest parameters, without restarting the download when a caller
@@ -719,11 +697,15 @@ function useAuthedVideoSrc({
         };
     }, [url, whole]);
     if (!url) return null;
-    if (!whole) return videoSourceFor(url);
-    return blob?.key === url ? { uri: blob.url } : null;
+    if (!whole) return url;
+    return blob?.key === url ? blob.url : null;
 }
 
-/** Zami: the `<video>` element: its bare `src`, or what `use:authedVideoSrc` feeds it. */
+/**
+ * Zami: the `<video>` element, `autoplay` with `controls` and `use:rememberVolume`:
+ * its bare `src`, or what `use:authedVideoSrc` feeds it. Its `onloadedmetadata`
+ * reads the video's size, which the player reports as `onResize`.
+ */
 function AuthedVideo({
     src,
     authed,
@@ -742,118 +724,17 @@ function AuthedVideo({
     onError: () => void;
 }) {
     const streamed = useAuthedVideoSrc(authed);
-    const source = streamed ?? (src ? videoSourceFor(src) : null);
-    const uri =
-        source && typeof source === "object" ? (source.uri ?? null) : null;
     return (
-        <View className={`overflow-hidden ${className}`} style={style}>
-            {uri && source ? (
-                <NativeVideo
-                    key={uri}
-                    source={source}
-                    onLoadedMetadata={onLoadedMetadata}
-                    onCanPlay={onCanPlay}
-                    onError={onError}
-                />
-            ) : null}
-        </View>
-    );
-}
-
-/**
- * Zami: one player for one source, `autoplay` with native `controls` and
- * `use:rememberVolume`. Its `oncanplay`, `onerror` and `onloadedmetadata` are
- * the player's readyToPlay and error statuses and its first video track's size.
- */
-function NativeVideo({
-    source,
-    onLoadedMetadata,
-    onCanPlay,
-    onError,
-}: {
-    source: VideoSource;
-    onLoadedMetadata: (videoWidth: number, videoHeight: number) => void;
-    onCanPlay: () => void;
-    onError: () => void;
-}) {
-    const player = useVideoPlayer(source, (p) => p.play());
-    useEffect(() => {
-        // rememberVolume reads and writes an element's volume and mute, and
-        // listens for its volumechange; the player stands in for the element.
-        const subscriptions: { remove(): void }[] = [];
-        const el = {
-            get volume() {
-                return player.volume;
-            },
-            set volume(v: number) {
-                player.volume = v;
-            },
-            get muted() {
-                return player.muted;
-            },
-            set muted(m: boolean) {
-                player.muted = m;
-            },
-            addEventListener(_type: string, listener: () => void) {
-                subscriptions.push(
-                    player.addListener("volumeChange", listener),
-                    player.addListener("mutedChange", listener),
-                );
-            },
-            removeEventListener() {
-                for (const s of subscriptions.splice(0)) s.remove();
-            },
-        } as unknown as HTMLMediaElement;
-        return rememberVolume(el).destroy;
-    }, [player]);
-    useEventListener(player, "statusChange", ({ status }) => {
-        if (status === "readyToPlay") onCanPlay();
-        else if (status === "error") onError();
-    });
-    useEventListener(player, "sourceLoad", ({ availableVideoTracks }) => {
-        const size = availableVideoTracks[0]?.size;
-        if (size) onLoadedMetadata(size.width, size.height);
-    });
-    useEventListener(player, "videoTrackChange", ({ videoTrack }) => {
-        if (videoTrack)
-            onLoadedMetadata(videoTrack.size.width, videoTrack.size.height);
-    });
-    return (
-        <VideoView
-            player={player}
-            nativeControls
-            contentFit="contain"
-            style={StyleSheet.absoluteFill}
+        <Video
+            src={streamed ?? src}
+            controls
+            autoplay
+            use={rememberVolume}
+            className={className}
+            style={style}
+            onResize={onLoadedMetadata}
+            onCanPlay={onCanPlay}
+            onError={onError}
         />
     );
-}
-
-/**
- * Zami: saveFile's `saveObjectUrl` clicks an `<a download>`. Here the file
- * behind the object URL (the Blob polyfill's `file://` URI) is copied under its
- * name into the cache and offered through the share sheet (Save Video, Save to
- * Files, AirDrop, …), then removed.
- */
-async function saveObjectUrl(
-    objectUrl: string,
-    name: string,
-    mimetype?: string | null,
-): Promise<void> {
-    const source = new FsFile(objectUrl);
-    const type = mimetype || source.type || "";
-    // The name comes from the event: keep it to one path segment.
-    const safeName = withExtension(name, type)
-        .replace(/[\\/:]/g, "_")
-        .replace(/^\.+/, "_");
-    const saved = new FsFile(Paths.cache, safeName || "video");
-    if (saved.exists) saved.delete();
-    await source.copy(saved);
-    try {
-        await Sharing.shareAsync(saved.uri, {
-            mimeType: type || undefined,
-            dialogTitle: safeName,
-        });
-    } finally {
-        saved.delete();
-    }
 }

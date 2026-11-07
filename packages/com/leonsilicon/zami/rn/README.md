@@ -39,6 +39,36 @@ these, which keep the element's props as close as React Native allows:
   a row, by default `items-center gap-2`) and `inputClassName` (the `<input>`'s size,
   rounding and margins; by default the browser's `w-3.5 h-3.5 rounded-sm`).
   `accessibilityRole="checkbox"`.
+- `Radio`: `<label><input type="radio" bind:group {value}> text</label>`, drawn as
+  `Checkbox` draws its box. `value`, `group` (the `bind:group` value: it's checked when
+  that's its `value`), `onChange(value)` (pressing it when unchecked), and `label`,
+  `labelClassName`, `accessibilityLabel`, `disabled`, `className` and `inputClassName`
+  (the circle's size and margins; by default `w-3.5 h-3.5`) as for `Checkbox`.
+  `accessibilityRole="radio"`; put a group in a `View` with
+  `accessibilityRole="radiogroup"`.
+- `Details`: `<details><summary>…</summary>…</details>`. `summary` (a string is a
+  `Text` styled by `summaryTextClassName`, by default `text-sm
+  text-discord-textPrimary`, whose color and font size also give the disclosure
+  triangle's; any other node renders as it is), `summaryClassName` (the `<summary>`'s
+  layout; it's a row, by default `items-center gap-1`), `marker` (false for a
+  `<summary>` upstream lays out as `flex`, which has no triangle), `className` (the
+  `<details>`'s) and the body as `children`. Pressing the summary opens and closes it;
+  it starts closed, or `open` with `onToggle(open)` controls it. A closed body stays
+  mounted, hidden, as in a `<details>`.
+- `Video`: `<video>`, an expo-video player. `src` (an authenticated Matrix media URL gets
+  the account's token, as for `mediaSource`; none is an empty box), `poster` (a URL or a
+  `videoFrameThumbnail` frame, shown until the first frame), `controls`, `autoplay`,
+  `muted`, `loop`, `use` (a `use:` action on the element, such as Zam's
+  `rememberVolume`: it gets the player as an `HTMLMediaElement` with `volume`, `muted`
+  and `volumechange`), `className` and `style` (the box the player fills,
+  object-contain), and its events: `onLoadedMetadata(player)` (seek through
+  `player.currentTime`), `onResize(videoWidth, videoHeight)`, `onCanPlay` and
+  `onError`. A new `src` gets a new player. With `controls`, touches on it are the
+  player's rather than an enclosing `Pressable`'s; without, it takes none.
+- `videoFrameThumbnail(src, maxW, maxH)`: upstream's `videoFrameUrl` (mediaAuth): the
+  video's first frame fitted in the box, as an image source for `Image` or `poster`, or
+  null (it didn't load within 15 s). A short-lived player grabs it natively; the latest
+  50 are cached.
 - `Range`: `<input type="range">`. `value`, `min`/`max`/`step` (HTML's defaults: 0,
   100, 1), `onChange(value)` (`oninput`), `onChangeEnd(value)` (`onchange`: a drag, tap
   or step that changed the value has ended), `disabled`, `accessibilityLabel`,
@@ -48,8 +78,11 @@ these, which keep the element's props as close as React Native allows:
   TalkBack step it by `step`.
 - `SvgIcon`: an inline `<svg fill="currentColor"><path d="…" /></svg>`. `d` (or `Path`
   children, for more than one path), `viewBox` (default `0 0 24 24`), `size` and
-  `className`: `w-*`/`h-*` size it and its `text-*` color fills it, as `currentColor`
-  would (Zam's primary text color without one). Screen readers skip it.
+  `className`: `w-*`/`h-*` size it and its `text-*` color is `currentColor` (Zam's
+  primary text color without one). The `<svg>`'s `fill` (by default `currentColor`),
+  `stroke`, `strokeWidth`, `strokeLinecap` and `strokeLinejoin` draw a stroked icon
+  (`fill="none" stroke="currentColor" strokeWidth={2}`); paths can name `currentColor`
+  too. Screen readers skip it.
 - `pickedFile(asset)`: `<input type="file">` → `expo-image-picker` or
   `expo-document-picker`, then this: the picked asset as the `File` the input gives,
   named, typed and dated like it, which keeps the asset's `uri`. Its bytes are in memory
@@ -57,6 +90,12 @@ these, which keep the element's props as close as React Native allows:
   slices as on the web.
 - `confirmAlert(message, { confirmText, cancelText, destructive })`: `confirm()` as a
   native alert, resolving true when confirmed. Pass the button texts translated.
+- `notificationPermission()` / `requestNotificationPermission()`:
+  `Notification.permission` and `Notification.requestPermission()` through
+  expo-notifications, as `"granted"`, `"default"` (the system will still prompt) or
+  `"denied"`. The check is asynchronous, and `"unsupported"` when the system can't say;
+  the request is `"denied"` if asking fails, as Zam's `requestNotificationPermission`
+  has it.
 - `Spin` / `Pulse`: Tailwind's `animate-spin` and `animate-pulse`, which Uniwind doesn't
   support. Give them the element's other classes (`<Spin className="w-4 h-4 border-2 …
   rounded-full" />`), which style the box that animates, so its margins and flex classes
