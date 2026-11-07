@@ -14,6 +14,7 @@ const SHIMS = {
   "$app/navigation": "@-/com.leonsilicon.zami.sveltekit/app/navigation",
   "$app/state": "@-/com.leonsilicon.zami.sveltekit/app/state",
 };
+const CAPACITOR_SHIM = "packages/com/leonsilicon/zami/capacitor/capacitor.cjs";
 // The same, for stand-ins that are a file rather than a package's entrypoint.
 const FILE_SHIMS = {
   "lucide-svelte": "packages/com/leonsilicon/zami/icons/lucide-svelte.cjs",
@@ -92,6 +93,9 @@ export function withZami(config, { repoRoot }) {
     if (moduleName in SHIMS) return resolve(context, SHIMS[moduleName], platform);
     if (moduleName in FILE_SHIMS)
       return { type: "sourceFile", filePath: path.join(repoRoot, FILE_SHIMS[moduleName]) };
+    // Capacitor (Zam's Android bridge): the app isn't a Capacitor app.
+    if (moduleName.startsWith("@capacitor/"))
+      return { type: "sourceFile", filePath: path.join(repoRoot, CAPACITOR_SHIM) };
 
     let target = null;
     if (moduleName === "$lib" || moduleName.startsWith("$lib/")) {

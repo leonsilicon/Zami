@@ -14,6 +14,6 @@ Native.
   `matchMedia` for width, hover, pointer and preference queries, `open` (the system opens
   the link), and `innerWidth`/`innerHeight`.
 - **navigator:** React Native's, plus `language(s)` (expo-localization), `onLine`,
-  `clipboard` (expo-clipboard) and `vibrate`. Service workers, media devices, storage,
-  locks and geolocation stay undefined, as Zam feature-detects them.
+  `clipboard` (expo-clipboard), `vibrate` and `geolocation` (expo-location). Service
+  workers, media devices, storage and locks stay undefined, as Zam feature-detects them.
 - **location:** `@-/com.leonsilicon.zami.sveltekit`'s.

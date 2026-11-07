@@ -36,16 +36,33 @@ const dataset = new Proxy<Record<string, string>>(
   },
 );
 
+// Inline CSS variables on the root, as Uniwind variables of the current theme. Removing
+// one restores the theme's own value, which Uniwind has no call for, so it's kept from
+// before the first override.
 const cssVariables: Record<string, string> = {};
+const themeValues = new Map<string, string>();
+
+function setVariable(name: string, value: string): void {
+  Uniwind.updateCSSVariables(Uniwind.currentTheme, { [name]: value });
+}
+
 const rootStyle = {
   setProperty(name: string, value: string | null): void {
-    if (!name.startsWith("--") || value === null) return;
+    if (!name.startsWith("--")) return;
+    if (value === null || value === "") {
+      rootStyle.removeProperty(name);
+      return;
+    }
+    const key = `${Uniwind.currentTheme} ${name}`;
+    if (!themeValues.has(key)) themeValues.set(key, String(Uniwind.getCSSVariable(name) ?? ""));
     cssVariables[name] = value;
-    Uniwind.updateCSSVariables(Uniwind.currentTheme, { [name]: value });
+    setVariable(name, value);
   },
   removeProperty(name: string): string {
     const value = cssVariables[name] ?? "";
     delete cssVariables[name];
+    const original = themeValues.get(`${Uniwind.currentTheme} ${name}`);
+    if (value !== "" && original !== undefined && original !== "") setVariable(name, original);
     return value;
   },
   getPropertyValue: (name: string): string => cssVariables[name] ?? "",

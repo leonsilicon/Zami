@@ -14,6 +14,7 @@
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
     "expo-clipboard": "catalog:",
     "expo-localization": "catalog:",
+    "expo-location": "catalog:",
     "uniwind": "catalog:"
   },
   "peerDependencies": {

@@ -1,0 +1,7 @@
+{
+  // Type-checked like Zami's other tooling packages, against the plain language plus Node's
+  // types for the tests (which compare with Node's WebCrypto). The package itself runs in
+  // Hermes, so it uses no Node or DOM API; apps/zami checks it again with React Native's types.
+  "extends": "../../../../tsconfig.json",
+  "include": ["*.ts", "__tests__/*.ts"]
+}

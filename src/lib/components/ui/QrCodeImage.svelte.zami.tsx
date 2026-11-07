@@ -1,23 +1,8 @@
 import { Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { t } from "$lib/i18n";
+import QRCode from "qrcode";
 import { qrModulePath, qrViewBoxSize } from "$lib/utils/qrCode";
-
-interface QrSymbol {
-    /** Side length, in modules. */
-    size: number;
-    /** Row-major bit matrix, non-zero = dark. */
-    data: ArrayLike<number>;
-}
-
-// Zami: not ported: the encoder. Zam uses the `qrcode` package
-// (`QRCode.create([{ mode: "byte", data: bytes }], { errorCorrectionLevel: "L" })`,
-// whose `.modules` is this `QrSymbol`), which isn't installed in Zami yet, so no
-// symbol is made and the component shows its "could not render" text. Once it is,
-// return `qr.modules` here.
-function createQrSymbol(_bytes: Uint8ClampedArray): QrSymbol | null {
-    return null;
-}
 
 export default function QrCodeImage({
     bytes,
@@ -36,10 +21,11 @@ export default function QrCodeImage({
         // here, symmetrically with `toQrPayloadBytes` on the scanning side.
         if (bytes.length === 0) return null;
         try {
-            const modules = createQrSymbol(bytes);
-            if (!modules) return null;
-            const box = qrViewBoxSize(modules.size);
-            const path = qrModulePath(modules.size, modules.data);
+            const qr = QRCode.create([{ mode: "byte", data: bytes }], {
+                errorCorrectionLevel: "L",
+            });
+            const box = qrViewBoxSize(qr.modules.size);
+            const path = qrModulePath(qr.modules.size, qr.modules.data);
             return path && box ? { path, box } : null;
         } catch (e) {
             // Log the raw encoder error the way crypto.ts's

@@ -1,9 +1,10 @@
 // `navigator` for Zam's code: React Native's, plus the language, online state, clipboard
-// and vibration Zam reads from a browser's. What Zam feature-detects and React Native
-// lacks (service workers, media devices, storage, locks, geolocation) stays undefined.
+// vibration and geolocation Zam reads from a browser's. What Zam feature-detects and
+// React Native lacks (service workers, media devices, storage, locks) stays undefined.
 import * as Clipboard from "expo-clipboard";
 import { getLocales } from "expo-localization";
 import { Platform, Vibration } from "react-native";
+import { geolocation } from "#geolocation";
 
 const languages = (): string[] => getLocales().map((locale) => locale.languageTag);
 
@@ -22,6 +23,7 @@ const extras: Record<PropertyKey, unknown> = {
     writeText: (text: string): Promise<boolean> => Clipboard.setStringAsync(text),
     readText: (): Promise<string> => Clipboard.getStringAsync(),
   },
+  geolocation,
   vibrate: (pattern: number | number[]): boolean => {
     Vibration.vibrate(pattern);
     return true;

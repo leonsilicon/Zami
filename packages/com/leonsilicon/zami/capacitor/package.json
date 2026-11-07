@@ -1,0 +1,13 @@
+{
+  "name": "@-/com.leonsilicon.zami.capacitor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stand-in for the @capacitor/* modules Zam imports: the app isn't a Capacitor app, so Zam takes its web paths and Capacitor plugins report they're unavailable.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  }
+}

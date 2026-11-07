@@ -28,6 +28,7 @@
     "@formatjs/intl-getcanonicallocales": "catalog:",
     "@formatjs/intl-locale": "catalog:",
     "@formatjs/intl-pluralrules": "catalog:",
+    "@formatjs/intl-relativetimeformat": "catalog:",
     "@lofcz/deepfilternet-web": "catalog:",
     "@noble/ciphers": "catalog:",
     "@noble/hashes": "catalog:",
@@ -64,6 +65,7 @@
     "livekit-client": "catalog:",
     "matrix-js-sdk": "catalog:",
     "mp4box": "catalog:",
+    "qrcode": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
     "react-native-gesture-handler": "catalog:",
@@ -84,7 +86,9 @@
     "ws": "catalog:"
   },
   "devDependencies": {
+    "@types/qrcode": "catalog:",
     "@types/react": "catalog:",
+    "@webgpu/types": "catalog:",
     "typescript": "catalog:"
   }
 }

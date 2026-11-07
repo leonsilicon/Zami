@@ -172,8 +172,9 @@ export function sanitizeMatrixHtml(
     opts?: SanitizeOptions,
 ): string {
     if (!html) return "";
-    // No DOM available (SSR/prerender) — render nothing rather than raw HTML.
-    if (!DOMPurify.isSupported) return "";
+    // Zami: React Native has no DOM for DOMPurify, so pass the HTML on: the one thing
+    // that renders it, @-/com.leonsilicon.zami.rn's Html, keeps this same allowlist.
+    if (!DOMPurify.isSupported) return html;
     registerHook();
     currentResolveMxc = opts?.resolveMxc;
     try {

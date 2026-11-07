@@ -17,6 +17,7 @@
     "@capacitor/browser": "catalog:",
     "@capacitor/core": "catalog:",
     "@capacitor/preferences": "catalog:",
+    "@capacitor/push-notifications": "catalog:",
     "esbuild": "catalog:",
     "svelte": "catalog:"
   },
