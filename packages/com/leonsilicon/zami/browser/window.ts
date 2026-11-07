@@ -3,8 +3,10 @@
 // `open` hands links to the system, `matchMedia` answers width and preference queries,
 // and the DOM classes (`DOMParser`, `Node`, `HTMLElement`, …) are the detached DOM's.
 import { AccessibilityInfo, AppState, Appearance, Dimensions, Linking } from "react-native";
+import { audioGlobals } from "#audio";
 import { DOM_CLASSES } from "#dom";
 import { createEventHub } from "#events";
+import { notificationGlobals } from "#notification";
 
 export const windowEvents = createEventHub();
 
@@ -78,6 +80,8 @@ function matchMedia(query: string) {
 
 const extras: Record<PropertyKey, unknown> = {
   ...DOM_CLASSES,
+  ...audioGlobals,
+  ...notificationGlobals,
   addEventListener: windowEvents.addEventListener,
   removeEventListener: windowEvents.removeEventListener,
   dispatchEvent: (event: Event): boolean => {

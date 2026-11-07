@@ -1,0 +1,16 @@
+{
+  "name": "@-/com.leonsilicon.zami.keyboard",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hardware keyboard presses (with modifiers) as DOM-style keydown/keyup events: an Expo module observing the app's key events on iOS.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "expo-modules-core": "catalog:"
+  }
+}

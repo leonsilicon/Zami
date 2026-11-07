@@ -2,6 +2,8 @@ import "#polyfills";
 import "#blob";
 import "#globals";
 import "#media";
+import "#calls";
+import "#notifications";
 import { registerRootComponent } from "expo";
 import { LogBox } from "react-native";
 import { Root } from "#root";

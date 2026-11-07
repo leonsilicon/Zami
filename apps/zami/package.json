@@ -11,7 +11,9 @@
     "#blob": "./blob.ts",
     "#media": "./media.ts",
     "#globals": "./globals.ts",
-    "#storage": "./storage.ts"
+    "#storage": "./storage.ts",
+    "#calls": "./calls.ts",
+    "#notifications": "./notifications.ts"
   },
   "scripts": {
     "start": "expo start",
@@ -22,15 +24,20 @@
     "@-/com.leonsilicon.zami.blob": "workspace:*",
     "@-/com.leonsilicon.zami.browser": "workspace:*",
     "@-/com.leonsilicon.zami.icons": "workspace:*",
+    "@-/com.leonsilicon.zami.keyboard": "workspace:*",
     "@-/com.leonsilicon.zami.metro": "workspace:*",
     "@-/com.leonsilicon.zami.rn": "workspace:*",
     "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
     "@-/com.leonsilicon.zami.webcrypto": "workspace:*",
+    "@config-plugins/react-native-webrtc": "catalog:",
     "@formatjs/intl-getcanonicallocales": "catalog:",
     "@formatjs/intl-locale": "catalog:",
     "@formatjs/intl-pluralrules": "catalog:",
     "@formatjs/intl-relativetimeformat": "catalog:",
+    "@livekit/react-native": "catalog:",
+    "@livekit/react-native-expo-plugin": "catalog:",
+    "@livekit/react-native-webrtc": "catalog:",
     "@lofcz/deepfilternet-web": "catalog:",
     "@noble/ciphers": "catalog:",
     "@noble/hashes": "catalog:",
@@ -41,6 +48,7 @@
     "emojibase-data": "catalog:",
     "expo": "catalog:",
     "expo-application": "catalog:",
+    "expo-asset": "catalog:",
     "expo-audio": "catalog:",
     "expo-camera": "catalog:",
     "expo-clipboard": "catalog:",
@@ -49,6 +57,7 @@
     "expo-device": "catalog:",
     "expo-document-picker": "catalog:",
     "expo-file-system": "catalog:",
+    "expo-font": "catalog:",
     "expo-haptics": "catalog:",
     "expo-image": "catalog:",
     "expo-image-picker": "catalog:",
@@ -64,12 +73,14 @@
     "fake-indexeddb": "catalog:",
     "highlight.js": "catalog:",
     "jpeg-js": "catalog:",
+    "jsqr": "catalog:",
     "livekit-client": "catalog:",
     "matrix-js-sdk": "catalog:",
     "mp4box": "catalog:",
     "qrcode": "catalog:",
     "react": "catalog:",
     "react-native": "catalog:",
+    "react-native-audio-api": "catalog:",
     "react-native-gesture-handler": "catalog:",
     "react-native-get-random-values": "catalog:",
     "react-native-indexeddb-sqlite": "catalog:",
@@ -93,5 +104,8 @@
     "@webgpu/types": "catalog:",
     "spessasynth_core": "catalog:",
     "typescript": "catalog:"
+  },
+  "react-native-audio-api": {
+    "enableFFmpeg": true
   }
 }

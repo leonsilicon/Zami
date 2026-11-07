@@ -45,7 +45,24 @@
       ],
       "expo-notifications",
       "expo-video",
-      "expo-localization"
+      "expo-localization",
+      "@livekit/react-native-expo-plugin",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Zami uses the camera for video calls.",
+          "microphonePermission": "Zami uses the microphone for voice messages and calls."
+        }
+      ],
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": true,
+          "enableFFmpeg": true,
+          "iosMicrophonePermission": "Zami uses the microphone for voice messages and calls."
+        }
+      ],
+      "expo-font"
     ]
   }
 }

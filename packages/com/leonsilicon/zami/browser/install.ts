@@ -1,5 +1,6 @@
 import { installLocation } from "@-/com.leonsilicon.zami.sveltekit";
 import { zamiDocument } from "#document";
+import { installKeys } from "#keys";
 import { zamiNavigator } from "#navigator";
 import { zamiWindow } from "#window";
 
@@ -15,4 +16,5 @@ export function installBrowserGlobals(): void {
     __ZAMI_NAVIGATOR__: zamiNavigator,
     __ZAMI_WINDOW__: zamiWindow,
   });
+  installKeys();
 }

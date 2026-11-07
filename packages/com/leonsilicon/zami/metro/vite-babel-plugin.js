@@ -122,7 +122,14 @@ export function zamiVitePlugin({ types: t, template }) {
     navigator: "__ZAMI_NAVIGATOR__",
     location: "__ZAMI_LOCATION__",
   };
+  // Globals Zam's code reads from the window stand-in: the DOM classes, Web Audio, Audio
+  // and Notification.
   const DOM_CLASSES = new Set([
+    "AudioContext",
+    "OfflineAudioContext",
+    "webkitAudioContext",
+    "Audio",
+    "Notification",
     "DOMParser",
     "XMLSerializer",
     "NodeFilter",
