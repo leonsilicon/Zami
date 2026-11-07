@@ -33,6 +33,9 @@ import {
     NATIVE_SCHEME,
     isElectronWithSso,
     openLoginUrl,
+    // Zami: the Expo app's sign-in return (see beginOAuthLogin).
+    ZAMI_SCHEME,
+    isZamiNative,
 } from "$lib/matrix/loginRedirect";
 
 const PENDING_KEY = "zam_oauth_pending";
@@ -43,6 +46,13 @@ const DISCOVERY_TIMEOUT_MS = 8000;
 /** Where the project's public site lives: the `client_uri` off the web. */
 const PROJECT_URI = "https://matrix.crafty.moe";
 const ANDROID_REDIRECT = `${NATIVE_SCHEME}:/oauth`;
+// Zami: where the Expo app's auth session returns to: the app's own scheme,
+// with no authority, as RFC 8252 and the Matrix spec want a native redirect.
+const ZAMI_TARGET: RedirectTarget = {
+    redirectUri: `${ZAMI_SCHEME}:/oauth-callback`,
+    applicationType: "native",
+    clientUri: PROJECT_URI,
+};
 
 export interface PendingOAuth {
     state: string;
@@ -313,7 +323,10 @@ export async function beginOAuthLogin(opts: {
     register?: boolean;
     slidingSync: boolean;
 }): Promise<void> {
-    const target = redirectTarget();
+    // Zami: the Expo app is a native client on its own scheme, though
+    // Capacitor's stand-in isn't a native platform. (QR sign-in, which never
+    // redirects, keeps registering with redirectTarget's.)
+    const target = isZamiNative() ? ZAMI_TARGET : redirectTarget();
     const clientId = await ensureClientId(opts.baseUrl, opts.metadata, target);
     const oauth2 = new OAuth2(opts.metadata, { clientId });
     const state = randomState();
@@ -337,7 +350,8 @@ export async function beginOAuthLogin(opts: {
         slidingSync: opts.slidingSync,
         createdAt: Date.now(),
     });
-    openLoginUrl(url);
+    // Zami: the redirect is what the Expo app's auth session waits for.
+    openLoginUrl(url, target.redirectUri);
 }
 
 // Callback URLs already read in this process (see the header comment).

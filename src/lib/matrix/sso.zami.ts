@@ -18,12 +18,17 @@ import {
     NATIVE_SCHEME,
     isElectronWithSso,
     openLoginUrl,
+    // Zami: the Expo app's sign-in return (see callbackUrl).
+    ZAMI_SCHEME,
+    isZamiNative,
 } from "$lib/matrix/loginRedirect";
 
 const PENDING_KEY = "zam_sso_pending";
 const STATE_PARAM = "sso_state";
 const TOKEN_PARAM = "loginToken";
 const NATIVE_CALLBACK = `${NATIVE_SCHEME}://sso`;
+// Zami: where the Expo app's auth session returns to, on the app's own scheme.
+const ZAMI_CALLBACK = `${ZAMI_SCHEME}://sso-callback`;
 /** An attempt older than this is abandoned (the token itself expires fast). */
 const PENDING_TTL_MS = 30 * 60 * 1000;
 
@@ -89,6 +94,8 @@ const seenCallbacks = new Set<string>();
 
 /** Where the homeserver should send the browser back to, per runtime. */
 function callbackUrl(state: string, addMode: boolean): string {
+    // Zami: the Expo app, where Capacitor's stand-in isn't a native platform.
+    if (isZamiNative()) return `${ZAMI_CALLBACK}?${STATE_PARAM}=${state}`;
     if (Capacitor.isNativePlatform()) {
         return `${NATIVE_CALLBACK}?${STATE_PARAM}=${state}`;
     }
@@ -127,7 +134,8 @@ export function beginSsoLogin(opts: {
             register: opts.register,
         },
     );
-    openLoginUrl(url);
+    // Zami: the redirect is what the Expo app's auth session waits for.
+    openLoginUrl(url, ZAMI_CALLBACK);
 }
 
 /**

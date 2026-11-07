@@ -51,6 +51,27 @@ function isImportMeta(node) {
   );
 }
 
+/** `node` without TypeScript casts, non-null assertions and parentheses around it. */
+function unwrap(node) {
+  while (
+    node?.type === "TSAsExpression" ||
+    node?.type === "TSSatisfiesExpression" ||
+    node?.type === "TSNonNullExpression" ||
+    node?.type === "TSTypeAssertion" ||
+    node?.type === "ParenthesizedExpression"
+  ) {
+    node = node.expression;
+  }
+  return node;
+}
+
+function isImportMetaEnv(node) {
+  node = unwrap(node);
+  return (
+    node?.type === "MemberExpression" && isImportMeta(node.object) && memberName(node) === "env"
+  );
+}
+
 function memberName(node) {
   if (node.computed) return node.property.type === "StringLiteral" ? node.property.value : null;
   return node.property.type === "Identifier" ? node.property.name : null;
@@ -176,13 +197,16 @@ export function zamiVitePlugin({ types: t, template }) {
           nodePath.replaceWith(browserGlobal("location"));
           return;
         }
-        if (
-          !(
-            node.object.type === "MemberExpression" &&
-            isImportMeta(node.object.object) &&
-            memberName(node.object) === "env"
-          )
-        ) {
+        if (!isImportMetaEnv(node.object)) {
+          // `import.meta.env` on its own (passed around, or cast and read later): an
+          // object of Vite's built-in keys. VITE_ keys read through it are undefined;
+          // Expo only inlines EXPO_PUBLIC_ variables read by name.
+          if (isImportMetaEnv(node) && !isImportMetaEnv(nodePath.parent?.object ?? null)) {
+            nodePath.replaceWith(
+              template.expression
+                .ast`({ DEV: __DEV__, PROD: !__DEV__, MODE: __DEV__ ? "development" : "production", SSR: false })`,
+            );
+          }
           return;
         }
         const name = memberName(node);

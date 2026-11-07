@@ -142,6 +142,7 @@
   "src/lib/components/layout/JoinConsentDialog.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/LiveLocationBanner.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/LiveLocationMapView.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
+  "src/lib/components/layout/LoginView.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/MemberList.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/MessageSearchPanel.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/NotificationsPanel.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",

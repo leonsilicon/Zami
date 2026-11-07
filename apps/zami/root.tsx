@@ -15,11 +15,12 @@ import { Pressable, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import LoginView from "$lib/components/layout/LoginView.svelte";
 import Splash from "$lib/components/layout/Splash.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import { storageReady } from "#storage";
 import { initI18n, t } from "$lib/i18n";
-import { getClient, login, startSync } from "$lib/matrix/client";
+import { getClient, startSync } from "$lib/matrix/client";
 import { auth, saveSession } from "$lib/stores/auth.svelte";
 import { showToast, toastsState } from "$lib/stores/toasts.svelte";
 
@@ -64,70 +65,32 @@ function Checks() {
       <Text className="text-discord-textMuted" testID="toast-count">
         Toasts in the Svelte store: {toasts.length}
       </Text>
-      {__DEV__ ? <DevSignIn /> : null}
+      <SessionStatus />
     </View>
   );
 }
 
-/**
- * Development only: signs in to a local Synapse (`docker run … matrixdotorg/synapse`
- * on :8008, user `alice`) through Zam's own sign-in and sync code, as the login page
- * does, to exercise Zam's logic on device before its pages are ported.
- */
 // For the debugger (Argent's debugger-evaluate): the running Matrix client.
 if (__DEV__) Object.assign(globalThis, { __zamiDebug: { getClient } });
 
-function DevSignIn() {
-  const [status, setStatus] = useState("signed out");
+/** What the running session is doing: sync state and the client's rooms. */
+function SessionStatus() {
   const syncState = useRune(() => auth.syncState);
+  const userId = useRune(() => auth.userId);
   // AppShell fills Zam's room lists; until it's ported, ask the client directly.
   const [rooms, setRooms] = useState<string[]>([]);
   useEffect(() => {
     const timer = setInterval(() => {
-      try {
-        setRooms(
-          (getClient()?.getRooms() ?? []).map((room) => `${room.name} (${room.getMyMembership()})`),
-        );
-      } catch {
-        // No client yet.
-      }
+      setRooms(
+        (getClient()?.getRooms() ?? []).map((room) => `${room.name} (${room.getMyMembership()})`),
+      );
     }, 2000);
     return () => clearInterval(timer);
   }, []);
-
-  async function signIn() {
-    try {
-      setStatus("signing in…");
-      const result = await login("http://localhost:8008", "alice", "zami-test-password", true);
-      saveSession({
-        userId: result.userId,
-        accessToken: result.accessToken,
-        deviceId: result.deviceId,
-        homeserverUrl: result.homeserverUrl,
-      });
-      setStatus(`signed in as ${result.userId}; starting sync…`);
-      await startSync((state) => {
-        auth.syncState = state;
-      });
-      setStatus(`signed in as ${result.userId}`);
-    } catch (error) {
-      setStatus(
-        `failed: ${error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error)}`,
-      );
-    }
-  }
-
   return (
     <View className="gap-2">
-      <Pressable
-        accessibilityRole="button"
-        className="self-start rounded bg-discord-backgroundSecondary px-3 py-2"
-        onPress={() => void signIn()}
-      >
-        <Text className="text-discord-textPrimary">Dev: sign in as alice</Text>
-      </Pressable>
-      <Text className="text-discord-textMuted" testID="dev-sign-in-status">
-        {status}
+      <Text className="text-discord-textMuted" testID="session-user">
+        Signed in as {userId ?? "?"}
       </Text>
       <Text className="text-discord-textMuted" testID="dev-sync-state">
         Sync: {syncState ?? "none"}, rooms: {rooms.length}
@@ -139,8 +102,36 @@ function DevSignIn() {
   );
 }
 
+/**
+ * Until Zam's main page (src/routes/+page.svelte) is ported: Zam's sign-in screen, then
+ * the preview. Signing in does what the main page does with LoginView's result: it saves
+ * the session and starts sync.
+ */
+function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
+  return (
+    <LoginView
+      isAddAccountMode={false}
+      onAuthenticated={async (result) => {
+        saveSession({
+          userId: result.userId,
+          accessToken: result.accessToken,
+          deviceId: result.deviceId,
+          homeserverUrl: result.homeserverUrl,
+        });
+        await startSync((state) => {
+          auth.syncState = state;
+        });
+        onSignedIn();
+      }}
+      onContinueAs={() => {}}
+      onBackToActive={() => {}}
+    />
+  );
+}
+
 export function Root() {
   const [ready, setReady] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
   useEffect(() => {
     void Promise.all([initI18n(), storageReady]).finally(() => setReady(true));
   }, []);
@@ -148,7 +139,9 @@ export function Root() {
   return (
     <AppProviders>
       <StatusBar style="light" />
-      {ready ? (
+      {ready && !signedIn ? (
+        <SignIn onSignedIn={() => setSignedIn(true)} />
+      ) : ready ? (
         <View className="flex-1 pt-16">
           <Checks />
           <View className="h-40">

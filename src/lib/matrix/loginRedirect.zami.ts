@@ -14,6 +14,47 @@ import { Browser } from "@capacitor/browser";
 /** Custom URL scheme the Android app owns (AndroidManifest.xml). */
 export const NATIVE_SCHEME = "moe.crafty.matrix";
 
+// Zami: the Expo app's own URL scheme (apps/zami/app.json), which its sign-in
+// pages return to.
+export const ZAMI_SCHEME = "zami";
+
+/**
+ * Zami: whether this is the Expo app. Capacitor is a stand-in there
+ * (`isNativePlatform()` is false), but sign-in still opens over the app and
+ * returns to its scheme, as on Android, instead of navigating a page away.
+ */
+export function isZamiNative(): boolean {
+    return (
+        typeof navigator !== "undefined" && navigator.product === "ReactNative"
+    );
+}
+
+// Zami: the callbacks listenForLoginCallbacks registered, which the Expo
+// app's auth sessions hand their result to.
+const zamiCallbacks = new Set<(rawUrl: string) => void>();
+
+/**
+ * Zami: open the provider's page in an auth session over the Expo app
+ * (ASWebAuthenticationSession on iOS, a Custom Tab on Android). It closes
+ * once the page redirects to `redirectUri`'s scheme, and the URL it closed on
+ * goes to the callback listeners. A cancelled session delivers nothing: the
+ * attempt stays pending, as an abandoned Custom Tab leaves it on Android.
+ * Modules load on first use, so Zam's tests (jsdom) never import them.
+ */
+function openZamiAuthSession(url: string, redirectUri: string): void {
+    void import("expo-web-browser")
+        .then((WebBrowser) => WebBrowser.openAuthSessionAsync(url, redirectUri))
+        .then((result) => {
+            if (result.type === "success")
+                zamiCallbacks.forEach((cb) => cb(result.url));
+        })
+        .catch((err) => {
+            // The system browser returns through the `zami:` link instead.
+            console.warn("[login] auth session failed", err);
+            window.open(url, "_blank", "noopener");
+        });
+}
+
 export function isElectronWithSso(): boolean {
     return typeof window !== "undefined" && !!window.desktop?.sso;
 }
@@ -32,7 +73,16 @@ export function openInAppBrowser(url: string): boolean {
 }
 
 /** Leave for the provider's page: in-app browser on Android, system browser on desktop, navigation elsewhere. */
-export function openLoginUrl(url: string): void {
+export function openLoginUrl(
+    url: string,
+    // Zami: where the page returns to, which the Expo app's auth session waits for.
+    redirectUri = `${ZAMI_SCHEME}:`,
+): void {
+    // Zami: an auth session over the Expo app, in place of Android's in-app browser.
+    if (isZamiNative()) {
+        openZamiAuthSession(url, redirectUri);
+        return;
+    }
     if (openInAppBrowser(url)) return;
     if (isElectronWithSso()) {
         // The window-open handler hands this to the system browser.
@@ -45,6 +95,8 @@ export function openLoginUrl(url: string): void {
 
 /** Whether opening the provider's page navigates this document away. */
 export function loginLeavesPage(): boolean {
+    // Zami: the Expo app's auth session opens over it.
+    if (isZamiNative()) return false;
     return !isElectronWithSso() && !Capacitor.isNativePlatform();
 }
 
@@ -81,6 +133,32 @@ export function listenForLoginCallbacks(
         disposers.push(() => {
             disposed = true;
             void handle.then((h) => h.remove()).catch(() => {});
+        });
+    }
+
+    // Zami: the Expo app's auth sessions, plus `zami:` links that open the
+    // app, including the one that cold-started it, as on Android: a session
+    // that fell back to the system browser returns that way, and Android may
+    // restart the app behind its Custom Tab.
+    if (isZamiNative()) {
+        let disposed = false;
+        let subscription: { remove: () => void } | undefined;
+        const isOurs = (u: string) => u.startsWith(`${ZAMI_SCHEME}:`);
+        zamiCallbacks.add(cb);
+        void import("expo-linking")
+            .then(async (Linking) => {
+                if (disposed) return;
+                subscription = Linking.addEventListener("url", (e) => {
+                    if (isOurs(e.url)) cb(e.url);
+                });
+                const launch = await Linking.getInitialURL();
+                if (!disposed && launch && isOurs(launch)) cb(launch);
+            })
+            .catch(() => {});
+        disposers.push(() => {
+            disposed = true;
+            zamiCallbacks.delete(cb);
+            subscription?.remove();
         });
     }
 
