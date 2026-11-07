@@ -1,0 +1,22 @@
+{
+  "name": "@-/com.leonsilicon.zami.metro",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Metro config that builds Zami from the .expo. versions of Zam's files.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.js"
+  },
+  "exports": {
+    ".": "./+.js",
+    "./transformer": "./+transformer.js"
+  },
+  "dependencies": {
+    "esbuild": "catalog:",
+    "svelte": "catalog:"
+  },
+  "peerDependencies": {
+    "@expo/metro-config": "*",
+    "uniwind": "*"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.svelte-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lets React components read Svelte 5 runes ($state, $derived) and re-render when they change.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "svelte": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@-apps/zami",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Zami Expo app: Zam's UI and logic, built from the .expo. versions of its files.",
+  "type": "module",
+  "main": "index.ts",
+  "imports": {
+    "#root": "./root.tsx",
+    "#polyfills": "./polyfills.ts"
+  },
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.metro": "workspace:*",
+    "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
+    "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
+    "@formatjs/intl-getcanonicallocales": "catalog:",
+    "@formatjs/intl-locale": "catalog:",
+    "@formatjs/intl-pluralrules": "catalog:",
+    "date-fns": "catalog:",
+    "expo": "catalog:",
+    "expo-sqlite": "catalog:",
+    "expo-status-bar": "catalog:",
+    "fake-indexeddb": "catalog:",
+    "matrix-js-sdk": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-get-random-values": "catalog:",
+    "react-native-indexeddb-sqlite": "catalog:",
+    "react-native-matrix-sdk-crypto-wasm": "catalog:",
+    "svelte": "catalog:",
+    "tailwindcss": "catalog:",
+    "uniwind": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

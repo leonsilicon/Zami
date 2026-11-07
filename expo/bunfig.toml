@@ -1,0 +1,3 @@
+[install]
+# Expo and Metro expect a classic node_modules tree; isolated installs need dozens of hoisting exceptions.
+linker = "hoisted"

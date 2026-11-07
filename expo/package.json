@@ -1,0 +1,63 @@
+{
+  "name": "zami-development",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zami, an Expo port of the Zam Matrix client: the Expo app and the tooling that keeps it in sync with upstream.",
+  "license": "GPL-3.0-or-later",
+  "author": "Leon Si",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leonsilicon/Zami.git"
+  },
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/**"
+    ],
+    "catalog": {
+      "@formatjs/intl-getcanonicallocales": "3.3.0",
+      "@formatjs/intl-locale": "5.4.2",
+      "@formatjs/intl-pluralrules": "7.0.2",
+      "@types/node": "24.19.2",
+      "@types/react": "19.3.0",
+      "date-fns": "4.4.0",
+      "esbuild": "0.28.2",
+      "eslint-plugin-flatcap": "0.1.0",
+      "expo": "58.0.23",
+      "expo-sqlite": "58.0.15",
+      "expo-status-bar": "58.0.4",
+      "fake-indexeddb": "6.2.7",
+      "matrix-js-sdk": "45.0.0",
+      "prettier": "3.9.9",
+      "react": "19.3.0",
+      "react-native": "0.88.1",
+      "react-native-get-random-values": "2.1.0",
+      "react-native-indexeddb-sqlite": "0.1.0",
+      "react-native-matrix-sdk-crypto-wasm": "0.1.0",
+      "svelte": "5.57.1",
+      "tailwindcss": "4.3.3",
+      "typescript": "7.0.2",
+      "uniwind": "1.13.0",
+      "vite-plus": "1.5.0"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "postinstall": "node packages/com/leonsilicon/zami/ports/__postinstall.ts"
+  },
+  "devDependencies": {
+    "@-/com.leonsilicon.zami.ports": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint-plugin-flatcap": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "bun@1.4.4",
+  "patchedDependencies": {
+    "uniwind@1.13.0": "patches/uniwind@1.13.0.patch"
+  }
+}

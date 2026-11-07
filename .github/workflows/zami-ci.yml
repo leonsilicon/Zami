@@ -1,0 +1,37 @@
+# Zami's checks. `_zami check` enforces the porting invariants: no upstream file is ever
+# modified, every copy-type upstream file has its Expo version, and no Expo file is stale
+# or left with merge conflicts.
+name: Zami CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: git remote add upstream https://github.com/az4521/Zam.git && git fetch --no-tags upstream master
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          working-directory: expo
+          node-version: "24"
+          run-install: true
+          cache: true
+      - name: Lint, format and types (expo/ workspace)
+        working-directory: expo
+        run: vp check
+      - working-directory: expo
+        run: vp run typecheck
+      - working-directory: expo
+        run: vp run test
+      - name: Expo files in Zam's tree (format, lint, porting invariants)
+        working-directory: expo
+        run: vp run check:zam

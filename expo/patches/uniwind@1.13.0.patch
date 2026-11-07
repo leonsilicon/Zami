@@ -1,0 +1,29 @@
+diff --git a/dist/metro/transformer.cjs b/dist/metro/transformer.cjs
+index 43e6c556f87fd63de9b78e7cb6a1985b5196668e..9583a2832dd37586c59f439dcb76f9727039f697 100644
+--- a/dist/metro/transformer.cjs
++++ b/dist/metro/transformer.cjs
+@@ -397,6 +397,12 @@ class Color {
+           return this.black;
+         }
+         const colorValue = color.replace(colorFunction, "").slice(1, -1);
++        // Zami: `rgb(var(--x-rgb) / 1)`, where the variable holds space-separated channels, must
++        // reach parseColor as the string "88 101 242 / 1", not as a JS division.
++        if (/^(\s*(vars\["[^"]+"\]\?\.\(vars\)|[\d.]+%?|\/|,)\s*)+$/.test(colorValue) && /\/|\s\d/.test(colorValue)) {
++          const template = colorValue.replace(/vars\["[^"]+"\]\?\.\(vars\)/g, (reference) => `\${${reference}}`);
++          return `rt.parseColor("${colorFunction}", \`${template}\`)`;
++        }
+         return `rt.parseColor("${colorFunction}", ${colorValue})`;
+       }
+       return this.format(parsed);
+@@ -1722,6 +1728,11 @@ class ProcessorBuilder {
+         dataAttributes[component.name] = `"true"`;
+         return;
+       }
++      // Zami: `[data-theme="<theme>"]` (how Zam's stylesheet scopes its themes) selects a Uniwind theme.
++      if (component.type === "attribute" && component.operation?.operator === "equal" && component.name === "data-theme" && this.bundlerConfig.themes.includes(component.operation.value)) {
++        theme = component.operation.value;
++        return;
++      }
+       if (component.type === "attribute" && component.operation?.operator === "equal" && component.name.startsWith("data-")) {
+         dataAttributes ??= {};
+         dataAttributes[component.name] = JSON.stringify(component.operation.value);

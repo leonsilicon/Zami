@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.sveltekit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React Native stand-ins for the SvelteKit runtime modules Zam imports ($app/environment, $app/navigation, $app/state).",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts",
+    "./app/environment": "./+app__environment.ts",
+    "./app/navigation": "./+app__navigation.ts",
+    "./app/state": "./+app__state.ts"
+  },
+  "dependencies": {
+    "svelte": "catalog:"
+  }
+}

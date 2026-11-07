@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Zami",
+    "slug": "zami",
+    "scheme": "zami",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#202225",
+    "ios": {
+      "bundleIdentifier": "com.leonsilicon.zami",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.leonsilicon.zami"
+    },
+    "plugins": ["expo-sqlite"]
+  }
+}

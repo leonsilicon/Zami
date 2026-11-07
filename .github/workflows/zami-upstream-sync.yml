@@ -1,0 +1,136 @@
+# Keeps Zami in step with upstream Zam (https://github.com/az4521/Zam):
+#  1. merges new upstream commits into the `zami/upstream-sync` branch (always clean:
+#     Zami never edits upstream files, it only adds `.expo.` files next to them);
+#  2. `_zami sync` copies new upstream files and three-way merges upstream changes into
+#     the copied Expo files;
+#  3. Claude (Opus 5.5) migrates what that can't: merge conflicts, upstream changes to
+#     translated (Svelte → React Native) components, and components upstream added;
+#  4. opens or updates a pull request, which zami-ci.yml checks.
+#
+# Secrets: ZAMI_BOT_TOKEN (fine-grained PAT on this repo: Contents, Pull requests,
+# Workflows and Actions read/write; GITHUB_TOKEN can't push upstream's workflow-file
+# changes or trigger CI on the PR it opens), and CLAUDE_CODE_OAUTH_TOKEN (from
+# `claude setup-token`) or ANTHROPIC_API_KEY.
+name: Zami upstream sync
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zami-upstream-sync
+  cancel-in-progress: false
+
+env:
+  BRANCH: zami/upstream-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.ZAMI_BOT_TOKEN }}
+
+      - name: Merge upstream Zam
+        id: merge
+        run: |
+          git config user.name "zami-bot"
+          git config user.email "zami-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/az4521/Zam.git
+          git fetch --no-tags upstream master
+          # Continue an open sync PR's branch so commits pushed to it aren't lost.
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+            git merge --no-edit origin/main
+          else
+            git checkout -B "$BRANCH"
+          fi
+          previous=$(git merge-base HEAD upstream/master)
+          latest=$(git rev-parse upstream/master)
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$previous" = "$latest" ]; then
+            echo "Already synced with upstream ${latest:0:10}."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-ff --no-edit -m "Merge upstream Zam ${latest:0:10}" upstream/master
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.merge.outputs.changed == 'true'
+        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          working-directory: expo
+          node-version: "24"
+          run-install: true
+          cache: true
+
+      - name: Sync Expo files
+        id: sync
+        if: steps.merge.outputs.changed == 'true'
+        working-directory: expo
+        run: |
+          vpx _zami sync --since "${{ steps.merge.outputs.previous }}" --worklist .zami/worklist.json --summary .zami/summary.md
+          count=$(node -e 'const w=require("./.zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
+          echo "work=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate with Claude
+        if: steps.merge.outputs.changed == 'true' && steps.sync.outputs.work != '0'
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.ZAMI_BOT_TOKEN }}
+          prompt: Follow the instructions in expo/packages/com/leonsilicon/zami/ports/@prompts/migrate.md.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 300
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+            --disallowedTools "Bash(git commit:*),Bash(git push:*),Bash(git checkout:*),Bash(git reset:*)"
+
+      - name: Check
+        id: check
+        if: steps.merge.outputs.changed == 'true'
+        working-directory: expo
+        run: |
+          vpx _zami fmt
+          if vpx _zami check > .zami/check.txt 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+          cat .zami/check.txt
+
+      - name: Push and open the pull request
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
+          LATEST: ${{ steps.merge.outputs.latest }}
+          CHECK_OK: ${{ steps.check.outputs.ok }}
+        run: |
+          git add -A
+          git diff --cached --quiet || git commit -q -m "Sync Expo files with upstream Zam ${LATEST:0:10}"
+          git push origin "HEAD:$BRANCH"
+          {
+            cat expo/.zami/summary.md
+            if [ -f expo/.zami/report.md ]; then printf '\n## Claude'"'"'s migration report\n\n'; cat expo/.zami/report.md; fi
+            if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 expo/.zami/check.txt; printf '```\n'; fi
+          } > "$RUNNER_TEMP/body.md"
+          if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+      # Upstream's own workflows (releases, Android builds) must never run in Zami.
+      - name: Disable upstream workflows
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
+        run: |
+          gh workflow list --all --json id,path,state -q '.[] | select(.state == "active" and (.path | startswith(".github/workflows/zami-") | not)) | .id' |
+            while read -r id; do gh workflow disable "$id"; done

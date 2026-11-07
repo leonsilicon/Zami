@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "lib": ["esnext"],
+    "allowJs": true
+  },
+  "include": [
+    "packages/com/leonsilicon/zami/ports/**/*.ts",
+    "packages/com/leonsilicon/zami/metro/*.js",
+    "prettier.config.zam.js",
+    "vite.config.ts"
+  ]
+}

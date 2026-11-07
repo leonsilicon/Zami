@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../apps/zami/tsconfig.json",
+  "include": ["*.ts", "../../../../../apps/zami/vite-env.d.ts"]
+}
