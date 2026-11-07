@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { afterAll, test } from "vite-plus/test";
 import { check } from "#check";
 import { Manifest } from "#manifest";
-import { mapUpstreamPath, upstreamPathForExpoPath } from "#paths";
+import { mapUpstreamPath, upstreamPathForZamiPath } from "#paths";
 import { Project } from "#project";
 import { markDone, sync } from "#sync";
 
@@ -45,26 +45,26 @@ const sorted = (items: string[][]) => items.toSorted((a, b) => a.join().localeCo
 
 test("paths map both ways, for every kind of file", () => {
   const cases: [string, string, string][] = [
-    ["src/lib/foo.ts", "src/lib/foo.expo.ts", "copy"],
-    ["src/lib/x.svelte.ts", "src/lib/x.svelte.expo.ts", "copy"],
-    ["src/lib/x.test.ts", "src/lib/x.test.expo.ts", "copy"],
-    ["src/app.d.ts", "src/app.expo.d.ts", "copy"],
-    ["src/app.css", "src/app.expo.css", "copy"],
-    ["src/app.html", "src/app.expo.html", "copy"],
-    ["static/favicon.png", "static/favicon.expo.png", "copy"],
-    ["README.md", "README.expo.md", "copy"],
-    ["LICENSE", "LICENSE.expo", "copy"],
-    [".gitignore", ".gitignore.expo", "copy"],
-    [".env.example", ".env.expo.example", "copy"],
-    ["android/gradlew", "android/gradlew.expo", "copy"],
-    ["src/lib/Foo.svelte", "src/lib/Foo.svelte.expo.tsx", "translate"],
+    ["src/lib/foo.ts", "src/lib/foo.zami.ts", "copy"],
+    ["src/lib/x.svelte.ts", "src/lib/x.svelte.zami.ts", "copy"],
+    ["src/lib/x.test.ts", "src/lib/x.test.zami.ts", "copy"],
+    ["src/app.d.ts", "src/app.zami.d.ts", "copy"],
+    ["src/app.css", "src/app.zami.css", "copy"],
+    ["src/app.html", "src/app.zami.html", "copy"],
+    ["static/favicon.png", "static/favicon.zami.png", "copy"],
+    ["README.md", "README.zami.md", "copy"],
+    ["LICENSE", "LICENSE.zami", "copy"],
+    [".gitignore", ".gitignore.zami", "copy"],
+    [".env.example", ".env.zami.example", "copy"],
+    ["android/gradlew", "android/gradlew.zami", "copy"],
+    ["src/lib/Foo.svelte", "src/lib/Foo.svelte.zami.tsx", "translate"],
   ];
-  for (const [upstream, expo, kind] of cases) {
-    assert.deepEqual(mapUpstreamPath(upstream), { upstreamPath: upstream, expoPath: expo, kind });
-    assert.equal(upstreamPathForExpoPath(expo), upstream);
+  for (const [upstream, zami, kind] of cases) {
+    assert.deepEqual(mapUpstreamPath(upstream), { upstreamPath: upstream, zamiPath: zami, kind });
+    assert.equal(upstreamPathForZamiPath(zami), upstream);
   }
-  assert.equal(upstreamPathForExpoPath("src/lib/foo.ts"), null);
-  assert.equal(upstreamPathForExpoPath("src/lib/foo.ts.expo"), null);
+  assert.equal(upstreamPathForZamiPath("src/lib/foo.ts"), null);
+  assert.equal(upstreamPathForZamiPath("src/lib/foo.ts.zami"), null);
 });
 
 test("sync copies, merges, flags work, and check enforces the invariants", () => {
@@ -95,43 +95,54 @@ test("sync copies, merges, flags work, and check enforces the invariants", () =>
   git(zami, "add", "-A");
   git(zami, "commit", "-q", "-m", "zami setup");
 
-  // First sync: every file gets an Expo version; the Svelte component is left as work.
+  // First sync: every file gets a Zami version; the Svelte component is left as work.
   let result = sync(new Project(zami));
   assert.deepEqual(result.created.toSorted(), [
-    ".gitignore.expo",
-    "LICENSE.expo",
-    "gradlew.expo",
-    "secret/keep.expo.txt",
-    "src/a.expo.ts",
-    "src/c.svelte.expo.ts",
-    "src/gone.expo.ts",
-    "src/old.expo.ts",
-    "static/icon.expo.png",
-    "static/logo.expo.png",
+    ".gitignore.zami",
+    "LICENSE.zami",
+    "gradlew.zami",
+    "secret/keep.zami.txt",
+    "src/a.zami.ts",
+    "src/c.svelte.zami.ts",
+    "src/gone.zami.ts",
+    "src/old.zami.ts",
+    "static/icon.zami.png",
+    "static/logo.zami.png",
   ]);
   assert.deepEqual(result.work, [
-    { kind: "port", expoPath: "src/B.svelte.expo.tsx", upstreamPath: "src/B.svelte" },
+    { kind: "port", zamiPath: "src/B.svelte.zami.tsx", upstreamPath: "src/B.svelte" },
   ]);
   // Copies are byte-identical, keep the executable bit, and ignored names are force-added.
-  assert.equal(get(zami, "src/a.expo.ts"), lines(20, "a"));
-  assert.ok(readFileSync(join(zami, "static/logo.expo.png")).equals(png(1)));
-  assert.equal(statSync(join(zami, "gradlew.expo")).mode & 0o111, 0o111);
-  assert.match(git(zami, "ls-files", "--", "secret/keep.expo.txt"), /secret\/keep.expo.txt/);
+  assert.equal(get(zami, "src/a.zami.ts"), lines(20, "a"));
+  assert.ok(readFileSync(join(zami, "static/logo.zami.png")).equals(png(1)));
+  assert.equal(statSync(join(zami, "gradlew.zami")).mode & 0o111, 0o111);
+  assert.match(git(zami, "ls-files", "--", "secret/keep.zami.txt"), /secret\/keep.zami.txt/);
+  // Editor settings hide upstream files that have a Zami version, and nothing else.
+  const zed = JSON.parse(get(zami, ".zed/settings.json")) as { file_scan_exclusions: string[] };
+  assert.ok(zed.file_scan_exclusions.includes("src/a.ts"));
+  assert.ok(zed.file_scan_exclusions.includes("static/logo.png"));
+  assert.ok(!zed.file_scan_exclusions.includes("src/B.svelte"), "not ported yet: stays visible");
+  assert.ok(!zed.file_scan_exclusions.includes("src/a.zami.ts"));
+  const vscode = JSON.parse(get(zami, "zami.code-workspace")) as {
+    settings: { "files.exclude": Record<string, unknown> };
+  };
+  assert.deepEqual(vscode.settings["files.exclude"]["*/**/*.ts"], { when: "$(basename).zami.ts" });
+  assert.equal(vscode.settings["files.exclude"]["LICENSE"], true);
   const upstream1 = git(upstream, "rev-parse", "HEAD").trim();
-  assert.equal(Manifest.read(zami).get("src/a.expo.ts"), upstream1);
+  assert.equal(Manifest.read(zami).get("src/a.zami.ts"), upstream1);
 
   // Zami's own edits: tweak two copies and a binary, and translate the component.
-  put(zami, "src/a.expo.ts", get(zami, "src/a.expo.ts").replace("a line 2\n", "a line 2 (expo)\n"));
+  put(zami, "src/a.zami.ts", get(zami, "src/a.zami.ts").replace("a line 2\n", "a line 2 (zami)\n"));
   put(
     zami,
-    "src/c.svelte.expo.ts",
-    get(zami, "src/c.svelte.expo.ts").replace("c line 3\n", "c line 3 (expo)\n"),
+    "src/c.svelte.zami.ts",
+    get(zami, "src/c.svelte.zami.ts").replace("c line 3\n", "c line 3 (zami)\n"),
   );
-  put(zami, "static/icon.expo.png", png(9));
-  put(zami, "src/B.svelte.expo.tsx", "export default function B() { return null; }\n");
-  markDone(new Project(zami), ["src/B.svelte.expo.tsx"]);
+  put(zami, "static/icon.zami.png", png(9));
+  put(zami, "src/B.svelte.zami.tsx", "export default function B() { return null; }\n");
+  markDone(new Project(zami), ["src/B.svelte.zami.tsx"]);
   git(zami, "add", "-A");
-  git(zami, "commit", "-q", "-m", "expo versions");
+  git(zami, "commit", "-q", "-m", "zami versions");
   assert.deepEqual(check(new Project(zami), { strict: true }).failures, []);
 
   // Upstream moves on.
@@ -150,9 +161,9 @@ test("sync copies, merges, flags work, and check enforces the invariants", () =>
   git(zami, "merge", "-q", "--no-edit", "upstream/master");
 
   let checked = check(new Project(zami));
-  assert.ok(checked.failures.some((failure) => failure.startsWith("src/a.expo.ts: stale")));
-  assert.ok(checked.failures.some((failure) => failure.startsWith("src/new.expo.ts: missing")));
-  assert.ok(checked.failures.some((failure) => failure.startsWith("src/gone.expo.ts: orphan")));
+  assert.ok(checked.failures.some((failure) => failure.startsWith("src/a.zami.ts: stale")));
+  assert.ok(checked.failures.some((failure) => failure.startsWith("src/new.zami.ts: missing")));
+  assert.ok(checked.failures.some((failure) => failure.startsWith("src/gone.zami.ts: orphan")));
 
   put(upstream, "src/D.svelte", "<p>new component</p>\n");
   git(upstream, "add", "-A");
@@ -164,66 +175,66 @@ test("sync copies, merges, flags work, and check enforces the invariants", () =>
   result = sync(new Project(zami), { since: upstream1 });
   assert.equal(result.upstreamSha, upstream3);
   assert.deepEqual(result.merged.toSorted(), [
-    "src/a.expo.ts",
-    "src/renamed.expo.ts",
-    "static/logo.expo.png",
+    "src/a.zami.ts",
+    "src/renamed.zami.ts",
+    "static/logo.zami.png",
   ]);
-  assert.deepEqual(result.created, ["src/new.expo.ts"]);
-  assert.deepEqual(result.deleted, ["src/gone.expo.ts"]);
-  assert.deepEqual(result.moved, [{ from: "src/old.expo.ts", to: "src/renamed.expo.ts" }]);
+  assert.deepEqual(result.created, ["src/new.zami.ts"]);
+  assert.deepEqual(result.deleted, ["src/gone.zami.ts"]);
+  assert.deepEqual(result.moved, [{ from: "src/old.zami.ts", to: "src/renamed.zami.ts" }]);
   assert.deepEqual(
     sorted(
       result.work.map((item) => [
         item.kind,
-        item.expoPath,
+        item.zamiPath,
         item.binary ? "binary" : "",
         item.new ? "new" : "",
       ]),
     ),
     sorted([
-      ["conflict", "src/c.svelte.expo.ts", "", ""],
-      ["conflict", "static/icon.expo.png", "binary", ""],
-      ["migrate", "src/B.svelte.expo.tsx", "", ""],
-      ["port", "src/D.svelte.expo.tsx", "", "new"],
+      ["conflict", "src/c.svelte.zami.ts", "", ""],
+      ["conflict", "static/icon.zami.png", "binary", ""],
+      ["migrate", "src/B.svelte.zami.tsx", "", ""],
+      ["port", "src/D.svelte.zami.tsx", "", "new"],
     ]),
   );
 
   // The clean merges kept Zami's edit and took upstream's; untouched binaries follow upstream.
-  assert.match(get(zami, "src/a.expo.ts"), /a line 2 \(expo\)\n/);
-  assert.match(get(zami, "src/a.expo.ts"), /a line 15 changed\n/);
-  assert.match(get(zami, "src/renamed.expo.ts"), /old line 9 changed/);
-  assert.ok(readFileSync(join(zami, "static/logo.expo.png")).equals(png(2)));
-  assert.ok(readFileSync(join(zami, "static/icon.expo.png")).equals(png(9)));
-  assert.equal(existsSync(join(zami, "src/gone.expo.ts")), false);
+  assert.match(get(zami, "src/a.zami.ts"), /a line 2 \(zami\)\n/);
+  assert.match(get(zami, "src/a.zami.ts"), /a line 15 changed\n/);
+  assert.match(get(zami, "src/renamed.zami.ts"), /old line 9 changed/);
+  assert.ok(readFileSync(join(zami, "static/logo.zami.png")).equals(png(2)));
+  assert.ok(readFileSync(join(zami, "static/icon.zami.png")).equals(png(9)));
+  assert.equal(existsSync(join(zami, "src/gone.zami.ts")), false);
   const manifest = Manifest.read(zami);
-  assert.equal(manifest.get("src/a.expo.ts"), upstream3);
-  assert.equal(manifest.get("src/c.svelte.expo.ts"), upstream1);
-  assert.equal(manifest.get("src/gone.expo.ts"), undefined);
+  assert.equal(manifest.get("src/a.zami.ts"), upstream3);
+  assert.equal(manifest.get("src/c.svelte.zami.ts"), upstream1);
+  assert.equal(manifest.get("src/gone.zami.ts"), undefined);
 
   // Unresolved work keeps check failing; resolving it and marking it done passes.
   checked = check(new Project(zami));
   assert.ok(
     checked.failures.some((failure) =>
-      failure.includes("src/c.svelte.expo.ts: unresolved conflict"),
+      failure.includes("src/c.svelte.zami.ts: unresolved conflict"),
     ),
   );
-  assert.ok(checked.failures.some((failure) => failure.startsWith("src/B.svelte.expo.tsx: stale")));
-  assert.ok(checked.failures.some((failure) => failure.startsWith("static/icon.expo.png: stale")));
-  assert.throws(() => markDone(new Project(zami), ["src/c.svelte.expo.ts"]), /conflict markers/);
+  assert.ok(checked.failures.some((failure) => failure.startsWith("src/B.svelte.zami.tsx: stale")));
+  assert.ok(checked.failures.some((failure) => failure.startsWith("static/icon.zami.png: stale")));
+  assert.throws(() => markDone(new Project(zami), ["src/c.svelte.zami.ts"]), /conflict markers/);
   put(
     zami,
-    "src/c.svelte.expo.ts",
-    get(zami, "src/c.svelte.expo.ts").replace(
-      /<<<<<<< expo\n[\s\S]*?>>>>>>> upstream\n/,
-      "c line 3 upstream (expo)\n",
+    "src/c.svelte.zami.ts",
+    get(zami, "src/c.svelte.zami.ts").replace(
+      /<<<<<<< zami\n[\s\S]*?>>>>>>> upstream\n/,
+      "c line 3 upstream (zami)\n",
     ),
   );
-  put(zami, "src/D.svelte.expo.tsx", "export default function D() { return null; }\n");
+  put(zami, "src/D.svelte.zami.tsx", "export default function D() { return null; }\n");
   markDone(new Project(zami), [
-    "src/c.svelte.expo.ts",
-    "src/B.svelte.expo.tsx",
-    "src/D.svelte.expo.tsx",
-    "static/icon.expo.png",
+    "src/c.svelte.zami.ts",
+    "src/B.svelte.zami.tsx",
+    "src/D.svelte.zami.tsx",
+    "static/icon.zami.png",
   ]);
   git(zami, "add", "-A");
   git(zami, "commit", "-q", "-m", "migrate");

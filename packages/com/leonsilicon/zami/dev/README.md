@@ -10,4 +10,4 @@ vpx _dev start        # only the dev server, for an app that's already installed
 vpx _dev ios --device "iPhone Duo"   # anything after the target goes to the Expo CLI
 ```
 
-It first warns if any Expo file is out of sync with upstream Zam (see `vpx _zami check`).
+It first warns if any Zami file is out of sync with upstream Zam (see `vpx _zami check`).

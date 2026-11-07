@@ -1,8 +1,8 @@
 # Keeps Zami in step with upstream Zam (https://github.com/az4521/Zam):
 #  1. merges new upstream commits into the `zami/upstream-sync` branch (always clean:
-#     Zami never edits upstream files, it only adds `.expo.` files next to them);
+#     Zami never edits upstream files, it only adds `.zami.` files next to them);
 #  2. `_zami sync` copies new upstream files and three-way merges upstream changes into
-#     the copied Expo files;
+#     the copied Zami files;
 #  3. Claude (Opus 5.5) migrates what that can't: merge conflicts, upstream changes to
 #     translated (Svelte → React Native) components, and components upstream added;
 #  4. opens or updates a pull request, which zami-ci.yml checks.
@@ -75,7 +75,7 @@ jobs:
           run-install: true
           cache: true
 
-      - name: Sync Expo files
+      - name: Sync Zami files
         id: sync
         if: steps.merge.outputs.changed == 'true'
         run: |
@@ -113,7 +113,7 @@ jobs:
           CHECK_OK: ${{ steps.check.outputs.ok }}
         run: |
           git add -A
-          git diff --cached --quiet || git commit -q -m "Sync Expo files with upstream Zam ${LATEST:0:10}"
+          git diff --cached --quiet || git commit -q -m "Sync Zami files with upstream Zam ${LATEST:0:10}"
           git push origin "HEAD:$BRANCH"
           {
             cat node_modules/.cache/zami/summary.md

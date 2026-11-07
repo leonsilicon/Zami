@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.metro",
   "version": "0.0.0",
   "private": true,
-  "description": "Metro config that builds Zami from the .expo. versions of Zam's files.",
+  "description": "Metro config that builds Zami from the .zami. versions of Zam's files.",
   "type": "module",
   "imports": {
     "#*": "./*.js"

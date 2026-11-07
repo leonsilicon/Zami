@@ -36,10 +36,10 @@ afterEach(() => _setLocaleForTests("en"));
 
 describe("locale manifest", () => {
     it("has a catalogue file for every non-English locale, and vice versa", () => {
-        // Zami: check the Expo versions of the catalogues, which are what Zami loads.
+        // Zami: check the Zami versions of the catalogues, which are what Zami loads.
         const files = readdirSync(join(__dirname, "locales"))
-            .filter((f) => f.endsWith(".expo.ts"))
-            .map((f) => f.slice(0, -".expo.ts".length))
+            .filter((f) => f.endsWith(".zami.ts"))
+            .map((f) => f.slice(0, -".zami.ts".length))
             .sort();
         const listed = LOCALES.map((l) => l.code)
             .filter((c) => c !== "en")

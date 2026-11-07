@@ -1,14 +1,14 @@
-// Formats Expo files exactly the way Prettier formats their upstream originals: Zam's
+// Formats Zami files exactly the way Prettier formats their upstream originals: Zam's
 // options, the parser Prettier infers from the upstream file name (package.json gets the
-// json-stringify parser, package.expo.json would not), and Zam's ignore files. An Expo
+// json-stringify parser, package.zami.json would not), and Zam's ignore files. An Expo
 // file nobody has changed therefore stays byte-identical to upstream.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as prettier from "prettier";
-import { upstreamPathForExpoPath } from "#paths";
+import { upstreamPathForZamiPath } from "#paths";
 
-export async function formatExpoFiles(
+export async function formatZamiFiles(
   root: string,
   files: string[],
   options: { check: boolean },
@@ -22,7 +22,7 @@ export async function formatExpoFiles(
   const unformatted: string[] = [];
   let checked = 0;
   for (const file of files) {
-    const upstreamPath = upstreamPathForExpoPath(file);
+    const upstreamPath = upstreamPathForZamiPath(file);
     if (upstreamPath === null) continue;
     const filepath = join(root, upstreamPath);
     const info = await prettier.getFileInfo(filepath, { ignorePath, resolveConfig: false });

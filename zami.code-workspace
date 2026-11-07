@@ -1,0 +1,166 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.DS_Store": true,
+      "**/.git": true,
+      "**/.hg": true,
+      "**/.svn": true,
+      "**/CVS": true,
+      "**/Thumbs.db": true,
+      "*/**/*.bat": {
+        "when": "$(basename).zami.bat"
+      },
+      "*/**/*.bin": {
+        "when": "$(basename).zami.bin"
+      },
+      "*/**/*.c": {
+        "when": "$(basename).zami.c"
+      },
+      "*/**/*.cc": {
+        "when": "$(basename).zami.cc"
+      },
+      "*/**/*.cjs": {
+        "when": "$(basename).zami.cjs"
+      },
+      "*/**/*.cpp": {
+        "when": "$(basename).zami.cpp"
+      },
+      "*/**/*.css": {
+        "when": "$(basename).zami.css"
+      },
+      "*/**/*.desktop": {
+        "when": "$(basename).zami.desktop"
+      },
+      "*/**/*.gpg": {
+        "when": "$(basename).zami.gpg"
+      },
+      "*/**/*.gradle": {
+        "when": "$(basename).zami.gradle"
+      },
+      "*/**/*.html": {
+        "when": "$(basename).zami.html"
+      },
+      "*/**/*.ico": {
+        "when": "$(basename).zami.ico"
+      },
+      "*/**/*.jar": {
+        "when": "$(basename).zami.jar"
+      },
+      "*/**/*.java": {
+        "when": "$(basename).zami.java"
+      },
+      "*/**/*.js": {
+        "when": "$(basename).zami.js"
+      },
+      "*/**/*.json": {
+        "when": "$(basename).zami.json"
+      },
+      "*/**/*.lock": {
+        "when": "$(basename).zami.lock"
+      },
+      "*/**/*.md": {
+        "when": "$(basename).zami.md"
+      },
+      "*/**/*.mjs": {
+        "when": "$(basename).zami.mjs"
+      },
+      "*/**/*.mp3": {
+        "when": "$(basename).zami.mp3"
+      },
+      "*/**/*.patch": {
+        "when": "$(basename).zami.patch"
+      },
+      "*/**/*.png": {
+        "when": "$(basename).zami.png"
+      },
+      "*/**/*.pro": {
+        "when": "$(basename).zami.pro"
+      },
+      "*/**/*.properties": {
+        "when": "$(basename).zami.properties"
+      },
+      "*/**/*.py": {
+        "when": "$(basename).zami.py"
+      },
+      "*/**/*.rs": {
+        "when": "$(basename).zami.rs"
+      },
+      "*/**/*.sf3": {
+        "when": "$(basename).zami.sf3"
+      },
+      "*/**/*.sh": {
+        "when": "$(basename).zami.sh"
+      },
+      "*/**/*.svelte": {
+        "when": "$(basename).svelte.zami.tsx"
+      },
+      "*/**/*.svg": {
+        "when": "$(basename).zami.svg"
+      },
+      "*/**/*.toml": {
+        "when": "$(basename).zami.toml"
+      },
+      "*/**/*.ts": {
+        "when": "$(basename).zami.ts"
+      },
+      "*/**/*.txt": {
+        "when": "$(basename).zami.txt"
+      },
+      "*/**/*.wasm": {
+        "when": "$(basename).zami.wasm"
+      },
+      "*/**/*.webmanifest": {
+        "when": "$(basename).zami.webmanifest"
+      },
+      "*/**/*.woff2": {
+        "when": "$(basename).zami.woff2"
+      },
+      "*/**/*.xml": {
+        "when": "$(basename).zami.xml"
+      },
+      "*/**/*.yml": {
+        "when": "$(basename).zami.yml"
+      },
+      "*/**/*.zbundle": {
+        "when": "$(basename).zami.zbundle"
+      },
+      "*/**/.gitignore": {
+        "when": "$(basename).zami"
+      },
+      "*/**/LICENSE_APACHE": {
+        "when": "$(basename).zami"
+      },
+      "*/**/LICENSE_MIT": {
+        "when": "$(basename).zami"
+      },
+      "*/**/gradlew": {
+        "when": "$(basename).zami"
+      },
+      ".env.example": true,
+      ".gitignore": true,
+      ".prettierignore": true,
+      ".prettierrc": true,
+      "ANDROID_PUSH_SETUP.md": true,
+      "ARCHITECTURE.md": true,
+      "CHANGELOG.md": true,
+      "LICENSE": true,
+      "README.md": true,
+      "THIRD_PARTY_NOTICES.md": true,
+      "capacitor.config.ts": true,
+      "package-lock.json": true,
+      "postcss.config.js": true,
+      "src/app.d.ts": true,
+      "src/lib/types/libopenmpt.d.ts": true,
+      "svelte.config.js": true,
+      "tailwind.config.js": true,
+      "tsconfig.json": true,
+      "vite.config.ts": true,
+      "vitest.config.ts": true
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.ports",
   "version": "0.0.0",
   "private": true,
-  "description": "Tracks the Expo version (.expo. file) of every upstream Zam file and syncs upstream changes into them.",
+  "description": "Tracks the Zami version (.zami. file) of every upstream Zam file and syncs upstream changes into them.",
   "bin": {
     "_zami": "./_zami.ts"
   },

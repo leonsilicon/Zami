@@ -1,5 +1,5 @@
-// The app's root until Zam's routes are ported. Once `src/routes/+layout.svelte.expo.tsx`
-// and `src/routes/+page.svelte.expo.tsx` exist, this renders them instead.
+// The app's root until Zam's routes are ported. Once `src/routes/+layout.svelte.zami.tsx`
+// and `src/routes/+page.svelte.zami.tsx` exist, this renders them instead.
 //
 // It exercises each layer the port depends on: shared logic (`$lib/i18n`), a rune store
 // driving React (`$lib/stores/toasts.svelte` through useRune), translated components,

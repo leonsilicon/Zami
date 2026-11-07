@@ -11,7 +11,7 @@ const EXPO_COMMANDS: Record<DevTarget, string> = {
   start: "start",
 };
 
-/** Warns (without failing) when Expo files lag behind the merged upstream Zam. */
+/** Warns (without failing) when Zami files lag behind the merged upstream Zam. */
 export function warnIfOutOfSync(cwd: string): void {
   try {
     const { ports, orphans, invalid } = new Project(cwd).scan();
@@ -24,12 +24,12 @@ export function warnIfOutOfSync(cwd: string): void {
     const problems = behind + missingCopies + orphans.length + invalid.length;
     if (problems > 0) {
       console.warn(
-        `warning: ${problems} Expo file(s) out of sync with upstream; run \`vpx _zami check\` for details.`,
+        `warning: ${problems} Zami file(s) out of sync with upstream; run \`vpx _zami check\` for details.`,
       );
     }
   } catch (error) {
     console.warn(
-      `warning: couldn't check Expo files against upstream: ${(error as Error).message}`,
+      `warning: couldn't check Zami files against upstream: ${(error as Error).message}`,
     );
   }
 }

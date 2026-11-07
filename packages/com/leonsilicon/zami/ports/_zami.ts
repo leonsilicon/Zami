@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-// Keeps Zami's Expo files (`*.expo.*`) in step with upstream Zam.
+// Keeps Zami's versions of Zam's files (`*.zami.*`) in step with upstream Zam.
 //
 //   _zami status [--list <status>] [--json]   coverage and freshness of every port
 //   _zami sync [--since <commit>] [--dry-run] [--worklist <path>] [--summary <path>]
 //                                              copy new upstream files, three-way merge
 //                                              upstream changes into copies, and list
 //                                              the rest (translations, conflicts) as work
-//   _zami done <expo file>...                  mark files as migrated to the merged upstream commit
-//   _zami diff <expo file>                     what upstream changed since the file was last synced
+//   _zami done <zami file>...                  mark files as migrated to the merged upstream commit
+//   _zami diff <zami file>                     what upstream changed since the file was last synced
 //   _zami check [--strict]                     CI invariants; exits 1 on failure
+//   _zami editor [--check]                     editor settings that hide Zam's files (VS Code, Zed)
 //   _zami backlog [--count <n>]                Svelte components ready to port (all their child
-//                                              components already have Expo versions), smallest first
-//   _zami fmt [--check] [files...]             Prettier, with Zam's own options, on Expo files only
-//   _zami lint [files...]                      oxlint (oxlint.zam-files.json, next to this file) on Expo files only
+//                                              components already have Zami versions), smallest first
+//   _zami fmt [--check] [files...]             Prettier, with Zam's own options, on Zami files only
+//   _zami lint [files...]                      oxlint (oxlint.zam-files.json, next to this file) on Zami files only
 //
 // Run from anywhere in the repo. `--upstream <ref>` overrides the upstream ref
 // (default `upstream/master`, from zami-ports.json).
@@ -22,19 +23,20 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { check } from "#check";
-import { formatExpoFiles } from "#format";
+import { writeEditorSettings } from "#editor";
+import { formatZamiFiles } from "#format";
 import { isZamiOwned } from "#config";
-import { isExpoPath } from "#paths";
+import { isZamiPath } from "#paths";
 
-/** Repo-relative Expo paths from command-line arguments; anything else is an error. */
-function expoPathsFrom(args: string[]): string[] {
+/** Repo-relative Zami paths from command-line arguments; anything else is an error. */
+function zamiPathsFrom(args: string[]): string[] {
   const files = args.map((arg) => resolve(process.cwd(), arg).slice(project.root.length + 1));
-  const notExpo = files.filter((file) => !isExpoPath(file) || isZamiOwned(file));
-  if (notExpo.length > 0) throw new Error(`Not Expo files in Zam's tree: ${notExpo.join(", ")}`);
+  const notExpo = files.filter((file) => !isZamiPath(file) || isZamiOwned(file));
+  if (notExpo.length > 0) throw new Error(`Not Zami files in Zam's tree: ${notExpo.join(", ")}`);
   return files;
 }
 
-/** Expo files whose upstream originals Zam's .prettierignore excludes (vendored code, build output). */
+/** Zami files whose upstream originals Zam's .prettierignore excludes (vendored code, build output). */
 function zamIgnored(files: string[]): string[] {
   const result = spawnSync(
     "git",
@@ -84,7 +86,7 @@ switch (command) {
     const { ports, orphans, invalid } = project.scan();
     if (values.list !== undefined) {
       for (const port of ports) {
-        if (port.status === (values.list as PortStatus)) console.log(port.mapping.expoPath);
+        if (port.status === (values.list as PortStatus)) console.log(port.mapping.zamiPath);
       }
       break;
     }
@@ -127,7 +129,7 @@ switch (command) {
     break;
   }
   case "done": {
-    if (args.length === 0) throw new Error("Usage: _zami done <expo file>...");
+    if (args.length === 0) throw new Error("Usage: _zami done <zami file>...");
     markDone(
       project,
       args.map((arg) => resolve(process.cwd(), arg).slice(project.root.length + 1)),
@@ -138,13 +140,13 @@ switch (command) {
     break;
   }
   case "diff": {
-    const expoPath = resolve(process.cwd(), args[0] ?? "").slice(project.root.length + 1);
+    const zamiPath = resolve(process.cwd(), args[0] ?? "").slice(project.root.length + 1);
     const { ports } = project.scan();
-    const port = ports.find((candidate) => candidate.mapping.expoPath === expoPath);
+    const port = ports.find((candidate) => candidate.mapping.zamiPath === zamiPath);
     if (port === undefined)
-      throw new Error(`${expoPath} isn't the Expo version of an in-scope upstream file`);
+      throw new Error(`${zamiPath} isn't the Zami version of an in-scope upstream file`);
     if (port.sha === null) {
-      console.log(`${expoPath} doesn't exist yet; port ${port.mapping.upstreamPath} from scratch.`);
+      console.log(`${zamiPath} doesn't exist yet; port ${port.mapping.upstreamPath} from scratch.`);
       break;
     }
     // A file upstream renamed since `sha` is listed under its old path there.
@@ -171,6 +173,17 @@ switch (command) {
     const overrides = project.config.overrides;
     console.log(
       `OK: synced with upstream ${project.upstreamSha.slice(0, 10)}; no upstream file modified${overrides.length > 0 ? ` besides Zami's overrides (${overrides.join(", ")})` : ""}.`,
+    );
+    break;
+  }
+  case "editor": {
+    const stale = writeEditorSettings(project, { check: values.check ?? false });
+    if (values.check && stale.length > 0) {
+      for (const path of stale) console.error(`out of date: ${path}`);
+      process.exit(1);
+    }
+    console.log(
+      stale.length === 0 ? "Editor settings are up to date." : `Wrote ${stale.join(", ")}.`,
     );
     break;
   }
@@ -202,9 +215,9 @@ switch (command) {
     break;
   }
   case "fmt": {
-    // Zami's tooling only ever touches Expo files; Zam's own files stay exactly as upstream wrote them.
-    const files = args.length > 0 ? expoPathsFrom(args) : project.expoFiles();
-    const { checked, unformatted } = await formatExpoFiles(project.root, files, {
+    // Zami's tooling only ever touches Zami files; Zam's own files stay exactly as upstream wrote them.
+    const files = args.length > 0 ? zamiPathsFrom(args) : project.zamiFiles();
+    const { checked, unformatted } = await formatZamiFiles(project.root, files, {
       check: values.check ?? false,
     });
     if (values.check && unformatted.length > 0) {
@@ -212,13 +225,13 @@ switch (command) {
       process.exit(1);
     }
     console.log(
-      `${values.check ? "Format-checked" : "Formatted"} ${checked} Expo files${unformatted.length > 0 && !values.check ? ` (${unformatted.length} changed)` : ""}.`,
+      `${values.check ? "Format-checked" : "Formatted"} ${checked} Zami files${unformatted.length > 0 && !values.check ? ` (${unformatted.length} changed)` : ""}.`,
     );
     break;
   }
   case "lint": {
-    // oxlint, on the Expo files of code Zam itself lints (not what its .prettierignore skips, such as vendored static/ code).
-    const requested = args.length > 0 ? expoPathsFrom(args) : project.expoFiles();
+    // oxlint, on the Zami files of code Zam itself lints (not what its .prettierignore skips, such as vendored static/ code).
+    const requested = args.length > 0 ? zamiPathsFrom(args) : project.zamiFiles();
     const skipped = new Set(zamIgnored(requested));
     const files = requested.filter(
       (file) => !skipped.has(file) && /\.(js|mjs|cjs|ts|mts|cts|tsx)$/.test(file),
@@ -237,12 +250,12 @@ switch (command) {
       failed ||= result.status !== 0;
     }
     if (failed) process.exit(1);
-    console.log(`Linted ${files.length} Expo files.`);
+    console.log(`Linted ${files.length} Zami files.`);
     break;
   }
   default:
     console.error(
-      "Usage: _zami <status|sync|done|diff|check|fmt|lint> (see the comment at the top of _zami.ts)",
+      "Usage: _zami <status|sync|done|diff|check|backlog|editor|fmt|lint> (see the comment at the top of _zami.ts)",
     );
     process.exit(command === undefined ? 0 : 1);
 }

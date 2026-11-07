@@ -1,21 +1,22 @@
 import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { writeEditorSettings } from "#editor";
 import { isBinary } from "#git";
-import { mapUpstreamPath, upstreamPathForExpoPath } from "#paths";
+import { mapUpstreamPath, upstreamPathForZamiPath } from "#paths";
 import { hasConflictMarkers, type Project } from "#project";
 
 /** Work the mechanical sync can't do, left for the Claude bot (or a person). */
 export interface WorkItem {
   /**
-   * `port`: write the first Expo version of an upstream Svelte component.
+   * `port`: write the first Zami version of an upstream Svelte component.
    * `migrate`: apply upstream's changes to a translated (Svelte → React Native) file.
-   * `conflict`: resolve what a three-way merge couldn't: `<<<<<<< expo` markers in a text
+   * `conflict`: resolve what a three-way merge couldn't: `<<<<<<< zami` markers in a text
    * file, or a binary file both Zami and upstream changed (`binary: true`).
    */
   kind: "port" | "migrate" | "conflict";
-  expoPath: string;
+  zamiPath: string;
   upstreamPath: string;
-  /** The upstream commit the Expo file was last synced with (migrate and conflict). */
+  /** The upstream commit the Zami file was last synced with (migrate and conflict). */
   from?: string;
   /** The upstream path at `from`, when upstream renamed the file since. */
   fromPath?: string;
@@ -70,7 +71,7 @@ export function sync(
 
   /** Merges upstream's change into a copy; returns true when it merged cleanly. */
   const mergeCopy = (
-    expoPath: string,
+    zamiPath: string,
     sha: string,
     fromPath: string,
     ours: Buffer,
@@ -81,14 +82,14 @@ export function sync(
     const conflict = (binary: boolean) =>
       result.work.push({
         kind: "conflict",
-        expoPath,
+        zamiPath,
         upstreamPath,
         from: sha,
         ...(fromPath === upstreamPath ? {} : { fromPath }),
         ...(binary ? { binary: true } : {}),
       });
     if (ours.equals(base)) {
-      write(expoPath, theirs, upstreamPath);
+      write(zamiPath, theirs, upstreamPath);
     } else if (ours.equals(theirs)) {
       // Zami already has upstream's new content.
     } else if (isBinary(ours) || isBinary(base) || isBinary(theirs)) {
@@ -96,34 +97,34 @@ export function sync(
       return false;
     } else {
       const { text, conflicts } = project.git.mergeFile(ours, base, theirs);
-      write(expoPath, text, upstreamPath);
+      write(zamiPath, text, upstreamPath);
       if (conflicts > 0) {
         // The manifest keeps the old commit until the markers are resolved.
         conflict(false);
         return false;
       }
     }
-    manifest.set(expoPath, upstreamSha);
-    result.merged.push(expoPath);
+    manifest.set(zamiPath, upstreamSha);
+    result.merged.push(zamiPath);
     return true;
   };
 
   const { ports, orphans } = project.scan();
   const movedTo = new Set<string>();
 
-  // Expo files whose upstream file was renamed or deleted since their manifest commit.
+  // Zami files whose upstream file was renamed or deleted since their manifest commit.
   for (const orphan of orphans) {
-    const sha = manifest.get(orphan.expoPath);
-    const upstreamPath = upstreamPathForExpoPath(orphan.expoPath);
+    const sha = manifest.get(orphan.zamiPath);
+    const upstreamPath = upstreamPathForZamiPath(orphan.zamiPath);
     if (sha === undefined || upstreamPath === null) {
-      result.orphans.push(orphan.expoPath);
+      result.orphans.push(orphan.zamiPath);
       continue;
     }
     const change = project.git.changes(sha, upstreamSha).get(upstreamPath);
     if (change?.status === "D") {
-      if (!dryRun) rmSync(join(project.root, orphan.expoPath));
-      manifest.delete(orphan.expoPath);
-      result.deleted.push(orphan.expoPath);
+      if (!dryRun) rmSync(join(project.root, orphan.zamiPath));
+      manifest.delete(orphan.zamiPath);
+      result.deleted.push(orphan.zamiPath);
       continue;
     }
     const renamed =
@@ -132,26 +133,26 @@ export function sync(
       renamed === null ||
       renamed.kind !== mapUpstreamPath(upstreamPath).kind ||
       !project.inScope(renamed.upstreamPath) ||
-      project.read(renamed.expoPath) !== null
+      project.read(renamed.zamiPath) !== null
     ) {
-      result.orphans.push(orphan.expoPath);
+      result.orphans.push(orphan.zamiPath);
       continue;
     }
-    const ours = project.read(orphan.expoPath)!;
+    const ours = project.read(orphan.zamiPath)!;
     if (!dryRun) {
-      mkdirSync(dirname(join(project.root, renamed.expoPath)), { recursive: true });
-      renameSync(join(project.root, orphan.expoPath), join(project.root, renamed.expoPath));
+      mkdirSync(dirname(join(project.root, renamed.zamiPath)), { recursive: true });
+      renameSync(join(project.root, orphan.zamiPath), join(project.root, renamed.zamiPath));
     }
-    manifest.delete(orphan.expoPath);
-    manifest.set(renamed.expoPath, sha);
-    result.moved.push({ from: orphan.expoPath, to: renamed.expoPath });
-    movedTo.add(renamed.expoPath);
+    manifest.delete(orphan.zamiPath);
+    manifest.set(renamed.zamiPath, sha);
+    result.moved.push({ from: orphan.zamiPath, to: renamed.zamiPath });
+    movedTo.add(renamed.zamiPath);
     if (renamed.kind === "copy") {
-      mergeCopy(renamed.expoPath, sha, upstreamPath, ours, renamed.upstreamPath);
+      mergeCopy(renamed.zamiPath, sha, upstreamPath, ours, renamed.upstreamPath);
     } else {
       result.work.push({
         kind: "migrate",
-        expoPath: renamed.expoPath,
+        zamiPath: renamed.zamiPath,
         upstreamPath: renamed.upstreamPath,
         from: sha,
         fromPath: upstreamPath,
@@ -161,13 +162,13 @@ export function sync(
 
   const toCreate: string[] = [];
   for (const port of ports) {
-    const { expoPath, upstreamPath, kind } = port.mapping;
-    if (movedTo.has(expoPath)) continue;
+    const { zamiPath, upstreamPath, kind } = port.mapping;
+    if (movedTo.has(zamiPath)) continue;
     if (port.status === "missing") {
       if (kind === "translate") {
         result.work.push({
           kind: "port",
-          expoPath,
+          zamiPath,
           upstreamPath,
           ...(addedSince.has(upstreamPath) ? { new: true } : {}),
         });
@@ -175,12 +176,12 @@ export function sync(
         toCreate.push(upstreamPath);
       }
     } else if (port.status === "conflict") {
-      result.work.push({ kind: "conflict", expoPath, upstreamPath, from: port.sha ?? upstreamSha });
+      result.work.push({ kind: "conflict", zamiPath, upstreamPath, from: port.sha ?? upstreamSha });
     } else if (port.status === "stale" && port.sha !== null) {
       if (kind === "copy") {
-        mergeCopy(expoPath, port.sha, upstreamPath, project.read(expoPath)!, upstreamPath);
+        mergeCopy(zamiPath, port.sha, upstreamPath, project.read(zamiPath)!, upstreamPath);
       } else {
-        result.work.push({ kind: "migrate", expoPath, upstreamPath, from: port.sha });
+        result.work.push({ kind: "migrate", zamiPath, upstreamPath, from: port.sha });
       }
     }
   }
@@ -188,39 +189,42 @@ export function sync(
   // New copies, read in one batch so a first sync of thousands of files stays fast.
   const blobs = project.git.readBlobs(upstreamSha, toCreate);
   for (const upstreamPath of toCreate) {
-    const { expoPath } = mapUpstreamPath(upstreamPath);
-    write(expoPath, blobs.get(upstreamPath) ?? Buffer.alloc(0), upstreamPath);
-    manifest.set(expoPath, upstreamSha);
-    result.created.push(expoPath);
+    const { zamiPath } = mapUpstreamPath(upstreamPath);
+    write(zamiPath, blobs.get(upstreamPath) ?? Buffer.alloc(0), upstreamPath);
+    manifest.set(zamiPath, upstreamSha);
+    result.created.push(zamiPath);
   }
   if (!dryRun) {
-    // Zam's .gitignore can match an Expo version's name; force-add those so they're tracked.
+    // Zam's .gitignore can match a Zami version's name; force-add those so they're tracked.
     const ignored = project.git.ignored(result.created);
     if (ignored.length > 0) project.git.run(["add", "--force", "--", ...ignored]);
     manifest.write(project.root);
+    writeEditorSettings(project);
   }
   return result;
 }
 
-/** Marks Expo files as synced with the merged upstream commit, after their changes were migrated by hand. */
-export function markDone(project: Project, expoPaths: string[]): void {
+/** Marks Zami files as synced with the merged upstream commit, after their changes were migrated by hand. */
+export function markDone(project: Project, zamiPaths: string[]): void {
   const upstreamPaths = new Set(project.mappings().map((mapping) => mapping.upstreamPath));
-  for (const expoPath of expoPaths) {
-    const content = project.read(expoPath);
-    if (content === null) throw new Error(`${expoPath} doesn't exist`);
-    const upstreamPath = upstreamPathForExpoPath(expoPath);
+  for (const zamiPath of zamiPaths) {
+    const content = project.read(zamiPath);
+    if (content === null) throw new Error(`${zamiPath} doesn't exist`);
+    const upstreamPath = upstreamPathForZamiPath(zamiPath);
     if (upstreamPath === null || !upstreamPaths.has(upstreamPath)) {
-      throw new Error(`${expoPath} isn't the Expo version of any in-scope upstream file`);
+      throw new Error(`${zamiPath} isn't the Zami version of any in-scope upstream file`);
     }
     if (hasConflictMarkers(content))
-      throw new Error(`${expoPath} still has conflict markers; resolve them first`);
-    project.manifest.set(expoPath, project.upstreamSha);
+      throw new Error(`${zamiPath} still has conflict markers; resolve them first`);
+    project.manifest.set(zamiPath, project.upstreamSha);
   }
   project.manifest.write(project.root);
+  // A new translation hides its upstream component in Zed.
+  writeEditorSettings(project);
 }
 
 export function summarize(result: SyncResult): string {
-  const lines = [`Synced Expo files with upstream ${result.upstreamSha.slice(0, 10)}.`, ""];
+  const lines = [`Synced Zami files with upstream ${result.upstreamSha.slice(0, 10)}.`, ""];
   const section = (title: string, items: string[]) => {
     if (items.length === 0) return;
     lines.push(`**${title} (${items.length})**`, "");
@@ -240,21 +244,21 @@ export function summarize(result: SyncResult): string {
     "Needs migration: conflicts",
     result.work
       .filter((item) => item.kind === "conflict")
-      .map((item) => item.expoPath + (item.binary ? " (binary)" : "")),
+      .map((item) => item.zamiPath + (item.binary ? " (binary)" : "")),
   );
   section(
     "Needs migration: translated files upstream changed",
-    result.work.filter((item) => item.kind === "migrate").map((item) => item.expoPath),
+    result.work.filter((item) => item.kind === "migrate").map((item) => item.zamiPath),
   );
   const ports = result.work.filter((item) => item.kind === "port");
   section(
     "Needs porting: components upstream added",
-    ports.filter((item) => item.new === true).map((item) => item.expoPath),
+    ports.filter((item) => item.new === true).map((item) => item.zamiPath),
   );
   const backlog = ports.filter((item) => item.new !== true).length;
   if (backlog > 0) {
     lines.push(
-      `${backlog} older components have no Expo version yet (the porting backlog; see \`_zami backlog\`).`,
+      `${backlog} older components have no Zami version yet (the porting backlog; see \`_zami backlog\`).`,
       "",
     );
   }

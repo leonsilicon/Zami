@@ -1,5 +1,5 @@
 # Zami's checks. `_zami check` enforces the porting invariants: no upstream file is ever
-# modified, every copy-type upstream file has its Expo version, and no Expo file is stale
+# modified, every copy-type upstream file has its Zami version, and no Zami file is stale
 # or left with merge conflicts.
 name: Zami CI
 
@@ -28,9 +28,9 @@ jobs:
       - name: Lint, format and types (Zami's apps/ and packages/)
         run: vp check
       - run: vp run typecheck
-      - name: Tests (Zami's tooling, then upstream Zam's tests against the Expo files)
+      - name: Tests (Zami's tooling, then upstream Zam's tests against the Zami files)
         run: vp run test
       - name: Bundle the app (iOS and Android)
         run: vp run bundle
-      - name: Expo files in Zam's tree (format, lint, porting invariants)
+      - name: Zami files in Zam's tree (format, lint, porting invariants)
         run: vp run check:zam

@@ -1,10 +1,10 @@
 // Builds the Expo app from Zam's tree without ever loading an upstream file:
 // every import that lands in Zam's tree (relative, absolute or `$lib/…`) resolves
-// to that file's `.expo.` version, or fails with an error naming the missing file.
+// to that file's `.zami.` version, or fails with an error naming the missing file.
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { expoPathFor, isExpoPath, upstreamCandidates } from "#expo-paths";
+import { zamiPathFor, isZamiPath, upstreamCandidates } from "#zami-paths";
 
 const require = createRequire(import.meta.url);
 
@@ -50,29 +50,29 @@ export function withZami(config, { repoRoot }) {
     !zamiRoots.some((root) => filePath.startsWith(root + path.sep)) &&
     !filePath.split(path.sep).includes("node_modules");
 
-  const resolveExpoVersion = (target, moduleName, origin) => {
+  const resolveZamiVersion = (target, moduleName, origin) => {
     if (moduleName.includes("?")) {
       throw new Error(
-        `${relative(origin)} imports "${moduleName}": Vite query imports don't exist in Metro; change the Expo version not to use it.`,
+        `${relative(origin)} imports "${moduleName}": Vite query imports don't exist in Metro; change the Zami version not to use it.`,
       );
     }
     const upstream = upstreamCandidates(target).find(isFile);
     if (upstream === undefined) {
-      // An Expo file imported directly (e.g. `./foo.expo`), or a typo.
+      // A Zami file imported directly (e.g. `./foo.zami`), or a typo.
       const direct = [`${target}.ts`, `${target}.tsx`, `${target}.js`, target].find(isFile);
-      if (direct !== undefined && isExpoPath(direct)) return direct;
+      if (direct !== undefined && isZamiPath(direct)) return direct;
       throw new Error(
         `${relative(origin)} imports "${moduleName}", which matches no file in Zam's tree.`,
       );
     }
-    if (isExpoPath(upstream)) return upstream;
-    const expo = expoPathFor(upstream);
-    if (!isFile(expo)) {
+    if (isZamiPath(upstream)) return upstream;
+    const zami = zamiPathFor(upstream);
+    if (!isFile(zami)) {
       throw new Error(
-        `No Expo version of ${relative(upstream)} (imported by ${relative(origin)}). Create ${relative(expo)}; run \`vpx _zami sync\` for copies.`,
+        `No Zami version of ${relative(upstream)} (imported by ${relative(origin)}). Create ${relative(zami)}; run \`vpx _zami sync\` for copies.`,
       );
     }
-    return expo;
+    return zami;
   };
 
   const next = config.resolver.resolveRequest;
@@ -96,7 +96,7 @@ export function withZami(config, { repoRoot }) {
       target = moduleName;
     }
     if (target !== null && inZamTree(target)) {
-      return { type: "sourceFile", filePath: resolveExpoVersion(target, moduleName, origin) };
+      return { type: "sourceFile", filePath: resolveZamiVersion(target, moduleName, origin) };
     }
 
     if (moduleName === "@matrix-org/matrix-sdk-crypto-wasm") {

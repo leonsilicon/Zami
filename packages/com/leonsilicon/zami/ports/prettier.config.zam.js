@@ -1,4 +1,4 @@
-// Prettier options for the `.expo.` files in Zam's tree: Zam's own .prettierrc, minus
+// Prettier options for the `.zami.` files in Zam's tree: Zam's own .prettierrc, minus
 // its Svelte plugin (no `.svelte` file is formatted here). Using exactly Zam's options
 // keeps copied files byte-identical to upstream, so three-way merges stay clean.
 import { readFileSync } from "node:fs";

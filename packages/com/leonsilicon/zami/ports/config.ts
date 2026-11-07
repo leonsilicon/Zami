@@ -4,11 +4,11 @@ import { join } from "node:path";
 export interface PortsConfig {
   /** The ref Zam is fetched into, e.g. `upstream/master`. */
   upstream: string;
-  /** Upstream files that must have an Expo version (globs, relative to the repo root). */
+  /** Upstream files that must have a Zami version (globs, relative to the repo root). */
   include: string[];
   /** Upstream files that never get one. */
   exclude: string[];
-  /** Upstream files Zami replaces in place (their Expo versions keep tracking upstream). */
+  /** Upstream files Zami replaces in place (their Zami versions keep tracking upstream). */
   overrides: string[];
 }
 

@@ -1,10 +1,10 @@
 // Babel plugin that gives Zam's code the Vite build-time features it relies on, so the
-// `.expo.` copies can stay byte-identical to upstream:
+// `.zami.` copies can stay byte-identical to upstream:
 //
 //   import.meta.env.DEV / PROD / MODE   -> __DEV__-based values
 //   import.meta.env.VITE_FOO            -> process.env.EXPO_PUBLIC_FOO (inlined by Expo)
 //   __APP_VERSION__                     -> Zam's package.json version (Zam's Vite `define`)
-//   import.meta.glob("./dir/*.ts", …)   -> a require.context over the Expo versions, keyed
+//   import.meta.glob("./dir/*.ts", …)   -> a require.context over the Zami versions, keyed
 //                                          by the upstream paths Zam's code looks up
 import fs from "node:fs";
 import path from "node:path";
@@ -14,8 +14,8 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../../../..");
 let cachedVersion;
 export function appVersion() {
   cachedVersion ??= JSON.parse(
-    // Zam's package.json as synced into its Expo version (the root package.json is Zami's).
-    fs.readFileSync(path.join(REPO_ROOT, "package.expo.json"), "utf8"),
+    // Zam's package.json as synced into its Zami version (the root package.json is Zami's).
+    fs.readFileSync(path.join(REPO_ROOT, "package.zami.json"), "utf8"),
   ).version;
   return cachedVersion;
 }
@@ -48,15 +48,15 @@ function globToContext(pattern) {
   const extension = /\.(ts|js|svelte)$/.exec(file)?.[0];
   if (extension === undefined)
     throw new Error(`import.meta.glob("${pattern}"): unsupported file type`);
-  const expoExtension = extension === ".svelte" ? ".svelte.expo.tsx" : `.expo${extension}`;
+  const zamiExtension = extension === ".svelte" ? ".svelte.zami.tsx" : `.zami${extension}`;
   const stem = file.slice(0, -extension.length).split("*").map(escapeRegExp).join("[^/]*");
-  return { dir, regex: `^\\.\\/${stem}${escapeRegExp(expoExtension)}$`, expoExtension, extension };
+  return { dir, regex: `^\\.\\/${stem}${escapeRegExp(zamiExtension)}$`, zamiExtension, extension };
 }
 
 export function zamiVitePlugin({ types: t, template }) {
   const buildGlob = template.expression(`
     ((context) => Object.fromEntries(context.keys().map((key) => [
-      DIR + "/" + key.slice(2, -EXPO_EXT.length) + EXT,
+      DIR + "/" + key.slice(2, -ZAMI_EXT.length) + EXT,
       EAGER ? context(key) : () => Promise.resolve(context(key)),
     ])))(require.context(DIR_LITERAL, false, REGEX, MODE))
   `);
@@ -121,12 +121,12 @@ export function zamiVitePlugin({ types: t, template }) {
               property.value.type === "BooleanLiteral" &&
               property.value.value,
           );
-        const { dir, regex, expoExtension, extension } = globToContext(patternNode.value);
+        const { dir, regex, zamiExtension, extension } = globToContext(patternNode.value);
         nodePath.replaceWith(
           buildGlob({
             DIR: t.stringLiteral(dir),
             DIR_LITERAL: t.stringLiteral(dir),
-            EXPO_EXT: t.stringLiteral(expoExtension),
+            ZAMI_EXT: t.stringLiteral(zamiExtension),
             EXT: t.stringLiteral(extension),
             EAGER: t.booleanLiteral(eager),
             REGEX: t.regExpLiteral(regex),

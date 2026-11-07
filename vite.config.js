@@ -5,7 +5,7 @@
 //
 // The root is Zam's tree plus Zami's own code. Vite+ (lint, format, types, tests) covers
 // only Zami's own code: apps/ and packages/. Every other top-level entry is Zam's, or its
-// `.expo.` versions, which `_zami fmt` and `_zami lint` handle with Zam's own options; it's
+// `.zami.` versions, which `_zami fmt` and `_zami lint` handle with Zam's own options; it's
 // ignored here, whatever upstream adds later.
 import { readdirSync } from "node:fs";
 import flatcap from "eslint-plugin-flatcap";
@@ -23,6 +23,8 @@ const ZAMI_OWNED = new Set([
   "bunfig.toml",
   "zami-ports.json",
   "zami-ports.lock.json",
+  "zami.code-workspace",
+  ".zed",
 ]);
 const zamTree = readdirSync(import.meta.dirname)
   .filter((name) => !ZAMI_OWNED.has(name))
@@ -54,7 +56,7 @@ export default defineConfig({
     ],
   },
   fmt: {
-    ignorePatterns: [...zamTree, ...generated, "**/@prompts/**"],
+    ignorePatterns: [...zamTree, ...generated, "**/@prompts/**", ".zed/**", "zami.code-workspace"],
   },
   // Zami's own tooling tests. Run them with `vp run test`: at the root, a bare `vp test`
   // picks up Zam's vitest.config.ts first.
@@ -64,8 +66,8 @@ export default defineConfig({
   },
   run: {
     tasks: {
-      // Zami's tooling tests, then upstream Zam's tests (their `.test.expo.ts` copies)
-      // against Zami's Expo files.
+      // Zami's tooling tests, then upstream Zam's tests (their `.test.zami.ts` copies)
+      // against Zami's files.
       test: {
         cache: false,
         command: `vp test run -c vite.config.js && vp test run -c ${ZAM_TESTS}`,
@@ -76,7 +78,7 @@ export default defineConfig({
           "tsc -p packages && tsc -p apps/zami && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react",
       },
       // Bundles the app's JS for both platforms with Metro (no native build): proves every
-      // import resolves to an Expo file and every file transforms.
+      // import resolves to a Zami file and every file transforms.
       bundle: {
         cache: false,
         command:

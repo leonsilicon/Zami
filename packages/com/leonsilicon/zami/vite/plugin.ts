@@ -1,11 +1,11 @@
 // Vite plugin that loads Zam's code the way the Zami app does: every import that lands in
-// Zam's tree resolves to that file's `.expo.` version (never the upstream file), Svelte
+// Zam's tree resolves to that file's `.zami.` version (never the upstream file), Svelte
 // rune modules are compiled with Svelte's compiler, and Zam's Vite `define` is applied.
-// It's what lets upstream's own tests (their `.test.expo.ts` copies) run against Zami's
+// It's what lets upstream's own tests (their `.test.zami.ts` copies) run against Zami's
 // files. Metro does the same for the app (@-/com.leonsilicon.zami.metro).
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { mapUpstreamPath, upstreamPathForExpoPath } from "@-/com.leonsilicon.zami.ports";
+import { mapUpstreamPath, upstreamPathForZamiPath } from "@-/com.leonsilicon.zami.ports";
 import { transformSync } from "esbuild";
 import { compileModule } from "svelte/compiler";
 import type { Plugin } from "vite-plus";
@@ -14,7 +14,7 @@ export interface ZamiExpoOptions {
   repoRoot: string;
 }
 
-const RUNE_MODULE = /\.svelte(\.[^./]+)?\.expo\.(ts|js)$/;
+const RUNE_MODULE = /\.svelte(\.[^./]+)?\.zami\.(ts|js)$/;
 const SVELTEKIT_SHIMS: Record<string, string> = {
   "$app/environment": "@-/com.leonsilicon.zami.sveltekit/app/environment",
   "$app/navigation": "@-/com.leonsilicon.zami.sveltekit/app/navigation",
@@ -40,13 +40,13 @@ export function zamiExpo({ repoRoot }: ZamiExpoOptions): Plugin {
     !zamiRoots.some((root) => file.startsWith(root + path.sep)) &&
     !file.split(path.sep).includes("node_modules");
   const version = (
-    JSON.parse(readFileSync(path.join(repoRoot, "package.expo.json"), "utf8")) as {
+    JSON.parse(readFileSync(path.join(repoRoot, "package.zami.json"), "utf8")) as {
       version: string;
     }
   ).version;
 
-  /** The Expo version of the upstream file a Vite specifier points at, the way Vite resolves it. */
-  const resolveExpoVersion = (target: string, importer: string): string => {
+  /** The Zami version of the upstream file a Vite specifier points at, the way Vite resolves it. */
+  const resolveZamiVersion = (target: string, importer: string): string => {
     const candidates = [target];
     if (/\.m?js$/.test(target)) candidates.push(target.replace(/\.m?js$/, ".ts"));
     candidates.push(
@@ -61,18 +61,18 @@ export function zamiExpo({ repoRoot }: ZamiExpoOptions): Plugin {
         `${relative(importer)} imports ${relative(target)}, which matches no file in Zam's tree`,
       );
     }
-    if (upstreamPathForExpoPath(relative(upstream)) !== null) return upstream;
-    const expo = path.join(repoRoot, mapUpstreamPath(relative(upstream)).expoPath);
-    if (!isFile(expo)) {
+    if (upstreamPathForZamiPath(relative(upstream)) !== null) return upstream;
+    const zami = path.join(repoRoot, mapUpstreamPath(relative(upstream)).zamiPath);
+    if (!isFile(zami)) {
       throw new Error(
-        `No Expo version of ${relative(upstream)} (imported by ${relative(importer)}); create ${relative(expo)}`,
+        `No Zami version of ${relative(upstream)} (imported by ${relative(importer)}); create ${relative(zami)}`,
       );
     }
-    return expo;
+    return zami;
   };
 
   return {
-    name: "zami-expo",
+    name: "zami-versions",
     enforce: "pre",
     config: () => ({
       define: { __APP_VERSION__: JSON.stringify(version) },
@@ -100,18 +100,18 @@ export function zamiExpo({ repoRoot }: ZamiExpoOptions): Plugin {
       else if (specifier!.startsWith("/") && !isFile(specifier!))
         target = path.join(repoRoot, specifier!);
       if (target === null || !inZamTree(target)) return null;
-      return resolveExpoVersion(target, importer) + (query ?? "");
+      return resolveZamiVersion(target, importer) + (query ?? "");
     },
     transform(code, id) {
       const file = id.split("?")[0]!;
       if (!inZamTree(file)) return null;
       let output = code;
-      // `import.meta.glob("./locales/*.ts")` would also match the Expo copies themselves;
-      // the matches it keeps resolve to their Expo versions through resolveId.
+      // `import.meta.glob("./locales/*.ts")` would also match the Zami copies themselves;
+      // the matches it keeps resolve to their Zami versions through resolveId.
       output = output.replace(
         /import\.meta\.glob(<[^>()]*>)?\(\s*(["'])([^"']+)\2/g,
         (_match, generic: string | undefined, quote: string, pattern: string) =>
-          `import.meta.glob${generic ?? ""}([${quote}${pattern}${quote}, ${quote}!**/*.expo.*${quote}]`,
+          `import.meta.glob${generic ?? ""}([${quote}${pattern}${quote}, ${quote}!**/*.zami.*${quote}]`,
       );
       if (RUNE_MODULE.test(file)) {
         const js = file.endsWith(".ts")

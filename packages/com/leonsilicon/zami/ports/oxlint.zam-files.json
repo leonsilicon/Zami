@@ -20,7 +20,7 @@
   },
   "overrides": [
     {
-      "files": ["**/*.svelte.expo.tsx"],
+      "files": ["**/*.svelte.zami.tsx"],
       "rules": {
         "no-unused-vars": "error",
         "no-unused-expressions": "error",

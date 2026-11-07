@@ -1,8 +1,8 @@
 /* Zami: Uniwind (Tailwind v4 for React Native), with Zam's Tailwind config. */
 @import "tailwindcss";
 @import "uniwind";
-@config "../tailwind.config.expo.js";
-@source "./**/*.expo.tsx";
+@config "../tailwind.config.zami.js";
+@source "./**/*.zami.tsx";
 @source "../apps/zami";
 
 /* Bundled message fonts (device-local font picker, item 1). Self-hosted

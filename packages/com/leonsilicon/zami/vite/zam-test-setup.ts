@@ -1,12 +1,12 @@
-// Setup for upstream Zam's tests, run against Zami's Expo files:
+// Setup for upstream Zam's tests, run against Zami's files:
 //  - they read files relative to the repository root (e.g. `static/sw.js`), as they would
 //    from Zam's own checkout, so tests run from there;
 //  - some load code with Node's `require` (Electron's main-process modules), which Vite
-//    doesn't see, so `require` of a file in Zam's tree loads its Expo version too.
+//    doesn't see, so `require` of a file in Zam's tree loads its Zami version too.
 import { existsSync } from "node:fs";
 import Module from "node:module";
 import path from "node:path";
-import { mapUpstreamPath, upstreamPathForExpoPath } from "@-/com.leonsilicon.zami.ports";
+import { mapUpstreamPath, upstreamPathForZamiPath } from "@-/com.leonsilicon.zami.ports";
 
 /** The repository root, which upstream's tests run from. */
 export const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
@@ -29,7 +29,7 @@ moduleInternals._resolveFilename = function resolveToExpoVersion(request, parent
   if (zamiRoots.some((root) => resolved.startsWith(root + path.sep))) return resolved;
   if (resolved.split(path.sep).includes("node_modules")) return resolved;
   const relative = path.relative(repoRoot, resolved);
-  if (upstreamPathForExpoPath(relative) !== null) return resolved;
-  const expo = path.join(repoRoot, mapUpstreamPath(relative).expoPath);
-  return existsSync(expo) ? expo : resolved;
+  if (upstreamPathForZamiPath(relative) !== null) return resolved;
+  const zami = path.join(repoRoot, mapUpstreamPath(relative).zamiPath);
+  return existsSync(zami) ? zami : resolved;
 };

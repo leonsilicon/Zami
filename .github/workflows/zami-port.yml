@@ -1,4 +1,4 @@
-# Ports Svelte components that have no Expo version yet (the porting backlog) with
+# Ports Svelte components that have no Zami version yet (the porting backlog) with
 # Claude (Opus 5.5), and opens a pull request. Leave `files` empty to take the next
 # `count` components whose child components are all ported already, smallest first.
 # Secrets as in zami-upstream-sync.yml.

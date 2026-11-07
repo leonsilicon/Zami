@@ -1,5 +1,5 @@
 // Metro babel transformer for Zami. Before Expo's own transformer runs, it:
-//  - compiles Svelte rune modules (`*.svelte.expo.ts`, and `*.svelte.ts` in Zami's own
+//  - compiles Svelte rune modules (`*.svelte.zami.ts`, and `*.svelte.ts` in Zami's own
 //    packages) with Svelte's compiler, so Zam's stores run unmodified;
 //  - rewrites the Vite build-time features Zam's code uses (see #vite-babel-plugin).
 import crypto from "node:crypto";
@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 // Expo's own babel transformer (CommonJS).
 const upstream = require("@expo/metro-config/babel-transformer");
 
-const RUNE_MODULE = /\.svelte(\.expo)?\.(ts|js)$/;
+const RUNE_MODULE = /\.svelte(\.zami)?\.(ts|js)$/;
 
 function compileRunes(src, filename, dev) {
   const js = filename.endsWith(".ts")
@@ -44,7 +44,7 @@ export function transform(params) {
 export function getCacheKey(...args) {
   const hash = crypto.createHash("sha1");
   hash.update(upstream.getCacheKey?.(...args) ?? "");
-  for (const file of ["transformer.js", "vite-babel-plugin.js", "expo-paths.js", "with-zami.js"]) {
+  for (const file of ["transformer.js", "vite-babel-plugin.js", "zami-paths.js", "with-zami.js"]) {
     hash.update(fs.readFileSync(path.join(import.meta.dirname, file)));
   }
   hash.update(require("svelte/package.json").version);

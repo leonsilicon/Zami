@@ -137,7 +137,7 @@ export class Git {
 
   /**
    * Three-way merge with `git merge-file`. Returns the merged text and how many conflicts
-   * it contains (marked with `<<<<<<< expo` / `>>>>>>> upstream`).
+   * it contains (marked with `<<<<<<< zami` / `>>>>>>> upstream`).
    */
   mergeFile(ours: Buffer, base: Buffer, theirs: Buffer): { text: Buffer; conflicts: number } {
     const dir = mkdtempSync(join(tmpdir(), "zami-merge-"));
@@ -153,7 +153,7 @@ export class Git {
           "-p",
           "--diff-algorithm=histogram",
           "-L",
-          "expo",
+          "zami",
           "-L",
           "upstream (last synced)",
           "-L",

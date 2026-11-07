@@ -1,4 +1,4 @@
-// Upstream Zam's tests, run from their `.test.expo.ts` copies against Zami's Expo files,
+// Upstream Zam's tests, run from their `.test.zami.ts` copies against Zami's files,
 // in the environment Zam uses (jsdom). Tests that render Svelte components are left out
 // until they're rewritten for React Native. Run by the `test` and `test:zam` tasks in vite.config.js.
 import path from "node:path";
@@ -17,7 +17,7 @@ export default defineConfig({
     // A few upstream tests wait fixed times (e.g. fileTransferEngine's 200 ms window),
     // which a loaded CI runner can miss.
     retry: process.env.CI ? 2 : 0,
-    include: ["src/**/*.{test,spec}.expo.{js,ts}"],
+    include: ["src/**/*.{test,spec}.zami.{js,ts}"],
     exclude: componentTestFiles(repoRoot),
   },
 });

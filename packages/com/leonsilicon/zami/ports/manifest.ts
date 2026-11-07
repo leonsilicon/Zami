@@ -1,5 +1,5 @@
-// `zami-ports.lock.json` records, for every Expo file, the upstream commit it was
-// last synced with. Keeping this out of the files themselves means an Expo version
+// `zami-ports.lock.json` records, for every Zami file, the upstream commit it was
+// last synced with. Keeping this out of the files themselves means a Zami version
 // nobody has changed stays byte-identical to upstream (so git stores it once), and
 // files that can't hold a comment (images, JSON) are tracked the same way.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -27,16 +27,16 @@ export class Manifest {
     }
   }
 
-  get(expoPath: string): string | undefined {
-    return this.#entries.get(expoPath);
+  get(zamiPath: string): string | undefined {
+    return this.#entries.get(zamiPath);
   }
 
-  set(expoPath: string, sha: string): void {
-    this.#entries.set(expoPath, sha);
+  set(zamiPath: string, sha: string): void {
+    this.#entries.set(zamiPath, sha);
   }
 
-  delete(expoPath: string): void {
-    this.#entries.delete(expoPath);
+  delete(zamiPath: string): void {
+    this.#entries.delete(zamiPath);
   }
 
   paths(): string[] {

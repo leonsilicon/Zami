@@ -1,12 +1,12 @@
 {
-  // TypeScript options for the `.expo.` files in Zam's tree when they run outside Metro
+  // TypeScript options for the `.zami.` files in Zam's tree when they run outside Metro
   // (upstream's tests, through @-/com.leonsilicon.zami.vite). Zam's own tsconfig.json extends
   // `.svelte-kit/tsconfig.json`, which only exists after `svelte-kit sync`.
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "moduleSuffixes": [".expo", ""],
+    "moduleSuffixes": [".zami", ""],
     "strict": true,
     "allowJs": true,
     "esModuleInterop": true,

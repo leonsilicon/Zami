@@ -2,7 +2,7 @@
   "name": "@-apps/zami",
   "version": "0.1.0",
   "private": true,
-  "description": "The Zami Expo app: Zam's UI and logic, built from the .expo. versions of its files.",
+  "description": "The Zami Expo app: Zam's UI and logic, built from the .zami. versions of its files.",
   "type": "module",
   "main": "index.ts",
   "imports": {

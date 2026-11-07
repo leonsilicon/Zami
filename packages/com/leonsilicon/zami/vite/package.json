@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.vite",
   "version": "0.0.0",
   "private": true,
-  "description": "Vite plugin that runs Zam's code from its .expo. versions (used to run upstream's tests against Zami's files). Its @capacitor/* dependencies are only for those tests: Zam's code imports them, and as native modules they must stay out of the app.",
+  "description": "Vite plugin that runs Zam's code from its .zami. versions (used to run upstream's tests against Zami's files). Its @capacitor/* dependencies are only for those tests: Zam's code imports them, and as native modules they must stay out of the app.",
   "type": "module",
   "imports": {
     "#*": "./*.ts"

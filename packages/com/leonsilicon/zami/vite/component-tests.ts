@@ -3,15 +3,15 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Upstream tests that render Svelte components. Their Expo copies import the components'
+ * Upstream tests that render Svelte components. Their Zami copies import the components'
  * React Native translations, which a Svelte test can't render, so they need rewriting
  * (with React Native Testing Library) before they can run. Returns repo-relative paths of
- * those `.test.expo.ts` copies.
+ * those `.test.zami.ts` copies.
  */
 export function componentTestFiles(repoRoot: string): string[] {
   const tests = execFileSync(
     "git",
-    ["ls-files", "-co", "--exclude-standard", "--", "src/*.test.expo.ts", "src/**/*.test.expo.ts"],
+    ["ls-files", "-co", "--exclude-standard", "--", "src/*.test.zami.ts", "src/**/*.test.zami.ts"],
     {
       cwd: repoRoot,
       encoding: "utf8",
