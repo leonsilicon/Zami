@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useSyncExternalStore, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
 // Zam's Portal moves its content to the end of `document.body`, so overlays (dialogs,
@@ -20,14 +20,18 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Renders `children` above the whole app, in the root's <PortalHost />. */
+/**
+ * Renders `children` above the whole app, in the root's <PortalHost />. It hands them over
+ * in a layout effect, so the host shows them in the same frame (a controlled TextInput
+ * in a dialog doesn't lag a render behind).
+ */
 export function Portal({ children }: { children: ReactNode }): null {
   const id = useId();
-  useEffect(() => {
+  useLayoutEffect(() => {
     portals.set(id, children);
     update();
   }, [id, children]);
-  useEffect(
+  useLayoutEffect(
     () => () => {
       portals.delete(id);
       update();

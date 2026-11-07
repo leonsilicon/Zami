@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "svelte": "catalog:"
+  },
+  "peerDependencies": {
+    "react-native": "*"
   }
 }

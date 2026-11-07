@@ -6,6 +6,7 @@
   "type": "module",
   "imports": {
     "#html": "./html.tsx",
+    "#html-tree": "./html-tree.ts",
     "#image": "./image.tsx",
     "#portal": "./portal.tsx"
   },
@@ -14,7 +15,11 @@
   },
   "dependencies": {
     "expo-image": "catalog:",
+    "htmlparser2": "catalog:",
     "uniwind": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "react": "*",

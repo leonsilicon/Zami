@@ -1,0 +1,22 @@
+{
+  "name": "@-/com.leonsilicon.zami.browser",
+  "version": "0.0.0",
+  "private": true,
+  "description": "window, document and navigator for Zam's code in React Native, backed by AppState, Dimensions, Linking and Uniwind. Metro points Zam's references to them here.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
+    "expo-clipboard": "catalog:",
+    "expo-localization": "catalog:",
+    "uniwind": "catalog:"
+  },
+  "peerDependencies": {
+    "react-native": "*"
+  }
+}

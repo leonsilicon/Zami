@@ -1,0 +1,1 @@
+export { installBrowserGlobals } from "#install";

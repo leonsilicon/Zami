@@ -8,7 +8,9 @@
   "imports": {
     "#root": "./root.tsx",
     "#polyfills": "./polyfills.ts",
-    "#media": "./media.ts"
+    "#media": "./media.ts",
+    "#globals": "./globals.ts",
+    "#storage": "./storage.ts"
   },
   "scripts": {
     "start": "expo start",
@@ -16,11 +18,13 @@
     "android": "expo run:android"
   },
   "dependencies": {
+    "@-/com.leonsilicon.zami.browser": "workspace:*",
     "@-/com.leonsilicon.zami.icons": "workspace:*",
     "@-/com.leonsilicon.zami.metro": "workspace:*",
     "@-/com.leonsilicon.zami.rn": "workspace:*",
     "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
+    "@-/com.leonsilicon.zami.webcrypto": "workspace:*",
     "@formatjs/intl-getcanonicallocales": "catalog:",
     "@formatjs/intl-locale": "catalog:",
     "@formatjs/intl-pluralrules": "catalog:",
