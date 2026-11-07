@@ -30,13 +30,16 @@ const extras: Record<PropertyKey, unknown> = {
   },
 };
 
-export const zamiNavigator: Navigator = new Proxy(globalThis.navigator ?? {}, {
-  get(target, key) {
+// The proxy's target is a plain object that forwards to React Native's navigator, so
+// none of that object's own property invariants apply to the extras.
+const native = (globalThis.navigator ?? {}) as unknown as Record<PropertyKey, unknown>;
+export const zamiNavigator: Navigator = new Proxy({} as Navigator, {
+  get(_target, key) {
     if (key in extras) {
       const descriptor = Object.getOwnPropertyDescriptor(extras, key);
       return descriptor?.get ? descriptor.get.call(extras) : extras[key];
     }
-    return Reflect.get(target, key);
+    return native[key];
   },
-  has: (target, key) => key in extras || Reflect.has(target, key),
-}) as Navigator;
+  has: (_target, key) => key in extras || key in native,
+});

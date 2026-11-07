@@ -13,8 +13,12 @@
 //                                          feed Web Audio worklets and wasm, which React
 //                                          Native doesn't have; fetching one fails
 //   import("x?worker")                  -> a rejected promise, for the same reason
+//   import(url)                         -> a rejected promise: Metro bundles only literal
+//                                          imports, and Hermes can't load an ES module
+//                                          from a URL (Zam's plugins load this way)
 //   window, document, navigator,        -> globalThis.__ZAMI_WINDOW__ and so on, which
-//   location                               @-/com.leonsilicon.zami.browser defines. Only
+//   location; DOMParser, Node,             @-/com.leonsilicon.zami.browser defines (the DOM
+//   HTMLElement, … (DOM classes)           classes as __ZAMI_WINDOW__'s). Only
 //                                          in Zam's tree: real globals would make
 //                                          libraries (Expo's chunk loader among them)
 //                                          think they run in a browser
@@ -118,8 +122,35 @@ export function zamiVitePlugin({ types: t, template }) {
     navigator: "__ZAMI_NAVIGATOR__",
     location: "__ZAMI_LOCATION__",
   };
+  const DOM_CLASSES = new Set([
+    "DOMParser",
+    "XMLSerializer",
+    "NodeFilter",
+    "Node",
+    "Element",
+    "HTMLElement",
+    "HTMLAnchorElement",
+    "HTMLImageElement",
+    "HTMLTemplateElement",
+    "Text",
+    "DocumentFragment",
+  ]);
   const browserGlobal = (name) =>
-    t.memberExpression(t.identifier("globalThis"), t.identifier(BROWSER_GLOBALS[name]));
+    DOM_CLASSES.has(name)
+      ? t.memberExpression(
+          t.memberExpression(t.identifier("globalThis"), t.identifier("__ZAMI_WINDOW__")),
+          t.identifier(name),
+        )
+      : t.memberExpression(t.identifier("globalThis"), t.identifier(BROWSER_GLOBALS[name]));
+  // An identifier that's a type, not a value: `x as HTMLElement`, `el: Node`.
+  const TYPE_PARENTS = new Set([
+    "TSTypeReference",
+    "TSQualifiedName",
+    "TSTypeQuery",
+    "TSExpressionWithTypeArguments",
+    "TSInterfaceHeritage",
+    "TSClassImplements",
+  ]);
   return {
     name: "zami-vite",
     pre() {
@@ -168,8 +199,9 @@ export function zamiVitePlugin({ types: t, template }) {
         const { name } = nodePath.node;
         if (
           this.zamTree &&
-          Object.hasOwn(BROWSER_GLOBALS, name) &&
+          (Object.hasOwn(BROWSER_GLOBALS, name) || DOM_CLASSES.has(name)) &&
           nodePath.isReferencedIdentifier() &&
+          !TYPE_PARENTS.has(nodePath.parent.type) &&
           !nodePath.scope.hasBinding(name)
         ) {
           nodePath.replaceWith(browserGlobal(name));
@@ -227,6 +259,17 @@ export function zamiVitePlugin({ types: t, template }) {
       },
       CallExpression(nodePath) {
         const { node } = nodePath;
+        if (
+          this.zamTree &&
+          node.callee.type === "Import" &&
+          node.arguments[0] !== undefined &&
+          node.arguments[0].type !== "StringLiteral"
+        ) {
+          nodePath.replaceWith(
+            template.expression.ast`Promise.reject(new Error("Zami: Hermes can't import a module from a URL"))`,
+          );
+          return;
+        }
         if (
           node.callee.type === "Import" &&
           node.arguments[0]?.type === "StringLiteral" &&

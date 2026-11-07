@@ -17,6 +17,7 @@
     "expo-localization": "catalog:",
     "expo-location": "catalog:",
     "expo-sharing": "catalog:",
+    "linkedom": "catalog:",
     "uniwind": "catalog:"
   },
   "peerDependencies": {

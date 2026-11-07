@@ -1,15 +1,15 @@
 // `document` for Zam's code. Visibility and focus come from AppState (a backgrounded
 // app is a hidden page). Zam's theme switches (`documentElement.dataset.theme`) and CSS
 // variables (`documentElement.style.setProperty("--x", …)`) go to Uniwind. Building or
-// querying DOM nodes has no equivalent: queries find nothing, and creating a node
-// throws where it's called, except the head-only ones (`<style>`, `<link>`, `<meta>`),
-// which can't affect React Native views: they're inert, and appending them does nothing.
-// An `<a>` works as Zam uses one off-screen: clicking it opens its link, or with
-// `download` set, saves the file through the share sheet.
+// building, parsing and querying DOM nodes happen in a detached DOM (#dom, linkedom),
+// which Zam uses for string-level HTML work; nothing in it is displayed. An `<a>` works
+// as Zam uses one off-screen: clicking it opens its link, or with `download` set, saves
+// the file through the share sheet.
 import { AppState, Linking } from "react-native";
 import { Uniwind } from "uniwind";
 import { shareDownload } from "#download";
-import { createEventHub, noDom } from "#events";
+import { domDocument } from "#dom";
+import { createEventHub } from "#events";
 
 export const documentEvents = createEventHub();
 
@@ -73,6 +73,7 @@ const rootStyle = {
   // Zami: not ported: the root font size (Zam's text scale) and other inline styles.
 };
 
+// The root's classes (Zam's `cap-native` and the like) style nothing here.
 const classList = {
   add(): void {},
   remove(): void {},
@@ -80,50 +81,46 @@ const classList = {
   contains: (): boolean => false,
 };
 
-const INERT_TAGS = new Set(["style", "link", "meta", "a"]);
-const inert = new WeakSet<object>();
-
-function appendChild<T>(parent: string, child: T): T {
-  if (typeof child === "object" && child !== null && inert.has(child)) return child;
-  return noDom(`<${parent}>.appendChild`);
-}
-
-function element(tagName: string, style: object = {}) {
-  return {
-    tagName: tagName.toUpperCase(),
-    style,
-    dataset: {} as Record<string, string>,
-    classList,
-    lang: "",
-    dir: "",
-    setAttribute(): void {},
-    removeAttribute(): void {},
-    getAttribute: (): null => null,
-    textContent: "",
-    appendChild: <T>(child: T): T => appendChild(tagName, child),
-    remove(): void {},
-    querySelector: (): null => null,
-    querySelectorAll: (): never[] => [],
+/** A DOM `<a>` whose click does what a browser's would for the app. */
+function anchor(): HTMLAnchorElement {
+  const node = domDocument.createElement("a");
+  node.click = () => {
+    const href = node.getAttribute("href") ?? "";
+    const download = (node as { download?: string }).download ?? node.getAttribute("download");
+    if (href === "") return;
+    if (download) {
+      shareDownload(href, download).catch((error: unknown) =>
+        console.error("[zami] download failed", error),
+      );
+    } else void Linking.openURL(href);
   };
+  return node;
 }
 
-function anchor() {
-  return {
-    ...element("a"),
-    href: "",
-    download: "",
-    target: "",
-    rel: "",
-    click(this: { href: string; download: string }): void {
-      if (this.href === "") return;
-      if (this.download !== "") {
-        shareDownload(this.href, this.download).catch((error: unknown) =>
-          console.error("[zami] download failed", error),
-        );
-      } else void Linking.openURL(this.href);
-    },
-  };
-}
+// The root element: Zam's themes and CSS variables (see above), on top of the detached
+// DOM's `<html>` for everything else.
+const htmlElement = domDocument.documentElement as unknown as Record<PropertyKey, unknown>;
+// A plain target that forwards to the element, so the element's own property invariants
+// don't constrain the overrides.
+const documentElement = new Proxy({} as HTMLElement, {
+  get(_target, key) {
+    if (key === "dataset") return dataset;
+    if (key === "style") return rootStyle;
+    if (key === "classList") return classList;
+    const value = htmlElement[key];
+    return typeof value === "function"
+      ? (value as (...args: unknown[]) => unknown).bind(htmlElement)
+      : value;
+  },
+  set(_target, key, value) {
+    htmlElement[key] = value;
+    return true;
+  },
+  has: (_target, key) => key in htmlElement,
+});
+
+const bound = <K extends keyof Document>(key: K) =>
+  (domDocument[key] as (...args: unknown[]) => unknown).bind(domDocument);
 
 export const zamiDocument = {
   get visibilityState(): "visible" | "hidden" {
@@ -137,9 +134,13 @@ export const zamiDocument = {
   removeEventListener: documentEvents.removeEventListener,
   title: "Zami",
   activeElement: null,
-  documentElement: { ...element("html", rootStyle), dataset },
-  head: element("head"),
-  body: element("body"),
+  documentElement,
+  get head(): HTMLHeadElement {
+    return domDocument.head;
+  },
+  get body(): HTMLElement {
+    return domDocument.body;
+  },
   images: [] as never[],
   fonts: {
     ready: Promise.resolve(),
@@ -151,15 +152,18 @@ export const zamiDocument = {
   pictureInPictureEnabled: false,
   pictureInPictureElement: null,
   exitPictureInPicture: async (): Promise<void> => {},
-  getElementById: (): null => null,
-  querySelector: (): null => null,
-  querySelectorAll: (): never[] => [],
-  createElement(tagName: string) {
-    if (!INERT_TAGS.has(tagName.toLowerCase())) noDom(`document.createElement("${tagName}")`);
-    const node = tagName.toLowerCase() === "a" ? anchor() : element(tagName);
-    inert.add(node);
-    return node;
+  createElement(tagName: string): Element {
+    return tagName.toLowerCase() === "a" ? anchor() : domDocument.createElement(tagName);
   },
-  createTreeWalker: (): never => noDom("document.createTreeWalker"),
-  createRange: (): never => noDom("document.createRange"),
+  createElementNS: bound("createElementNS"),
+  createTextNode: bound("createTextNode"),
+  createComment: bound("createComment"),
+  createDocumentFragment: bound("createDocumentFragment"),
+  createTreeWalker: bound("createTreeWalker"),
+  createRange: bound("createRange"),
+  importNode: bound("importNode"),
+  getElementById: bound("getElementById"),
+  querySelector: bound("querySelector"),
+  querySelectorAll: bound("querySelectorAll"),
+  getElementsByTagName: bound("getElementsByTagName"),
 };

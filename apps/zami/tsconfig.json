@@ -32,6 +32,8 @@
     "../../packages/com/leonsilicon/zami/browser/*.ts",
     // Every translated component, whether or not the app reaches it yet.
     "../../src/**/*.svelte.zami.tsx",
-    "../../src/app.zami.d.ts"
+    "../../src/app.zami.d.ts",
+    // Zam's ambient declarations for untyped modules.
+    "../../src/lib/types/*.zami.d.ts"
   ]
 }

@@ -1,7 +1,9 @@
 // `window` for Zam's code: the global object, plus the browser window's events and
 // methods. Focus and blur follow AppState, resize follows the window dimensions,
-// `open` hands links to the system, `matchMedia` answers width and preference queries.
+// `open` hands links to the system, `matchMedia` answers width and preference queries,
+// and the DOM classes (`DOMParser`, `Node`, `HTMLElement`, …) are the detached DOM's.
 import { AccessibilityInfo, AppState, Appearance, Dimensions, Linking } from "react-native";
+import { DOM_CLASSES } from "#dom";
 import { createEventHub } from "#events";
 
 export const windowEvents = createEventHub();
@@ -75,6 +77,7 @@ function matchMedia(query: string) {
 }
 
 const extras: Record<PropertyKey, unknown> = {
+  ...DOM_CLASSES,
   addEventListener: windowEvents.addEventListener,
   removeEventListener: windowEvents.removeEventListener,
   dispatchEvent: (event: Event): boolean => {
@@ -102,20 +105,32 @@ const extras: Record<PropertyKey, unknown> = {
   },
 };
 
-/** The global object, with the window members above taking precedence. */
-export const zamiWindow: typeof globalThis = new Proxy(globalThis, {
-  get(target, key) {
-    if (key === "location") return (globalThis as Record<string, unknown>).__ZAMI_LOCATION__;
-    if (key === "document") return (globalThis as Record<string, unknown>).__ZAMI_DOCUMENT__;
-    if (key === "navigator") return (globalThis as Record<string, unknown>).__ZAMI_NAVIGATOR__;
+/**
+ * The global object, with the window members above taking precedence. The proxy's
+ * target is a plain object that forwards to `globalThis`: proxying `globalThis` itself
+ * would have to return its non-configurable properties exactly as they are, and global
+ * functions are handed out bound to it.
+ */
+const global = globalThis as unknown as Record<PropertyKey, unknown>;
+export const zamiWindow: typeof globalThis = new Proxy({} as typeof globalThis, {
+  get(_target, key) {
+    if (key === "location") return global.__ZAMI_LOCATION__;
+    if (key === "document") return global.__ZAMI_DOCUMENT__;
+    if (key === "navigator") return global.__ZAMI_NAVIGATOR__;
+    if (key === "window" || key === "self" || key === "globalThis") return zamiWindow;
     if (key in extras) {
       const descriptor = Object.getOwnPropertyDescriptor(extras, key);
       return descriptor?.get ? descriptor.get.call(extras) : extras[key];
     }
-    const value: unknown = Reflect.get(target, key);
+    const value = global[key];
     return typeof value === "function" && /^[a-z]/.test(String(key))
-      ? (value as (...args: unknown[]) => unknown).bind(target)
+      ? (value as (...args: unknown[]) => unknown).bind(globalThis)
       : value;
   },
-  has: (target, key) => key in extras || Reflect.has(target, key),
+  set(_target, key, value) {
+    global[key] = value;
+    return true;
+  },
+  has: (_target, key) => key in extras || key in global,
+  deleteProperty: (_target, key) => delete global[key],
 });
