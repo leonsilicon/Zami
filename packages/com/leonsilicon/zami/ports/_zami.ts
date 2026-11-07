@@ -12,44 +12,16 @@
 //   _zami editor [--check]                     editor settings that hide Zam's files (VS Code, Zed)
 //   _zami backlog [--count <n>]                Svelte components ready to port (all their child
 //                                              components already have Zami versions), smallest first
-//   _zami fmt [--check] [files...]             Prettier, with Zam's own options, on Zami files only
-//   _zami lint [files...]                      oxlint (oxlint.zam-files.json, next to this file) on Zami files only
 //
-// Run from anywhere in the repo. `--upstream <ref>` overrides the upstream ref
-// (default `upstream/master`, from zami-ports.json).
+// Run from anywhere in the repo. `--upstream <ref>` overrides the upstream ref (default
+// `upstream/master`, from zami-ports.json). Zami files are formatted and linted with
+// Vite+ (`vp fmt`, `vp lint`, `vp check`), which the root vite.config.js scopes to them.
 
-import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, resolve } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { check } from "#check";
 import { writeEditorSettings } from "#editor";
-import { formatZamiFiles } from "#format";
-import { isZamiOwned } from "#config";
-import { isZamiPath } from "#paths";
-
-/** Repo-relative Zami paths from command-line arguments; anything else is an error. */
-function zamiPathsFrom(args: string[]): string[] {
-  const files = args.map((arg) => resolve(process.cwd(), arg).slice(project.root.length + 1));
-  const notExpo = files.filter((file) => !isZamiPath(file) || isZamiOwned(file));
-  if (notExpo.length > 0) throw new Error(`Not Zami files in Zam's tree: ${notExpo.join(", ")}`);
-  return files;
-}
-
-/** Zami files whose upstream originals Zam's .prettierignore excludes (vendored code, build output). */
-function zamIgnored(files: string[]): string[] {
-  const result = spawnSync(
-    "git",
-    ["-c", "core.excludesFile=.prettierignore", "check-ignore", "--no-index", "--stdin", "-z"],
-    {
-      cwd: project.root,
-      input: files.join("\0"),
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024 * 64,
-    },
-  );
-  return result.stdout.split("\0").filter((path) => path !== "");
-}
 import { Project, type PortStatus } from "#project";
 import { markDone, summarize, sync } from "#sync";
 
@@ -214,48 +186,9 @@ switch (command) {
     for (const component of ready.slice(0, count)) console.log(component.path);
     break;
   }
-  case "fmt": {
-    // Zami's tooling only ever touches Zami files; Zam's own files stay exactly as upstream wrote them.
-    const files = args.length > 0 ? zamiPathsFrom(args) : project.zamiFiles();
-    const { checked, unformatted } = await formatZamiFiles(project.root, files, {
-      check: values.check ?? false,
-    });
-    if (values.check && unformatted.length > 0) {
-      for (const file of unformatted) console.error(`not formatted: ${file}`);
-      process.exit(1);
-    }
-    console.log(
-      `${values.check ? "Format-checked" : "Formatted"} ${checked} Zami files${unformatted.length > 0 && !values.check ? ` (${unformatted.length} changed)` : ""}.`,
-    );
-    break;
-  }
-  case "lint": {
-    // oxlint, on the Zami files of code Zam itself lints (not what its .prettierignore skips, such as vendored static/ code).
-    const requested = args.length > 0 ? zamiPathsFrom(args) : project.zamiFiles();
-    const skipped = new Set(zamIgnored(requested));
-    const files = requested.filter(
-      (file) => !skipped.has(file) && /\.(js|mjs|cjs|ts|mts|cts|tsx)$/.test(file),
-    );
-    let failed = false;
-    for (let index = 0; index < files.length; index += 400) {
-      const result = spawnSync(
-        join(project.root, "node_modules/.bin/oxlint"),
-        [
-          "-c",
-          join(import.meta.dirname, "oxlint.zam-files.json"),
-          ...files.slice(index, index + 400),
-        ],
-        { cwd: project.root, stdio: "inherit" },
-      );
-      failed ||= result.status !== 0;
-    }
-    if (failed) process.exit(1);
-    console.log(`Linted ${files.length} Zami files.`);
-    break;
-  }
   default:
     console.error(
-      "Usage: _zami <status|sync|done|diff|check|backlog|editor|fmt|lint> (see the comment at the top of _zami.ts)",
+      "Usage: _zami <status|sync|done|diff|check|backlog|editor> (see the comment at the top of _zami.ts)",
     );
     process.exit(command === undefined ? 0 : 1);
 }

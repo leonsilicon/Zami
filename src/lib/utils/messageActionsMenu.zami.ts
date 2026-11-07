@@ -13,7 +13,13 @@ import { t } from "$lib/i18n";
 
 /** The actions that move off the inline bar and into the overflow sheet. */
 export type MessageActionKey =
-    "thread" | "edit" | "pin" | "copy-link" | "report" | "redact" | "delete";
+    | "thread"
+    | "edit"
+    | "pin"
+    | "copy-link"
+    | "report"
+    | "redact"
+    | "delete";
 
 export interface MessageActionContext {
     /**

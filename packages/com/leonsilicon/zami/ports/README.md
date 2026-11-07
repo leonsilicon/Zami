@@ -6,7 +6,7 @@ merges copies, lists the work left for people or the Claude bot, and checks the
 invariants CI enforces. See [`.github/PORTING.md`](../../../../../.github/PORTING.md).
 
 ```sh
-vpx _zami status | sync | diff <file> | done <file>... | check | backlog | fmt | lint
+vpx _zami status | sync | diff <file> | done <file>... | check | backlog | editor
 ```
 
 `@prompts/migrate.md` is the prompt the sync and port workflows give Claude.

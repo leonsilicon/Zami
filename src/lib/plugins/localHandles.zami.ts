@@ -69,7 +69,8 @@ export async function getLocalHandle(
     try {
         return (
             ((await run("readonly", (s) => s.get(pluginId))) as
-                FileSystemDirectoryHandle | undefined) ?? null
+                | FileSystemDirectoryHandle
+                | undefined) ?? null
         );
     } catch {
         return null;

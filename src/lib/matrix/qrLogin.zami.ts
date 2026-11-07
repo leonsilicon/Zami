@@ -196,7 +196,8 @@ async function signInWithDeviceCode(
             signal,
         });
         const data = (await res.json()) as
-            DeviceAccessTokenResponse | { error?: string };
+            | DeviceAccessTokenResponse
+            | { error?: string };
         if (res.ok && "access_token" in data) {
             return finishOAuthTokens({
                 baseUrl: opts.baseUrl,

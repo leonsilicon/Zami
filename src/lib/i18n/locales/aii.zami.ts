@@ -2625,8 +2625,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.videoTurnedOff": "ܛܦܝܐ ܡܢܗ",
     "callStats.videoPausedByServer":
         "ܟܠܝܐ ܡܢ ܣܝܪܒܪ ܕܩܪܝܬܐ: ܚܝܕܘܬܐ ܕܝܠܘܟ݂ ܠܐ ܡܨܝܐ ܗܫܐ",
-    "callStats.videoNoPackets":
-        "ܠܐ ܡܛܐ ܡܕܡ: ܒܨܝ ܓܢܒܐ ܕܡܫܕܪܢܐ، ܐܘ ܚܝܕܘܬܐ ܕܝܠܘܟ݂",
+    "callStats.videoNoPackets": "ܠܐ ܡܛܐ ܡܕܡ: ܒܨܝ ܓܢܒܐ ܕܡܫܕܪܢܐ، ܐܘ ܚܝܕܘܬܐ ܕܝܠܘܟ݂",
     "callStats.videoCantDecrypt":
         "ܡܛܐ ܐܠܐ ܠܐ ܡܨܝܐ ܡܬܦܫܩܐ: ܚܕ ܡܢܘܟ݂ܘܢ ܡܨܐ ܗܘܐ ܥܠ Zam ܥܬܝܩܐ، ܐܘ ܩܠܝܕܐ ܠܐ ܡܛܐ",
     "callStats.videoCantDecode":

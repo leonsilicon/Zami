@@ -16,7 +16,8 @@ export interface JxlDecodeRequest {
 }
 
 export type JxlDecodeResponse =
-    { id: number; png: ArrayBuffer } | { id: number; error: string };
+    | { id: number; png: ArrayBuffer }
+    | { id: number; error: string };
 
 let ready: Promise<unknown> | null = null;
 

@@ -14,7 +14,8 @@ export interface JpegProgressiveRequest {
 
 /** `jpeg` is null when the file should be sent as it is. */
 export type JpegProgressiveResponse =
-    { id: number; jpeg: ArrayBuffer | null } | { id: number; error: string };
+    | { id: number; jpeg: ArrayBuffer | null }
+    | { id: number; error: string };
 
 self.onmessage = (e: MessageEvent<JpegProgressiveRequest>) => {
     const { id } = e.data;

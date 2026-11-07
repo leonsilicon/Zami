@@ -13,7 +13,10 @@ import { t } from "$lib/i18n";
 import type { SecuritySetupState } from "./securityStatusView";
 
 export type VerificationStatusKind =
-    "verified" | "needs-setup" | "unverified" | "unavailable";
+    | "verified"
+    | "needs-setup"
+    | "unverified"
+    | "unavailable";
 
 export interface VerificationStatusView {
     kind: VerificationStatusKind;

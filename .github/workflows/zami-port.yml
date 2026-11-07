@@ -64,7 +64,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
         run: |
-          vpx _zami fmt
+          vp fmt
           branch="zami/port-${GITHUB_RUN_ID}"
           git config user.name "zami-bot"
           git config user.email "zami-bot@users.noreply.github.com"

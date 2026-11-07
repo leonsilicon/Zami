@@ -16,7 +16,8 @@ export const CUSTOM_SOUND_BANK_ACCEPT = ALLOWED_EXTS.map((e) => `.${e}`).join(
 );
 
 export type SoundBankValidationResult =
-    { ok: true } | { ok: false; reason: string };
+    | { ok: true }
+    | { ok: false; reason: string };
 
 /** Pure: check an uploaded bank's name and size. */
 export function validateCustomSoundBankFile(file: {

@@ -12,7 +12,11 @@ import type { HeaderButton } from "$lib/plugins/types";
 
 /** The panels that move off the header and into the overflow menu. */
 export type RoomHeaderMenuKey =
-    "threads" | "pinned" | "notifications" | "media" | "members";
+    | "threads"
+    | "pinned"
+    | "notifications"
+    | "media"
+    | "members";
 
 export interface RoomHeaderMenuInput {
     /** `interfaceState.sidebar` — may name a panel that stays in the header. */

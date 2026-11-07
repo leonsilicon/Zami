@@ -46,7 +46,8 @@ function requireClient() {
 function userContent(): SoundPackContent {
     return (
         (matrixClient?.getAccountData(USER_SOUNDBOARD_TYPE)?.getContent() as
-            SoundPackContent | undefined) ?? {}
+            | SoundPackContent
+            | undefined) ?? {}
     );
 }
 

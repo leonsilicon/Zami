@@ -155,7 +155,9 @@ export interface AlreadyReadInput {
      * no room to ask.
      */
     hasUserReadEvent?:
-        ((userId: string, eventId: string) => boolean) | null | undefined;
+        | ((userId: string, eventId: string) => boolean)
+        | null
+        | undefined;
 }
 
 /**

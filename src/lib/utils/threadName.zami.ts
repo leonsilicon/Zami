@@ -72,7 +72,8 @@ export function buildThreadNameContent(
 export function threadNameTarget(wireContent: unknown): string | null {
     if (!wireContent || typeof wireContent !== "object") return null;
     const rel = (wireContent as Record<string, unknown>)["m.relates_to"] as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
     if (!rel || rel.rel_type !== THREAD_NAME_REL_TYPE) return null;
     return typeof rel.event_id === "string" ? rel.event_id : null;
 }

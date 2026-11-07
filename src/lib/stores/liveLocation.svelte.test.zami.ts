@@ -298,7 +298,8 @@ describe("live-location own-share engine", () => {
         await startShare(ROOM, 900000);
 
         const opts = (watchPosition.mock.calls[0] as unknown[])?.[2] as
-            PositionOptions | undefined;
+            | PositionOptions
+            | undefined;
         expect(opts?.timeout).toBeUndefined();
     });
 

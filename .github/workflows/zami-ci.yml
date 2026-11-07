@@ -25,12 +25,12 @@ jobs:
           node-version: "24"
           run-install: true
           cache: true
-      - name: Lint, format and types (Zami's apps/ and packages/)
+      - name: Format, lint and types (Zami's own code and the Zami files in Zam's tree)
         run: vp check
       - run: vp run typecheck
       - name: Tests (Zami's tooling, then upstream Zam's tests against the Zami files)
         run: vp run test
       - name: Bundle the app (iOS and Android)
         run: vp run bundle
-      - name: Zami files in Zam's tree (format, lint, porting invariants)
-        run: vp run check:zam
+      - name: Porting invariants
+        run: vpx _zami check

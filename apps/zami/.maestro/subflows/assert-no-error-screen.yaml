@@ -1,0 +1,5 @@
+# Fail if React Native's error screen (a red box, or LogBox's full-screen error) or the
+# "can't reach Metro" screen is showing.
+appId: com.leonsilicon.zami
+---
+- assertNotVisible: ".*(Uncaught Error|Render Error|Syntax Error|Unable to resolve module|Could not connect to development server|No script URL provided|Unable to load script|Reload \\(⌘R\\)|Reload \\(R, R\\)).*"

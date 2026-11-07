@@ -223,7 +223,8 @@ async function writeRoom(
 ): Promise<void> {
     const read = db.transaction(TAILS, "readonly");
     const tail = ((await req(read.objectStore(TAILS).get(roomId))) as
-        StoredTail | undefined) ?? { roomId, entries: [] };
+        | StoredTail
+        | undefined) ?? { roomId, entries: [] };
     let entries = [...tail.entries, ...b.entries];
     // Compress outside the transaction: an IndexedDB transaction closes as
     // soon as it waits on anything that isn't IndexedDB.

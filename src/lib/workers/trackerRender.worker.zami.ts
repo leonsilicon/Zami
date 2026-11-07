@@ -14,7 +14,8 @@ export interface TrackerRenderRequest {
 }
 
 export type TrackerRenderResponse =
-    { id: number; wav: ArrayBuffer } | { id: number; error: string };
+    | { id: number; wav: ArrayBuffer }
+    | { id: number; error: string };
 
 const SAMPLE_RATE = 44100;
 const CHUNK_FRAMES = 8192;
