@@ -1,0 +1,6 @@
+{
+  "upstream": "upstream/master",
+  "include": ["**"],
+  "exclude": [],
+  "overrides": ["package.json", "vite.config.ts"]
+}

@@ -1,5 +1,0 @@
-{
-  "upstream": "upstream/master",
-  "include": ["**"],
-  "exclude": []
-}

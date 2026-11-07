@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "esnext"
+    ],
+    "allowJs": true
+  },
+  "include": [
+    "com/leonsilicon/zami/ports/**/*.ts",
+    "com/leonsilicon/zami/ports/*.js",
+    "com/leonsilicon/zami/dev/*.ts",
+    "com/leonsilicon/zami/vite/*.ts",
+    "com/leonsilicon/zami/metro/*.js"
+  ]
+}

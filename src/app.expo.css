@@ -3,7 +3,7 @@
 @import "uniwind";
 @config "../tailwind.config.expo.js";
 @source "./**/*.expo.tsx";
-@source "../expo/apps/zami";
+@source "../apps/zami";
 
 /* Bundled message fonts (device-local font picker, item 1). Self-hosted
    woff2, no external CDN (prod CSP is font-src 'self'). Inter is a variable

@@ -1,0 +1,28 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "jsx": "react-jsx",
+    // `import "./foo"` resolves to `foo.expo.ts`, matching Metro: Zam's import strings stay as they are.
+    "moduleSuffixes": [".expo", ""],
+    "paths": {
+      "$lib": ["../../src/lib"],
+      "$lib/*": ["../../src/lib/*"],
+      "$app/environment": ["../../packages/com/leonsilicon/zami/sveltekit/+app__environment.ts"],
+      "$app/navigation": ["../../packages/com/leonsilicon/zami/sveltekit/+app__navigation.ts"],
+      "$app/state": ["../../packages/com/leonsilicon/zami/sveltekit/+app__state.ts"],
+      "@matrix-org/matrix-sdk-crypto-wasm": ["./node_modules/react-native-matrix-sdk-crypto-wasm"]
+    },
+    "types": ["svelte", "react-native"]
+  },
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "*.cjs",
+    "../../packages/com/leonsilicon/zami/{sveltekit,svelte-react}/*.ts",
+    "../../src/app.expo.d.ts"
+  ]
+}

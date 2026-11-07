@@ -43,6 +43,9 @@ jobs:
         run: |
           git config user.name "zami-bot"
           git config user.email "zami-bot@users.noreply.github.com"
+          # Zami's root package.json and vite.config.ts replace Zam's; .gitattributes marks them
+          # merge=ours, and this registers that driver.
+          git config merge.ours.driver true
           git remote add upstream https://github.com/az4521/Zam.git
           git fetch --no-tags upstream master
           # Continue an open sync PR's branch so commits pushed to it aren't lost.
@@ -68,7 +71,6 @@ jobs:
       - if: steps.merge.outputs.changed == 'true'
         uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
-          working-directory: expo
           node-version: "24"
           run-install: true
           cache: true
@@ -76,10 +78,9 @@ jobs:
       - name: Sync Expo files
         id: sync
         if: steps.merge.outputs.changed == 'true'
-        working-directory: expo
         run: |
-          vpx _zami sync --since "${{ steps.merge.outputs.previous }}" --worklist .zami/worklist.json --summary .zami/summary.md
-          count=$(node -e 'const w=require("./.zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
+          vpx _zami sync --since "${{ steps.merge.outputs.previous }}" --worklist node_modules/.cache/zami/worklist.json --summary node_modules/.cache/zami/summary.md
+          count=$(node -e 'const w=require("./node_modules/.cache/zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
           echo "work=$count" >> "$GITHUB_OUTPUT"
 
       - name: Migrate with Claude
@@ -89,7 +90,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.ZAMI_BOT_TOKEN }}
-          prompt: Follow the instructions in expo/packages/com/leonsilicon/zami/ports/@prompts/migrate.md.
+          prompt: Follow the instructions in packages/com/leonsilicon/zami/ports/@prompts/migrate.md.
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 300
@@ -99,11 +100,10 @@ jobs:
       - name: Check
         id: check
         if: steps.merge.outputs.changed == 'true'
-        working-directory: expo
         run: |
           vpx _zami fmt
-          if vpx _zami check > .zami/check.txt 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
-          cat .zami/check.txt
+          if vpx _zami check > node_modules/.cache/zami/check.txt 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+          cat node_modules/.cache/zami/check.txt
 
       - name: Push and open the pull request
         if: steps.merge.outputs.changed == 'true'
@@ -116,9 +116,9 @@ jobs:
           git diff --cached --quiet || git commit -q -m "Sync Expo files with upstream Zam ${LATEST:0:10}"
           git push origin "HEAD:$BRANCH"
           {
-            cat expo/.zami/summary.md
-            if [ -f expo/.zami/report.md ]; then printf '\n## Claude'"'"'s migration report\n\n'; cat expo/.zami/report.md; fi
-            if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 expo/.zami/check.txt; printf '```\n'; fi
+            cat node_modules/.cache/zami/summary.md
+            if [ -f node_modules/.cache/zami/report.md ]; then printf '\n## Claude'"'"'s migration report\n\n'; cat node_modules/.cache/zami/report.md; fi
+            if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 node_modules/.cache/zami/check.txt; printf '```\n'; fi
           } > "$RUNNER_TEMP/body.md"
           if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"

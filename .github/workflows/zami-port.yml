@@ -30,25 +30,23 @@ jobs:
       - run: git remote add upstream https://github.com/az4521/Zam.git && git fetch --no-tags upstream master
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
-          working-directory: expo
           node-version: "24"
           run-install: true
           cache: true
       - name: Pick components
-        working-directory: expo
         env:
           FILES: ${{ inputs.files }}
           COUNT: ${{ inputs.count }}
         run: |
-          vpx _zami sync --worklist .zami/worklist.json --summary .zami/summary.md > /dev/null
+          vpx _zami sync --worklist node_modules/.cache/zami/worklist.json --summary node_modules/.cache/zami/summary.md > /dev/null
           if [ -n "$FILES" ]; then picked="$FILES"; else picked=$(vpx _zami backlog --count "$COUNT"); fi
           PICKED="$picked" node -e '
             const fs = require("fs");
             const picked = new Set(process.env.PICKED.split(/\s+/).filter(Boolean));
-            const worklist = JSON.parse(fs.readFileSync(".zami/worklist.json", "utf8"));
+            const worklist = JSON.parse(fs.readFileSync("node_modules/.cache/zami/worklist.json", "utf8"));
             worklist.work = worklist.work.filter((item) => item.kind === "port" && picked.has(item.upstreamPath)).map((item) => ({ ...item, new: true }));
             if (worklist.work.length === 0) { console.error("Nothing to port."); process.exit(1); }
-            fs.writeFileSync(".zami/worklist.json", JSON.stringify(worklist, null, 2));
+            fs.writeFileSync("node_modules/.cache/zami/worklist.json", JSON.stringify(worklist, null, 2));
             console.log(worklist.work.map((item) => item.upstreamPath).join("\n"));'
       - name: Port with Claude
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
@@ -56,7 +54,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.ZAMI_BOT_TOKEN }}
-          prompt: Follow the instructions in expo/packages/com/leonsilicon/zami/ports/@prompts/migrate.md.
+          prompt: Follow the instructions in packages/com/leonsilicon/zami/ports/@prompts/migrate.md.
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 300
@@ -66,7 +64,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
         run: |
-          (cd expo && vpx _zami fmt)
+          vpx _zami fmt
           branch="zami/port-${GITHUB_RUN_ID}"
           git config user.name "zami-bot"
           git config user.email "zami-bot@users.noreply.github.com"
@@ -74,5 +72,5 @@ jobs:
           git add -A
           git commit -q -m "Port Zam components to Expo"
           git push origin "$branch"
-          { echo "Ported with Claude Opus 5.5:"; echo; cat expo/.zami/report.md 2>/dev/null; } > "$RUNNER_TEMP/body.md"
+          { echo "Ported with Claude Opus 5.5:"; echo; cat node_modules/.cache/zami/report.md 2>/dev/null; } > "$RUNNER_TEMP/body.md"
           gh pr create --base main --head "$branch" --title "Port Zam components to Expo" --body-file "$RUNNER_TEMP/body.md"

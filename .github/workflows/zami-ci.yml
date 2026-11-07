@@ -22,20 +22,15 @@ jobs:
       - run: git remote add upstream https://github.com/az4521/Zam.git && git fetch --no-tags upstream master
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
-          working-directory: expo
           node-version: "24"
           run-install: true
           cache: true
-      - name: Lint, format and types (expo/ workspace)
-        working-directory: expo
+      - name: Lint, format and types (Zami's apps/ and packages/)
         run: vp check
-      - working-directory: expo
-        run: vp run typecheck
-      - working-directory: expo
+      - run: vp run typecheck
+      - name: Tests (Zami's tooling, then upstream Zam's tests against the Expo files)
         run: vp run test
       - name: Bundle the app (iOS and Android)
-        working-directory: expo
         run: vp run bundle
       - name: Expo files in Zam's tree (format, lint, porting invariants)
-        working-directory: expo
         run: vp run check:zam

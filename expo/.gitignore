@@ -1,6 +1,0 @@
-node_modules/
-.zami/
-.expo/
-apps/zami/ios/
-apps/zami/android/
-*.tsbuildinfo
