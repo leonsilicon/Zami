@@ -1,0 +1,24 @@
+# A Svelte rune store drives React: showToast() adds to Zam's toasts store and the count,
+# read through useRune, re-renders. The store is in memory, so a cold relaunch empties it.
+appId: com.leonsilicon.zami
+---
+- runFlow: subflows/launch-app.yaml
+- assertVisible:
+    id: toast-count
+    text: "Toasts in the Svelte store: 0"
+- tapOn:
+    text: "Show a toast"
+    retryTapIfNoChange: false
+- assertVisible:
+    id: toast-count
+    text: "Toasts in the Svelte store: 1"
+- tapOn:
+    text: "Show a toast"
+    retryTapIfNoChange: false
+- assertVisible:
+    id: toast-count
+    text: "Toasts in the Svelte store: 2"
+- runFlow: subflows/launch-app.yaml
+- assertVisible:
+    id: toast-count
+    text: "Toasts in the Svelte store: 0"

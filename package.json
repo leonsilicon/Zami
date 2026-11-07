@@ -62,6 +62,7 @@
   },
   "devDependencies": {
     "@-/com.leonsilicon.zami.dev": "workspace:*",
+    "@-/com.leonsilicon.zami.maestro": "workspace:*",
     "@-/com.leonsilicon.zami.ports": "workspace:*",
     "@-/com.leonsilicon.zami.vite": "workspace:*",
     "@types/node": "catalog:",

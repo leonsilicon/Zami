@@ -6,6 +6,7 @@
       "name": "zami-development",
       "devDependencies": {
         "@-/com.leonsilicon.zami.dev": "workspace:*",
+        "@-/com.leonsilicon.zami.maestro": "workspace:*",
         "@-/com.leonsilicon.zami.ports": "workspace:*",
         "@-/com.leonsilicon.zami.vite": "workspace:*",
         "@types/node": "catalog:",
@@ -68,6 +69,21 @@
       },
       "devDependencies": {
         "@types/node": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/maestro": {
+      "name": "@-/com.leonsilicon.zami.maestro",
+      "version": "0.0.0",
+      "bin": {
+        "_maestro": "./_maestro.ts",
+      },
+      "dependencies": {
+        "@-/com.leonsilicon.zami.dev": "workspace:*",
+        "@-/com.leonsilicon.zami.ports": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
       },
     },
     "packages/com/leonsilicon/zami/metro": {
@@ -176,6 +192,8 @@
     "2g": ["2g@1.0.1", "", { "peerDependencies": { "typescript": ">=5.8.0" }, "optionalPeers": ["typescript"], "bin": { "2g": "bin/cli.js" } }, "sha512-+uViadKOS/wwR4pFu5g8TPn3QHpKqoX19JHCnp8k/3cLpImdcXozwvZA6Q/5PeW3AcU8neL8faaMidBcv7o8CA=="],
 
     "@-/com.leonsilicon.zami.dev": ["@-/com.leonsilicon.zami.dev@workspace:packages/com/leonsilicon/zami/dev"],
+
+    "@-/com.leonsilicon.zami.maestro": ["@-/com.leonsilicon.zami.maestro@workspace:packages/com/leonsilicon/zami/maestro"],
 
     "@-/com.leonsilicon.zami.metro": ["@-/com.leonsilicon.zami.metro@workspace:packages/com/leonsilicon/zami/metro"],
 
