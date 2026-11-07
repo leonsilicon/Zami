@@ -46,7 +46,8 @@ vpx _dev start        # only the dev server, for an app that's already installed
 ```sh
 vp check              # this workspace: lint, format, types
 vp run typecheck
-vp run test
+vp run test           # Zami's tooling tests, then upstream Zam's tests against the Expo files
+vp run test:zam       # only upstream's tests (vitest.zam.config.ts)
 vp run check:zam      # Expo files in Zam's tree: Prettier with Zam's options, oxlint, `_zami check`
 vp run bundle         # bundle the app's JS for iOS and Android with Metro
 vpx _zami status      # how many files are ported, stale or missing
@@ -54,3 +55,16 @@ vpx _zami status      # how many files are ported, stale or missing
 
 Zami's tooling only touches Zami's files: this workspace and the `.expo.` files. Zam's
 own files are never formatted, linted or edited.
+
+## Upstream's tests
+
+Every upstream test has an Expo copy (`foo.test.expo.ts`), and `vp run test:zam` runs
+them against Zami's Expo files: every import, and every `require` of a file in Zam's tree,
+loads the `.expo.` version (`@-/com.leonsilicon.zami.vite`), in jsdom as Zam does. So
+when Zami changes a copy, or the sync bot migrates one, upstream's own tests check it.
+
+- The 18 tests that render Svelte components are left out until they're rewritten for
+  React Native (`componentTestFiles` lists them).
+- Two copies are changed to inspect the Expo files rather than upstream's
+  (`i18n.test.expo.ts`, `heavyDepImports.test.expo.ts`), because they scan the source
+  tree, which now holds both.

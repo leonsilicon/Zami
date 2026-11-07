@@ -29,12 +29,17 @@ export default defineConfig({
   fmt: {
     ignorePatterns: [...generated, "**/@prompts/**"],
   },
+  // `vp test`: Zami's own tooling. Upstream Zam's tests (their `.test.expo.ts` copies,
+  // against Zami's Expo files) have their own config, vitest.zam.config.ts, because they
+  // run from the repository root; `vp run test` runs both.
+  test: {
+    include: ["packages/**/__tests__/*.test.ts"],
+    environment: "node",
+  },
   run: {
     tasks: {
-      test: {
-        cache: false,
-        command: "node --test packages/com/leonsilicon/zami/ports/__tests__/*.test.ts",
-      },
+      test: { cache: false, command: "vp test run && vp test run -c vitest.zam.config.ts" },
+      "test:zam": { cache: false, command: "vp test run -c vitest.zam.config.ts" },
       typecheck: { command: "tsc -p . && tsc -p apps/zami" },
       // Bundles the app's JS for both platforms with Metro (no native build): proves every
       // import resolves to an Expo file and every file transforms.

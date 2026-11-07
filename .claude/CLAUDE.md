@@ -13,6 +13,8 @@ changing anything.
 - Code that isn't the Expo version of a Zam file goes in a Flatcap package under
   `expo/packages/com/leonsilicon/zami/` (see the user's Flatcap conventions).
 - Run the app with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
+- Test with `vp run test` from `expo/`: it includes upstream's own tests, run against the
+  Expo files. A failing upstream test means the Expo file is wrong, not the test.
 - Format Expo files with `vpx _zami fmt` and lint them with `vpx _zami lint`. Never run
   Prettier, oxfmt or oxlint on upstream files.
 - After migrating a file to the merged upstream version, run `vpx _zami done <file>`.

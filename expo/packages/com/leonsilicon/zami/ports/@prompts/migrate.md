@@ -37,8 +37,10 @@ synced in `expo/zami-ports.lock.json`; never edit that file by hand.
   file; CI rejects the pull request if you do.
 - Keep diffs minimal. Don't reformat or reorganize code you aren't changing.
 - Format what you changed, from `expo/`: `vpx _zami fmt <files>`.
-- From `expo/`, run `vpx _zami check` and `vpr typecheck` at the end. Fix any errors
-  they report in files you touched.
+- From `expo/`, run `vpx _zami check`, `vp run typecheck` and `vp run test:zam` at the
+  end. `test:zam` runs upstream's own tests against the Expo files, so a failure in a
+  test covering a file you changed means the migration is wrong; fix the migration,
+  not the test. Fix anything else these report in files you touched.
 - Don't commit or push; the workflow does that.
 
 Finish by writing `expo/.zami/report.md` for the pull request's reviewers:

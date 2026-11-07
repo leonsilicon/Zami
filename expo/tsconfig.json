@@ -16,9 +16,11 @@
   },
   "include": [
     "packages/com/leonsilicon/zami/ports/**/*.ts",
+    "packages/com/leonsilicon/zami/vite/*.ts",
     "packages/com/leonsilicon/zami/dev/*.ts",
     "packages/com/leonsilicon/zami/metro/*.js",
     "prettier.config.zam.js",
-    "vite.config.ts"
+    "vite.config.ts",
+    "vitest.zam.config.ts"
   ]
 }

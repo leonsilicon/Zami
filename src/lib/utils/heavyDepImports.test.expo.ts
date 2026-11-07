@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { hasStaticImport } from "./staticImportGuard";
@@ -34,16 +34,28 @@ const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // (`lib\matrix\client.ts` on Windows). Normalise to `/` so the pins below and
 // the generated test names read identically everywhere; `path.join` accepts
 // forward slashes on Windows.
-const entries = readdirSync(SRC_DIR, { recursive: true, encoding: "utf8" }).map(
-    (f) => f.replace(/\\/g, "/"),
-);
+// Zami: sweep under upstream names, reading each file's Expo version (what Zami ships);
+// components not yet ported to React Native are read from upstream.
+const toExpoName = (f: string) =>
+    f.endsWith(".svelte")
+        ? `${f}.expo.tsx`
+        : f.replace(/(\.d)?\.([a-z]+)$/, ".expo$1.$2");
+const entries = readdirSync(SRC_DIR, { recursive: true, encoding: "utf8" })
+    .map((f) => f.replace(/\\/g, "/"))
+    .filter((f) => !/\.expo\./.test(f));
 const isSourceFile = (f: string) => /\.(ts|svelte)$/.test(f);
 const isTestFile = (f: string) => /\.(test|spec)\.ts$/.test(f);
 
 const SOURCE_FILES = entries.filter((f) => isSourceFile(f) && !isTestFile(f));
 const TEST_FILES = entries.filter((f) => isSourceFile(f) && isTestFile(f));
 
-const readSource = (f: string) => readFileSync(join(SRC_DIR, f), "utf8");
+const readSource = (f: string) =>
+    readFileSync(
+        existsSync(join(SRC_DIR, toExpoName(f)))
+            ? join(SRC_DIR, toExpoName(f))
+            : join(SRC_DIR, f),
+        "utf8",
+    );
 
 describe("no source file under src/ statically imports a heavy dependency", () => {
     // Without this, an empty or mis-joined file list would turn the whole

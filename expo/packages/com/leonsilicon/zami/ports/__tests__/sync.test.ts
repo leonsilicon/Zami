@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { after, test } from "node:test";
+import { afterAll, test } from "vite-plus/test";
 import { check } from "#check";
 import { Manifest } from "#manifest";
 import { mapUpstreamPath, upstreamPathForExpoPath } from "#paths";
@@ -29,7 +29,7 @@ Object.assign(process.env, {
 });
 
 const dir = mkdtempSync(join(tmpdir(), "zami-ports-test-"));
-after(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
