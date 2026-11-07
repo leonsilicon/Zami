@@ -15,7 +15,26 @@
     ".gitignore",
     ".env.example",
     ".vscode/**",
-    ".github/**"
+    ".github/**",
+    "electron/**",
+    "flatpak/**",
+    "native/**",
+    "src/lib/utils/bundleKeyParity.test.ts",
+    "src/lib/utils/bundleUpdate.test.ts",
+    "src/lib/utils/discordRestart.test.ts",
+    "src/lib/utils/electronAutostart.test.ts",
+    "src/lib/utils/electronExeIcon.test.ts",
+    "src/lib/utils/electronMediaSession.test.ts",
+    "src/lib/utils/electronPluginFrames.test.ts",
+    "src/lib/utils/electronProxy.test.ts",
+    "src/lib/utils/electronRichPresence.test.ts",
+    "src/lib/utils/electronServerGuards.test.ts",
+    "src/lib/utils/electronShareAudio.test.ts",
+    "src/lib/utils/electronUpdateSchedule.test.ts",
+    "src/lib/utils/electronWindowState.test.ts",
+    "src/lib/utils/fakeDiscord.test.ts",
+    "src/lib/utils/memoryReport.test.ts",
+    "src/lib/utils/twemojiPack.test.ts"
   ],
   "overrides": ["package.json"]
 }

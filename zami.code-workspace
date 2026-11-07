@@ -15,32 +15,14 @@
       "*/**/*.bin": {
         "when": "$(basename).zami.bin"
       },
-      "*/**/*.c": {
-        "when": "$(basename).zami.c"
-      },
       "*/**/*.cc": {
         "when": "$(basename).zami.cc"
-      },
-      "*/**/*.cjs": {
-        "when": "$(basename).zami.cjs"
-      },
-      "*/**/*.cpp": {
-        "when": "$(basename).zami.cpp"
       },
       "*/**/*.css": {
         "when": "$(basename).zami.css"
       },
-      "*/**/*.desktop": {
-        "when": "$(basename).zami.desktop"
-      },
-      "*/**/*.gpg": {
-        "when": "$(basename).zami.gpg"
-      },
       "*/**/*.html": {
         "when": "$(basename).zami.html"
-      },
-      "*/**/*.ico": {
-        "when": "$(basename).zami.ico"
       },
       "*/**/*.js": {
         "when": "$(basename).zami.js"
@@ -59,9 +41,6 @@
       },
       "*/**/*.mp3": {
         "when": "$(basename).zami.mp3"
-      },
-      "*/**/*.patch": {
-        "when": "$(basename).zami.patch"
       },
       "*/**/*.png": {
         "when": "$(basename).zami.png"
@@ -102,12 +81,6 @@
       "*/**/*.woff2": {
         "when": "$(basename).zami.woff2"
       },
-      "*/**/*.xml": {
-        "when": "$(basename).zami.xml"
-      },
-      "*/**/*.yml": {
-        "when": "$(basename).zami.yml"
-      },
       "*/**/LICENSE_APACHE": {
         "when": "$(basename).zami"
       },
@@ -128,10 +101,29 @@
       "THIRD_PARTY_NOTICES.md": true,
       "android": true,
       "capacitor.config.ts": true,
+      "electron": true,
+      "flatpak": true,
+      "native": true,
       "package-lock.json": true,
       "postcss.config.js": true,
       "src/app.d.ts": true,
       "src/lib/types/libopenmpt.d.ts": true,
+      "src/lib/utils/bundleKeyParity.test.ts": true,
+      "src/lib/utils/bundleUpdate.test.ts": true,
+      "src/lib/utils/discordRestart.test.ts": true,
+      "src/lib/utils/electronAutostart.test.ts": true,
+      "src/lib/utils/electronExeIcon.test.ts": true,
+      "src/lib/utils/electronMediaSession.test.ts": true,
+      "src/lib/utils/electronPluginFrames.test.ts": true,
+      "src/lib/utils/electronProxy.test.ts": true,
+      "src/lib/utils/electronRichPresence.test.ts": true,
+      "src/lib/utils/electronServerGuards.test.ts": true,
+      "src/lib/utils/electronShareAudio.test.ts": true,
+      "src/lib/utils/electronUpdateSchedule.test.ts": true,
+      "src/lib/utils/electronWindowState.test.ts": true,
+      "src/lib/utils/fakeDiscord.test.ts": true,
+      "src/lib/utils/memoryReport.test.ts": true,
+      "src/lib/utils/twemojiPack.test.ts": true,
       "svelte.config.js": true,
       "tailwind.config.js": true,
       "tsconfig.json": true,

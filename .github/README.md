@@ -5,8 +5,9 @@ React Native.
 
 It isn't a GitHub fork. It's Zam's full history, merged from an `upstream` remote, plus
 files Zami adds. Every upstream file (code, tests, styles, docs and assets) has a Zami
-version next to it, and Zami develops there; the Expo app only loads those. Configuration
-for tooling and platforms Zami doesn't use (Capacitor, SvelteKit, Vite, npm) gets none.
+version next to it, and Zami develops there; the Expo app only loads those. What the
+Expo app doesn't use gets none: configuration for SvelteKit, Vite and npm, and the other
+platforms Expo replaces (Capacitor, Electron, Flatpak).
 
 ```
 src/lib/stores/toasts.svelte.ts                    upstream

@@ -12,10 +12,12 @@ people and for the Claude migration bot alike.
 - **Every upstream file has a Zami version next to it**: code, tests, styles, docs and
   assets alike, even when it's identical or differs only in formatting. That's what lets
   Zami develop alongside upstream: change the Zami version, never the original. The
-  exception is configuration for tooling and platforms Zami doesn't use (Capacitor and
-  its `android/` project, SvelteKit, Vite, PostCSS, npm's lockfile, Zam's CI and editor
-  settings): `exclude` in [`zami-ports.json`](../zami-ports.json) lists it, it gets no Zami
-  version, and the editor settings hide it.
+  exception is what the Expo app doesn't use: configuration for tooling Zami replaced
+  (SvelteKit, Vite, PostCSS, npm's lockfile, Zam's CI and editor settings) and the other
+  platforms Expo replaces (Capacitor and its `android/` project, Electron, Flatpak, the
+  Windows audio helper in `native/`), along with upstream's tests of Electron's code.
+  `exclude` in [`zami-ports.json`](../zami-ports.json) lists them; they get no Zami
+  version, and the editor settings hide them.
 - **The Expo app only loads Zami versions.** Metro refuses to resolve anything else in
   Zam's tree, and fails with an error naming the missing Zami file.
 - **Zami's tooling only touches Zami files** (and Zami's own `apps/` and `packages/`). Zam's own files

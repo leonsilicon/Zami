@@ -18,7 +18,8 @@ export function componentTestFiles(repoRoot: string): string[] {
     },
   )
     .split("\n")
-    .filter((file) => file !== "");
+    // `git ls-files` still lists a deleted file until the deletion is committed.
+    .filter((file) => file !== "" && existsSync(path.join(repoRoot, file)));
   return tests.filter((test) => {
     const source = readFileSync(path.join(repoRoot, test), "utf8");
     return [...source.matchAll(/from\s+["']([^"']+\.svelte)["']/g)].some(([, specifier]) => {
