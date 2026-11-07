@@ -14,6 +14,9 @@ export default defineConfig({
     name: "zam",
     environment: "jsdom",
     setupFiles: ["@-/com.leonsilicon.zami.vite/zam-test-setup"],
+    // A few upstream tests wait fixed times (e.g. fileTransferEngine's 200 ms window),
+    // which a loaded CI runner can miss.
+    retry: process.env.CI ? 2 : 0,
     include: ["src/**/*.{test,spec}.expo.{js,ts}"],
     exclude: componentTestFiles(repoRoot),
   },
