@@ -248,3 +248,40 @@ test("sync copies, merges, flags work, and check enforces the invariants", () =>
     checked.failures.some((failure) => failure.startsWith("src/a.ts: upstream file modified")),
   );
 });
+
+test("excluding an upstream file drops its Zami version, unless Zami changed it", () => {
+  const upstream = join(dir, "exclude-upstream");
+  const zami = join(dir, "exclude-zami");
+  mkdirSync(upstream);
+  git(upstream, "init", "-q", "-b", "master");
+  put(upstream, "src/a.ts", "export const a = 1;\n");
+  put(upstream, "capacitor.config.ts", "export default {};\n");
+  put(upstream, "svelte.config.js", "export default {};\n");
+  git(upstream, "add", "-A");
+  git(upstream, "commit", "-q", "-m", "upstream");
+  git(dir, "init", "-q", "-b", "main", zami);
+  git(zami, "remote", "add", "upstream", upstream);
+  git(zami, "fetch", "-q", "upstream");
+  git(zami, "checkout", "-q", "-B", "main", "upstream/master");
+  put(zami, "zami-ports.json", JSON.stringify({ include: ["**"] }));
+  sync(new Project(zami));
+  put(zami, "svelte.config.zami.js", "export default { zami: true };\n");
+  markDone(new Project(zami), ["svelte.config.zami.js"]);
+
+  put(
+    zami,
+    "zami-ports.json",
+    JSON.stringify({ include: ["**"], exclude: ["capacitor.config.ts", "svelte.config.js"] }),
+  );
+  const result = sync(new Project(zami));
+  assert.deepEqual(result.deleted, ["capacitor.config.zami.ts"]);
+  assert.deepEqual(
+    result.orphans,
+    ["svelte.config.zami.js"],
+    "changed by Zami: kept for a person to decide",
+  );
+  assert.equal(existsSync(join(zami, "capacitor.config.zami.ts")), false);
+  assert.equal(Manifest.read(zami).get("capacitor.config.zami.ts"), undefined);
+  const zed = JSON.parse(get(zami, ".zed/settings.json")) as { file_scan_exclusions: string[] };
+  assert.ok(zed.file_scan_exclusions.includes("capacitor.config.ts"));
+});

@@ -12,9 +12,6 @@
       "**/.svn": true,
       "**/CVS": true,
       "**/Thumbs.db": true,
-      "*/**/*.bat": {
-        "when": "$(basename).zami.bat"
-      },
       "*/**/*.bin": {
         "when": "$(basename).zami.bin"
       },
@@ -39,20 +36,11 @@
       "*/**/*.gpg": {
         "when": "$(basename).zami.gpg"
       },
-      "*/**/*.gradle": {
-        "when": "$(basename).zami.gradle"
-      },
       "*/**/*.html": {
         "when": "$(basename).zami.html"
       },
       "*/**/*.ico": {
         "when": "$(basename).zami.ico"
-      },
-      "*/**/*.jar": {
-        "when": "$(basename).zami.jar"
-      },
-      "*/**/*.java": {
-        "when": "$(basename).zami.java"
       },
       "*/**/*.js": {
         "when": "$(basename).zami.js"
@@ -77,12 +65,6 @@
       },
       "*/**/*.png": {
         "when": "$(basename).zami.png"
-      },
-      "*/**/*.pro": {
-        "when": "$(basename).zami.pro"
-      },
-      "*/**/*.properties": {
-        "when": "$(basename).zami.properties"
       },
       "*/**/*.py": {
         "when": "$(basename).zami.py"
@@ -126,31 +108,25 @@
       "*/**/*.yml": {
         "when": "$(basename).zami.yml"
       },
-      "*/**/*.zbundle": {
-        "when": "$(basename).zami.zbundle"
-      },
-      "*/**/.gitignore": {
-        "when": "$(basename).zami"
-      },
       "*/**/LICENSE_APACHE": {
         "when": "$(basename).zami"
       },
       "*/**/LICENSE_MIT": {
         "when": "$(basename).zami"
       },
-      "*/**/gradlew": {
-        "when": "$(basename).zami"
-      },
       ".env.example": true,
+      ".github": true,
       ".gitignore": true,
       ".prettierignore": true,
       ".prettierrc": true,
+      ".vscode": true,
       "ANDROID_PUSH_SETUP.md": true,
       "ARCHITECTURE.md": true,
       "CHANGELOG.md": true,
       "LICENSE": true,
       "README.md": true,
       "THIRD_PARTY_NOTICES.md": true,
+      "android": true,
       "capacitor.config.ts": true,
       "package-lock.json": true,
       "postcss.config.js": true,

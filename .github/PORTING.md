@@ -9,10 +9,13 @@ people and for the Claude migration bot alike.
   exception is the root `package.json`, which is Zami's workspace manifest (Bun reads no
   other name; Zam's version keeps syncing as `package.zami.json`). `vpx _zami check` fails
   CI if any other upstream file is modified, deleted or renamed.
-- **Every upstream file has a Zami version next to it**: code, tests, styles, docs,
-  configs and assets alike, even when it's identical or differs only in formatting.
-  That's what lets Zami develop alongside upstream: change the Zami version, never the
-  original.
+- **Every upstream file has a Zami version next to it**: code, tests, styles, docs and
+  assets alike, even when it's identical or differs only in formatting. That's what lets
+  Zami develop alongside upstream: change the Zami version, never the original. The
+  exception is configuration for tooling and platforms Zami doesn't use (Capacitor and
+  its `android/` project, SvelteKit, Vite, PostCSS, npm's lockfile, Zam's CI and editor
+  settings): `exclude` in [`zami-ports.json`](../zami-ports.json) lists it, it gets no Zami
+  version, and the editor settings hide it.
 - **The Expo app only loads Zami versions.** Metro refuses to resolve anything else in
   Zam's tree, and fails with an error naming the missing Zami file.
 - **Zami's tooling only touches Zami files** (and Zami's own `apps/` and `packages/`). Zam's own files

@@ -1,7 +1,7 @@
 # Zami
 
-Zami is Zam (a SvelteKit Matrix client) plus a Zami version of every upstream file,
-kept next to the original (`foo.ts` → `foo.zami.ts`, `Foo.svelte` → `Foo.svelte.zami.tsx`,
+Zami is Zam (a SvelteKit Matrix client) plus a Zami version of every upstream file
+except unused configuration (`exclude` in `zami-ports.json`), kept next to the original (`foo.ts` → `foo.zami.ts`, `Foo.svelte` → `Foo.svelte.zami.tsx`,
 `LICENSE` → `LICENSE.zami`). Read `.github/README.md`, then `.github/PORTING.md`, before
 changing anything.
 

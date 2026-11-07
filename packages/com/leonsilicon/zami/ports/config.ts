@@ -6,7 +6,11 @@ export interface PortsConfig {
   upstream: string;
   /** Upstream files that must have a Zami version (globs, relative to the repo root). */
   include: string[];
-  /** Upstream files that never get one. */
+  /**
+   * Upstream files that never get one: configuration for tooling and platforms Zami doesn't
+   * use (Capacitor, SvelteKit, Vite, npm, Zam's own CI). `_zami sync` deletes the Zami
+   * versions of newly excluded files, if Zami never changed them.
+   */
   exclude: string[];
   /** Upstream files Zami replaces in place (their Zami versions keep tracking upstream). */
   overrides: string[];

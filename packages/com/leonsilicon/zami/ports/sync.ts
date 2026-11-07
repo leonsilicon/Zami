@@ -121,6 +121,18 @@ export function sync(
       continue;
     }
     const change = project.git.changes(sha, upstreamSha).get(upstreamPath);
+    if (change === undefined && !project.inScope(upstreamPath)) {
+      // Excluded by zami-ports.json: drop the Zami version, unless Zami changed it.
+      const ours = project.read(orphan.zamiPath);
+      if (ours !== null && ours.equals(project.git.show(sha, upstreamPath) ?? Buffer.alloc(0))) {
+        if (!dryRun) rmSync(join(project.root, orphan.zamiPath));
+        manifest.delete(orphan.zamiPath);
+        result.deleted.push(orphan.zamiPath);
+      } else {
+        result.orphans.push(orphan.zamiPath);
+      }
+      continue;
+    }
     if (change?.status === "D") {
       if (!dryRun) rmSync(join(project.root, orphan.zamiPath));
       manifest.delete(orphan.zamiPath);
@@ -239,7 +251,7 @@ export function summarize(result: SyncResult): string {
     "Moved (renamed upstream)",
     result.moved.map((move) => `${move.from} → ${move.to}`),
   );
-  section("Deleted (removed upstream)", result.deleted);
+  section("Deleted (removed upstream, or excluded by zami-ports.json)", result.deleted);
   section(
     "Needs migration: conflicts",
     result.work
