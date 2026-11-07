@@ -195,6 +195,7 @@
   "src/lib/components/messages/MessageDecorations.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/messages/MessageEditBox.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/messages/MessageEmbed.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
+  "src/lib/components/messages/MessageInput.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/messages/MessageRedactAction.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/messages/MessageReportAction.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/messages/MessageVideo.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",

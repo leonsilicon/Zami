@@ -165,6 +165,7 @@
     "src/lib/components/keybinds/KeyboardShortcutsDialog.svelte",
     "src/lib/components/layout/AccountAvatar.svelte",
     "src/lib/components/layout/AccountSwitcher.svelte",
+    "src/lib/components/layout/ActiveCallBanner.svelte",
     "src/lib/components/layout/AppSettings.svelte",
     "src/lib/components/layout/CallEncryptionBadge.svelte",
     "src/lib/components/layout/CallEncryptionBadge.test.ts",
