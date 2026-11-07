@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import {
+    Checkbox,
+    Image,
+    mediaSource,
+    pickedFile,
+} from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import {
     addUserEmoji,
@@ -19,7 +24,7 @@ import {
     validateEmojiShortcode,
     type ImageUsage,
 } from "$lib/matrix/client";
-import { Check, X } from "lucide-svelte";
+import { X } from "lucide-svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
 
 type PackKind = "emotes" | "emojis" | "stickers";
@@ -32,53 +37,6 @@ interface PackItem {
     url: string;
     canEmoji?: boolean;
     canSticker?: boolean;
-}
-
-// Zami: <input type="file"> hands over a File; expo-document-picker hands over a
-// cached copy's URI. It's read into React Native's Blob (which its XMLHttpRequest
-// uploads, as matrix-js-sdk does) and named and typed like the picked file.
-async function fileFromAsset(
-    asset: DocumentPicker.DocumentPickerAsset,
-): Promise<File> {
-    const blob = await (await fetch(asset.uri)).blob();
-    return new File([blob], asset.name, {
-        type: asset.mimeType ?? blob.type,
-        lastModified: asset.lastModified,
-    });
-}
-
-// Zami: <label><input type="checkbox"> text</label> → a pressable checkbox.
-function Checkbox({
-    checked,
-    disabled,
-    onChange,
-    label,
-}: {
-    checked: boolean;
-    disabled?: boolean;
-    onChange: (checked: boolean) => void;
-    label: string;
-}) {
-    return (
-        <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked, disabled }}
-            disabled={disabled}
-            onPress={() => onChange(!checked)}
-            className="flex-row items-center gap-1.5 disabled:opacity-50"
-        >
-            <View
-                className={`w-3.5 h-3.5 rounded-sm border items-center justify-center ${
-                    checked
-                        ? "bg-discord-accent border-discord-accent"
-                        : "border-discord-textMuted"
-                }`}
-            >
-                {checked && <Check size={10} className="text-white" />}
-            </View>
-            <Text className="text-xs text-discord-textPrimary">{label}</Text>
-        </Pressable>
-    );
 }
 
 // Zami: `space-y-*` (a child selector) and `grid` don't exist in React Native: the
@@ -144,7 +102,7 @@ export default function CustomPackSettings({ kind }: Props) {
         }
         setUploading(true);
         try {
-            const mxcUrl = await uploadContent(await fileFromAsset(asset));
+            const mxcUrl = await uploadContent(await pickedFile(asset));
             const normalized =
                 kind === "emotes"
                     ? await addUserEmote(shortcode, mxcUrl, selectedUsage)
@@ -282,12 +240,16 @@ export default function CustomPackSettings({ kind }: Props) {
                                 onChange={setAsEmoji}
                                 disabled={uploading}
                                 label={t("common.emoji")}
+                                labelClassName="text-xs text-discord-textPrimary"
+                                className="items-center gap-1.5"
                             />
                             <Checkbox
                                 checked={asSticker}
                                 onChange={setAsSticker}
                                 disabled={uploading}
                                 label={t("customPackSettings.sticker")}
+                                labelClassName="text-xs text-discord-textPrimary"
+                                className="items-center gap-1.5"
                             />
                         </View>
                     )}
@@ -352,6 +314,8 @@ export default function CustomPackSettings({ kind }: Props) {
                                         pending === `${item.shortcode}:emoticon`
                                     }
                                     label={t("common.emoji")}
+                                    labelClassName="text-xs text-discord-textPrimary"
+                                    className="items-center gap-1.5"
                                 />
                                 <Checkbox
                                     checked={!!item.canSticker}
@@ -362,6 +326,8 @@ export default function CustomPackSettings({ kind }: Props) {
                                         pending === `${item.shortcode}:sticker`
                                     }
                                     label={t("customPackSettings.sticker")}
+                                    labelClassName="text-xs text-discord-textPrimary"
+                                    className="items-center gap-1.5"
                                 />
                             </>
                         )}

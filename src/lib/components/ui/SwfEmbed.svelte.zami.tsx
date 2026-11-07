@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import FlashEmbed from "./FlashEmbed.svelte";
 
@@ -43,15 +43,10 @@ export default function SwfEmbed({ getSrc }: Props) {
                 </>
             ) : (
                 <>
-                    {/* text-white/80 */}
-                    <Svg
-                        width={48}
-                        height={48}
-                        fill="rgba(255, 255, 255, 0.8)"
-                        viewBox="0 0 24 24"
-                    >
-                        <Path d="M8 5v14l11-7z" />
-                    </Svg>
+                    <SvgIcon
+                        d="M8 5v14l11-7z"
+                        className="w-12 h-12 text-white/80"
+                    />
                     <Text className="text-white/60 text-xs font-medium">
                         {t("swfEmbed.adobeFlash")}
                     </Text>

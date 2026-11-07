@@ -1,9 +1,9 @@
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { X } from "lucide-svelte";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
+import { Path } from "react-native-svg";
 import { t } from "$lib/i18n";
 // A subtle, dismissible "update ready" prompt (fed by the updateBanner
 // store's app-shell watch), so a found/downloaded update doesn't wait for
@@ -17,32 +17,6 @@ import {
     runBannerAction,
     dismissUpdateBanner,
 } from "$lib/stores/updateBanner.svelte";
-
-// The download arrow in a filled circle upstream draws as an inline
-// <svg fill="currentColor">.
-function UpdateIcon({ className }: { className: string }) {
-    const { color } = useResolveClassNames(className);
-    return (
-        <View
-            className={className}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-        >
-            <Svg
-                width="100%"
-                height="100%"
-                viewBox="0 0 24 24"
-                fill={color as string | undefined}
-            >
-                <Path
-                    d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
-                    transform="rotate(180 12 12)"
-                />
-                <Path d="M12 16l4-5h-3V7h-2v4H8z" />
-            </Svg>
-        </View>
-    );
-}
 
 export default function UpdateBanner() {
     const visible = useRune(() => bannerVisible());
@@ -71,7 +45,13 @@ export default function UpdateBanner() {
             className="mx-2 mb-2 rounded-lg border border-discord-divider bg-discord-backgroundSecondary px-3 py-2 shadow-sm"
         >
             <View className="flex-row items-start gap-2">
-                <UpdateIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-discord-accent" />
+                <SvgIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-discord-accent">
+                    <Path
+                        d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
+                        transform="rotate(180 12 12)"
+                    />
+                    <Path d="M12 16l4-5h-3V7h-2v4H8z" />
+                </SvgIcon>
                 <Text className="min-w-0 flex-1 text-sm text-discord-textPrimary">
                     {view.label}
                 </Text>

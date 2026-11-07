@@ -14,9 +14,7 @@ import {
     type ScrollViewInstance,
     type TextInputInstance,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
-import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, mediaSource, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import {
@@ -340,8 +338,6 @@ export default function StickerPicker({
               width: COMPOSER_PICKER_SIZE.defaultW,
               height: COMPOSER_PICKER_SIZE.defaultH,
           };
-    const userPackIconColor = useResolveClassNames("text-discord-textPrimary")
-        .color as string | undefined;
 
     return (
         <View
@@ -467,16 +463,10 @@ export default function StickerPicker({
                                             contentFit="cover"
                                         />
                                     ) : pack.id === "user" ? (
-                                        <Svg
-                                            width={20}
-                                            height={20}
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <Path
-                                                fill={userPackIconColor}
-                                                d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
-                                            />
-                                        </Svg>
+                                        <SvgIcon
+                                            d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
+                                            className="w-5 h-5 text-discord-textPrimary"
+                                        />
                                     ) : pack.avatarUrl ? (
                                         <Image
                                             source={mediaSource(pack.avatarUrl)}

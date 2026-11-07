@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { Check } from "lucide-svelte";
+import { Select } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 
 const selectClass =
@@ -10,53 +10,6 @@ const inputClass =
 // Zami: `block` dropped; a Text is a block in a column already.
 const labelClass = "text-sm text-discord-textPrimary mb-1";
 const hintClass = "text-xs text-discord-textMuted mt-1";
-
-interface SelectOption<T extends string> {
-    value: T;
-    label: string;
-}
-
-// Zami: React Native has no <select>; its options are listed as a radio group in
-// the select's box instead.
-function Select<T extends string>({
-    nativeID,
-    label,
-    value,
-    onChange,
-    options,
-}: {
-    nativeID: string;
-    label: string;
-    value: T;
-    onChange: (value: T) => void;
-    options: readonly SelectOption<T>[];
-}) {
-    return (
-        <View
-            nativeID={nativeID}
-            accessibilityRole="radiogroup"
-            accessibilityLabel={label}
-            className={selectClass}
-        >
-            {options.map((option) => (
-                <Pressable
-                    key={option.value}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: value === option.value }}
-                    onPress={() => onChange(option.value)}
-                    className="flex-row items-center justify-between gap-2 py-1"
-                >
-                    <Text className="shrink text-sm text-discord-textPrimary">
-                        {option.label}
-                    </Text>
-                    {value === option.value && (
-                        <Check size={14} className="text-discord-accent" />
-                    )}
-                </Pressable>
-            ))}
-        </View>
-    );
-}
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. `data-setting-anchor` (settings search scrolls to it)
@@ -141,7 +94,8 @@ export default function ProxySettings() {
                 <Text className={labelClass}>{t("proxySettings.proxy")}</Text>
                 <Select
                     nativeID="proxy-mode"
-                    label={t("proxySettings.proxy")}
+                    accessibilityLabel={t("proxySettings.proxy")}
+                    className={selectClass}
                     value={draft.mode}
                     onChange={(mode) => update({ mode })}
                     options={[
@@ -237,7 +191,8 @@ export default function ProxySettings() {
                 <Text className={labelClass}>{t("proxySettings.calls")}</Text>
                 <Select
                     nativeID="proxy-calls"
-                    label={t("proxySettings.calls")}
+                    accessibilityLabel={t("proxySettings.calls")}
+                    className={selectClass}
                     value={draft.calls}
                     onChange={(calls) => update({ calls })}
                     options={[

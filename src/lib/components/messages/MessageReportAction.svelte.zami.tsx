@@ -12,10 +12,7 @@ import {
     View,
     type HostInstance,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
-import { Check } from "lucide-svelte";
-import { Portal } from "@-/com.leonsilicon.zami.rn";
+import { Checkbox, Portal, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import { reportEvent } from "$lib/matrix/client";
@@ -160,33 +157,16 @@ export default function MessageReportAction({
                         // Zami: `rows="3"`: three 20px lines, the padding and the border.
                         className="w-full min-h-[78px] resize-none rounded bg-discord-backgroundSecondary border border-discord-divider p-2 text-sm text-discord-textPrimary focus:outline-none focus:border-discord-accent"
                     />
-                    {/* Zami: React Native has no checkbox input; a box that
-                        shows a check stands in for it. */}
-                    <Pressable
-                        accessibilityRole="checkbox"
-                        accessibilityState={{
-                            checked: offensive,
-                            disabled: status === "sending",
-                        }}
-                        onPress={() => setOffensive(!offensive)}
+                    <Checkbox
+                        checked={offensive}
+                        onChange={setOffensive}
                         disabled={status === "sending"}
-                        className="flex-row items-center gap-2 mt-2 select-none cursor-pointer"
-                    >
-                        <View
-                            className={`w-3.5 h-3.5 items-center justify-center rounded-sm border ${
-                                offensive
-                                    ? "bg-discord-accent border-discord-accent"
-                                    : "border-discord-textMuted"
-                            }`}
-                        >
-                            {offensive && (
-                                <Check size={10} className="text-white" />
-                            )}
-                        </View>
-                        <Text className="text-xs text-discord-textMuted">
-                            {t("messageReportAction.markAsExtremelyOffensive")}
-                        </Text>
-                    </Pressable>
+                        label={t(
+                            "messageReportAction.markAsExtremelyOffensive",
+                        )}
+                        labelClassName="text-xs text-discord-textMuted"
+                        className="items-center gap-2 mt-2 select-none cursor-pointer"
+                    />
                     {status === "error" && (
                         <Text className="text-xs text-discord-danger mt-2">
                             {error}
@@ -265,16 +245,5 @@ export default function MessageReportAction({
                     dialog
                 ))}
         </View>
-    );
-}
-
-/** Zami: Zam's inline `<svg fill="currentColor"><path d=…/></svg>`. `className`
- *  sizes and places it, and its text color fills it, as `currentColor` would. */
-function SvgIcon({ d, className }: { d: string; className: string }) {
-    const { color, ...style } = useResolveClassNames(className);
-    return (
-        <Svg viewBox="0 0 24 24" fill={color} style={style}>
-            <Path d={d} />
-        </Svg>
     );
 }

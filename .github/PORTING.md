@@ -100,6 +100,11 @@ same order, same names, same branches.
     text has.
   - Full-viewport sizing (`100vh`/`100dvh`) → `flex-1`.
   - `hover:`, `cursor-*` and `select-*` do nothing. Keep them if harmless.
+  - Uniwind has no `space-x-*`/`space-y-*` (child selectors): use the same `gap-*`. Nor
+    does it have `text-start`/`text-end`: `text-start` is a `Text`'s default, so drop it,
+    and `text-end` → `text-right`.
+  - `grid`/`grid-cols-*` → flex rows (`flex-row`, with `flex-1` or widths on the
+    cells), or a column that becomes a row at the breakpoint (`sm:flex-row`).
 - **Reactivity.**
   - `$state` → `useState`.
   - `$derived` → a value computed during render (or `useMemo` if it's expensive).
@@ -145,6 +150,12 @@ same order, same names, same branches.
 - **Inputs.** `bind:value` → state with `value`/`onChangeText`. `onkeydown` for Enter →
   `onSubmitEditing`. Keyboard shortcuts and other desktop-only key handling: leave them
   out with a `// Zami: not ported:` comment.
+- **Form controls.** Use these from `@-/com.leonsilicon.zami.rn` (its README lists
+  their props) rather than hand-rolling them: `<select>` → `Select`,
+  `<input type="checkbox">` (with its `<label>`) → `Checkbox`, `<input type="range">` →
+  `Range`, an inline `<svg fill="currentColor"><path d="…"></svg>` icon → `SvgIcon`,
+  `<input type="file">` → `expo-image-picker` or `expo-document-picker` with
+  `pickedFile(asset)` for the `File`, and `confirm()` → `await confirmAlert(…)`.
 - **DOM-only actions.** `use:focusTrap`, `use:clickOutside`, `use:tooltip` and the like
   have no React Native equivalent: drop them, keeping what they do for touch (a backdrop
   `Pressable` for click-outside).

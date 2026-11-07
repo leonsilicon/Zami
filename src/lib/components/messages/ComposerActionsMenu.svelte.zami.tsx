@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
@@ -169,16 +168,5 @@ export default function ComposerActionsMenu({
                 </Pressable>
             ))}
         </View>
-    );
-}
-
-/** Zami: Zam's inline `<svg fill="currentColor"><path d=…/></svg>`. `className`
- *  sizes and places it, and its text color fills it, as `currentColor` would. */
-function SvgIcon({ d, className }: { d: string; className: string }) {
-    const { color, ...style } = useResolveClassNames(className);
-    return (
-        <Svg viewBox="0 0 24 24" fill={color} style={style}>
-            <Path d={d} />
-        </Svg>
     );
 }

@@ -1,9 +1,8 @@
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { X } from "lucide-svelte";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 // Out of storage: persistent, with no dismiss, until a check finds room
 // again (storageHealth lifts it by itself; "Check again" checks now).
@@ -12,27 +11,6 @@ import {
     storageHealthState,
     recheckStorage,
 } from "$lib/stores/storageHealth.svelte";
-
-// The filled "!" circle upstream draws as an inline <svg fill="currentColor">.
-function AlertIcon({ className }: { className: string }) {
-    const { color } = useResolveClassNames(className);
-    return (
-        <View
-            className={className}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-        >
-            <Svg
-                width="100%"
-                height="100%"
-                viewBox="0 0 24 24"
-                fill={color as string | undefined}
-            >
-                <Path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z" />
-            </Svg>
-        </View>
-    );
-}
 
 export default function StorageBanner() {
     const [lowDismissed, setLowDismissed] = useState(false);
@@ -72,7 +50,8 @@ export default function StorageBanner() {
                 full ? "border-discord-danger/50" : "border-discord-warning/50"
             }`}
         >
-            <AlertIcon
+            <SvgIcon
+                d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
                 className={`h-5 w-5 flex-shrink-0 ${
                     full ? "text-discord-danger" : "text-discord-warning"
                 }`}

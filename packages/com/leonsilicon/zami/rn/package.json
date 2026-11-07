@@ -2,20 +2,33 @@
   "name": "@-/com.leonsilicon.zami.rn",
   "version": "0.0.0",
   "private": true,
-  "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images.",
+  "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images, form controls, inline SVG icons, picked files and confirm().",
   "type": "module",
   "imports": {
+    "#checkbox": "./checkbox.tsx",
+    "#confirm-alert": "./confirm-alert.ts",
     "#html": "./html.tsx",
     "#html-tree": "./html-tree.ts",
     "#image": "./image.tsx",
-    "#portal": "./portal.tsx"
+    "#picked-file": "./picked-file.ts",
+    "#portal": "./portal.tsx",
+    "#range": "./range.tsx",
+    "#select": "./select.tsx",
+    "#svg-icon": "./svg-icon.tsx"
   },
   "exports": {
     ".": "./+.ts"
   },
   "dependencies": {
+    "@-/com.leonsilicon.zami.icons": "workspace:*",
+    "expo-document-picker": "catalog:",
+    "expo-file-system": "catalog:",
     "expo-image": "catalog:",
+    "expo-image-picker": "catalog:",
     "htmlparser2": "catalog:",
+    "lucide-react-native": "catalog:",
+    "react-native-gesture-handler": "catalog:",
+    "react-native-svg": "catalog:",
     "uniwind": "catalog:"
   },
   "devDependencies": {

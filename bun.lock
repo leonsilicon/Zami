@@ -164,8 +164,15 @@
       "name": "@-/com.leonsilicon.zami.rn",
       "version": "0.0.0",
       "dependencies": {
+        "@-/com.leonsilicon.zami.icons": "workspace:*",
+        "expo-document-picker": "catalog:",
+        "expo-file-system": "catalog:",
         "expo-image": "catalog:",
+        "expo-image-picker": "catalog:",
         "htmlparser2": "catalog:",
+        "lucide-react-native": "catalog:",
+        "react-native-gesture-handler": "catalog:",
+        "react-native-svg": "catalog:",
         "uniwind": "catalog:",
       },
       "devDependencies": {

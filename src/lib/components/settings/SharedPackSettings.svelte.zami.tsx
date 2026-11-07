@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, mediaSource, pickedFile } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import {
@@ -15,19 +15,6 @@ import {
 } from "$lib/matrix/client";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { packKey } from "$lib/utils/imagePacks";
-
-// Zami: <input type="file"> hands over a File; expo-document-picker hands over a
-// cached copy's URI. It's read into React Native's Blob (which its XMLHttpRequest
-// uploads, as matrix-js-sdk does) and named and typed like the picked file.
-async function fileFromAsset(
-    asset: DocumentPicker.DocumentPickerAsset,
-): Promise<File> {
-    const blob = await (await fetch(asset.uri)).blob();
-    return new File([blob], asset.name, {
-        type: asset.mimeType ?? blob.type,
-        lastModified: asset.lastModified,
-    });
-}
 
 // Zami: `space-y-*` (a child selector) and `grid` don't exist in React Native: the
 // same `gap-*` spaces the children, and the two pack detail inputs sit side by side
@@ -108,7 +95,7 @@ export default function SharedPackSettings() {
         setAvatarUploading(true);
         try {
             await saveMine({
-                avatarMxc: await uploadContent(await fileFromAsset(asset)),
+                avatarMxc: await uploadContent(await pickedFile(asset)),
             });
         } catch (err) {
             setError(
