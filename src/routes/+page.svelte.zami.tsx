@@ -1,0 +1,493 @@
+import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { useEffect, useRef, useState } from "react";
+import { t } from "$lib/i18n";
+import { page } from "$app/state";
+import { goto } from "$app/navigation";
+import {
+    reconnect,
+    startSync,
+    initServiceWorker,
+    clearServiceWorkerAuth,
+    stopClient,
+    getClient,
+    leaveVoiceCall,
+    setTokenRefreshListener,
+    updateServiceWorkerAuth,
+    getLatestTokens,
+    setSyncRestarter,
+} from "$lib/matrix/client";
+import { isPendingOAuthCallback } from "$lib/matrix/oauth";
+import { unregisterPush } from "$lib/push";
+import { showToast } from "$lib/stores/toasts.svelte";
+import { clearNativeSession, syncNativeSession } from "$lib/nativeSession";
+// The crypto-store delete helper is deliberately NOT imported here: session
+// expiry must never wipe the crypto store (user decision, 2026-07-30 — only
+// an explicit logout does), and sessionTeardown.test.ts asserts on this
+// file's source text to keep it that way. The boot retry below IS wanted: it
+// finishes a wipe that an explicit logout started and IndexedDB blocked.
+import {
+    CryptoKeysUncheckedError,
+    CryptoStoreLostError,
+    SessionInUseError,
+    retryPendingCryptoWipes,
+    waitForSessionOwnership,
+} from "$lib/matrix/crypto";
+import {
+    auth,
+    saveSession,
+    loadStoredSession,
+    expireActiveSession,
+    applyRefreshedTokens,
+} from "$lib/stores/auth.svelte";
+import { accountsState, switchActive } from "$lib/stores/accounts.svelte";
+import { rootView, shouldRestoreSession } from "$lib/utils/sessionView";
+import {
+    IDLE_SESSION_STARTUP,
+    isLiveAttempt,
+    reduceSessionStartup,
+    type SessionStartupState,
+} from "$lib/utils/sessionStartup";
+import { releaseSessionResources } from "$lib/utils/sessionTeardown";
+import { clearAllNotificationSurfaces } from "$lib/utils/notificationSurfaces";
+import AppShell from "$lib/components/layout/AppShell.svelte";
+import Splash from "$lib/components/layout/Splash.svelte";
+import LoginView from "$lib/components/layout/LoginView.svelte";
+import { markFreshSignIn } from "$lib/stores/onboarding.svelte";
+import HealthBanners from "$lib/components/layout/HealthBanners.svelte";
+
+// Zami: the app root renders this page inside the translated +layout
+// (`<Layout><Page /></Layout>`), as SvelteKit does. `window.location` is the
+// location stand-in (@-/com.leonsilicon.zami.sveltekit): it reads `page.url`,
+// and assigning it (or reload()) reloads the JS bundle, which boots the app
+// afresh as a browser's full navigation does.
+export default function Page() {
+    const RESTORE_FAILED_MESSAGE = t("rootPage.failedToReconnectPleaseLogIn");
+    const SYNC_START_FAILED_MESSAGE = t("rootPage.signedInButSyncingCouldNot");
+    const SESSION_EXPIRED_MESSAGE = t(
+        "rootPage.yourSessionHasExpiredPleaseSign",
+    );
+
+    // Add-account mode ("/?add"): reactive to the URL so an in-app SPA nav
+    // (AccountSwitcher → goto("/?add")) flips it WITHOUT a route remount. It is
+    // an orthogonal override of the view — force the login form even with a
+    // running session so a second account can sign in.
+    const isAddAccountMode = useRune(() => page.url.searchParams.has("add"));
+
+    // Whether to silently restore is a BOOT-TIME decision, computed
+    // synchronously at init (NOT in onMount) so the very FIRST render shows the
+    // splash — never the login card — when a stored session exists. Reads
+    // window.location directly (ssr=false → window exists at init).
+    const [restoring, setRestoring] = useState(() => {
+        const addModeAtInit = new URLSearchParams(window.location.search).has(
+            "add",
+        );
+        // Returning from an OAuth provider lands on "/" with the sign-in result in
+        // the URL. Restoring the stored account over it would swallow that result
+        // (add-account sign-ins come back here too), so it is treated like add mode.
+        const oauthReturnAtInit = isPendingOAuthCallback(window.location.href);
+        return shouldRestoreSession({
+            hasStoredSession: !!loadStoredSession(),
+            isAddAccountMode: addModeAtInit || oauthReturnAtInit,
+        });
+    });
+
+    // Set while another tab runs this session; the splash then says so.
+    const [sessionInUse, setSessionInUse] = useState(false);
+
+    // OAuth refresh tokens rotate: every refresh has to reach storage, the
+    // service worker and the native push mirror, or the next restart (or the
+    // next notification) uses a dead token. Registered before any client exists.
+    // Zami: in the first effect to run, before the restore below starts one.
+    useEffect(() => {
+        setTokenRefreshListener((tokens) => {
+            applyRefreshedTokens(tokens.userId, tokens);
+            if (auth.userId !== tokens.userId) return;
+            updateServiceWorkerAuth(tokens.accessToken);
+            const account = loadStoredSession();
+            if (auth.homeserverUrl && auth.userId) {
+                syncNativeSession({
+                    homeserverUrl: auth.homeserverUrl,
+                    accessToken: tokens.accessToken,
+                    userId: auth.userId,
+                    deviceId: auth.deviceId,
+                    oauth: account?.oauth ?? null,
+                    accessTokenExpiresAt: tokens.expiresAt ?? null,
+                }).catch(() => {});
+            }
+        });
+    }, []);
+
+    const isAuthenticated = useRune(() => auth.isAuthenticated);
+    const view = isAddAccountMode
+        ? "login"
+        : rootView({
+              isAuthenticated,
+              restoring,
+          });
+
+    // Startup is ONE transaction (audit AUTH-01): a login or restore only
+    // becomes observable — AppShell mounted, account persisted — once sync is
+    // actually running, and an attempt the app has moved past (expiry, or a
+    // newer attempt) can never publish itself late. A plain `let`, not $state:
+    // the guards below decide "did this apply?" by comparing state objects with
+    // ===, and $state would hand back a reactive PROXY of the reducer's result
+    // — identity survives that today, but if it ever stopped doing so both
+    // guards would silently invert (a stale failure would stop a live
+    // successor's client; a dead attempt would commit). Nothing renders this,
+    // so it must not be reactive.
+    const startup = useRef<SessionStartupState>(IDLE_SESSION_STARTUP);
+
+    // Disposer for the running sync's client listeners (LIFE-02). A plain
+    // `let`, not $state — nothing renders it.
+    const disposeSync = useRef<(() => void) | null>(null);
+
+    /** Open a startup transaction; the returned id tags its result. */
+    function beginStartup(): number {
+        startup.current = reduceSessionStartup(startup.current, {
+            type: "begin",
+        });
+        return startup.current.attempt;
+    }
+
+    /**
+     * Bind this attempt's sync listeners. Both entry points come through here,
+     * so a previous session's listeners are always detached first — and an
+     * attempt that was superseded while `startSync` ran disposes the listeners
+     * it just created instead of publishing them, so a dead session can never
+     * own `disposeSync`.
+     */
+    async function beginSync(attempt: number): Promise<void> {
+        disposeSync.current?.();
+        disposeSync.current = null;
+        const dispose = await startSync(
+            (state) => {
+                auth.syncState = state;
+            },
+            handleSessionExpired,
+            (reason) => showToast(reason, { tone: "accent" }),
+        );
+        if (!isLiveAttempt(startup.current, attempt)) {
+            dispose();
+            return;
+        }
+        disposeSync.current = dispose;
+        // Coming back from a background release (backgroundRelease.ts)
+        // starts sync again, for this same session.
+        setSyncRestarter(() => restartSync(attempt));
+    }
+
+    /**
+     * Start sync again for the running session after its client was stopped
+     * in the background. Unlike beginSync, `attempt` has committed by now
+     * (phase "active"); listeners are kept only while it still is the live
+     * session, so an expiry or a new sign-in meanwhile wins.
+     */
+    async function restartSync(attempt: number): Promise<void> {
+        disposeSync.current?.();
+        disposeSync.current = null;
+        const dispose = await startSync(
+            (state) => {
+                auth.syncState = state;
+            },
+            handleSessionExpired,
+            (reason) => showToast(reason, { tone: "accent" }),
+        );
+        if (
+            startup.current.phase !== "active" ||
+            startup.current.attempt !== attempt
+        ) {
+            dispose();
+            return;
+        }
+        disposeSync.current = dispose;
+    }
+
+    /**
+     * Roll a failed startup back. Returns false when the attempt had already
+     * been superseded — the expiry teardown (or a newer attempt) owns the
+     * client and the visible state, so we must not touch either.
+     */
+    function failStartup(attempt: number, message: string): boolean {
+        const previous = startup.current;
+        startup.current = reduceSessionStartup(startup.current, {
+            type: "failed",
+            attempt,
+            error: message,
+        });
+        if (startup.current === previous) return false;
+        setSyncRestarter(null);
+        disposeSync.current?.();
+        disposeSync.current = null;
+        // The client this attempt created never became the app's client.
+        stopClient();
+        return true;
+    }
+
+    /**
+     * Publish a finished startup. `apply` runs only while this attempt is
+     * still the live one, so a session that expired mid-startup is never
+     * overwritten by the startup it outlived.
+     */
+    function commitStartup(attempt: number, apply: () => void): boolean {
+        const previous = startup.current;
+        startup.current = reduceSessionStartup(startup.current, {
+            type: "succeeded",
+            attempt,
+        });
+        if (startup.current === previous) return false;
+        apply();
+        return true;
+    }
+
+    /**
+     * Hand a failure to the ALREADY MOUNTED LoginView as a thrown error, and
+     * take `auth.error` with it: that store field is a one-shot carrier read by
+     * LoginView.onMount, so a value left behind here would surface at the next
+     * sign-in instead.
+     */
+    function takeStartupError(fallback: string): string {
+        const message = auth.error ?? startup.current.error ?? fallback;
+        auth.error = null;
+        return message;
+    }
+
+    // Invoked when the homeserver rejects our token (M_UNKNOWN_TOKEN) — during
+    // restore or later while the app is open. Tears down the dead session and
+    // flips state back to the LOGIN view IN PLACE (no route hop, no redirect):
+    // the reactive {#if} swaps AppShell → LoginView, and LoginView surfaces
+    // auth.error on mount. Stays SYNCHRONOUS: nothing here may be awaited.
+    function handleSessionExpired() {
+        // Before anything tears down: the popups on screen belong to a session
+        // that no longer exists, and expiry returns to login IN PLACE — the
+        // next account signs in with them still up. First, too, because
+        // AppShell is what registered them and the view swap below unmounts it.
+        clearAllNotificationSurfaces();
+        // Capture the expiring account's client BEFORE teardown nulls it, so
+        // its push registration can still be released. Each call below is
+        // guarded, so a slow or throwing teardown can NEVER block the return to
+        // login.
+        //
+        // Its crypto store is NOT released here, and that is the point: expiry
+        // is not a sign-out. See `sessionTeardown.ts` — a spurious
+        // M_UNKNOWN_TOKEN must not destroy key material. (R4's note here read
+        // "release its native/push/crypto resources the same way an explicit
+        // logout does"; that was written against master and stopped being true
+        // when the expiry wipe was removed.)
+        const client = getClient();
+
+        // Invalidate any startup in flight FIRST: one that resolves after this
+        // must not publish the session we are tearing down.
+        startup.current = reduceSessionStartup(startup.current, {
+            type: "invalidated",
+            error: SESSION_EXPIRED_MESSAGE,
+        });
+
+        releaseSessionResources({
+            // The call goes first: it needs the live client, and leaving it
+            // notifies the voice store, which only mirrors that while AppShell
+            // is mounted — i.e. before the flip below (audit LIFE-01).
+            leaveCall: () => leaveVoiceCall(),
+            disposeSync: () => {
+                setSyncRestarter(null);
+                disposeSync.current?.();
+                disposeSync.current = null;
+            },
+            stopClient,
+            clearServiceWorkerAuth,
+            unregisterPush: () => (client ? unregisterPush(client) : undefined),
+            clearNativeSession,
+        });
+
+        expireActiveSession();
+        auth.error = SESSION_EXPIRED_MESSAGE;
+        setRestoring(false);
+    }
+
+    useEffect(() => {
+        // Finish any crypto-store wipe a previous logout could not complete
+        // (another tab held the IndexedDB open, so the delete was blocked and
+        // the reload won). Fire-and-forget: boot must never wait on it. Every
+        // account still on this device is passed through so the sweep can
+        // never delete a store that is still in use.
+        retryPendingCryptoWipes(
+            accountsState.registry.accounts.map((a) => ({
+                userId: a.userId,
+                deviceId: a.deviceId,
+            })),
+        ).catch(() => {});
+        // The synchronous `restoring` flag already decided splash-vs-login for
+        // the first paint; here we run the actual async restore when it applies.
+        const stored = loadStoredSession();
+        if (!restoring || !stored) return;
+        const attempt = beginStartup();
+        (async () => {
+            try {
+                await reconnect(
+                    stored.homeserverUrl,
+                    stored.userId,
+                    stored.accessToken,
+                    stored.deviceId,
+                    stored.oauth
+                        ? {
+                              oauth: stored.oauth,
+                              refreshToken: stored.refreshToken,
+                              accessTokenExpiresAt: stored.accessTokenExpiresAt,
+                          }
+                        : undefined,
+                );
+                await beginSync(attempt);
+            } catch (err) {
+                // The device was signed out (its encryption data was lost):
+                // back to login like an expired session, saying why.
+                if (err instanceof CryptoStoreLostError) {
+                    handleSessionExpired();
+                    auth.error = err.message;
+                    return;
+                }
+                // Another tab has the session: wait on the splash for it to
+                // close, then start over, as it may have signed out meanwhile.
+                if (err instanceof SessionInUseError) {
+                    setSessionInUse(true);
+                    await waitForSessionOwnership(
+                        stored.userId,
+                        stored.deviceId,
+                    );
+                    window.location.reload();
+                    return;
+                }
+                const message =
+                    err instanceof CryptoKeysUncheckedError
+                        ? err.message
+                        : RESTORE_FAILED_MESSAGE;
+                // A superseded attempt's owner already published its own state.
+                if (failStartup(attempt, message)) {
+                    auth.error = message;
+                    setRestoring(false);
+                }
+                return;
+            }
+            // Sync is running: only NOW does the session become observable and
+            // AppShell mount in place — NO goto.
+            commitStartup(attempt, () => {
+                auth.userId = stored.userId;
+                auth.homeserverUrl = stored.homeserverUrl;
+                // A refresh during startup may already have rotated the token.
+                auth.accessToken =
+                    getLatestTokens(stored.userId)?.accessToken ??
+                    stored.accessToken;
+                auth.deviceId = stored.deviceId;
+                auth.isAuthenticated = true;
+                setRestoring(false);
+                initServiceWorker();
+            });
+        })();
+        // Zami: once per mount, as onMount; what it calls reads refs, stores
+        // and setters.
+    }, []);
+
+    // Login/register success (from LoginView). Sync comes FIRST: saveSession is
+    // both the persistence and the `isAuthenticated` flip, so running it before
+    // startSync would persist an unusable session and unmount the only view
+    // that can report the failure (audit AUTH-01). A rejection here is the
+    // contract with LoginView's catch — it clears the form's spinner and shows
+    // the message. Add-account KEEPS the full-page reload so no store state
+    // from the previous account survives the switch.
+    async function handleAuthenticated(result: {
+        userId: string;
+        accessToken: string;
+        deviceId: string;
+        homeserverUrl: string;
+        refreshToken?: string;
+        oauth?: { clientId: string; issuer: string };
+        accessTokenExpiresAt?: number;
+    }) {
+        // What to persist: the sign-in result, with any tokens a refresh has
+        // rotated since (sync may already be running against a new pair).
+        const sessionToSave = () => {
+            const latest = result.oauth ? getLatestTokens(result.userId) : null;
+            return {
+                userId: result.userId,
+                accessToken: latest?.accessToken ?? result.accessToken,
+                deviceId: result.deviceId,
+                homeserverUrl: result.homeserverUrl,
+                ...(result.oauth
+                    ? {
+                          oauth: result.oauth,
+                          refreshToken:
+                              latest?.refreshToken ?? result.refreshToken,
+                          accessTokenExpiresAt:
+                              latest?.expiresAt ?? result.accessTokenExpiresAt,
+                      }
+                    : {}),
+            };
+        };
+        markFreshSignIn(result.userId);
+        if (isAddAccountMode) {
+            // No sync starts in this document: persisting and reloading IS the
+            // switch, and the reload's restore path is the transaction.
+            saveSession(sessionToSave());
+            window.location.assign("/");
+            return;
+        }
+
+        const attempt = beginStartup();
+        try {
+            await beginSync(attempt);
+        } catch {
+            failStartup(attempt, SYNC_START_FAILED_MESSAGE);
+            throw new Error(takeStartupError(SYNC_START_FAILED_MESSAGE));
+        }
+        const committed = commitStartup(attempt, () => {
+            saveSession(sessionToSave());
+            initServiceWorker();
+        });
+        // Superseded mid-startup (the token was revoked while we were
+        // starting): the form is still on screen, so tell it rather than
+        // leaving its spinner running forever.
+        if (!committed)
+            throw new Error(takeStartupError(SESSION_EXPIRED_MESSAGE));
+    }
+
+    // Switch to a dormant account: full reload boots it with clean stores.
+    function continueAs(userId: string): void {
+        switchActive(userId);
+        window.location.assign("/");
+    }
+
+    function backToActive(): void {
+        if (auth.isAuthenticated) {
+            // SPA-entered add mode: the session is still running — drop "?add"
+            // in place and the reactive view swaps back to the shell.
+            void goto("/");
+        } else {
+            // Full-page load of /?add: restore was skipped, so boot the active
+            // account through the normal "/" restore path.
+            window.location.assign("/");
+        }
+    }
+
+    return (
+        <>
+            {view === "shell" ? (
+                <AppShell />
+            ) : view === "splash" ? (
+                <Splash
+                    message={
+                        sessionInUse
+                            ? t("rootPage.sessionOpenInAnotherTab")
+                            : null
+                    }
+                />
+            ) : (
+                <LoginView
+                    isAddAccountMode={isAddAccountMode}
+                    onAuthenticated={handleAuthenticated}
+                    onContinueAs={continueAs}
+                    onBackToActive={backToActive}
+                />
+            )}
+
+            <HealthBanners />
+        </>
+    );
+}
