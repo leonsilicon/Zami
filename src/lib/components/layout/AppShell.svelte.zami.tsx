@@ -1,3 +1,4 @@
+import { addCaptureKeyListener } from "@-/com.leonsilicon.zami.browser";
 import { Portal, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { setBadgeCountAsync } from "expo-notifications";
@@ -67,9 +68,16 @@ import QuickActions, {
     type QuickActionsHandle,
 } from "$lib/components/layout/QuickActions.svelte";
 import KeyboardShortcutsDialog from "$lib/components/keybinds/KeyboardShortcutsDialog.svelte";
-import { recordRoomVisit, setKeybindHost } from "$lib/keybinds/runner";
+import {
+    handleHoldKey,
+    handleKeybindDown,
+    recordRoomVisit,
+    releaseAllHolds,
+    setKeybindHost,
+} from "$lib/keybinds/runner";
 import {
     connectGlobalHotkeys,
+    holdsOutliveBlur,
     syncGlobalHotkeys,
 } from "$lib/keybinds/desktopHotkeys.svelte";
 
@@ -126,6 +134,8 @@ import { initOutbox } from "$lib/stores/outbox.svelte";
 import { initBackgroundRelease } from "$lib/backgroundRelease";
 import { initHistoryTrim, noteOpenRoom } from "$lib/historyTrim";
 import { initPlugins } from "$lib/plugins/pluginBoot";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { resolveShortcut, eventToChord } from "$lib/plugins/pluginShortcuts";
 import {
     initVoiceCall,
     leaveCall,
@@ -364,23 +374,14 @@ type RoomBucket =
 // title); an app has none. The app icon's badge shows the count instead (see
 // the favicon effect below).
 //
-// Zami: not ported: Zam's keyboard handling, which a hardware keyboard can't
-// reach here (React Native has no window-level key events):
-//   - `<svelte:window onkeydown={onWindowKeydown}>`: Escape → dismissTopmost()
-//     (VoiceOver's escape gesture does that instead, on the shell below), the
-//     keybinds (`handleKeybindDown`), plugin shortcuts (`resolveShortcut` /
-//     `eventToChord` over `pluginRegistry.shortcuts`) and type-to-focus
-//     (`interfaceState.focusComposer`). `setKeybindHost()` and QuickActions'
-//     ref are still wired below, so the shortcuts can be added later;
-//   - push to talk / push to mute: the key and mouse-button holds
-//     (`handleHoldKey`, `handleHoldMouse`) and their release on blur
-//     (`releaseAllHolds`, `holdsOutliveBlur`);
-//   - the room-list resize grip's arrow keys (VoiceOver's increment and
-//     decrement adjust it instead).
-// Zami: not ported: OS notifications while the app is open. Zam posts them
-// through the Web Notification API, which React Native doesn't have
-// (`typeof Notification === "undefined"`), so the posting paths below return
-// before posting; the inbox, the ping and the incoming-call card still work.
+// Zami: a hardware keyboard's presses reach `window` through
+// @-/com.leonsilicon.zami.browser, so the window's keydown handling below
+// (onWindowKeydown, the push-to-talk holds) is upstream's. VoiceOver's escape
+// gesture also dismisses the topmost layer, on the shell below.
+// Zami: not ported: push to talk / push to mute on a mouse side button
+// (`handleHoldMouse`; React Native reports no mouse buttons), and the
+// room-list resize grip's arrow keys (VoiceOver's increment and decrement
+// adjust it instead).
 export default function AppShell() {
     const insets = useSafeAreaInsets();
     const { width: windowWidth } = useWindowDimensions();
@@ -727,6 +728,82 @@ export default function AppShell() {
         }
         return false;
     }
+
+    function onWindowKeydown(e: KeyboardEvent) {
+        // Escape → dismiss the topmost popup/sidebar. Only when there was
+        // nothing to dismiss does it reach the shortcuts (decline a ringing
+        // call, mark the channel read).
+        if (e.key === "Escape" && !e.shiftKey && dismissTopmost()) {
+            e.preventDefault();
+            return;
+        }
+        // Keyboard shortcuts (Settings > Keybinds). They run before plugin
+        // shortcuts, so a plugin can never take a core key combination.
+        if (handleKeybindDown(e)) {
+            e.preventDefault();
+            return;
+        }
+        // Plugin-registered global shortcuts (spec §7). resolveShortcut skips
+        // any chord that lacks a modifier or collides with the reserved core
+        // chords. Plain handler (not $derived): reads the registry array live.
+        const shortcut = resolveShortcut(
+            eventToChord(e),
+            pluginRegistry.shortcuts.map((s) => s.value),
+        );
+        if (shortcut) {
+            e.preventDefault();
+            try {
+                const r = shortcut.run();
+                if (r && typeof (r as { then?: unknown }).then === "function") {
+                    (r as Promise<void>).catch((err) =>
+                        console.error("[zam] plugin shortcut threw", err),
+                    );
+                }
+            } catch (err) {
+                console.error("[zam] plugin shortcut threw", err);
+            }
+            return;
+        }
+        // Type-to-focus: a plain alphanumeric key focuses the composer, unless a
+        // modal is open (or, on mobile, a sidebar/drawer). We don't
+        // preventDefault, so the keystroke lands in the now-focused input.
+        if (
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            /^[a-zA-Z0-9]$/.test(e.key) &&
+            !interfaceState.modal &&
+            !(
+                interfaceState.isMobile &&
+                (interfaceState.sidebar !== null || interfaceState.leftOpen)
+            ) &&
+            interfaceState.focusComposer
+        ) {
+            // Zami: the event's target is the focused TextInput's stand-in
+            // `<textarea>`, or `document.body` (there's no activeElement).
+            const ae = e.target as HTMLElement | null;
+            const editable =
+                !!ae &&
+                (ae.tagName === "INPUT" ||
+                    ae.tagName === "TEXTAREA" ||
+                    ae.isContentEditable);
+            // Zami: the key was observed, not intercepted: with nothing focused
+            // it typed nothing, so the composer types it as it takes focus
+            // (MessageInput's focusComposer takes the text).
+            if (!editable)
+                (interfaceState.focusComposer as (typed?: string) => void)(
+                    e.key,
+                );
+        }
+    }
+
+    // <svelte:window onkeydown={onWindowKeydown} />
+    useEffect(() => {
+        window.addEventListener("keydown", onWindowKeydown);
+        return () => window.removeEventListener("keydown", onWindowKeydown);
+        // Zami: once: onWindowKeydown reads only stores and functions that do.
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- see above.
+    }, []);
 
     // Zami: not ported: the web history guard (ensureBackGuard and its
     // effect). Upstream needs it only in the browser; Android's back button
@@ -1356,8 +1433,31 @@ export default function AppShell() {
         noteOpenRoom(activeRoomId);
     }, [activeRoomId]);
 
-    // Zami: not ported: push to talk / push to mute's key and mouse-button
-    // holds (see the note above the component).
+    // Push to talk / push to mute: key and mouse-button holds. Capture
+    // phase so a composer or dialog handling the key doesn't hide it.
+    // Zami: not ported: the mouse buttons (see the note above the component).
+    useEffect(() => {
+        const down = (e: KeyboardEvent) => {
+            if (!e.repeat) handleHoldKey(e, true);
+        };
+        const up = (e: KeyboardEvent) => handleHoldKey(e, false);
+        // Keyups won't reach the window now, unless the desktop's input
+        // hook is watching (Settings > Keybinds, "Work when Zam isn't
+        // focused").
+        const blur = () => {
+            if (!holdsOutliveBlur()) releaseAllHolds();
+        };
+        // Zami: `window.addEventListener(type, listener, true)`.
+        const removeDown = addCaptureKeyListener("keydown", down);
+        const removeUp = addCaptureKeyListener("keyup", up);
+        window.addEventListener("blur", blur);
+        return () => {
+            removeDown();
+            removeUp();
+            window.removeEventListener("blur", blur);
+            releaseAllHolds();
+        };
+    }, []);
 
     // Voice keybinds while Zam isn't focused (desktop app only).
     // Zami: both are no-ops without Electron's input hook; syncGlobalHotkeys
@@ -2663,10 +2763,15 @@ export default function AppShell() {
     // closest equivalent; iOS shows it once notifications are allowed.
     useEffect(() => {
         setBadgeCountAsync(notificationCount).catch(() => {});
-        return () => {
-            setBadgeCountAsync(0).catch(() => {});
-        };
     }, [notificationCount]);
+    // Zami: cleared once, on unmount. Clearing on every change raced the new
+    // count (both calls are asynchronous) and could leave the badge at 0.
+    useEffect(
+        () => () => {
+            setBadgeCountAsync(0).catch(() => {});
+        },
+        [],
+    );
 
     // Desktop tray icon: red dot while there are unread pings.
     // Zami: a no-op without Electron's bridge.

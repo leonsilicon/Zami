@@ -5,8 +5,10 @@ import {
     Image,
     mediaSource,
     pickedFile,
+    Portal,
     Select,
 } from "@-/com.leonsilicon.zami.rn";
+import { useKeyboardState } from "react-native-keyboard-controller";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import {
@@ -132,6 +134,8 @@ export default function ProfileFieldsEditor({
     );
 
     const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+    // Zami: the keyboard's height, which the picker sheet sits above.
+    const keyboardHeight = useKeyboardState((state) => state.height);
     // Zami: no bannerInput; the button opens the photo library.
     const [bannerUploading, setBannerUploading] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -492,14 +496,40 @@ export default function ProfileFieldsEditor({
                             className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
                         />
                     </View>
+                    {/* Zami: the picker is a list, which can't sit inline in
+                        the settings' scroll view: it opens over the app as a
+                        sheet, as the touch reaction picker does, and a press
+                        outside it closes it. */}
                     {emojiPickerOpen && (
-                        <View className="mt-2">
-                            <EmojiPicker
-                                unicodeOnly
-                                onSelect={(emoji) => setStatusEmoji(emoji)}
-                                onClose={() => setEmojiPickerOpen(false)}
-                            />
-                        </View>
+                        <Portal>
+                            <View
+                                className="absolute inset-0"
+                                pointerEvents="box-none"
+                            >
+                                <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={t("common.close")}
+                                    className="absolute inset-0 z-40"
+                                    onPress={() => setEmojiPickerOpen(false)}
+                                />
+                                <View
+                                    className="absolute start-0 end-0 z-50"
+                                    style={{
+                                        bottom: Math.max(0, keyboardHeight),
+                                    }}
+                                >
+                                    <EmojiPicker
+                                        unicodeOnly
+                                        onSelect={(emoji) =>
+                                            setStatusEmoji(emoji)
+                                        }
+                                        onClose={() =>
+                                            setEmojiPickerOpen(false)
+                                        }
+                                    />
+                                </View>
+                            </View>
+                        </Portal>
                     )}
                     {statusIssue ? (
                         <Text className="mt-1 text-xs text-discord-danger">

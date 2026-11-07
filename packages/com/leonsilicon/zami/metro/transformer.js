@@ -1,7 +1,8 @@
 // Metro babel transformer for Zami. Before Expo's own transformer runs, it:
 //  - compiles Svelte rune modules (`*.svelte.zami.ts`, and `*.svelte.ts` in Zami's own
 //    packages) with Svelte's compiler, so Zam's stores run unmodified;
-//  - rewrites the Vite build-time features Zam's code uses (see #vite-babel-plugin).
+//  - rewrites the Vite build-time features Zam's code uses (see #vite-babel-plugin);
+//  - turns Ruffle's scripts (`static/ruffle/*.zami.js`) into their text, for Flash's WebView.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -15,6 +16,9 @@ const require = createRequire(import.meta.url);
 const upstream = require("@expo/metro-config/babel-transformer");
 
 const RUNE_MODULE = /\.svelte(\.zami)?\.(ts|js)$/;
+// Ruffle's scripts run in Flash's WebView, not in the app: the app gets their text, to
+// write beside the page. (Metro can't make them assets: their extension is `.zami.js`.)
+const RUFFLE_SCRIPT = /[\\/]static[\\/]ruffle[\\/][^\\/]+\.zami\.js$/;
 
 function compileRunes(src, filename, dev) {
   const js = filename.endsWith(".ts")
@@ -31,7 +35,8 @@ function compileRunes(src, filename, dev) {
 export function transform(params) {
   const { filename, options } = params;
   let { src } = params;
-  if (RUNE_MODULE.test(filename) && !filename.split(path.sep).includes("node_modules")) {
+  if (RUFFLE_SCRIPT.test(filename)) src = `module.exports = ${JSON.stringify(src)};`;
+  else if (RUNE_MODULE.test(filename) && !filename.split(path.sep).includes("node_modules")) {
     src = compileRunes(src, filename, options.dev);
   }
   return upstream.transform({

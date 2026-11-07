@@ -14,6 +14,7 @@ import {
     type ScrollViewInstance,
     type TextInputInstance,
 } from "react-native";
+import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
 import { Image, mediaSource, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -29,6 +30,9 @@ import { roomsState } from "$lib/stores/rooms.svelte";
 import { interfaceState } from "$lib/stores/interface.svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { scrollBehavior } from "$lib/utils/motionPreference";
+import { nextActiveIndex } from "$lib/utils/listboxNavigation";
+import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
+import { emojiOptionKeys } from "$lib/utils/pickerOptionKeys";
 
 interface Props {
     room?: Room | null;
@@ -98,11 +102,14 @@ export default function EmojiPicker({
     const scrollEl = useRef<FlatList<Row>>(null);
     const tabBarEl = useRef<ScrollViewInstance>(null);
     const searchEl = useRef<TextInputInstance>(null);
-    // Zami: not ported: the keyboard cursor (`selectedIndex`, its anchor
-    // `selectedKey`, `moveCursor` and the arrow/Home/End/Enter handling).
-    // A TextInput reports no arrow keys, so nothing could move it; emoji are
-    // picked by touch. The combobox/listbox ARIA ids it drove (`listId`,
-    // aria-activedescendant) have no React Native equivalent either.
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    // The identity of the option `selectedIndex` was placed on. See
+    // `moveCursor` below and utils/listboxAnchor.ts for why an index alone is
+    // not enough.
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    // Zami: not ported: the combobox/listbox ARIA ids the cursor drives
+    // (`listId`, aria-activedescendant), which React Native has no
+    // equivalent of.
 
     // Responsive columns: fit as many ~40px cells as the width allows, so
     // widening the panel shows MORE emojis instead of spreading 6 apart.
@@ -211,6 +218,12 @@ export default function EmojiPicker({
         [search],
     );
 
+    // Reset selection when search changes
+    useEffect(() => {
+        moveCursor(-1);
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only `search`, as upstream's effect does.
+    }, [search]);
+
     const flatItems = useMemo((): FlatItem[] => {
         if (search) {
             return [
@@ -244,6 +257,9 @@ export default function EmojiPicker({
         return items;
     }, [search, searchCustom, searchStandard, customPacks]);
 
+    // Identity of every option, in render order — the anchor's key list.
+    const activeKeys = useMemo(() => emojiOptionKeys(flatItems), [flatItems]);
+
     // Start index of each section in the flat list
     const sectionOffsets = useMemo((): Map<string, number> => {
         const offsets = new Map<string, number>();
@@ -264,6 +280,15 @@ export default function EmojiPicker({
         return offsets;
     }, [search, searchCustom, customPacks]);
 
+    // The cursor, but only while the option it was placed on is still sitting
+    // at that index (see upstream's comment on `activeIndex`: a list rewritten
+    // within range must read as "nothing active", not as a stranger).
+    const activeIndex = anchoredActiveIndex(
+        selectedIndex,
+        selectedKey,
+        activeKeys,
+    );
+
     // True exactly when the box below is really rendering options. With no
     // options it is a plain view, so its "No results" text reads as ordinary
     // content instead of an empty list.
@@ -283,6 +308,7 @@ export default function EmojiPicker({
     }
 
     function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+        listView.current.y = e.nativeEvent.contentOffset.y;
         if (search) return;
         const top = e.nativeEvent.contentOffset.y;
         let current = "";
@@ -314,8 +340,78 @@ export default function EmojiPicker({
         [onSelect, onSelectCustom, onClose],
     );
 
-    // Zami: not ported: Escape closing the picker (`onKeydown`). A TextInput
-    // reports no Escape key; the touch drawer closes from its backdrop.
+    function onKeydown(e: KeyboardEvent) {
+        if (e.key === "Escape") {
+            onClose();
+            return;
+        }
+        // Ctrl+E/S/G picker switching is handled globally in +page.svelte.
+    }
+
+    // Zami: the panel's `onkeydown`: its keys, with focus in the search field
+    // or nowhere.
+    useKeyScope({ onKeydown }, [searchEl]);
+
+    /** The ONLY place `selectedIndex` may be assigned. See `activeIndex`. */
+    function moveCursor(next: number) {
+        setSelectedIndex(next);
+        setSelectedKey(next >= 0 ? (activeKeys[next] ?? null) : null);
+    }
+
+    // Zami: hardware keys are observed, not intercepted, so the arrow keys
+    // also move the search field's caret, as they do there with nothing
+    // selected.
+    function onSearchKeydown(e: KeyboardEvent) {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (activeIndex === -1) {
+                if (flatItems.length > 0) moveCursor(0);
+            } else {
+                moveCursor(Math.min(activeIndex + cols, flatItems.length - 1));
+            }
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (activeIndex < cols) {
+                moveCursor(-1);
+            } else {
+                moveCursor(activeIndex - cols);
+            }
+        } else if (e.key === "ArrowRight" && activeIndex >= 0) {
+            // A step of one along the flat list is exactly a listbox's
+            // ArrowDown, so the horizontal keys borrow that arithmetic --
+            // with `loop: false`, because walking off the last emoji has
+            // always stopped there rather than wrapping to the first.
+            e.preventDefault();
+            moveCursor(
+                nextActiveIndex(activeIndex, flatItems.length, "ArrowDown", {
+                    loop: false,
+                }),
+            );
+        } else if (e.key === "ArrowLeft" && activeIndex >= 0) {
+            e.preventDefault();
+            moveCursor(
+                nextActiveIndex(activeIndex, flatItems.length, "ArrowUp", {
+                    loop: false,
+                }),
+            );
+        } else if ((e.key === "Home" || e.key === "End") && activeIndex >= 0) {
+            // Only once the user is actually navigating the grid: this is an
+            // editable text field, so with nothing selected Home/End still
+            // belong to the caret.
+            e.preventDefault();
+            moveCursor(nextActiveIndex(activeIndex, flatItems.length, e.key));
+        } else if (e.key === "Enter" && activeIndex >= 0) {
+            // `activeIndex`, like every branch above: a raw `selectedIndex`
+            // left past the end by a shrinking pack indexes `undefined` here.
+            e.preventDefault();
+            const item = flatItems[activeIndex];
+            if (item.kind === "custom") pickCustom(item.data);
+            else pick(item.data.emoji);
+        }
+    }
+
+    // Zami: the search field's `onkeydown`.
+    useInputKeys(searchEl, { onKeydown: onSearchKeydown });
 
     // Zami: the rows the FlatList renders, with their heights and offsets.
     // Header text is `text-xs` (a 16px line, scaled with the system text
@@ -417,6 +513,34 @@ export default function EmojiPicker({
         sectionOffsets,
     ]);
 
+    // Scroll the selected item into view, and follow it with the active tab.
+    // Zami: the FlatList renders every row near the viewport, so there's no
+    // section to reveal; `scrollIntoView({ block: "nearest" })` is worked out
+    // from the row offsets and the list's own scroll position.
+    const listView = useRef({ y: 0, height: 0 });
+    useEffect(() => {
+        const idx = activeIndex;
+        if (idx < 0 || idx >= flatItems.length) return;
+        const item = flatItems[idx];
+
+        // Update active tab when navigating
+        if (!search && activeTab !== item.sectionId)
+            setActiveTab(item.sectionId);
+
+        const row = rows.find(
+            (r) => r.kind === "cells" && r.items.includes(item),
+        );
+        const view = listView.current;
+        if (!row || !scrollEl.current || view.height === 0) return;
+        let y: number | null = null;
+        if (row.offset < view.y) y = row.offset;
+        else if (row.offset + row.length > view.y + view.height)
+            y = row.offset + row.length - view.height;
+        if (y !== null)
+            scrollEl.current.scrollToOffset({ offset: y, animated: false });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
     // Zami: an emoji glyph is about 1.2em wide, so this fills the cell's
     // padded box the way the Twemoji image did. Like the image, it follows
     // the cell, not the system text size.
@@ -443,8 +567,15 @@ export default function EmojiPicker({
                     style={{ height: row.length, paddingTop: row.paddingTop }}
                     className="flex-row gap-1"
                 >
-                    {row.items.map((item) =>
-                        item.kind === "custom" ? (
+                    {row.items.map((item) => {
+                        // Zami: `class:ring-2` / `class:ring-discord-accent`
+                        // on the option the cursor is on.
+                        const selected =
+                            activeIndex >= 0 && flatItems[activeIndex] === item;
+                        const ring = selected
+                            ? " border-2 border-discord-accent"
+                            : "";
+                        return item.kind === "custom" ? (
                             <Pressable
                                 key={
                                     item.data.packId + ":" + item.data.shortcode
@@ -452,8 +583,9 @@ export default function EmojiPicker({
                                 onPress={() => pickCustom(item.data)}
                                 accessibilityRole="button"
                                 accessibilityLabel={item.data.shortcode}
+                                accessibilityState={{ selected }}
                                 style={{ width: cell, height: cell }}
-                                className="p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center"
+                                className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
                             >
                                 <Image
                                     source={mediaSource(item.data.url)}
@@ -471,8 +603,9 @@ export default function EmojiPicker({
                                 onPress={() => pick(item.data.emoji)}
                                 accessibilityRole="button"
                                 accessibilityLabel={item.data.name}
+                                accessibilityState={{ selected }}
                                 style={{ width: cell, height: cell }}
-                                className="p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center"
+                                className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
                             >
                                 <Text
                                     allowFontScaling={false}
@@ -485,12 +618,12 @@ export default function EmojiPicker({
                                     {item.data.emoji}
                                 </Text>
                             </Pressable>
-                        ),
-                    )}
+                        );
+                    })}
                 </View>
             );
         },
-        [cell, glyphSize, pick, pickCustom],
+        [cell, glyphSize, pick, pickCustom, activeIndex, flatItems],
     );
 
     // Zami: `height: 50dvh` on touch. The desktop panel keeps the composer
@@ -562,6 +695,9 @@ export default function EmojiPicker({
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="search"
+                    // Zami: Enter picks the selected emoji (onSearchKeydown)
+                    // and otherwise does nothing, rather than blurring.
+                    submitBehavior="submit"
                     className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
                 />
             </View>
@@ -669,7 +805,10 @@ export default function EmojiPicker({
                     offset: rows[index].offset,
                     index,
                 })}
-                onLayout={(e) => setScrollWidth(e.nativeEvent.layout.width)}
+                onLayout={(e) => {
+                    setScrollWidth(e.nativeEvent.layout.width);
+                    listView.current.height = e.nativeEvent.layout.height;
+                }}
                 onScroll={onScroll}
                 scrollEventThrottle={16}
                 // Zami: one tap picks an emoji even while the search field

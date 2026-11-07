@@ -9,6 +9,11 @@ import {
     View,
     type TextInputInstance,
 } from "react-native";
+import {
+    KeyboardAvoidingView,
+    useKeyboardState,
+} from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { t } from "$lib/i18n";
 import { Lock, Send, X } from "lucide-svelte";
 import {
@@ -177,145 +182,171 @@ export default function DraftDmView({
     // Enter sends (`submitBehavior="submit"`). Not ported: Shift+Enter for a
     // newline there; a TextInput reports no modifiers.
 
-    return (
-        <View className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
-                {isMobile ? (
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={onMenuOpen}
-                        className="p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
-                        accessibilityLabel={t("common.openRoomList")}
-                    >
-                        <SvgIcon
-                            className="w-5 h-5 text-discord-textMuted"
-                            d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
-                        />
-                    </Pressable>
-                ) : null}
-                <Avatar
-                    src={profile.avatarUrl}
-                    name={name}
-                    id={userId}
-                    size={24}
-                />
-                <Text
-                    accessibilityRole="header"
-                    numberOfLines={1}
-                    className="flex-shrink font-semibold text-discord-textPrimary"
-                >
-                    {name}
-                </Text>
-                {encrypt ? (
-                    <View
-                        accessible
-                        accessibilityLabel={t("draftDm.encrypted")}
-                        className="flex-shrink-0"
-                    >
-                        <Lock size={16} className="text-discord-textMuted" />
-                    </View>
-                ) : null}
-                <Pressable
-                    accessibilityRole="button"
-                    onPress={closeDraftDm}
-                    className="ms-auto p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
-                    accessibilityLabel={t("draftDm.discard")}
-                >
-                    <X size={18} className="text-discord-textMuted" />
-                </Pressable>
-            </View>
+    // Zami: the view reaches the home indicator, as the room area does
+    // (AppShell leaves it to the composer), so the composer pads for it while
+    // the keyboard, which covers it, is down.
+    const insets = useSafeAreaInsets();
+    const keyboardShown = useKeyboardState((state) => state.isVisible);
 
-            <ScrollView
-                className="flex-1"
-                contentContainerClassName="flex-grow flex-col justify-end px-4 pb-4"
-                keyboardShouldPersistTaps="handled"
-            >
-                <View className="max-w-xl">
+    return (
+        // Zami: the view shrinks above the keyboard, its composer with it, as
+        // the room area's does (MessageArea).
+        <KeyboardAvoidingView
+            behavior="padding"
+            automaticOffset
+            style={{ flex: 1, minWidth: 0 }}
+        >
+            <View className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
+                    {isMobile ? (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={onMenuOpen}
+                            className="p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            accessibilityLabel={t("common.openRoomList")}
+                        >
+                            <SvgIcon
+                                className="w-5 h-5 text-discord-textMuted"
+                                d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
+                            />
+                        </Pressable>
+                    ) : null}
                     <Avatar
                         src={profile.avatarUrl}
                         name={name}
                         id={userId}
-                        size={80}
+                        size={24}
                     />
-                    <Text className="mt-3 text-2xl font-bold text-discord-textPrimary">
+                    <Text
+                        accessibilityRole="header"
+                        numberOfLines={1}
+                        className="flex-shrink font-semibold text-discord-textPrimary"
+                    >
                         {name}
                     </Text>
-                    {profile.displayName ? (
-                        <Text className="text-discord-textMuted text-sm">
-                            {userId}
-                        </Text>
-                    ) : null}
-                    <Text className="mt-3 text-discord-textSecondary">
-                        {t("draftDm.intro", { name })}
-                    </Text>
-                    <Text className="mt-1 text-sm text-discord-textMuted">
-                        {t("draftDm.lazyNote", { name })}
-                    </Text>
-                </View>
-            </ScrollView>
-
-            <View className="px-4 pb-4 flex-shrink-0">
-                {error ? (
-                    <Text
-                        accessibilityRole="alert"
-                        className="mb-2 text-sm text-discord-danger"
-                    >
-                        {error}
-                    </Text>
-                ) : null}
-                <View className="flex-row items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5">
-                    {/* Zami: a multiline TextInput grows with its content, as
-                        `field-sizing: content` does; `dir="auto"` is the
-                        native default. */}
-                    <TextInput
-                        ref={textareaEl}
-                        value={text}
-                        onChangeText={setText}
-                        multiline
-                        submitBehavior={isMobile ? "newline" : "submit"}
-                        onSubmitEditing={
-                            isMobile ? undefined : () => void send()
-                        }
-                        autoCapitalize="sentences"
-                        spellCheck={spellCheckEnabled}
-                        autoCorrect={spellCheckEnabled}
-                        editable={!sending}
-                        placeholder={t("draftDm.placeholder", { name })}
-                        placeholderTextColorClassName="accent-discord-textMuted"
-                        accessibilityLabel={t("draftDm.placeholder", { name })}
-                        className={`flex-1 min-w-0 bg-transparent text-discord-textPrimary text-[16px] leading-relaxed py-[3px] max-h-48 ${
-                            sending ? "opacity-60" : ""
-                        }`}
-                    />
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={() => void send()}
-                        disabled={sending || !text.trim()}
-                        accessibilityState={{
-                            disabled: sending || !text.trim(),
-                        }}
-                        className={`p-1.5 rounded transition-colors flex-shrink-0 ${
-                            sending || !text.trim() ? "opacity-40" : ""
-                        }`}
-                        accessibilityLabel={
-                            sending ? t("draftDm.starting") : t("draftDm.send")
-                        }
-                    >
-                        {sending ? (
-                            <Spin
-                                accessibilityElementsHidden
-                                importantForAccessibility="no-hide-descendants"
-                                className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full"
-                            />
-                        ) : (
-                            <Send
-                                size={20}
+                    {encrypt ? (
+                        <View
+                            accessible
+                            accessibilityLabel={t("draftDm.encrypted")}
+                            className="flex-shrink-0"
+                        >
+                            <Lock
+                                size={16}
                                 className="text-discord-textMuted"
                             />
-                        )}
+                        </View>
+                    ) : null}
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={closeDraftDm}
+                        className="ms-auto p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                        accessibilityLabel={t("draftDm.discard")}
+                    >
+                        <X size={18} className="text-discord-textMuted" />
                     </Pressable>
                 </View>
+
+                <ScrollView
+                    className="flex-1"
+                    contentContainerClassName="flex-grow flex-col justify-end px-4 pb-4"
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View className="max-w-xl">
+                        <Avatar
+                            src={profile.avatarUrl}
+                            name={name}
+                            id={userId}
+                            size={80}
+                        />
+                        <Text className="mt-3 text-2xl font-bold text-discord-textPrimary">
+                            {name}
+                        </Text>
+                        {profile.displayName ? (
+                            <Text className="text-discord-textMuted text-sm">
+                                {userId}
+                            </Text>
+                        ) : null}
+                        <Text className="mt-3 text-discord-textSecondary">
+                            {t("draftDm.intro", { name })}
+                        </Text>
+                        <Text className="mt-1 text-sm text-discord-textMuted">
+                            {t("draftDm.lazyNote", { name })}
+                        </Text>
+                    </View>
+                </ScrollView>
+
+                <View
+                    className="px-4 pb-4 flex-shrink-0"
+                    style={{
+                        paddingBottom: 16 + (keyboardShown ? 0 : insets.bottom),
+                    }}
+                >
+                    {error ? (
+                        <Text
+                            accessibilityRole="alert"
+                            className="mb-2 text-sm text-discord-danger"
+                        >
+                            {error}
+                        </Text>
+                    ) : null}
+                    <View className="flex-row items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5">
+                        {/* Zami: a multiline TextInput grows with its content, as
+                        `field-sizing: content` does; `dir="auto"` is the
+                        native default. */}
+                        <TextInput
+                            ref={textareaEl}
+                            value={text}
+                            onChangeText={setText}
+                            multiline
+                            submitBehavior={isMobile ? "newline" : "submit"}
+                            onSubmitEditing={
+                                isMobile ? undefined : () => void send()
+                            }
+                            autoCapitalize="sentences"
+                            spellCheck={spellCheckEnabled}
+                            autoCorrect={spellCheckEnabled}
+                            editable={!sending}
+                            placeholder={t("draftDm.placeholder", { name })}
+                            placeholderTextColorClassName="accent-discord-textMuted"
+                            accessibilityLabel={t("draftDm.placeholder", {
+                                name,
+                            })}
+                            className={`flex-1 min-w-0 bg-transparent text-discord-textPrimary text-[16px] leading-relaxed py-[3px] max-h-48 ${
+                                sending ? "opacity-60" : ""
+                            }`}
+                        />
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => void send()}
+                            disabled={sending || !text.trim()}
+                            accessibilityState={{
+                                disabled: sending || !text.trim(),
+                            }}
+                            className={`p-1.5 rounded transition-colors flex-shrink-0 ${
+                                sending || !text.trim() ? "opacity-40" : ""
+                            }`}
+                            accessibilityLabel={
+                                sending
+                                    ? t("draftDm.starting")
+                                    : t("draftDm.send")
+                            }
+                        >
+                            {sending ? (
+                                <Spin
+                                    accessibilityElementsHidden
+                                    importantForAccessibility="no-hide-descendants"
+                                    className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full"
+                                />
+                            ) : (
+                                <Send
+                                    size={20}
+                                    className="text-discord-textMuted"
+                                />
+                            )}
+                        </Pressable>
+                    </View>
+                </View>
             </View>
-        </View>
+        </KeyboardAvoidingView>
     );
 }

@@ -1,4 +1,4 @@
-import { Pulse, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { DomMount, Pulse, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import {
     memo,
@@ -16,10 +16,14 @@ import {
     AppState,
     FlatList,
     Keyboard,
+    Platform,
     Pressable,
+    ScrollView,
     Text,
+    TextInput,
     View,
     type FlatListProps,
+    type GestureResponderEvent,
     type LayoutChangeEvent,
     type ListRenderItemInfo,
     type NativeScrollEvent,
@@ -168,6 +172,7 @@ import { createBackfillGate } from "$lib/utils/backfillGate";
 import { hostBridge } from "$lib/plugins/hostBridge";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { pluginPanel, openPluginPanel } from "$lib/plugins/pluginPanel.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import { rollupRoomThreadUnread } from "$lib/utils/threadUnread";
 import { isOffCanvasClosed } from "$lib/utils/drawerInert";
 import { isPollStartEventType } from "$lib/utils/pollContent";
@@ -229,8 +234,7 @@ import { SWIPE_ENGAGE_PX } from "$lib/utils/swipeGesture";
 //   follows new messages while the reader is at the bottom.
 // - Not ported: dropping files onto the room (drag and drop), the swipe on a
 //   wide code block or table scrolling it rather than moving a drawer
-//   (targetCanScrollHoriz reads the DOM target), and the plugin panel's body
-//   (pluginMount renders into an HTMLElement).
+//   (targetCanScrollHoriz reads the DOM target).
 
 // Shared empty list for the avatars-off path — one allocation instead of a
 // fresh [] per message. Taking this branch also means receiptTick is never
@@ -2292,8 +2296,11 @@ export default function MessageArea({
     // functions over the chronological list — see $lib/utils/timelineDisplay.
 
     // Zami: the rows' callbacks, stable so the memo'd rows skip re-rendering.
+    // Zami: when a reply started, for onListTouchEnd (the composer takes it).
+    const composerWantedAt = useRef(0);
     const onReply = useCallback((e: MatrixEvent) => {
         setReplyToEvent(e);
+        composerWantedAt.current = Date.now();
     }, []);
     const jumpToReply = useStableCallback((eventId: string) => {
         void scrollToMessage(eventId);
@@ -2391,7 +2398,51 @@ export default function MessageArea({
     const onListLayoutStable = useStableCallback(onListLayout);
     const onListContentSizeChange = useStableCallback(onContentSizeChange);
     const onListScrollToIndexFailed = useStableCallback(onScrollToIndexFailed);
-    const onListTouchStart = useStableCallback(() => stopScrollIntoView());
+    // Zami: a tap on the timeline puts the keyboard away, as a tap outside the
+    // composer blurs it in a browser; the tap still reaches what it landed on
+    // (a message, a link). A drag puts it away too (keyboardDismissMode). A
+    // tap that moves focus to another field keeps the keyboard, and so does one
+    // that started a reply (which wants the composer). The check waits a
+    // moment: a field focused from an effect, as a message's edit box is, only
+    // takes focus after the tap's own handler has run.
+    const keyboardTap = useRef<{
+        x: number;
+        y: number;
+        at: number;
+        focused: unknown;
+    } | null>(null);
+    const onListTouchStart = useStableCallback((e: GestureResponderEvent) => {
+        stopScrollIntoView();
+        const { pageX, pageY, touches } = e.nativeEvent;
+        keyboardTap.current =
+            Keyboard.isVisible() && touches.length <= 1
+                ? {
+                      x: pageX,
+                      y: pageY,
+                      at: Date.now(),
+                      focused: TextInput.State.currentlyFocusedInput(),
+                  }
+                : null;
+    });
+    const onListTouchEnd = useStableCallback((e: GestureResponderEvent) => {
+        const start = keyboardTap.current;
+        keyboardTap.current = null;
+        if (!start) return;
+        const { pageX, pageY } = e.nativeEvent;
+        if (
+            Math.abs(pageX - start.x) >= 10 ||
+            Math.abs(pageY - start.y) >= 10 ||
+            Date.now() - start.at >= 400
+        )
+            return;
+        setTimeout(() => {
+            if (
+                composerWantedAt.current < start.at &&
+                TextInput.State.currentlyFocusedInput() === start.focused
+            )
+                Keyboard.dismiss();
+        }, 150);
+    });
 
     // Zami: MessageInput's `scrollEl`: "scroll to the newest message" is the
     // inverted list's offset 0, not its end.
@@ -2864,6 +2915,7 @@ export default function MessageArea({
                                 onLayout={onListLayoutStable}
                                 onContentSizeChange={onListContentSizeChange}
                                 onTouchStart={onListTouchStart}
+                                onTouchEnd={onListTouchEnd}
                                 onEndReached={onEndReached}
                                 onEndReachedThreshold={
                                     listHeight > 0 ? 400 / listHeight : 1
@@ -2882,6 +2934,16 @@ export default function MessageArea({
                                 // MessageItem's action bar overlaps the row
                                 // above it, so cells mustn't clip.
                                 removeClippedSubviews={false}
+                                // Zami: as in a native chat app, dragging the
+                                // timeline puts the keyboard away (on iOS it
+                                // follows the finger); a tap does too
+                                // (onListTouchEnd), and still reaches what it
+                                // landed on.
+                                keyboardDismissMode={
+                                    Platform.OS === "ios"
+                                        ? "interactive"
+                                        : "on-drag"
+                                }
                                 keyboardShouldPersistTaps="handled"
                                 accessibilityLabel={t(
                                     "messageArea.messageTimeline",
@@ -3176,11 +3238,15 @@ export default function MessageArea({
                             rendering touched. Title is escaped text; body is the plugin's own DOM
                             mounted via pluginMount (cleanup runs on unmount/close/supersede). */}
                         {currentPluginPanel ? (
+                            // Zami: `bg-discord-background`: upstream's
+                            // `bg-discord-backgroundPrimary` names no color
+                            // (tailwind.config.js has `background`), which
+                            // leaves the full-screen panel see-through.
                             <View
                                 style={{ direction: uiDir }}
                                 className={
                                     isMobile
-                                        ? "absolute inset-0 z-40 flex-col bg-discord-backgroundPrimary"
+                                        ? "absolute inset-0 z-40 flex-col bg-discord-background"
                                         : "w-80 flex-shrink-0 flex-col border-l border-discord-divider bg-discord-backgroundSecondary"
                                 }
                             >
@@ -3205,13 +3271,23 @@ export default function MessageArea({
                                         />
                                     </Pressable>
                                 </View>
-                                {/* Zami: not ported: the plugin's body. `pluginMount` hands
-                                    `panel.render` an HTMLElement to build DOM into, and
-                                    React Native has none. */}
-                                <View
+                                {/* Zami: the plugin builds DOM into the element
+                                    (pluginMount), which DomView shows. */}
+                                <ScrollView
                                     key={currentPluginPanel.key}
                                     className="flex-1"
-                                />
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    <DomMount
+                                        document={document}
+                                        mount={(el) =>
+                                            pluginMount(
+                                                el,
+                                                currentPluginPanel.render,
+                                            ).destroy
+                                        }
+                                    />
+                                </ScrollView>
                             </View>
                         ) : null}
 

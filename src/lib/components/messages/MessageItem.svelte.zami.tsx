@@ -1,4 +1,3 @@
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
@@ -41,6 +40,7 @@ import {
     anchorElement,
     mediaSource,
     openLink,
+    type HtmlElement,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { createLruMemo } from "$lib/utils/lruMemo";
@@ -230,7 +230,13 @@ import {
     menuModeFromSetting,
 } from "$lib/utils/messageGesture";
 import { shouldMountActionBar } from "$lib/utils/actionBarMount";
-import { galleryNav, type GalleryImage } from "$lib/utils/messageBodyGallery";
+import {
+    collectBodyGalleryImages,
+    galleryNav,
+    isGalleryImage,
+    type BodyImageInput,
+    type GalleryImage,
+} from "$lib/utils/messageBodyGallery";
 import { galleryPositionLabel } from "$lib/utils/mediaGallery";
 import { siblingUploadIndices } from "$lib/utils/uploadSiblings";
 import { motionOK } from "$lib/utils/motionPreference";
@@ -241,10 +247,10 @@ import type { ReadReceiptInfo } from "$lib/matrix/client";
 
 // Zami: not ported, as DOM-only actions: `use:spoilers` (Html reveals spoilers
 // itself), `use:rovingToolbar` and the row's keyboard focus (no hardware-keyboard
-// navigation), `use:bodyImageGallery` (Html's inline images take no press yet),
-// `use:authedVideoSrc` and `use:rememberVolume` on the `<audio>`, and
-// `use:frameSink` (no canvas). `use:longPress`, `use:swipePan` and
-// `use:matrixLinks` are translated below.
+// navigation), `use:authedVideoSrc` and `use:rememberVolume` on the `<audio>`, and
+// `use:frameSink` (no canvas). `use:longPress`, `use:swipePan`,
+// `use:matrixLinks` and `use:bodyImageGallery` (on Html's image presses) are
+// translated below.
 
 type EncryptedFile = {
     url: string;
@@ -706,12 +712,40 @@ function MessageItem({
     const [imageLightboxOpen, setImageLightboxOpen] = useState(false);
     // Paged lightbox over a single message's OWN inline body images (rich/bridged
     // messages with several <img> in the formatted_body). Null = closed.
-    // Zami: nothing opens it yet: Html's inline images take no press
-    // (`use:bodyImageGallery` isn't ported).
     const [bodyGallery, setBodyGallery] = useState<{
         images: GalleryImage[];
         index: number;
     } | null>(null);
+    function openBodyGallery(images: GalleryImage[], index: number) {
+        setBodyGallery({ images, index });
+    }
+
+    // Zami: `use:bodyImageGallery` on Html's image presses (Html leaves out
+    // emotes and spoilered images, as the action's click handler does): this
+    // body's media images, in order, opened at the pressed one.
+    function onBodyImagePress(
+        _src: string,
+        pressed: HtmlElement,
+        imgs: HtmlElement[],
+    ) {
+        const describe = (img: HtmlElement): BodyImageInput => {
+            const src = img.attrs.src ?? "";
+            return {
+                src: src.startsWith("mxc://") ? mxcToHttp(src) : src,
+                alt: img.attrs.alt ?? null,
+                emoticon: "data-mx-emoticon" in img.attrs,
+                twemoji: /(^|\s)(name-)?twemoji(\s|$)/.test(
+                    img.attrs.class ?? "",
+                ),
+            };
+        };
+        const gallery = imgs.filter((img) => isGalleryImage(describe(img)));
+        const index = gallery.indexOf(pressed);
+        if (index < 0) return;
+        const images = collectBodyGalleryImages(gallery.map(describe));
+        if (images.length === 0) return;
+        openBodyGallery(images, index);
+    }
 
     // Paged lightbox over this sender's ADJACENT image UPLOADS in the same burst
     // (a run of consecutive m.image messages). Null = closed. Distinct from
@@ -1832,9 +1866,10 @@ function MessageItem({
         const isTracker = audioIsTracker;
         let cancelled = false;
         // <audio> can't decode MIDI or tracker modules, so render to WAV first.
-        // Zami: not ported: both renderers (OfflineAudioContext for MIDI, a Web
-        // Worker for trackers) are missing in React Native, so these fail to
-        // load and show the failed state.
+        // Zami: MIDI renders on the app's thread (no Workers). Not ported:
+        // tracker modules. Their renderer is libopenmpt compiled to
+        // WebAssembly, which Hermes can't run, so they fail to load and show
+        // the failed state (the file card still saves the module).
         const toPlayableAudio = (url: string) =>
             isMidi
                 ? midiUrlToWavUrl(url)
@@ -2307,6 +2342,7 @@ function MessageItem({
                     className={className}
                     resolveMxc={mxcToHttp}
                     onLinkPress={matrixLinks}
+                    onImagePress={onBodyImagePress}
                 />
                 {isEdited ? (
                     <Text className="text-xs text-discord-textMuted ms-1 leading-relaxed">
@@ -4012,31 +4048,47 @@ function StrokedIcon({
     );
 }
 
+/** Zami: the media events AudioControls redraws on. */
+const AUDIO_CONTROL_EVENTS = [
+    "play",
+    "pause",
+    "ended",
+    "timeupdate",
+    "durationchange",
+    "error",
+];
+
 /**
- * Zami: the `<audio controls autoplay>` element: an expo-audio player for the
- * downloaded file, with a play/pause button, a seek bar and the time.
+ * Zami: the `<audio controls autoplay>` element, playing the downloaded file
+ * (Zami's `Audio`, which plays Ogg and WebM Opus too), with a play/pause
+ * button, a seek bar and the time.
  */
 function AudioControls({ src }: { src: string }) {
-    const player = useAudioPlayer(src);
-    const status = useAudioPlayerStatus(player);
+    const [audio] = useState(() => {
+        const element = new Audio();
+        element.autoplay = true;
+        return element;
+    });
+    const [, redraw] = useState(0);
     const [barWidth, setBarWidth] = useState(0);
-    const autoplayed = useRef(false);
     useEffect(() => {
-        if (!status.isLoaded || autoplayed.current) return;
-        autoplayed.current = true;
-        player.play();
-    }, [status.isLoaded, player]);
-    const duration = status.duration > 0 ? status.duration : 0;
-    const progress =
-        duration > 0 ? Math.min(1, status.currentTime / duration) : 0;
+        const update = () => redraw((n) => n + 1);
+        for (const type of AUDIO_CONTROL_EVENTS)
+            audio.addEventListener(type, update);
+        audio.src = src;
+        return () => {
+            for (const type of AUDIO_CONTROL_EVENTS)
+                audio.removeEventListener(type, update);
+            audio.pause();
+        };
+    }, [audio, src]);
+    const playing = !audio.paused;
+    const currentTime = audio.currentTime;
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
     function toggle() {
-        if (status.playing) {
-            player.pause();
-            return;
-        }
-        if (duration > 0 && status.currentTime >= duration)
-            void player.seekTo(0);
-        player.play();
+        if (playing) audio.pause();
+        else void audio.play().catch(() => {});
     }
     function seek(e: GestureResponderEvent) {
         if (duration <= 0 || barWidth <= 0) return;
@@ -4044,19 +4096,19 @@ function AudioControls({ src }: { src: string }) {
             1,
             Math.max(0, e.nativeEvent.locationX / barWidth),
         );
-        void player.seekTo(frac * duration);
+        audio.currentTime = frac * duration;
     }
     return (
         <View className="w-full h-8 flex-row items-center gap-2">
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t("messageItem.audio")}
-                accessibilityState={{ checked: status.playing }}
+                accessibilityState={{ checked: playing }}
                 onPress={toggle}
                 className="p-1 rounded"
             >
                 <SvgIcon
-                    d={status.playing ? PAUSE_PATH : PLAY_PATH}
+                    d={playing ? PAUSE_PATH : PLAY_PATH}
                     className="w-4 h-4 text-discord-textPrimary"
                 />
             </Pressable>
@@ -4082,7 +4134,7 @@ function AudioControls({ src }: { src: string }) {
                 </View>
             </Pressable>
             <Text className="text-[11px] text-discord-textMuted tabular-nums">
-                {formatCallDuration(status.currentTime * 1000)}
+                {formatCallDuration(currentTime * 1000)}
                 {duration > 0
                     ? ` / ${formatCallDuration(duration * 1000)}`
                     : ""}

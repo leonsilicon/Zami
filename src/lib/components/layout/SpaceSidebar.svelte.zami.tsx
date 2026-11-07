@@ -11,6 +11,7 @@ import { Circle } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
 import {
     useCallback,
+    useEffect,
     useLayoutEffect,
     useMemo,
     useRef,
@@ -93,6 +94,7 @@ import { showErrorToast } from "$lib/stores/toasts.svelte";
 import { mapWithConcurrency } from "$lib/utils/async";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
 import type { RoomFollowUp } from "$lib/utils/roomCreationOutcome";
+import { setNavSpaces } from "$lib/keybinds/runner";
 
 interface Notifs {
     unread: boolean;
@@ -491,6 +493,30 @@ export default function SpaceSidebar({
         }
         return result;
     }, [roomsTick, spaceLayout, railSpaces]);
+
+    // Zami: the keyboard space navigation's order, upstream's `data-nav-space`
+    // buttons: Home, then the rail's spaces, with an expanded folder's own.
+    const navSpaces = useRef({ rootItems, expandedFolders });
+    useLayoutEffect(() => {
+        navSpaces.current = { rootItems, expandedFolders };
+    }, [rootItems, expandedFolders]);
+    useEffect(
+        () =>
+            setNavSpaces(() => {
+                const { rootItems, expandedFolders } = navSpaces.current;
+                return [
+                    "",
+                    ...rootItems.flatMap((item) =>
+                        item.kind === "space"
+                            ? [item.space.roomId]
+                            : expandedFolders.has(item.id)
+                              ? item.spaces.map((space) => space.roomId)
+                              : [],
+                    ),
+                ];
+            }),
+        [],
+    );
 
     const spaceFolderMap = useMemo(() => {
         const map = new Map<string, string>();

@@ -1,6 +1,7 @@
 // Device-local message text size and font family logic.
 // Pure resolution, clamping, and DOM-apply helpers for adjustable message
 // display. Sets --zam-font-family and the ROOT font-size (app-wide scale).
+import { setAppFontStack } from "@-/com.leonsilicon.zami.fonts/app-font";
 import { t } from "$lib/i18n";
 
 export const MSG_FONT_SIZE_MIN = 12;
@@ -119,6 +120,9 @@ export function applyAppTextScale(px: number): void {
 export function applyMessageFont(key: MessageFontKey): void {
     if (typeof document === "undefined") return;
     const stack = messageFontFamily(resolveMessageFont(key));
+    // Zami: React Native text doesn't inherit `font-family` from the root, so
+    // the app's Text and TextInput take it from the app's font.
+    setAppFontStack(stack);
     if (stack === null) {
         document.documentElement.style.removeProperty("--zam-font-family");
     } else {

@@ -13,7 +13,8 @@
     "#globals": "./globals.ts",
     "#storage": "./storage.ts",
     "#calls": "./calls.ts",
-    "#notifications": "./notifications.ts"
+    "#notifications": "./notifications.ts",
+    "#fonts": "./fonts.ts"
   },
   "scripts": {
     "start": "expo start",
@@ -23,6 +24,9 @@
   "dependencies": {
     "@-/com.leonsilicon.zami.blob": "workspace:*",
     "@-/com.leonsilicon.zami.browser": "workspace:*",
+    "@-/com.leonsilicon.zami.camera": "workspace:*",
+    "@-/com.leonsilicon.zami.flash": "workspace:*",
+    "@-/com.leonsilicon.zami.fonts": "workspace:*",
     "@-/com.leonsilicon.zami.icons": "workspace:*",
     "@-/com.leonsilicon.zami.keyboard": "workspace:*",
     "@-/com.leonsilicon.zami.metro": "workspace:*",

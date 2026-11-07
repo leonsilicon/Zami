@@ -87,6 +87,8 @@ import {
     onSyncReconnected,
 } from "../matrix/client";
 import { readPluginSettings, writePluginSettings } from "./pluginSettingsStore";
+// Zami: in place of import() of a blob: URL (see blobImport).
+import { domGlobals, importModule } from "@-/com.leonsilicon.zami.rn";
 import {
     installedPlugins,
     pluginPrefs,
@@ -195,13 +197,55 @@ const ops: LoaderHostOps = {
 };
 const loader = createPluginLoader(ops);
 
+// Zami: what a plugin's code sees of the browser. Metro hands Zam's own code
+// Zami's window, document, navigator and location (and, from the window, the
+// DOM classes, fetch, Web Audio and Notification), but leaves code loaded at
+// run time alone, so they're passed to it here, with the detached DOM's event
+// classes, MutationObserver and CSS helpers for the DOM a plugin builds.
+const PLUGIN_WINDOW_NAMES = [
+    "fetch",
+    "matchMedia",
+    "addEventListener",
+    "removeEventListener",
+    "dispatchEvent",
+    "open",
+    "getSelection",
+    "DOMParser",
+    "XMLSerializer",
+    "NodeFilter",
+    "Node",
+    "Element",
+    "HTMLElement",
+    "HTMLAnchorElement",
+    "HTMLImageElement",
+    "HTMLTemplateElement",
+    "Text",
+    "DocumentFragment",
+    "AudioContext",
+    "OfflineAudioContext",
+    "Audio",
+    "Notification",
+];
+function pluginScope(): Record<string, unknown> {
+    const scope: Record<string, unknown> = {
+        ...domGlobals(document),
+        window,
+        self: window,
+        document,
+        navigator,
+        location,
+    };
+    for (const name of PLUGIN_WINDOW_NAMES)
+        scope[name] = (window as unknown as Record<string, unknown>)[name];
+    return scope;
+}
+
 // --- module import: built-in (direct) + repo (blob-import) ---
 async function blobImport(code: string): Promise<PluginModule> {
-    const url = URL.createObjectURL(
-        new Blob([code], { type: "text/javascript" }),
-    );
-    try {
-        const mod = (await import(/* @vite-ignore */ url)) as {
+    // Zami: Hermes can't import() a module at run time (from a blob: URL or
+    // anywhere), so importModule evaluates the bundle as an ES module.
+    {
+        const mod = (await importModule(code, { scope: pluginScope() })) as {
             default?: PluginModule;
         } & Partial<PluginModule>;
         const resolved = mod.default ?? (mod as PluginModule);
@@ -209,8 +253,6 @@ async function blobImport(code: string): Promise<PluginModule> {
             throw new Error("plugin bundle has no onload export");
         }
         return resolved;
-    } finally {
-        URL.revokeObjectURL(url);
     }
 }
 

@@ -1,8 +1,4 @@
-import {
-    notificationPermission,
-    requestNotificationPermission,
-    Select,
-} from "@-/com.leonsilicon.zami.rn";
+import { notificationPermission, Select } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useState } from "react";
 import {
@@ -52,11 +48,12 @@ import {
     canFlashTaskbar,
     type DesktopAlertMode,
 } from "$lib/utils/desktopAlert";
-// Zami: requestWebPushPermission (the Notification API) is the shared
-// requestNotificationPermission here (expo-notifications); see requestPermission.
+// Zami: requestWebPushPermission is the Notification API's prompt here; see
+// requestPermission.
 import { initWebPush } from "$lib/webPush";
 import {
     checkNativeNotificationPermission,
+    initPush,
     pushDebug,
     requestNativeNotificationPermission,
     switchPushProvider,
@@ -118,6 +115,20 @@ export default function NotificationSettings() {
                 setPermission(p),
             );
         else void currentPermission().then((p) => setPermission(p));
+        // Zami: and again on every return to the app, since iOS changes the
+        // permission in its Settings app. Push registration (initPush) skipped
+        // it while it was missing, so it runs once it's granted.
+        if (nativeApp) return;
+        const subscription = AppState.addEventListener("change", (state) => {
+            if (state !== "active") return;
+            void currentPermission().then((p) => {
+                setPermission(p);
+                const client = getClient();
+                if (p === "granted" && client)
+                    void initPush(client).catch(() => {});
+            });
+        });
+        return () => subscription.remove();
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per mount, as the script runs.
     }, []);
 
@@ -203,14 +214,17 @@ export default function NotificationSettings() {
             setPermissionLoading(false);
             return;
         }
-        // Zami: the system's prompt in place of requestWebPushPermission.
+        // Zami: the system's prompt (the Notification API) in place of
+        // requestWebPushPermission, which needs a service worker.
         let next: NotificationPermission | "unsupported" =
-            await requestNotificationPermission();
+            await Notification.requestPermission();
         setPermission(next);
         if (next === "granted") {
             const client = getClient();
-            // Zami: not ported: registering this device's pusher (an Expo push
-            // token). initWebPush does nothing without a service worker.
+            // Zami: and this device's APNs pusher, which initPush skipped
+            // without the permission. initWebPush does nothing without a
+            // service worker.
+            if (client) await initPush(client).catch(() => {});
             if (client) await initWebPush(client).catch(() => {});
         }
         next = await currentPermission();

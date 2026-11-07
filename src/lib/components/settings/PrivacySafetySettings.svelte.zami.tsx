@@ -1,3 +1,4 @@
+import { SettingAnchor } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Text, View } from "react-native";
 import { t } from "$lib/i18n";
@@ -94,7 +95,7 @@ export default function PrivacySafetySettings() {
 
     return (
         <View className="gap-6">
-            <View>
+            <SettingAnchor anchor="notif-privacy">
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
                     {t("privacySafetySettings.privacy")}
                 </Text>
@@ -184,7 +185,7 @@ export default function PrivacySafetySettings() {
                         ariaLabel={t("privacySafetySettings.linkPreviewMedia")}
                     />
                 </View>
-            </View>
+            </SettingAnchor>
 
             <Text
                 accessibilityRole="header"

@@ -115,10 +115,9 @@ const waiting = new Map<
 
 function getWorker(): Worker {
     if (worker) return worker;
-    worker = new Worker(
-        new URL("../workers/midiRender.worker.ts", import.meta.url),
-        { type: "module" },
-    );
+    // Zami: React Native has no Web Workers; inThreadWorker runs the worker's
+    // render on this thread.
+    worker = inThreadWorker();
     worker.onmessage = (e: MessageEvent<MidiRenderResponse>) => {
         const job = waiting.get(e.data.id);
         if (!job) return;
@@ -137,6 +136,44 @@ function getWorker(): Worker {
         found = null;
     };
     return worker;
+}
+
+/**
+ * Zami: the render worker's stand-in. Each request runs the worker module's
+ * `render` on this thread, one at a time as in a worker (it yields to the UI
+ * while it renders), and answers through `onmessage` as the worker would.
+ */
+function inThreadWorker(): Worker {
+    let queue = Promise.resolve();
+    const stand = {
+        onmessage: null as
+            | ((e: MessageEvent<MidiRenderResponse>) => void)
+            | null,
+        onerror: null as (() => void) | null,
+        postMessage(request: MidiRenderRequest) {
+            queue = queue
+                // Loaded on first use, from the app's bundle.
+                .then(
+                    () =>
+                        require("$lib/workers/midiRender.worker") as typeof import("$lib/workers/midiRender.worker"),
+                )
+                .then(({ render }) => render(request))
+                .then(
+                    (wav): MidiRenderResponse => ({ id: request.id, wav }),
+                    (err: unknown): MidiRenderResponse => ({
+                        id: request.id,
+                        error: err instanceof Error ? err.message : String(err),
+                    }),
+                )
+                .then((data) => {
+                    stand.onmessage?.({
+                        data,
+                    } as MessageEvent<MidiRenderResponse>);
+                });
+        },
+        terminate() {},
+    };
+    return stand as unknown as Worker;
 }
 
 /**

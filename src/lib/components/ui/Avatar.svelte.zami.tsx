@@ -1,8 +1,25 @@
 import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useState } from "react";
 import { PixelRatio, Text, View } from "react-native";
-import { getAvatarColor, getAvatarInitials } from "$lib/utils/colors";
+import {
+    AVATAR_PALETTE,
+    getAvatarColor,
+    getAvatarInitials,
+} from "$lib/utils/colors";
 import { isAuthedMediaUrl, thumbnailUrl } from "$lib/stores/mediaAuth.svelte";
+
+// Zami: the palette's colours are CSS variables (`var(--avatar-color-N)`), which
+// a React Native style can't name; as Uniwind classes they resolve, per theme.
+const AVATAR_BG = [
+    "bg-[var(--avatar-color-0)]",
+    "bg-[var(--avatar-color-1)]",
+    "bg-[var(--avatar-color-2)]",
+    "bg-[var(--avatar-color-3)]",
+    "bg-[var(--avatar-color-4)]",
+    "bg-[var(--avatar-color-5)]",
+    "bg-[var(--avatar-color-6)]",
+    "bg-[var(--avatar-color-7)]",
+];
 
 interface Props {
     src?: string | null;
@@ -24,6 +41,7 @@ export default function Avatar({
     const resolvedSrc = src ?? null;
     const initials = getAvatarInitials(name);
     const bgColor = getAvatarColor(id ?? name);
+    const bgClass = AVATAR_BG[AVATAR_PALETTE.indexOf(bgColor)] ?? "";
 
     const roundedClass = () => {
         if (rounded === "none") return "";
@@ -71,12 +89,8 @@ export default function Avatar({
 
     return (
         <View
-            className={`flex-shrink-0 flex-row items-center justify-center overflow-hidden ${roundedClass()} ${extraClass}`}
-            style={{
-                width: size,
-                height: size,
-                backgroundColor: loaded ? "transparent" : bgColor,
-            }}
+            className={`flex-shrink-0 flex-row items-center justify-center overflow-hidden ${roundedClass()} ${loaded ? "" : bgClass} ${extraClass}`}
+            style={{ width: size, height: size }}
         >
             {!loaded && (
                 <Text

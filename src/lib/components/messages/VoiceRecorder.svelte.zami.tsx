@@ -42,6 +42,7 @@ interface Props {
 
 const MAX_MS = 5 * 60 * 1000; // safety cap
 const WAVE_BARS = 48;
+const DECODE_TIMEOUT_MS = 3000;
 
 // Zami: upstream asks MediaRecorder for Opus (WebM, then Ogg) and takes MP4 where
 // that's all there is (Safari). iOS can't record Opus, and expo-audio's Android
@@ -303,22 +304,47 @@ export default function VoiceRecorder({
             : null;
         // Closing the composer while the file was read already deleted it.
         if (vars.capture.disposed) return;
-        vars.recordedBlob = new Blob(recorded ? [recorded] : [], {
+        const recordedBlob = new Blob(recorded ? [recorded] : [], {
             type:
                 vars.mimeType ||
                 vars.recordedType ||
                 recorded?.type ||
                 "audio/webm",
         });
+        vars.recordedBlob = recordedBlob;
         setPreviewUrl(uri);
-        // Zami: the waveform comes from the live meter's readings instead of
-        // decoding the recording, which needs Web Audio's decodeAudioData.
-        // No readings (the meter failed) is no waveform, like a failed decode.
-        setWaveform(
-            vars.levels.length > 0
-                ? computeWaveform(Float32Array.from(vars.levels), WAVE_BARS)
-                : [],
-        );
+        // Decode for the waveform (best-effort; empty waveform is acceptable).
+        let decodeCtx: AudioContext | null = null;
+        let decodeTimer: ReturnType<typeof setTimeout> | null = null;
+        try {
+            decodeCtx = new AudioContext();
+            // A hanging decode must not block the preview; fall back to no waveform.
+            const audioBuf = await Promise.race([
+                decodeCtx.decodeAudioData(await recordedBlob.arrayBuffer()),
+                new Promise<never>((_, reject) => {
+                    decodeTimer = setTimeout(
+                        () => reject(new Error("decode timed out")),
+                        DECODE_TIMEOUT_MS,
+                    );
+                }),
+            ]);
+            setWaveform(computeWaveform(audioBuf.getChannelData(0), WAVE_BARS));
+        } catch {
+            // Zami: the live meter's readings, where upstream has no waveform.
+            setWaveform(
+                vars.levels.length > 0
+                    ? computeWaveform(Float32Array.from(vars.levels), WAVE_BARS)
+                    : [],
+            );
+        } finally {
+            if (decodeTimer) clearTimeout(decodeTimer);
+            // A failed decode used to leak its context, and browsers cap how
+            // many a document may hold — one exhausted cap breaks the mic
+            // meter and every call sound.
+            void decodeCtx?.close().catch(() => {});
+        }
+        // Closing the composer mid-decode already revoked the preview URL.
+        if (vars.capture.disposed) return;
         setPhase("preview");
     }
 

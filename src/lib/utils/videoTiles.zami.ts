@@ -159,7 +159,12 @@ export function canScreenShare(env: { getDisplayMedia?: unknown }): boolean {
 export function screenShareSupportedHere(): boolean {
     return canScreenShare({
         getDisplayMedia:
-            typeof navigator !== "undefined"
+            // Zami: not ported: screen sharing on iOS. React Native's
+            // getDisplayMedia captures there through a Broadcast Upload
+            // Extension (ReplayKit), a native target the app doesn't have, so
+            // a share can't start: the share controls stay hidden, as where
+            // there's no getDisplayMedia. (Zami's navigator says "iPhone".)
+            typeof navigator !== "undefined" && navigator.platform !== "iPhone"
                 ? navigator.mediaDevices?.getDisplayMedia
                 : undefined,
     });

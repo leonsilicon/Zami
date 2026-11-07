@@ -18,6 +18,11 @@ export const NATIVE_SCHEME = "moe.crafty.matrix";
 // pages return to.
 export const ZAMI_SCHEME = "zami";
 
+// Zami: the scheme OAuth sign-in returns to: the Expo app's bundle id, the
+// reverse of its `client_uri`'s host (zami.leonsilicon.com), as the Matrix
+// Authentication Service requires of a native client (oauth.ts).
+export const ZAMI_OAUTH_SCHEME = "com.leonsilicon.zami";
+
 /**
  * Zami: whether this is the Expo app. Capacitor is a stand-in there
  * (`isNativePlatform()` is false), but sign-in still opens over the app and
@@ -136,14 +141,16 @@ export function listenForLoginCallbacks(
         });
     }
 
-    // Zami: the Expo app's auth sessions, plus `zami:` links that open the
-    // app, including the one that cold-started it, as on Android: a session
+    // Zami: the Expo app's auth sessions, plus `zami:` (and OAuth's
+    // `com.leonsilicon.zami:`) links that open the app, including the one that cold-started it, as on Android: a session
     // that fell back to the system browser returns that way, and Android may
     // restart the app behind its Custom Tab.
     if (isZamiNative()) {
         let disposed = false;
         let subscription: { remove: () => void } | undefined;
-        const isOurs = (u: string) => u.startsWith(`${ZAMI_SCHEME}:`);
+        const isOurs = (u: string) =>
+            u.startsWith(`${ZAMI_SCHEME}:`) ||
+            u.startsWith(`${ZAMI_OAUTH_SCHEME}:`);
         zamiCallbacks.add(cb);
         void import("expo-linking")
             .then(async (Linking) => {

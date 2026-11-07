@@ -6,11 +6,18 @@ import {
     Text,
     TextInput,
     View,
+    type ScrollViewInstance,
+    type TextInputInstance,
 } from "react-native";
+import { useInputKeys } from "@-/com.leonsilicon.zami.browser";
 import { t } from "$lib/i18n";
 import { searchUserDirectory, getOwnServerName } from "$lib/matrix/client";
 import type { UserSearchResult } from "$lib/matrix/client";
 import { isValidUserId, debounce } from "$lib/utils/userSearch";
+import {
+    clampActiveIndex,
+    nextActiveIndex,
+} from "$lib/utils/listboxNavigation";
 import { X } from "lucide-svelte";
 import Avatar from "./Avatar.svelte";
 
@@ -55,13 +62,18 @@ export default function UserPicker({
     const [searchError, setSearchError] = useState("");
     const seq = useRef(0);
 
-    // Zami: not ported: the virtual cursor (`activeIndexRaw`, `activeIndex`,
-    // `pickAt`, the arrow/Home/End/Escape handling and the effect keeping
-    // the active option scrolled into view). A TextInput reports no arrow
-    // keys, so nothing could move it; options are picked by touch, and
-    // Enter keeps its no-cursor behavior below. The combobox/listbox ARIA
-    // ids it drove (`listId`, aria-activedescendant) have no React Native
-    // equivalent either.
+    const inputEl = useRef<TextInputInstance>(null);
+
+    // Where the arrow keys have moved the virtual cursor. This is what the key
+    // handler writes; `activeIndex` below is it clamped to the options that are
+    // actually rendered. The input's `oninput` resets this to -1 on every
+    // keystroke, so an active option can only ever be one the user arrowed to
+    // since they last typed (see upstream's comment: a result set landing
+    // under the cursor must not make Enter invite the wrong person).
+    // Zami: not ported: the combobox/listbox ARIA ids the cursor drives
+    // (`listId`, aria-activedescendant), which React Native has no
+    // equivalent of.
+    const [activeIndexRaw, setActiveIndexRaw] = useState(-1);
 
     const excluded = useMemo(
         () => new Set([...excludeUserIds, ...selected]),
@@ -97,6 +109,7 @@ export default function UserPicker({
     // then the search results.
     const resultOffset = candidateShown ? 1 : 0;
     const optionCount = resultOffset + visibleResults.length;
+    const activeIndex = clampActiveIndex(activeIndexRaw, optionCount);
 
     const debouncedRun = useMemo(() => {
         async function run(term: string) {
@@ -145,13 +158,78 @@ export default function UserPicker({
         onpick?.(userId);
     }
 
+    function pickAt(index: number) {
+        if (index < 0) return;
+        if (candidateShown && index === 0) {
+            pick(candidateShown);
+            return;
+        }
+        const user = visibleResults[index - resultOffset];
+        if (user) pick(user.userId);
+    }
+
     function remove(userId: string) {
         setSelected(selected.filter((id) => id !== userId));
     }
 
-    // Zami: Enter (`onKeydown`), with no option arrow-selected: the
-    // candidate, else the first result.
+    // Keep the arrow-selected option scrolled into view (`block: "nearest"`).
+    // Zami: from the rows' layouts and the results box's scroll position.
+    const resultsEl = useRef<ScrollViewInstance>(null);
+    const resultsView = useRef({ y: 0, height: 0 });
+    const rowLayouts = useRef(new Map<string, { y: number; height: number }>());
+    useEffect(() => {
+        const user = visibleResults[activeIndex - resultOffset];
+        const row = user ? rowLayouts.current.get(user.userId) : undefined;
+        const view = resultsView.current;
+        if (!row || !resultsEl.current || view.height === 0) return;
+        let y: number | null = null;
+        if (row.y < view.y) y = row.y;
+        else if (row.y + row.height > view.y + view.height)
+            y = row.y + row.height - view.height;
+        if (y !== null) resultsEl.current.scrollTo({ y, animated: false });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
+    // Zami: the input's `onkeydown`. Hardware keys are observed, not
+    // intercepted: Enter is the TextInput's return key (onSubmitEditing), and
+    // the arrow keys also move its caret.
+    function onKeydown(e: KeyboardEvent) {
+        // Home/End steer the listbox only once the user is actually navigating
+        // it. This is an *editable* combobox, so with no active option those
+        // keys belong to the text caret.
+        if (
+            e.key === "ArrowDown" ||
+            e.key === "ArrowUp" ||
+            ((e.key === "Home" || e.key === "End") && activeIndex >= 0)
+        ) {
+            if (!optionCount) return;
+            e.preventDefault();
+            setActiveIndexRaw(nextActiveIndex(activeIndex, optionCount, e.key));
+            return;
+        }
+        if (e.key === "Escape" && activeIndex >= 0) {
+            // Only swallow Escape when it has something to do here, so an
+            // Escape with no active option still reaches a parent that wants
+            // to close the panel.
+            e.preventDefault();
+            setActiveIndexRaw(-1);
+            return;
+        }
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+    }
+
+    useInputKeys(inputEl, { onKeydown });
+
+    // Zami: Enter (`onKeydown`'s): the arrow-selected option, or with none
+    // the candidate, else the first result.
     function onSubmitEditing() {
+        if (activeIndex >= 0) {
+            pickAt(activeIndex);
+            return;
+        }
+        // Unchanged fallback: Enter with nothing arrow-selected keeps today's
+        // behaviour so muscle memory and the existing tests still hold.
         if (candidate) pick(candidate);
         else if (visibleResults.length) pick(visibleResults[0].userId);
     }
@@ -204,8 +282,12 @@ export default function UserPicker({
                 rewrite a typed user id. "submit" keeps the keyboard up after
                 Enter, as the web field keeps focus. */}
             <TextInput
+                ref={inputEl}
                 value={input}
-                onChangeText={setInput}
+                onChangeText={(value) => {
+                    setInput(value);
+                    setActiveIndexRaw(-1);
+                }}
                 onSubmitEditing={onSubmitEditing}
                 submitBehavior="submit"
                 autoFocus={autofocus}
@@ -243,10 +325,15 @@ export default function UserPicker({
                             accessibilityRole="button"
                             accessibilityState={{
                                 disabled: disabled || candidateExcluded,
+                                selected: activeIndex === 0,
                             }}
                             className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
                                 disabled || candidateExcluded
                                     ? "opacity-50"
+                                    : ""
+                            } ${
+                                activeIndex === 0
+                                    ? "border border-discord-accent"
                                     : ""
                             }`}
                         >
@@ -284,6 +371,16 @@ export default function UserPicker({
                         // sits inside scrolling panels, where a nested
                         // FlatList would lose virtualization anyway.
                         <ScrollView
+                            ref={resultsEl}
+                            onLayout={(e) => {
+                                resultsView.current.height =
+                                    e.nativeEvent.layout.height;
+                            }}
+                            onScroll={(e) => {
+                                resultsView.current.y =
+                                    e.nativeEvent.contentOffset.y;
+                            }}
+                            scrollEventThrottle={16}
                             nestedScrollEnabled
                             keyboardShouldPersistTaps="handled"
                             className="max-h-56 flex-grow-0 rounded bg-discord-backgroundSecondary"
@@ -292,15 +389,29 @@ export default function UserPicker({
                                 <Pressable
                                     key={user.userId}
                                     onPress={() => pick(user.userId)}
+                                    onLayout={(e) =>
+                                        rowLayouts.current.set(
+                                            user.userId,
+                                            e.nativeEvent.layout,
+                                        )
+                                    }
                                     disabled={disabled}
                                     accessibilityRole="button"
-                                    accessibilityState={{ disabled }}
+                                    accessibilityState={{
+                                        disabled,
+                                        selected:
+                                            i + resultOffset === activeIndex,
+                                    }}
                                     // `divide-y divide-discord-divider`
                                     className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
                                         i > 0
                                             ? "border-t border-discord-divider"
                                             : ""
-                                    } ${disabled ? "opacity-50" : ""}`}
+                                    } ${disabled ? "opacity-50" : ""} ${
+                                        i + resultOffset === activeIndex
+                                            ? "border border-discord-accent"
+                                            : ""
+                                    }`}
                                 >
                                     <Avatar
                                         src={user.avatarUrl}

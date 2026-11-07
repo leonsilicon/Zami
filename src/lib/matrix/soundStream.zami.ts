@@ -12,6 +12,8 @@
  */
 import type { CallAudioGraph } from "$lib/audio/callAudioGraph";
 import { attachAuthedVideo, type AuthedVideoStream } from "./videoStream";
+// Zami: for downloadedSound, below.
+import { fetchMediaBytes } from "./media";
 
 export interface SoundStreamOptions {
     graph: CallAudioGraph;
@@ -32,6 +34,10 @@ export interface SoundStreamOptions {
  *  when the graph could not take the element (nothing started, and `onEnd`
  *  is not called). */
 export function streamSound(opts: SoundStreamOptions): (() => void) | null {
+    // Zami: React Native has no MediaSource to stream into, nor an <audio>
+    // that Web Audio can take: the clip is downloaded whole, then decoded and
+    // played, as a format that can't stream is (downloadedSound).
+    if (typeof MediaSource === "undefined") return downloadedSound(opts);
     const el = document.createElement("audio");
     el.autoplay = true;
     el.preload = "auto";
@@ -95,4 +101,43 @@ export function streamSound(opts: SoundStreamOptions): (() => void) | null {
         onError: finish,
     });
     return finish;
+}
+
+/** Zami: streamSound without streaming: download the clip, then decode and
+ *  play it through the graph. Returns a function that stops it early. */
+function downloadedSound(opts: SoundStreamOptions): () => void {
+    let stopped = false;
+    let finished = false;
+    let stopClip: (() => void) | null = null;
+    const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        opts.onEnd();
+    };
+    // The file's own idea of its length can lie, or never arrive.
+    const timer = setTimeout(
+        () => {
+            stopClip?.();
+            finish();
+        },
+        opts.maxSeconds * 1000 + 2000,
+    );
+    void fetchMediaBytes(opts.httpUrl, opts.maxBytes)
+        .then(async (bytes) => {
+            opts.onDownloaded(bytes);
+            if (stopped) return finish();
+            // decodeAudioData detaches its input; the caller keeps `bytes`.
+            const buffer = await opts.graph.decode(bytes.slice(0));
+            if (!buffer || buffer.duration > opts.maxSeconds + 1 || stopped)
+                return finish();
+            stopClip = opts.graph.playBuffer(buffer, opts.gain, finish);
+            if (!stopClip) finish();
+        })
+        .catch(finish);
+    return () => {
+        stopped = true;
+        stopClip?.();
+        finish();
+    };
 }

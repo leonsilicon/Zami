@@ -3,6 +3,7 @@
 // with the iPhone's silent switch on, so voice messages and call audio do here too.
 import { setMediaHeaders } from "@-/com.leonsilicon.zami.rn";
 import { setAudioModeAsync } from "expo-audio";
+import { AudioManager } from "react-native-audio-api";
 import { getActiveAccount } from "$lib/stores/accounts.svelte";
 import { isAuthedMediaUrl } from "$lib/stores/mediaAuth.svelte";
 
@@ -13,3 +14,8 @@ setMediaHeaders((url) => {
 });
 
 void setAudioModeAsync({ playsInSilentMode: true });
+// Zam's Web Audio and <audio> (react-native-audio-api) play in whatever audio session is
+// set up: this one, the recorder's or a call's. Left to manage it, react-native-audio-api
+// would switch it to plain playback whenever a sound starts, cutting off the microphone
+// mid-call or mid-recording.
+AudioManager.disableSessionManagement();

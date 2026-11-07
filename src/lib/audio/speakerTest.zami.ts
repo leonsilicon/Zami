@@ -9,6 +9,9 @@ export async function playSpeakerTestTone(
 ): Promise<void> {
     if (typeof AudioContext === "undefined") return;
     const ctx = new AudioContext();
+    // Zami: React Native has no MediaStreams, and one output to pick.
+    if (typeof ctx.createMediaStreamDestination !== "function")
+        return playToneDirectly(ctx);
     const dest = ctx.createMediaStreamDestination();
     const gain = ctx.createGain();
     gain.gain.value = 0.4;
@@ -32,5 +35,22 @@ export async function playSpeakerTestTone(
     await new Promise((resolve) => setTimeout(resolve, 700));
     el.pause();
     el.srcObject = null;
+    await ctx.close().catch(() => {});
+}
+
+/** Zami: the same tone, played straight from the context. */
+async function playToneDirectly(ctx: AudioContext): Promise<void> {
+    const gain = ctx.createGain();
+    gain.gain.value = 0.4;
+    gain.connect(ctx.destination);
+    for (const [i, freq] of [523.25, 659.25].entries()) {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        osc.start(ctx.currentTime + i * 0.25);
+        osc.stop(ctx.currentTime + i * 0.25 + 0.2);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
     await ctx.close().catch(() => {});
 }

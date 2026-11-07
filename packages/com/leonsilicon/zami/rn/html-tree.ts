@@ -34,6 +34,8 @@ export interface HtmlBlock {
   tag: string;
   attrs: Record<string, string>;
   children: HtmlLayout[];
+  /** A picture's line of its own (`tag` "img"): the `<img>` itself. */
+  image?: HtmlElement;
 }
 
 export type HtmlLayout = HtmlRun | HtmlBlock;
@@ -305,6 +307,20 @@ function wrapBlock(block: HtmlBlock, inline: HtmlElement): HtmlBlock {
   };
 }
 
+/**
+ * A picture rather than an emote or a Twemoji emoji: it gets a line of its own. iOS
+ * doesn't make room in a line for a view taller than the text, so a picture inside
+ * a paragraph would draw over its text.
+ */
+export function isPictureImage(node: HtmlElement): boolean {
+  return (
+    node.tag === "img" &&
+    !!node.attrs.src &&
+    node.attrs["data-mx-emoticon"] === undefined &&
+    !/(^|\s)(name-)?twemoji(\s|$)/.test(node.attrs.class ?? "")
+  );
+}
+
 // Blocks stay blocks; an inline element holding blocks is split around them, its
 // formatting carried into each block's runs (CSS's block-in-inline).
 function split(nodes: HtmlNode[]): Array<HtmlNode | HtmlBlock> {
@@ -312,6 +328,8 @@ function split(nodes: HtmlNode[]): Array<HtmlNode | HtmlBlock> {
   for (const node of nodes) {
     if (node.type === "text") {
       out.push(node);
+    } else if (isPictureImage(node)) {
+      out.push({ type: "block", tag: "img", attrs: node.attrs, children: [], image: node });
     } else if (BLOCK_TAGS.has(node.tag)) {
       out.push({
         type: "block",

@@ -35,11 +35,12 @@ import { settingsState } from "$lib/stores/settings.svelte";
 import ScreenShareQualityChips from "./ScreenShareQualityChips.svelte";
 import { SCREEN_RESOLUTIONS } from "$lib/utils/voiceCall";
 
-// Zami: not ported: screen sharing itself. There's no Electron main process
-// (`window.desktop`) and no React Native screen capture (LiveKit's SDK isn't
-// installed), so no source request ever arrives and this dialog stays closed;
+// Zami: not ported: the desktop source picker. There's no Electron main process
+// (`window.desktop`), and React Native's getDisplayMedia shows the system's own
+// picker (on Android; iOS can't share, see screenShareSupportedHere), so no
+// source request ever arrives and this dialog stays closed;
 // respondToScreenShare finds no bridge and does nothing. The UI is translated
-// from the same stores for when a native share exists.
+// from the same stores for when a native share asks.
 export default function ScreenSharePicker() {
     // Quality used to be a separate popover before this dialog; it lives
     // here now so a share is one dialog. Changes apply once the share starts

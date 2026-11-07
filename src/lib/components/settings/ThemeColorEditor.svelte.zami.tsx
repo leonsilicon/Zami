@@ -1,8 +1,18 @@
+import {
+    resolveFontStack,
+    subscribeAppFont,
+} from "@-/com.leonsilicon.zami.fonts/app-font";
 import { pickedFile, Range, Select } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    useSyncExternalStore,
+} from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import {
@@ -71,9 +81,6 @@ export default function ThemeColorEditor() {
         if (!file) return;
         setFontUploadError(null);
         setFontUploadBusy(true);
-        // Zami: not ported: registering the font. uploadCustomFont hands it to
-        // registerCustomFontFace, which needs `document.fonts`, so here it
-        // reports the file as invalid.
         const res = await uploadCustomFont(file);
         setFontUploadBusy(false);
         if (!res.ok) setFontUploadError(res.reason);
@@ -97,6 +104,9 @@ export default function ThemeColorEditor() {
     const messageFontSize = useRune(() => settingsState.messageFontSize);
     const messageFont = useRune(() => settingsState.messageFont);
     const customFontName = useRune(() => settingsState.customFontName);
+    const previewFontFamily = usePreviewFontFamily(
+        messageFontFamily(messageFont),
+    );
 
     const effective = resolveEffectiveColors(currentBase, draft);
     const warnings = paletteContrastWarnings(effective);
@@ -733,14 +743,11 @@ export default function ThemeColorEditor() {
                     {t("themeColorEditor.woff2TtfOrOtfUpTo")}
                 </Text>
 
-                {/* Zami: not ported: the bundled Inter and Atkinson Hyperlegible
-                    fonts aren't loaded in the app, so their preview falls back to
-                    the system font. */}
                 <Text
                     className="mt-3 text-discord-textPrimary"
                     style={{
                         fontSize: 14,
-                        fontFamily: firstFamily(messageFontFamily(messageFont)),
+                        fontFamily: previewFontFamily,
                     }}
                 >
                     {t("themeColorEditor.theQuickBrownFoxJumpsOver")}
@@ -750,11 +757,14 @@ export default function ThemeColorEditor() {
     );
 }
 
-// Zami: React Native takes one font family, not a CSS stack: the stack's first,
-// or the default (upstream's `inherit`) for none.
-function firstFamily(stack: string | null): string | undefined {
-    const first = stack?.split(",")[0]?.trim().replace(/^"|"$/g, "");
-    return first || undefined;
+// Zami: React Native takes one font family, not a CSS stack: the stack's first
+// the app has loaded (the custom font under the name it was loaded as), or the
+// default (upstream's `inherit`) for none.
+function usePreviewFontFamily(stack: string | null): string | undefined {
+    return (
+        useSyncExternalStore(subscribeAppFont, () => resolveFontStack(stack)) ??
+        undefined
+    );
 }
 
 // Zami: one color row. React Native has no <input type="color">: a swatch shows the

@@ -2,9 +2,10 @@
 // it as `globalThis.__ZAMI_LOCATION__`). The app is the one page `page.url` describes (at
 // https://zami.invalid), so reading it reads `page.url`. Assigning it is a full
 // navigation in a browser: Zam relies on that to boot an account switch with fresh
-// stores (`location.assign("/")`). Here it reloads the JS bundle, and the new run starts
+// stores (`location.assign("/")`). Here it reloads the app (expo's `reloadAppAsync`, which
+// reloads the JS bundle in development and release builds alike), and the new run starts
 // at the assigned URL.
-import { DevSettings } from "react-native";
+import { reloadAppAsync } from "expo";
 import { goto } from "#navigation";
 import { ORIGIN, page } from "#page.svelte";
 
@@ -21,12 +22,12 @@ function navigate(url: string | URL): void {
   } catch {
     /* the reload starts at "/" */
   }
-  reload();
+  void reloadAppAsync(`location: ${next.pathname}${next.search}`);
 }
 
+/** A browser reloads the page at the URL it's on. */
 function reload(): void {
-  // Zami: not ported: reloading a release build (expo-updates' reloadAsync).
-  DevSettings.reload();
+  navigate(page.url);
 }
 
 const location = {

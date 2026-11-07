@@ -1,7 +1,7 @@
 import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { X } from "lucide-svelte";
-import { DevSettings, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 // Banner shown when rust-crypto failed to initialise this session
 // (audit SEC-M6): encryption is off on this device, encrypted rooms show
@@ -45,10 +45,9 @@ export default function CryptoUnavailableBanner() {
     );
 
     function retry() {
-        // Zami: not ported: reloading a release build. `location.reload()` is
-        // DevSettings.reload() here, which only reloads in development; a
-        // release build needs expo-updates' reloadAsync().
-        DevSettings.reload();
+        // Zami: `location.reload()` reloads the app (see the sveltekit
+        // package's location stand-in).
+        location.reload();
     }
 
     if (!visible) return null;

@@ -1,4 +1,9 @@
-import { Portal, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import {
+    Portal,
+    revealSettingAnchor,
+    SvgIcon,
+    type AnchorScrollView,
+} from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import {
     Fragment,
@@ -133,14 +138,26 @@ export default function AppSettings({ onClose, onLogout }: Props) {
     // A search result was chosen: navigate to the owning tab via the existing
     // selectedTab mechanism (drills in on mobile, selects the sidebar tab on
     // desktop) and clear the query so the normal panel shows.
-    // Zami: not ported: scrolling to the result's `data-setting-anchor` and
-    // flashing it (`.message-highlight`). The translated panels don't mark
-    // their anchors, so a result lands on its tab, which upstream does too
-    // when the control isn't rendered.
+    // Zami: the panel's scroll view, and the anchor to scroll to and flash
+    // once the new tab's panel has rendered (upstream awaits `tick()`). A panel
+    // marks its `data-setting-anchor` elements with SettingAnchor; one that
+    // isn't rendered leaves the result on its tab, as upstream's does.
+    const panelScroll = useRef<AnchorScrollView>(null);
+    const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
     function selectResult(entry: SettingsSearchEntry) {
         setSearchQuery("");
         setSelectedTab(entry.tab);
+        setPendingAnchor(entry.anchor ?? null);
     }
+    useEffect(() => {
+        if (!pendingAnchor) return;
+        // After the panel's layout, as `scrollIntoView` after `tick()`.
+        const frame = requestAnimationFrame(() => {
+            revealSettingAnchor(pendingAnchor, panelScroll.current);
+            setPendingAnchor(null);
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [pendingAnchor, selectedTab]);
 
     // Escape clears a typed query before it closes the dialog; Enter opens the
     // top result. Returning true stands in for stopping propagation, which keeps
@@ -475,6 +492,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                     ) : view.mode === "detail" ? (
                         // Mobile sub-page: one category, full screen.
                         <KeyboardAwareScrollView
+                            ref={panelScroll as never}
                             // flex-1 overflow-y-auto min-w-0
                             style={{ flex: 1, minWidth: 0 }}
                             keyboardShouldPersistTaps="handled"
@@ -536,6 +554,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                             </ScrollView>
 
                             <KeyboardAwareScrollView
+                                ref={panelScroll as never}
                                 // flex-1 overflow-y-auto min-w-0
                                 style={{ flex: 1, minWidth: 0 }}
                                 keyboardShouldPersistTaps="handled"

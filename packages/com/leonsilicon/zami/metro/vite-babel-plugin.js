@@ -122,11 +122,14 @@ export function zamiVitePlugin({ types: t, template }) {
     navigator: "__ZAMI_NAVIGATOR__",
     location: "__ZAMI_LOCATION__",
   };
-  // Globals Zam's code reads from the window stand-in: the DOM classes, Web Audio, Audio,
+  // Globals Zam's code reads from the window stand-in: the DOM classes, Web Audio (and
+  // WebCodecs' AudioDecoder), Audio,
   // Notification and fetch (whose relative URLs are Zam's static files).
   const DOM_CLASSES = new Set([
     "AudioContext",
     "OfflineAudioContext",
+    "AudioDecoder",
+    "EncodedAudioChunk",
     "webkitAudioContext",
     "Audio",
     "Notification",
@@ -274,7 +277,8 @@ export function zamiVitePlugin({ types: t, template }) {
           node.arguments[0].type !== "StringLiteral"
         ) {
           nodePath.replaceWith(
-            template.expression.ast`Promise.reject(new Error("Zami: Hermes can't import a module from a URL"))`,
+            template.expression
+              .ast`Promise.reject(new Error("Zami: Hermes can't import a module from a URL"))`,
           );
           return;
         }

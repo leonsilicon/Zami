@@ -126,6 +126,10 @@ export function withZami(config, { repoRoot }) {
     return resolve(context, moduleName, platform);
   };
 
+  // Zam's static files that Zam's code fetches by path (served by the browser stand-in's
+  // fetch), bundled as assets: the MIDI SoundFont. And Ruffle's two wasm builds, which
+  // Flash's WebView loads from files (@-/com.leonsilicon.zami.flash).
+  config.resolver.assetExts = [...new Set([...config.resolver.assetExts, "sf3", "wasm"])];
   config.transformer.babelTransformerPath =
     require.resolve("@-/com.leonsilicon.zami.metro/transformer");
   config.transformer.unstable_allowRequireContext = true;

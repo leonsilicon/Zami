@@ -168,8 +168,11 @@ export default function CallPipOverlay() {
     const placement = useRune(() => callPipState.placement);
     const restStyle = (() => {
         const { side, at } = placement;
-        const minLeft = REST_SIDE_REM * REM_PX;
-        const maxLeft = viewport.width - (widthRem + REST_SIDE_REM) * REM_PX;
+        // Zami: inside the side safe areas too (a landscape notch, or the
+        // status bar beside a foldable's cover screen).
+        const minLeft = REST_SIDE_REM * REM_PX + insets.left;
+        const maxLeft =
+            viewport.width - (widthRem + REST_SIDE_REM) * REM_PX - insets.right;
         const minTop = REST_TOP_REM * REM_PX + insets.top;
         const maxTop =
             viewport.height -

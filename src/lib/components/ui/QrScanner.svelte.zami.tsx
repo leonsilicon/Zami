@@ -1,12 +1,14 @@
 import * as Device from "expo-device";
-import {
-    CameraView,
-    useCameraPermissions,
-    type BarcodeScanningResult,
-} from "expo-camera";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
+import {
+    captureJpeg,
+    FRAME_PICTURE_SIZE,
+    jpegImageData,
+} from "@-/com.leonsilicon.zami.camera";
 import { t } from "$lib/i18n";
+import jsQR from "jsqr";
 import { toQrPayloadBytes, isMatrixQrPayload } from "$lib/utils/qrCode";
 
 interface Props {
@@ -16,26 +18,23 @@ interface Props {
     accept?: (bytes: ArrayLike<number>) => boolean;
 }
 
-// Zami: expo-camera decodes QR codes natively, off the JS thread, in place of jsQR
-// running on canvas frames. The interval now only limits how often its results are
-// handled here: they arrive for every frame the code is in shot.
+// jsQR is synchronous and routinely overruns a frame budget on a mid-range
+// phone, so decoding on every rAF pins the main thread at a 100% duty cycle
+// — and that is the SAME thread rust-crypto and the SDK's to-device
+// processing run on, so the modal's own Cancel button and the incoming
+// reciprocate prompt stall exactly while the user is waiting on them.
+// Decoding ~10x/second is imperceptible for scan latency and leaves the
+// thread free in between. (zxing-js ships the same idea as
+// `timeBetweenScansMillis`.)
+//
+// Zami: expo-camera's own scanner can't stand in for jsQR: it reports text, and a
+// Matrix code is binary (keys and a random secret), for which iOS gives no text or
+// lossy text. So frames are decoded here as upstream does, each a still the camera
+// takes (@-/com.leonsilicon.zami.camera). Taking one and decoding its JPEG in
+// Hermes take longer than this interval, so it's the wait after each frame rather
+// than the time between frames' starts: at least as long as the decoding took,
+// which leaves the thread free at least half the time.
 const DECODE_INTERVAL_MS = 100;
-
-/**
- * Zami: expo-camera reports the text it decoded (`data`), not jsQR's `binaryData`.
- * Back to bytes: one per character when every character fits in one (a byte segment
- * read as Latin-1), else the text's UTF-8.
- *
- * Zami: not ported: the QR's raw bytes. A Matrix verification code is binary (keys
- * and a random secret), and iOS gives expo-camera no text, or lossy text, for bytes
- * that aren't valid in the encoding it guesses; scanning one needs the raw byte
- * segment from the native side (AVFoundation's CIQRCodeDescriptor).
- */
-function bytesOf(data: string): number[] {
-    const chars = Array.from(data, (c) => c.codePointAt(0) ?? 0);
-    if (chars.every((c) => c <= 0xff)) return chars;
-    return Array.from(new TextEncoder().encode(data));
-}
 
 export default function QrScanner({
     onScan,
@@ -51,7 +50,11 @@ export default function QrScanner({
     // tracks), and whether the preview is shown at all (srcObject).
     const [active, setActive] = useState(false);
     const [preview, setPreview] = useState(false);
+    const frame = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastDecode = useRef(0);
+    // Zami: the preview is running (upstream's `video.play()` resolved): frames
+    // can be taken.
+    const scanning = useRef(false);
     // Terminal latch: the loop is over and an outcome has been reported.
     const done = useRef(false);
     // Separate latch so a payload can never be handed up twice. It is set
@@ -69,6 +72,9 @@ export default function QrScanner({
      * frame is all that stands between the user and a black box.
      */
     function stop(clearPreview = true): void {
+        if (frame.current !== null) clearTimeout(frame.current);
+        frame.current = null;
+        scanning.current = false;
         if (!clearPreview) void camera.current?.pausePreview().catch(() => {});
         setActive(false);
         if (clearPreview) setPreview(false);
@@ -101,36 +107,71 @@ export default function QrScanner({
         return t("qrScanner.couldNotStartTheCameraPreview");
     }
 
-    function scanFrame(result: BarcodeScanningResult): void {
-        if (done.current || delivered.current) return;
+    async function scanFrame(): Promise<void> {
+        frame.current = null;
+        if (done.current) return;
+        const cam = camera.current;
         const now = Date.now();
-        // `now - 0` clears the interval on the very first result, so throttling
+        // `now - 0` clears the interval on the very first frame, so throttling
         // costs no latency on a code that is already in shot.
-        if (now - lastDecode.current < DECODE_INTERVAL_MS) return;
-        lastDecode.current = now;
-        const payload = result.data
-            ? toQrPayloadBytes(bytesOf(result.data))
-            : null;
-        if (payload && accept(payload) && !delivered.current) {
-            delivered.current = true;
-            // Keep the last frame: the consumer's handshake runs from
-            // here, and a black square under "checking it…" reads as a
-            // crash. `fail()` below still blanks it if that throws.
-            stop(false);
-            setStatus(t("qrScanner.codeFoundCheckingIt"));
+        let busy = 0;
+        if (
+            cam &&
+            scanning.current &&
+            now - lastDecode.current >= DECODE_INTERVAL_MS
+        ) {
+            // Zami: in place of drawing the video on a canvas: a still from the
+            // camera, whose JPEG is the ImageData's source.
+            let jpeg: Uint8Array | null = null;
             try {
-                onScan(payload);
-                done.current = true;
+                jpeg = await captureJpeg(cam);
             } catch (e) {
-                // We are inside a native event callback: an escaping throw
-                // would be an unhandled error with no path back to the UI.
-                console.warn("[matrix] QR scan handler threw", e);
-                fail(t("qrScanner.couldNotStartVerificationWithThat"));
+                // The camera wasn't ready for a picture; try the next frame.
+                console.warn("[matrix] could not capture a camera frame", e);
             }
-            return;
+            if (done.current) return;
+            if (jpeg) {
+                const decodeStart = Date.now();
+                const image = jpegImageData(jpeg);
+                const found = jsQR(image.data, image.width, image.height, {
+                    inversionAttempts: "dontInvert",
+                });
+                const payload = found
+                    ? toQrPayloadBytes(found.binaryData)
+                    : null;
+                if (payload && accept(payload) && !delivered.current) {
+                    delivered.current = true;
+                    // Keep the last frame: the consumer's handshake runs from
+                    // here, and a black square under "checking it…" reads as a
+                    // crash. `fail()` below still blanks it if that throws.
+                    stop(false);
+                    setStatus(t("qrScanner.codeFoundCheckingIt"));
+                    try {
+                        onScan(payload);
+                        done.current = true;
+                    } catch (e) {
+                        // We are inside a timer callback: an escaping throw would
+                        // be an unhandled error with no path back to the UI.
+                        console.warn("[matrix] QR scan handler threw", e);
+                        fail(t("qrScanner.couldNotStartVerificationWithThat"));
+                    }
+                    return;
+                }
+                if (found) setStatus(t("qrScanner.thatIsnTAVerificationCode"));
+                busy = Date.now() - decodeStart;
+            }
+            lastDecode.current = Date.now();
         }
-        setStatus(t("qrScanner.thatIsnTAVerificationCode"));
+        // Zami: a timer in place of requestAnimationFrame (see DECODE_INTERVAL_MS).
+        frame.current = setTimeout(
+            () => void latestScanFrame.current(),
+            Math.max(DECODE_INTERVAL_MS, busy),
+        );
     }
+    // Zami: the timer runs the latest render's scanFrame, which sees the current
+    // props (`accept`, `onScan`), as upstream's reads them.
+    const latestScanFrame = useRef(scanFrame);
+    latestScanFrame.current = scanFrame;
 
     async function start(): Promise<void> {
         // Zami: the iOS simulator has no camera (and expo-camera reports nothing there).
@@ -154,8 +195,16 @@ export default function QrScanner({
         }
         setPreview(true);
         setActive(true);
-        // The status moves on to "point the camera" in onCameraReady, once the
-        // preview is running (upstream's `video.play()`).
+        // The status moves on to "point the camera", and the frames start, in
+        // onCameraReady, once the preview is running (upstream's `video.play()`).
+    }
+
+    // Zami: upstream's code after `video.play()`.
+    function onCameraReady(): void {
+        if (done.current || scanning.current) return;
+        scanning.current = true;
+        setStatus(t("qrScanner.pointTheCameraAtTheirCode"));
+        frame.current = setTimeout(() => void latestScanFrame.current(), 0);
     }
 
     useEffect(() => {
@@ -186,14 +235,9 @@ export default function QrScanner({
                         style={StyleSheet.absoluteFill}
                         facing="back"
                         active={active}
-                        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                        onBarcodeScanned={active ? scanFrame : undefined}
-                        onCameraReady={() => {
-                            if (!done.current)
-                                setStatus(
-                                    t("qrScanner.pointTheCameraAtTheirCode"),
-                                );
-                        }}
+                        pictureSize={FRAME_PICTURE_SIZE}
+                        animateShutter={false}
+                        onCameraReady={onCameraReady}
                         onMountError={({ message }) => {
                             console.warn(
                                 "[matrix] could not start the camera preview",

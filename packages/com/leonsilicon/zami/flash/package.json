@@ -1,0 +1,26 @@
+{
+  "name": "@-/com.leonsilicon.zami.flash",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zam's Flash sandbox for React Native: Ruffle (Zam's static/ruffle, bundled with the app) playing a SWF in a locked-down WebView that reads only its own local files.",
+  "type": "module",
+  "imports": {
+    "#flash-sandbox": "./flash-sandbox.tsx",
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "expo-asset": "catalog:",
+    "expo-file-system": "catalog:",
+    "react-native-webview": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

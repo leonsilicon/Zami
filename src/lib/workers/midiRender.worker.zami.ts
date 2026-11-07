@@ -12,9 +12,13 @@ import {
     SpessaSynthProcessor,
     SpessaSynthSequencer,
     audioToWav,
-    type BasicSoundBank,
+    BasicSoundBank,
 } from "spessasynth_core";
 import { decodeOpusSample, isOpusSample } from "$lib/utils/opusSample";
+
+// Zami: spessasynth's SF3 Vorbis decoder is WebAssembly, which Hermes lacks,
+// so it fails as it loads; render goes on without it.
+void BasicSoundBank.isSF3DecoderReady.catch(() => {});
 
 export interface MidiRenderRequest {
     id: number;
@@ -34,6 +38,8 @@ const BLOCK = 128;
 const TAIL_SECONDS = 2;
 /** Same bound as the WebAudio fallback in $lib/utils/midi.ts. */
 const MAX_SECONDS = 15 * 60;
+/** Zami: how long the render runs before letting the UI handle input and draw. */
+const YIELD_EVERY_MS = 12;
 
 let loaded: { key: string; bank: BasicSoundBank } | null = null;
 
@@ -52,7 +58,9 @@ async function decodeOpusSamples(bank: BasicSoundBank): Promise<void> {
     );
 }
 
-async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
+// Zami: exported: React Native has no Web Workers, so midiSoundBank calls it on
+// the app's own thread.
+export async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
     if (req.bank) {
         const bank = SoundBankLoader.fromArrayBuffer(req.bank.data);
         await decodeOpusSamples(bank);
@@ -75,7 +83,11 @@ async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
             InterpolationTypes.hermite,
         );
         synth.soundBankManager.addSoundBank(loaded.bank, "main");
-        await synth.processorInitialized;
+        // Zami: this waits for spessasynth's SF3 Vorbis decoder, which is
+        // WebAssembly (Hermes has none), so it fails. Only Vorbis samples need
+        // it: the bundled bank's are Opus (decoded above), SF2 and DLS banks'
+        // are PCM; a custom SF3's Vorbis samples play silent.
+        await synth.processorInitialized.catch(() => {});
         const seq = new SpessaSynthSequencer(synth);
         seq.loopCount = 0;
         const song = BasicMIDI.fromArrayBuffer(req.midi);
@@ -89,7 +101,13 @@ async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
         const right = new Float32Array(maxFrames);
         const tailFrames = TAIL_SECONDS * SAMPLE_RATE;
         let endFrame = maxFrames;
+        // Zami: on the app's one JS thread, so the UI gets a turn every few ms.
+        let lastYield = performance.now();
         for (let i = 0; i < endFrame; i += BLOCK) {
+            if (performance.now() - lastYield > YIELD_EVERY_MS) {
+                await new Promise((resolve) => setTimeout(resolve, 0));
+                lastYield = performance.now();
+            }
             seq.processTick();
             synth.process(left, right, i, Math.min(BLOCK, endFrame - i));
             if (seq.isFinished && endFrame === maxFrames) {

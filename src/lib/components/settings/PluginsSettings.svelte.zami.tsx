@@ -110,10 +110,6 @@ type BrowseState = {
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text, and each icon gets
 // its button's text color. `title` tooltips have no equivalent and are dropped.
-// Zami: not ported: running a repo or local plugin's code. pluginBoot loads it
-// with `import()` of a blob: URL, which Hermes can't do, so enabling one records
-// the load error, which its row shows; installing, removing, the settings form,
-// sync and auto-update work. Built-in plugins run.
 export default function PluginsSettings({
     navSignal = 0,
 }: {
@@ -899,7 +895,10 @@ export default function PluginsSettings({
                                                 accessibilityLabel={t(
                                                     "pluginsSettings.autoUpdateThisPlugin",
                                                 )}
-                                                className="rounded bg-discord-backgroundSecondary border border-discord-divider px-1 py-0.5"
+                                                // Zami: `w-32`: in this row of fixed-size
+                                                // controls Select would grow to the row's
+                                                // width (a <select> fits its options).
+                                                className="w-32 rounded bg-discord-backgroundSecondary border border-discord-divider px-1 py-0.5"
                                                 options={[
                                                     {
                                                         value: "default",

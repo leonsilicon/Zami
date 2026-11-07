@@ -65,11 +65,10 @@ export default function SoundboardPopover({
     }, []);
 
     async function play(sound: Sound) {
-        // Zami: not ported: the call and Web Audio underneath. The clip goes out
-        // over the LiveKit call's data channel (no call without LiveKit's React
-        // Native SDK, so this reports a failed send), and our own copy plays
-        // through Zam's Web Audio graph (livekitCall.ts playSoundboardClip),
-        // which Hermes has no AudioContext for.
+        // Zami: the clip goes out over the LiveKit call's data channel, and our
+        // own copy plays through Zam's Web Audio graph (livekitCall.ts
+        // playSoundboardClip, on react-native-audio-api). A clip not heard
+        // before downloads whole, then plays (soundStream.ts: no MediaSource).
         setFailed(!(await playSoundboardSound(sound)));
     }
 

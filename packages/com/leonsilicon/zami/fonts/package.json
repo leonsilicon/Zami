@@ -1,0 +1,32 @@
+{
+  "name": "@-/com.leonsilicon.zami.fonts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fonts for Zam's code in React Native: WOFF2 decoding, Zam's bundled fonts as TrueType, custom font uploads through expo-font, and the font Zam's settings choose on every Text and TextInput.",
+  "bin": {
+    "_fonts": "./_fonts.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts",
+    "#app-font-text": "./app-font-text.tsx"
+  },
+  "exports": {
+    ".": "./+.ts",
+    "./app-font": "./+app-font.ts",
+    "./convert": "./+convert.ts"
+  },
+  "dependencies": {
+    "brotli": "catalog:",
+    "expo-file-system": "catalog:",
+    "expo-font": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

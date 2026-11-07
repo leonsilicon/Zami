@@ -69,7 +69,7 @@ export function Select<T extends string = string>({
 }: SelectProps<T>): ReactNode {
   const box = useRef<HostInstance>(null);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const selected = options.find((option) => option.value === value);
   const open = anchor !== null && !disabled;
 
@@ -116,22 +116,42 @@ export function Select<T extends string = string>({
         onPress={toggle}
         className={`flex-row items-center gap-2 ${className}`}
       >
-        <Text numberOfLines={1} className="flex-1 text-sm text-discord-textPrimary">
-          {selected?.label ?? ""}
-        </Text>
+        {/* As wide as the longest option, as a <select> is, unless its classes size it:
+            then it fills the box, or shrinks with it and truncates. */}
+        <View style={styles.label}>
+          <Text numberOfLines={1} className="text-sm text-discord-textPrimary">
+            {selected?.label ?? ""}
+          </Text>
+          <View
+            style={styles.sizer}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {options.map((option) => (
+              <Text
+                key={option.key ?? option.value}
+                numberOfLines={1}
+                className="text-sm text-discord-textPrimary"
+              >
+                {option.label}
+              </Text>
+            ))}
+          </View>
+        </View>
         <ChevronDownIcon size={16} className="text-discord-textMuted" />
       </Pressable>
       {open && anchor && placement ? (
         <Portal>
-          <View
-            style={StyleSheet.absoluteFill}
-            accessibilityViewIsModal
-            onAccessibilityEscape={close}
-          >
+          <View style={styles.layer} accessibilityViewIsModal onAccessibilityEscape={close}>
             <Pressable style={StyleSheet.absoluteFill} accessible={false} onPress={close} />
             <View
               className="absolute rounded bg-discord-backgroundSecondary border border-discord-divider overflow-hidden"
-              style={{ left: anchor.x, width: anchor.width, ...placement }}
+              style={{
+                left: anchor.x,
+                minWidth: anchor.width,
+                maxWidth: windowWidth - anchor.x - MARGIN,
+                ...placement,
+              }}
             >
               <ScrollView keyboardShouldPersistTaps="handled">
                 {options.map((option) => (
@@ -143,11 +163,14 @@ export function Select<T extends string = string>({
                       close();
                       onChange(option.value);
                     }}
-                    className={`flex-row items-center gap-2 px-3 py-2 ${
+                    className={`flex-row items-center justify-between gap-2 px-3 py-2 ${
                       option.value === value ? "bg-discord-accent/20" : ""
                     }`}
                   >
-                    <Text numberOfLines={1} className="flex-1 text-sm text-discord-textPrimary">
+                    <Text
+                      numberOfLines={1}
+                      className="flex-shrink text-sm text-discord-textPrimary"
+                    >
                       {option.label}
                     </Text>
                     {option.value === value ? (
@@ -163,3 +186,13 @@ export function Select<T extends string = string>({
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  // Above the overlay it opened from: portal content such as a dialog may carry its own
+  // z-index (`z-50`), which would otherwise outrank this later portal.
+  layer: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000 },
+  // Grows into a box its classes widen, and shrinks (truncating) in a narrower one.
+  label: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
+  // Every option's label, laid out but not shown, so the box fits the longest.
+  sizer: { height: 0, overflow: "hidden" },
+});

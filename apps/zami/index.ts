@@ -1,6 +1,7 @@
 import "#polyfills";
 import "#blob";
 import "#globals";
+import "#fonts";
 import "#media";
 import "#calls";
 import "#notifications";

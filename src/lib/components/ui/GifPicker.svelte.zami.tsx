@@ -9,7 +9,9 @@ import {
     type NativeScrollEvent,
     type NativeSyntheticEvent,
     type TextInputInstance,
+    type ListViewToken,
 } from "react-native";
+import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
 import { Image, SvgIcon, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -45,6 +47,9 @@ import {
 } from "$lib/utils/gifAspect.svelte";
 import { overlayActionClass } from "$lib/utils/touchTargets";
 import { masonryColumnCount } from "$lib/utils/masonry";
+import { scrollBehavior } from "$lib/utils/motionPreference";
+import { nextActiveIndex, type NavKey } from "$lib/utils/listboxNavigation";
+import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
 
 interface Props {
     onSelect: (url: string) => void;
@@ -109,6 +114,11 @@ export default function GifPicker({
 
     function onSearchInput(value: string) {
         setSearch(value);
+        // Typing is text editing, not list navigation: drop the cursor so the
+        // caret gets Left/Right/Home/End back, and so the KLIPY results that
+        // land 350ms later cannot inherit a selection made against the ones
+        // they replace.
+        moveCursor(-1);
         if (tab !== "favourites") {
             const kind: GifKind = "gifs";
             queueSearch(kind, value);
@@ -147,11 +157,14 @@ export default function GifPicker({
     const error = useRune(() => gifSearchState.error);
     const exhausted = useRune(() => gifSearchState.exhausted);
 
-    // Zami: not ported: the keyboard cursor over the results (`selectedIndex`,
-    // its anchor `selectedUrl`, `moveCursor`, the arrow/Home/End/Enter
-    // handling and keeping the selected GIF in view). A TextInput reports no
-    // arrow keys, so nothing could move it; GIFs are picked by touch. The
-    // combobox/listbox ARIA ids it drove have no React Native equivalent.
+    // The keyboard cursor: the index of the arrow-selected GIF, and the GIF
+    // it was put on (see upstream's comment: the list is replaced wholesale
+    // by a debounced KLIPY response or a tab flip, so the index alone could
+    // send a GIF the user never saw).
+    // Zami: not ported: the combobox/listbox ARIA ids it drives, which React
+    // Native has no equivalent of.
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
 
     // The flat list of options actually on screen -- whichever tab is
     // rendering.
@@ -165,6 +178,20 @@ export default function GifPicker({
     // ("No favourite GIFs yet…", "No results", the KLIPY error retry button)
     // be read as ordinary content.
     const hasOptions = activeKeys.length > 0;
+
+    // Re-clamped and anchored, so a cursor is only ever active while it still
+    // sits on the GIF it was put on. Everything downstream -- the ring, Enter
+    // -- reads this rather than `selectedIndex`.
+    const activeIndex = anchoredActiveIndex(
+        selectedIndex,
+        selectedUrl,
+        activeKeys,
+    );
+
+    function moveCursor(next: number) {
+        setSelectedIndex(next);
+        setSelectedUrl(next >= 0 ? (activeKeys[next] ?? null) : null);
+    }
 
     // Tag editor: the URL of the favourite currently being edited, plus its
     // draft (comma-separated) tag text.
@@ -191,8 +218,15 @@ export default function GifPicker({
     }
 
     // The picker closes on Escape; while editing, Escape only cancels.
-    // Zami: Enter saves (onSubmitEditing); not ported: Escape, which a
-    // TextInput doesn't report.
+    // Zami: Enter saves (onSubmitEditing); the tile's tag field takes the
+    // rest of onTagKeydown.
+    function onTagKeydown(e: KeyboardEvent) {
+        e.stopPropagation();
+        if (e.key === "Escape") {
+            editing.current = null;
+            setEditingUrl(null);
+        }
+    }
 
     // These sit on top of the full-bleed "send this GIF" button, so anything
     // missed by a fat finger sends the GIF instead of acting on it. Sized to
@@ -277,10 +311,90 @@ export default function GifPicker({
         }
     }, [items.length, loading, exhausted, tab, gridHeight, scrollHeight]);
 
-    // Zami: not ported: Escape closing the picker (`onKeydown`). A TextInput
-    // reports no Escape key; the touch drawer closes from its backdrop.
+    // Keep the arrow-selected GIF in view. `block: "nearest"` leaves an option
+    // that is already fully visible alone, so arrowing around inside the
+    // viewport never touches the scroll position.
+    // Zami: the FlatList reports which tiles are fully visible; a row it
+    // hasn't measured scrolls by the average row's height.
+    const gridList = useRef<FlatList<unknown>>(null);
+    const fullyVisible = useRef(new Set<number>());
+    const [onViewableItemsChanged] = useState(
+        () =>
+            ({ viewableItems }: { viewableItems: ListViewToken[] }) => {
+                fullyVisible.current = new Set(
+                    viewableItems.map((v) => v.index ?? -1),
+                );
+            },
+    );
+    const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 100 });
+    const lastIndex = useRef(-1);
+    useEffect(() => {
+        const index = activeIndex;
+        const previous = lastIndex.current;
+        lastIndex.current = index;
+        if (index < 0 || fullyVisible.current.has(index)) return;
+        gridList.current?.scrollToIndex({
+            index: Math.floor(index / columnCount),
+            viewPosition: index > previous ? 1 : 0,
+            animated: scrollBehavior() === "smooth",
+        });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
+    // Zami: hardware keys are observed, not intercepted, so the arrow keys
+    // also move the search field's caret, as they do there with nothing
+    // selected.
+    function onSearchKeydown(e: KeyboardEvent) {
+        // On a one-dimensional list ArrowLeft/ArrowRight are the same single
+        // step as ArrowUp/ArrowDown, so they map onto the two keys the shared
+        // navigation helper knows about.
+        let key: NavKey | null = null;
+        if (e.key === "ArrowDown" || e.key === "ArrowRight") key = "ArrowDown";
+        else if (e.key === "ArrowUp" || e.key === "ArrowLeft") key = "ArrowUp";
+        else if (e.key === "Home" || e.key === "End") key = e.key;
+
+        if (key) {
+            // ArrowUp/ArrowDown enter the list from the text field the way any
+            // combobox does. The rest only steer it once the user is already
+            // navigating.
+            const entersList = e.key === "ArrowDown" || e.key === "ArrowUp";
+            if (!entersList && activeIndex < 0) return;
+            if (!activeKeys.length) return;
+            e.preventDefault();
+            // `loop: false`: walking off the end of the paginated KLIPY list
+            // scrolls its last tile into view, which loads the next page.
+            moveCursor(
+                nextActiveIndex(activeIndex, activeKeys.length, key, {
+                    loop: false,
+                }),
+            );
+            return;
+        }
+
+        // `activeIndex`, never `selectedIndex`. Escape is deliberately not
+        // handled here -- it bubbles to the panel's own onkeydown, which
+        // closes the picker.
+        if (e.key === "Enter" && activeIndex >= 0) {
+            e.preventDefault();
+            pickUrl(activeKeys[activeIndex]);
+        }
+    }
+
+    // Zami: the search field's `onkeydown`.
+    useInputKeys(searchEl, { onKeydown: onSearchKeydown });
+
+    function onKeydown(e: KeyboardEvent) {
+        if (e.key === "Escape") onClose();
+    }
+
+    // Zami: the panel's `onkeydown`: its keys, with focus in the search field
+    // or nowhere.
+    useKeyScope({ onKeydown }, [searchEl]);
 
     function selectTab(next: Tab) {
+        // The two tabs are different lists, so a cursor carried across would
+        // land on an unrelated GIF that happens to share its index.
+        moveCursor(-1);
         // The $effect above performs the immediate load when `tab` changes.
         setTab(next);
     }
@@ -406,6 +520,9 @@ export default function GifPicker({
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="search"
+                    // Zami: Enter picks the selected GIF (onSearchKeydown) and
+                    // otherwise does nothing, rather than blurring.
+                    submitBehavior="submit"
                     className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
                 />
             </View>
@@ -430,6 +547,7 @@ export default function GifPicker({
                         </Text>
                     ) : (
                         <FlatList
+                            ref={gridList as never}
                             // A FlatList can't change its column count in place.
                             key={`favourites:${columnCount}`}
                             data={visibleFavourites}
@@ -440,11 +558,25 @@ export default function GifPicker({
                                     ? { gap: GAP, alignItems: "flex-start" }
                                     : undefined
                             }
-                            extraData={[editingUrl, tagDraft, tileWidth]}
+                            extraData={[
+                                editingUrl,
+                                tagDraft,
+                                tileWidth,
+                                activeIndex,
+                            ]}
+                            onViewableItemsChanged={onViewableItemsChanged}
+                            viewabilityConfig={viewabilityConfig}
+                            onScrollToIndexFailed={(info) =>
+                                gridList.current?.scrollToOffset({
+                                    offset: info.averageItemLength * info.index,
+                                })
+                            }
                             renderItem={({ item: gif, index: idx }) => (
                                 <FavouriteTile
                                     gif={gif}
                                     idx={idx}
+                                    selected={activeIndex === idx}
+                                    onTagKeydown={onTagKeydown}
                                     width={tileWidth}
                                     isTouchscreen={isTouchscreen}
                                     favBtnClass={favBtnClass}
@@ -482,6 +614,7 @@ export default function GifPicker({
                     </Text>
                 ) : (
                     <FlatList
+                        ref={gridList as never}
                         key={`results:${columnCount}`}
                         data={items}
                         numColumns={columnCount}
@@ -491,11 +624,19 @@ export default function GifPicker({
                                 ? { gap: GAP, alignItems: "flex-start" }
                                 : undefined
                         }
-                        extraData={tileWidth}
+                        extraData={[tileWidth, activeIndex]}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
+                        onScrollToIndexFailed={(info) =>
+                            gridList.current?.scrollToOffset({
+                                offset: info.averageItemLength * info.index,
+                            })
+                        }
                         renderItem={({ item: r, index: idx }) => (
                             <ResultTile
                                 r={r}
                                 idx={idx}
+                                selected={activeIndex === idx}
                                 width={tileWidth}
                                 favBtnClass={favBtnClass}
                                 onPick={() => pickUrl(gifSendUrl(r))}
@@ -556,6 +697,8 @@ export default function GifPicker({
 function FavouriteTile({
     gif,
     idx,
+    selected,
+    onTagKeydown,
     width,
     isTouchscreen,
     favBtnClass,
@@ -568,6 +711,10 @@ function FavouriteTile({
 }: {
     gif: FavouriteGif;
     idx: number;
+    /** Zami: the keyboard cursor is on it (`activeIndex === idx`). */
+    selected: boolean;
+    /** Zami: the tag field's `onkeydown`. */
+    onTagKeydown: (e: KeyboardEvent) => void;
     width: number;
     isTouchscreen: boolean;
     favBtnClass: string;
@@ -590,6 +737,8 @@ function FavouriteTile({
         [previewUrl, gifWidth, gifHeight],
     );
     const tags = gif.tags ?? [];
+    const tagInput = useRef<TextInputInstance>(null);
+    useInputKeys(tagInput, { onKeydown: onTagKeydown }, editing);
     return (
         <View className="relative mb-1" style={{ width }}>
             {/* The <img> is alt="", so without a label this button announces
@@ -603,7 +752,10 @@ function FavouriteTile({
                         ? t("gifPicker.gifTagged", { join: tags.join(", ") })
                         : t("gifPicker.favouriteGif", { value: idx + 1 })
                 }
-                className="w-full rounded overflow-hidden active:opacity-80 transition-opacity"
+                accessibilityState={{ selected }}
+                className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
+                    selected ? " border-2 border-discord-accent" : ""
+                }`}
             >
                 {source ? (
                     <FavouriteFileImg
@@ -631,10 +783,12 @@ function FavouriteTile({
                 )}
             </Pressable>
             {/* Touchscreens have no hover, so the controls stay visible there
-                instead of revealing on hover. */}
+                instead of revealing on hover. The selected tile reveals its
+                controls too, or a keyboard user gets a selection ring and
+                nothing to act on. */}
             <View
                 className={`absolute top-1 end-1 flex-row gap-1 transition-opacity ${
-                    isTouchscreen
+                    isTouchscreen || selected
                         ? "opacity-100"
                         : "opacity-0 group-hover/gif:opacity-100 group-focus-within/gif:opacity-100"
                 }`}
@@ -672,6 +826,7 @@ function FavouriteTile({
             {editing ? (
                 <View className="absolute inset-0 rounded bg-black/80 flex flex-col justify-center gap-1 p-1.5">
                     <TextInput
+                        ref={tagInput}
                         value={tagDraft}
                         onChangeText={onTagDraftChange}
                         onSubmitEditing={onSaveTags}
@@ -697,6 +852,7 @@ function FavouriteTile({
 function ResultTile({
     r,
     idx,
+    selected,
     width,
     favBtnClass,
     onPick,
@@ -704,6 +860,8 @@ function ResultTile({
 }: {
     r: GifResult;
     idx: number;
+    /** Zami: the keyboard cursor is on it (`activeIndex === idx`). */
+    selected: boolean;
     width: number;
     favBtnClass: string;
     onPick: () => void;
@@ -724,7 +882,10 @@ function ResultTile({
                 accessibilityLabel={t("gifPicker.gifResult", {
                     value: idx + 1,
                 })}
-                className="w-full rounded overflow-hidden active:opacity-80 transition-opacity"
+                accessibilityState={{ selected }}
+                className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
+                    selected ? " border-2 border-discord-accent" : ""
+                }`}
             >
                 {/* Zami: the animated preview through expo-image, rather than
                     one muted looping player per tile for `previewVideoUrl`.
@@ -747,7 +908,7 @@ function ResultTile({
                 accessibilityLabel={t("gifPicker.favourite")}
                 accessibilityState={{ selected: favourited }}
                 className={`absolute top-1 end-1 transition-opacity ${favBtnClass} ${
-                    favourited
+                    favourited || selected
                         ? "opacity-100"
                         : "opacity-0 group-hover/gif:opacity-100 group-focus-within/gif:opacity-100"
                 }`}

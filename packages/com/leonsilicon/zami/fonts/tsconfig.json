@@ -1,0 +1,5 @@
+{
+  "extends": "../../../../../apps/zami/tsconfig.json",
+  "compilerOptions": { "types": ["svelte", "react-native", "node"] },
+  "include": ["*.ts", "*.tsx", "__tests__/*.ts"]
+}

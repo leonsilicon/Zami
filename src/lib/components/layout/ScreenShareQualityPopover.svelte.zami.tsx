@@ -37,10 +37,10 @@ function scaleIn(duration: number) {
     }).duration(duration);
 }
 
-// Zami: not ported: screen sharing itself. LiveKit's SDK isn't installed for
-// React Native, so no share runs here, and setScreenShareQuality (which
-// retunes the running share's track) finds none and does nothing; the chips
-// still save the quality settings the next share would use.
+// Zami: not ported: screen sharing on iOS (it needs a Broadcast Upload
+// Extension, see screenShareSupportedHere), where no share runs and
+// setScreenShareQuality (which retunes the running share's track) finds none;
+// the chips still save the quality settings a share would use.
 export default function ScreenShareQualityPopover({
     x,
     y,

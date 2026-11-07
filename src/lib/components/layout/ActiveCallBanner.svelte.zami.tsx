@@ -41,10 +41,8 @@ interface Props {
     room: Room;
 }
 
-// Zami: not ported: calls themselves (no LiveKit SDK yet), so joining doesn't
-// connect. The banner renders from the call stores as upstream does, and stays
-// hidden while they hold no call for the room. `title` (a hover tooltip) has no
-// React Native equivalent: the icon-only buttons carry it as their label.
+// Zami: `title` (a hover tooltip) has no React Native equivalent: the icon-only
+// buttons carry it as their label.
 export default function ActiveCallBanner({ room }: Props) {
     // Fixed for the session, same as CallView and VoiceCallPanel.
     const [screenShareSupported] = useState(screenShareSupportedHere);

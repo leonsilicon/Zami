@@ -180,8 +180,8 @@ export default function CallView({
 }: Props) {
     // Capture support is fixed for the session (no runtime change), so a plain
     // const is enough — used to hide the share-screen button where unsupported.
-    // Zami: false here: there's no getDisplayMedia (LiveKit's React Native
-    // SDK isn't installed), so the button stays hidden.
+    // Zami: false on iOS (screenShareSupportedHere): a share needs a Broadcast
+    // Upload Extension the app doesn't have, so the button stays hidden.
     const screenShareSupported = screenShareSupportedHere();
 
     // Live SDK objects mutate in place, so every read of call/room state hangs

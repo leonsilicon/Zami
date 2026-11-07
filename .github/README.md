@@ -44,6 +44,17 @@ vpx _dev android      # Android emulator or device
 vpx _dev start        # only the dev server, for an app that's already installed
 ```
 
+Zam's build-time settings (`VITE_*`) are Expo environment variables here, named
+`EXPO_PUBLIC_*` (`import.meta.env.VITE_FOO` reads `EXPO_PUBLIC_FOO`) and inlined when the
+dev server bundles the app, so set them before `vpx _dev`:
+
+- `EXPO_PUBLIC_PUSH_GATEWAY_URL`: the notify endpoint of the Sygnal push gateway that
+  delivers Zami's iOS pushes (`https://…/_matrix/push/v1/notify`). That Sygnal needs an
+  `apns` app with the id `com.leonsilicon.zami` (the bundle id) and Zami's APNs key, with
+  `platform: sandbox` for development builds. Unset, the iOS app registers no pusher (Zam's
+  own gateway, its default, has no app for Zami) and shows notifications only while it's
+  running.
+
 ## Editors
 
 Zam's own files are hidden in the editor, so the file tree shows Zami's versions

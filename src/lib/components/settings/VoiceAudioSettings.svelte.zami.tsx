@@ -5,6 +5,7 @@ import {
     Select,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { RTCView } from "@livekit/react-native-webrtc";
 import { useEffect, useRef, useState } from "react";
 import {
     AppState,
@@ -80,9 +81,6 @@ import {
 } from "$lib/audio/micFilters";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { playSpeakerTestTone } from "$lib/audio/speakerTest";
-// Zami: not ported: call sounds and the ringtone are synthesized with Web Audio,
-// which React Native doesn't have, so these play nothing (they return without an
-// AudioContext). Their settings are still stored and configured.
 import {
     playCallSound,
     configureCallSounds,
@@ -127,24 +125,14 @@ import {
     stopHandle,
 } from "$lib/utils/captureLifecycle";
 
-// Zami: not ported: the mic test. $lib/audio/micMeter opens the mic through
-// navigator.mediaDevices and meters it with Web Audio, neither of which React
-// Native has, so this fails the way a mic that can't be opened does: the tab
-// shows "Microphone unavailable" in place of the level meter and "Test mic".
+// Zami: not ported: the mic test. $lib/audio/micMeter meters the mic with Web
+// Audio, which can't take WebRTC's microphone in React Native
+// (react-native-audio-api has no MediaStream source), so this fails the way a
+// mic that can't be opened does: the tab shows "Microphone unavailable" in
+// place of the level meter and "Test mic".
 function startMicMeter(opts: MicMeterOptions): Promise<MicMeterHandle> {
     void opts;
     return Promise.reject(new Error("Zami: no Web Audio microphone"));
-}
-
-// Zami: not ported: the camera preview. There's no navigator.mediaDevices in
-// React Native (expo-camera's CameraView could show the preview), so this fails
-// the way a camera that can't be opened does: "Preview" shows "Camera
-// unavailable".
-function getUserMedia(
-    constraints: MediaStreamConstraints,
-): Promise<MediaStream> {
-    void constraints;
-    return Promise.reject(new Error("Zami: no getUserMedia"));
 }
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -173,7 +161,7 @@ export default function VoiceAudioSettings() {
             if (!destroyed.current) setFullScreenCallsGranted(granted);
         });
     };
-    // Zami: no `videoEl`: the preview <video> isn't ported (see getUserMedia).
+    // Zami: no `videoEl`: the preview is an RTCView of `cameraStream` (below).
     const cameraStream = useRef<MediaStream | null>(null);
     const meter = useRef<MicMeterHandle | null>(null);
     const stopOutputMeter = useRef<(() => void) | null>(null);
@@ -240,8 +228,8 @@ export default function VoiceAudioSettings() {
         inputs,
     ).usedFallback;
 
-    // Zami: not ported: device lists. listMediaDevices finds none without
-    // navigator.mediaDevices, so each picker offers only its built-in entries.
+    // Zami: the devices are React Native WebRTC's (microphones and cameras; the
+    // system routes audio output). It reports no device changes.
     async function refreshDevices(): Promise<void> {
         const all = await listMediaDevices();
         if (destroyed.current) return;
@@ -275,6 +263,18 @@ export default function VoiceAudioSettings() {
     const rnnSupported = rnnoiseSupported();
     const gpuSupported = fastEnhancerGpuSupported();
     const feSupported = fastEnhancerSupported();
+    // Zami: Zam's mic chain (the noise filters and gain stages) runs in an
+    // AudioWorklet with WebAssembly, which React Native doesn't have; nor can
+    // call audio go through Web Audio (`normalizeVoices`). Whatever can't run
+    // here is labelled unavailable, and in a call the platform's own noise
+    // suppression and gain control stand in for the chain (planMicProcessing
+    // in $lib/matrix/livekitCall).
+    const chainSupported = rnnSupported;
+    const incomingProcessingSupported = false;
+    const unavailableIf = (unsupported: boolean, label: string): string =>
+        unsupported
+            ? `${label} (${t("notificationSettings.unavailable")})`
+            : label;
     // Noise filters plugins have registered (zam.audio.registerMicFilter).
     const pluginFilters = useRune(() => {
         void pluginRegistry.tick;
@@ -413,7 +413,7 @@ export default function VoiceAudioSettings() {
                 settingsState.videoInputDeviceId,
             );
             try {
-                granted = await getUserMedia({
+                granted = await navigator.mediaDevices.getUserMedia({
                     video: wanted ? { deviceId: wanted } : {},
                 });
             } catch (e) {
@@ -421,7 +421,7 @@ export default function VoiceAudioSettings() {
                 // preview falls back instead of dying; other errors (permission
                 // denied) rethrow to the handler below.
                 if (!wanted || !isOverconstrainedError(e)) throw e;
-                granted = await getUserMedia({
+                granted = await navigator.mediaDevices.getUserMedia({
                     video: {},
                 });
             }
@@ -448,7 +448,7 @@ export default function VoiceAudioSettings() {
         if (!adopted) return;
         cameraStream.current = adopted;
         setCameraOn(true);
-        // Zami: not ported: `videoEl.srcObject = cameraStream` (no preview view).
+        // Zami: `videoEl.srcObject = cameraStream` → the RTCView shows it.
         void refreshDevices(); // camera grant unlocks camera labels
     }
 
@@ -534,8 +534,9 @@ export default function VoiceAudioSettings() {
         stopOutputMeter.current?.();
         stopOutputMeter.current = null;
         setOutLevel(0);
-        // Zami: not ported: the meter is Web Audio; without an AudioContext
-        // startOutputMeter does nothing, so it stays empty.
+        // Zami: not ported: the meter is Web Audio, which can't take call audio
+        // here (react-native-audio-api has no MediaStream source), so it stays
+        // empty.
         if (key !== null)
             stopOutputMeter.current = startOutputMeter(
                 getRemoteAudioStreams(),
@@ -714,7 +715,10 @@ export default function VoiceAudioSettings() {
                 <View className="mt-3 flex-row items-center gap-3">
                     <View className="flex-1">
                         <Text className="text-sm text-discord-textPrimary">
-                            {t("voiceAudioSettings.normalizeVoices")}
+                            {unavailableIf(
+                                !incomingProcessingSupported,
+                                t("voiceAudioSettings.normalizeVoices"),
+                            )}
                         </Text>
                         <Text className="text-xs text-discord-textMuted">
                             {t("voiceAudioSettings.normalizeVoicesHint")}
@@ -829,21 +833,28 @@ export default function VoiceAudioSettings() {
                         options={[
                             {
                                 value: "fastenhancer",
-                                label: t("voiceAudioSettings.nsFastEnhancer"),
+                                label: unavailableIf(
+                                    !feSupported,
+                                    t("voiceAudioSettings.nsFastEnhancer"),
+                                ),
                             },
                             {
                                 value: "fastenhancer-tiny",
-                                label: t(
-                                    "voiceAudioSettings.nsFastEnhancerTiny",
+                                label: unavailableIf(
+                                    !feSupported,
+                                    t("voiceAudioSettings.nsFastEnhancerTiny"),
                                 ),
                             },
                             {
                                 value: "rnnoise",
-                                label: t("voiceAudioSettings.nsRnnoise"),
+                                label: unavailableIf(
+                                    !rnnSupported,
+                                    t("voiceAudioSettings.nsRnnoise"),
+                                ),
                             },
                             ...pluginFilters.map((f) => ({
                                 value: f.key,
-                                label: f.label,
+                                label: unavailableIf(!dfSupported, f.label),
                             })),
                             ...(isPluginFilterKey(nsMode) && !nsFilter
                                 ? [
@@ -857,7 +868,10 @@ export default function VoiceAudioSettings() {
                                 : []),
                             {
                                 value: "deepfilter",
-                                label: t("voiceAudioSettings.nsDeepFilter"),
+                                label: unavailableIf(
+                                    !dfSupported,
+                                    t("voiceAudioSettings.nsDeepFilter"),
+                                ),
                             },
                             {
                                 value: "browser",
@@ -918,13 +932,19 @@ export default function VoiceAudioSettings() {
                             {t("voiceAudioSettings.autoGainControl")}
                         </Text>
                         <Text className="text-xs text-discord-textMuted">
-                            {micGainMode === "normalize"
-                                ? t("voiceAudioSettings.agcNormalizeHint")
-                                : micGainMode === "zam"
-                                  ? t("voiceAudioSettings.agcZamHint")
-                                  : micGainMode === "browser"
-                                    ? t("voiceAudioSettings.agcBrowserHint")
-                                    : t("voiceAudioSettings.agcOffHint")}
+                            {/* Zami: Zam's two stages fall back to the
+                                platform's AGC where the chain can't run. */}
+                            {(micGainMode === "normalize" ||
+                                micGainMode === "zam") &&
+                            !chainSupported
+                                ? t("voiceAudioSettings.agcBrowserHint")
+                                : micGainMode === "normalize"
+                                  ? t("voiceAudioSettings.agcNormalizeHint")
+                                  : micGainMode === "zam"
+                                    ? t("voiceAudioSettings.agcZamHint")
+                                    : micGainMode === "browser"
+                                      ? t("voiceAudioSettings.agcBrowserHint")
+                                      : t("voiceAudioSettings.agcOffHint")}
                         </Text>
                     </View>
                     <Select
@@ -941,11 +961,17 @@ export default function VoiceAudioSettings() {
                         options={[
                             {
                                 value: "normalize",
-                                label: t("voiceAudioSettings.agcNormalize"),
+                                label: unavailableIf(
+                                    !chainSupported,
+                                    t("voiceAudioSettings.agcNormalize"),
+                                ),
                             },
                             {
                                 value: "zam",
-                                label: t("voiceAudioSettings.agcZam"),
+                                label: unavailableIf(
+                                    !chainSupported,
+                                    t("voiceAudioSettings.agcZam"),
+                                ),
                             },
                             {
                                 value: "browser",
@@ -1124,8 +1150,21 @@ export default function VoiceAudioSettings() {
                         {cameraError}
                     </Text>
                 ) : null}
-                {/* Zami: not ported: the preview <video> (`mt-3 w-full max-w-sm
-                    rounded bg-black`, shown while cameraOn). See getUserMedia. */}
+                {/* Zami: the preview <video> → React Native WebRTC's RTCView of
+                    the stream, mounted while the camera is on. */}
+                {cameraOn && cameraStream.current ? (
+                    <View className="mt-3 w-full max-w-sm aspect-video rounded overflow-hidden bg-black">
+                        <RTCView
+                            streamURL={(
+                                cameraStream.current as unknown as {
+                                    toURL(): string;
+                                }
+                            ).toURL()}
+                            objectFit="cover"
+                            style={{ flex: 1 }}
+                        />
+                    </View>
+                ) : null}
             </View>
 
             <View>

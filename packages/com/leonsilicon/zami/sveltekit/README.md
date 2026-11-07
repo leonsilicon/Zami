@@ -7,8 +7,10 @@ React Native stand-ins for the SvelteKit runtime modules Zam imports:
 - `$app/state`: a reactive `page` and `updated`;
 - `window.location` for Zam's code (`installLocation()`, which the app calls first; Metro
   rewrites `location` in Zam's tree to it, leaving libraries without a global `location`):
-  reads `page.url`; assigning it reloads the JS bundle at the new URL, as a browser's full
-  navigation boots Zam afresh.
+  reads `page.url`; assigning it (`href`, `assign`, `replace`) reloads the app with
+  expo's `reloadAppAsync`, in development and release builds alike, and the new run starts
+  at the new URL, as a browser's full navigation boots Zam afresh. `reload()` starts it
+  again at the current URL.
 
 Metro and the app's tsconfig map `$app/*` here.
 

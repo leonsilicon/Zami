@@ -1,6 +1,7 @@
+import { addCaptureKeyListener } from "@-/com.leonsilicon.zami.browser";
 import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 // Settings > Keybinds: every keyboard shortcut, Discord's defaults, and
@@ -9,6 +10,10 @@ import { t } from "$lib/i18n";
 import {
     KEYBIND_CATEGORIES,
     KEYBIND_DEFS,
+    bindingAllowed,
+    eventToBinding,
+    isModifierKey,
+    eventKey,
     isKeybindAction,
     type Binding,
     type KeybindAction,
@@ -41,8 +46,8 @@ const smallButtonTextClass = "text-sm font-medium text-discord-textPrimary";
 // Zami: `data-setting-anchor` (settings search scrolls to it) is not ported.
 export default function KeybindSettings() {
     const [recordingId, setRecordingId] = useState<KeybindAction | null>(null);
-    // Zami: not ported: `pendingModifier` (a modifier pressed on its own while
-    // recording a hold action); see `startRecording`.
+    /** A modifier pressed on its own while recording a hold action. */
+    const pendingModifier = useRef<string | null>(null);
     const [notice, setNotice] = useState("");
 
     const globalVoice = useRune(() => keybindsState.globalVoice);
@@ -82,22 +87,34 @@ export default function KeybindSettings() {
     function startRecording(id: KeybindAction) {
         stopRecording();
         setRecordingId(id);
+        pendingModifier.current = null;
         setNotice("");
         keybindsState.recording = true;
-        // Zami: not ported: capturing the new key. Upstream listens for
-        // keydown, keyup and mousedown on `window` in the capture phase
-        // (`onRecordKeydown`, `onRecordKeyup`, `onRecordMouse`, which commit
-        // the binding, a lone modifier for hold actions, or a mouse side
-        // button). React Native reports no hardware-keyboard or mouse events
-        // outside a TextInput, and a TextInput's key presses carry no
-        // modifiers, so the recorder shows its prompt until it's pressed
-        // again; clearing and resetting bindings work as upstream.
+        // Capture phase, so nothing else in the app sees the keys.
+        // Zami: the listeners are the effect below, which follows
+        // `recordingId`.
     }
 
     function stopRecording() {
         setRecordingId(null);
+        pendingModifier.current = null;
         keybindsState.recording = false;
     }
+
+    // Zami: startRecording's and stopRecording's `window` listeners
+    // (`addEventListener(type, listener, true)`), while a binding is being
+    // recorded. Not ported: `onRecordMouse` (a mouse side button for push to
+    // talk); React Native reports no mouse buttons.
+    useEffect(() => {
+        if (!recordingId) return;
+        const removeDown = addCaptureKeyListener("keydown", onRecordKeydown);
+        const removeUp = addCaptureKeyListener("keyup", onRecordKeyup);
+        return () => {
+            removeDown();
+            removeUp();
+        };
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- the handlers read only `recordingId`, refs and stores.
+    }, [recordingId]);
 
     // onDestroy.
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- `stopRecording` touches only state setters and the store.
@@ -118,6 +135,56 @@ export default function KeybindSettings() {
                 : "",
         );
         stopRecording();
+    }
+
+    function onRecordKeydown(e: KeyboardEvent) {
+        const id = recordingId;
+        if (!id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat) return;
+        const key = eventKey(e);
+        // Escape on its own cancels; with a modifier it's a binding.
+        if (
+            key === "escape" &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            !e.metaKey &&
+            !e.shiftKey
+        ) {
+            stopRecording();
+            return;
+        }
+        if (isModifierKey(key)) {
+            pendingModifier.current = key;
+            return;
+        }
+        pendingModifier.current = null;
+        const b = eventToBinding(e);
+        if (bindingAllowed(b, isHold(id))) commit(id, b);
+    }
+
+    function onRecordKeyup(e: KeyboardEvent) {
+        const id = recordingId;
+        if (!id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // A modifier pressed and released on its own: hold actions take it.
+        const key = eventKey(e);
+        if (
+            pendingModifier.current &&
+            key === pendingModifier.current &&
+            isHold(id)
+        ) {
+            commit(id, {
+                ctrl: false,
+                shift: false,
+                alt: false,
+                meta: false,
+                key,
+            });
+        }
+        pendingModifier.current = null;
     }
 
     function clear(id: KeybindAction) {

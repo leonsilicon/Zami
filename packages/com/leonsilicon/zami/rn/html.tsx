@@ -43,6 +43,13 @@ export interface HtmlProps {
   resolveMxc?: (mxc: string) => string | null;
   /** A link was pressed. Defaults to opening it with the system. */
   onLinkPress?: (href: string) => void;
+  /**
+   * An image was pressed (an `<img>` that isn't a custom emoji or in a spoiler, as Zam's
+   * `bodyImageGallery` takes), with its resolved `src`, its element, and every `<img>` in
+   * the HTML in order, so a caller can page them in a lightbox. Without it, images take
+   * no press (a link around one still opens).
+   */
+  onImagePress?: (src: string, element: HtmlElement, images: HtmlElement[]) => void;
   /** Lines to clamp to, like `line-clamp-*`. */
   numberOfLines?: number;
 }
@@ -134,9 +141,13 @@ interface Context {
   /** Classes for links. */
   link: string;
   press: (href: string) => void;
+  /** An image was pressed (see HtmlProps.onImagePress), if the caller takes them. */
+  pressImage: ((element: HtmlElement) => void) | undefined;
   emojiOnly: boolean;
   /** Inside a spoiler that isn't revealed. */
   hidden: boolean;
+  /** Inside a spoiler, revealed or not: its images aren't opened. */
+  spoiler: boolean;
   decoration: Decoration;
   /** Inside a code block: highlight.js's colors. */
   syntax: SyntaxColors | undefined;
@@ -168,6 +179,7 @@ function rootContext(
   style: TextStyle,
   classes: HtmlClassName,
   press: (href: string) => void,
+  pressImage: Context["pressImage"],
 ): Context {
   const text = textStyle(style);
   const fontSize = typeof text.fontSize === "number" ? text.fontSize : DEFAULT_FONT_SIZE;
@@ -180,8 +192,10 @@ function rootContext(
     lineHeightRatio,
     link: classes.link || LINK_CLASS,
     press,
+    pressImage,
     emojiOnly: classes.emojiOnly,
     hidden: false,
+    spoiler: false,
     decoration: decorate("none", text.textDecorationLine),
     syntax: undefined,
   };
@@ -370,10 +384,7 @@ function Spoiler({ element, context }: { element: HtmlElement; context: Context 
         hidden ? styles.hidden : colors(color, undefined),
       ]}
     >
-      {renderInlines(
-        element.children,
-        hidden === context.hidden ? context : { ...context, hidden },
-      )}
+      {renderInlines(element.children, { ...context, hidden, spoiler: true })}
     </Text>
   );
 }
@@ -409,7 +420,8 @@ function HtmlImage({ element, context }: { element: HtmlElement; context: Contex
     const imageWidth = Math.min(width ?? natural?.width ?? context.fontSize * 1.25, maxWidth);
     size = { width: imageWidth, height: imageWidth / ratio };
   }
-  return (
+  const pressImage = emoticon || context.spoiler ? undefined : context.pressImage;
+  const image = (
     <Image
       accessibilityLabel={attrs.alt}
       contentFit="contain"
@@ -427,6 +439,29 @@ function HtmlImage({ element, context }: { element: HtmlElement; context: Contex
       ]}
     />
   );
+  if (!pressImage) return image;
+  // The image's own size on the button too: inside a Text, it is the outer view whose
+  // size the line makes room for.
+  return (
+    <Pressable
+      accessibilityRole="imagebutton"
+      accessibilityLabel={attrs.alt}
+      onPress={() => pressImage(element)}
+      style={size}
+    >
+      {image}
+    </Pressable>
+  );
+}
+
+/** Every `<img>` with a source, in document order. */
+function imagesOf(nodes: HtmlNode[], out: HtmlElement[] = []): HtmlElement[] {
+  for (const node of nodes) {
+    if (node.type !== "element") continue;
+    if (node.tag === "img" && node.attrs.src) out.push(node);
+    imagesOf(node.children, out);
+  }
+  return out;
 }
 
 // --- Blocks: `View`s, with each run of inline content in a `Text`. ---
@@ -470,6 +505,13 @@ function renderBlock(item: HtmlLayout, context: Context, key: number, spacing: S
           {renderList(item, context)}
         </View>
       );
+    case "img":
+      // A picture, on a line of its own (see isPictureImage).
+      return item.image ? (
+        <View key={key} style={[styles.picture, spacing]}>
+          <HtmlImage element={item.image} context={context} />
+        </View>
+      ) : null;
     case "hr":
       // Preflight's `hr`: a 1px top border in the text's color.
       return <View key={key} style={[styles.hr, { borderColor: context.text.color }, spacing]} />;
@@ -678,15 +720,14 @@ export function Html({
   className,
   resolveMxc,
   onLinkPress,
+  onImagePress,
   numberOfLines,
 }: HtmlProps): ReactNode {
   const classes = useMemo(() => readClassName(className), [className]);
+  const nodes = useMemo(() => parseHtml(html, { resolveMxc }), [html, resolveMxc]);
   const layout = useMemo(
-    () =>
-      layoutHtml(parseHtml(html, { resolveMxc }), {
-        preserveWhitespace: classes.preserveWhitespace,
-      }),
-    [html, resolveMxc, classes.preserveWhitespace],
+    () => layoutHtml(nodes, { preserveWhitespace: classes.preserveWhitespace }),
+    [nodes, classes.preserveWhitespace],
   );
   const style = useResolveClassNames(classes.text);
   // A changing `onLinkPress` (an inline arrow) doesn't re-render the content.
@@ -695,7 +736,24 @@ export function Html({
     latestOnLinkPress.current = onLinkPress;
   }, [onLinkPress]);
   const press = useCallback((href: string) => (latestOnLinkPress.current ?? openLink)(href), []);
-  const context = useMemo(() => rootContext(style, classes, press), [style, classes, press]);
+  // The same for `onImagePress`; whether there is one changes what renders.
+  const latestOnImagePress = useRef(onImagePress);
+  useLayoutEffect(() => {
+    latestOnImagePress.current = onImagePress;
+  }, [onImagePress]);
+  const takesImages = onImagePress !== undefined;
+  const pressImage = useMemo(
+    () =>
+      takesImages
+        ? (element: HtmlElement) =>
+            latestOnImagePress.current?.(element.attrs.src ?? "", element, imagesOf(nodes))
+        : undefined,
+    [takesImages, nodes],
+  );
+  const context = useMemo(
+    () => rootContext(style, classes, press, pressImage),
+    [style, classes, press, pressImage],
+  );
   return useMemo(() => {
     if (numberOfLines) {
       return (
@@ -717,6 +775,8 @@ export function openLink(href: string): void {
 }
 
 const styles = StyleSheet.create({
+  // An image's own line: as wide as the image, from the start of the line.
+  picture: { alignSelf: "flex-start" },
   bold: { fontWeight: "700" },
   italic: { fontStyle: "italic" },
   mono: { fontFamily: MONO },

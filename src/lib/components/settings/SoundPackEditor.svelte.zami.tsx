@@ -1,19 +1,11 @@
-import {
-    confirmAlert,
-    mediaSource,
-    pickedFile,
-    Select,
-} from "@-/com.leonsilicon.zami.rn";
+import { confirmAlert, pickedFile, Select } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { createAudioPlayer, useAudioPlayer } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { Play, X } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
-// Zami: uploadSoundFile is this file's own (below): upstream's measures the clip in
-// an HTMLAudioElement.
 import {
     USER_SOUND_PACK_NAME,
     addRoomSound,
@@ -26,21 +18,17 @@ import {
     removeRoomSound,
     removeUserSound,
     setSoundPackGlobal,
+    uploadSoundFile,
 } from "$lib/matrix/soundboard";
-import { mxcToHttp } from "$lib/matrix/media";
-import { getClient } from "$lib/matrix/runtime";
+import { fetchMediaBytes, mxcToHttp } from "$lib/matrix/media";
 import { roomsState } from "$lib/stores/rooms.svelte";
-import { faststartMp4 } from "$lib/utils/mp4Faststart";
 import {
     MAX_SOUND_BYTES,
     MAX_SOUND_SECONDS,
-    isMp4Audio,
     isValidSoundName,
     normalizeSoundName,
-    soundFileProblem,
     soundNameFromText,
     type Sound,
-    type SoundInfo,
     type SoundPack,
 } from "$lib/utils/soundboard";
 
@@ -101,9 +89,8 @@ export default function SoundPackEditor({ room }: Props) {
 
     async function upload() {
         // Zami: <input type="file" accept="audio/*"> → expo-document-picker.
-        const picked = await pickAudio();
-        const file = picked?.file;
-        if (!picked || !file) return;
+        const file = await pickAudio();
+        if (!file) return;
         setError("");
         setNotice("");
         // The typed (or file) name becomes a shortcode; when that had to
@@ -125,7 +112,7 @@ export default function SoundPackEditor({ room }: Props) {
         }
         setUploading(true);
         try {
-            const { mxcUrl, info } = await uploadSoundFile(file, picked.uri);
+            const { mxcUrl, info } = await uploadSoundFile(file);
             if (room) {
                 const packName =
                     packs.find((pack) => pack.stateKey === stateKey)?.name ||
@@ -235,32 +222,34 @@ export default function SoundPackEditor({ room }: Props) {
         }
     }
 
-    // Zami: upstream fetches the clip (fetchMediaBytes, capped at MAX_SOUND_BYTES)
-    // and plays it from a blob URL in an HTMLAudioElement. expo-audio can't play
-    // bytes, so this player streams the URL, with the account's token where the
-    // media needs one (mediaSource), and stops when the editor closes. A clip that
-    // fails to load reports it through the player's status.
-    const preview = useAudioPlayer(null);
-    useEffect(() => {
-        const subscription = preview.addListener(
-            "playbackStatusUpdate",
-            (status) => {
-                if (status.error) setError(t("soundboard.previewFailed"));
-            },
-        );
-        return () => subscription.remove();
-    }, [preview]);
-    function previewSound(sound: Sound) {
+    const preview = useRef<HTMLAudioElement | null>(null);
+    async function previewSound(sound: Sound) {
         setError("");
         try {
             const url = mxcToHttp(sound.mxcUrl);
             if (!url) return;
-            preview.replace(mediaSource(url) ?? null);
-            preview.play();
+            const bytes = await fetchMediaBytes(url, MAX_SOUND_BYTES);
+            preview.current?.pause();
+            if (preview.current) URL.revokeObjectURL(preview.current.src);
+            preview.current = new Audio(
+                URL.createObjectURL(
+                    new Blob([bytes], { type: sound.info?.mimetype }),
+                ),
+            );
+            await preview.current.play();
         } catch {
             setError(t("soundboard.previewFailed"));
         }
     }
+    // Zami: closing the editor stops the preview and deletes its file (a blob
+    // URL is a file here).
+    useEffect(
+        () => () => {
+            preview.current?.pause();
+            if (preview.current) URL.revokeObjectURL(preview.current.src);
+        },
+        [],
+    );
 
     return (
         <View className="gap-4">
@@ -541,79 +530,14 @@ export default function SoundPackEditor({ room }: Props) {
     );
 }
 
-/** Check a file against the sound limits and upload it. Throws a message fit
- *  for the user. */
-// Zami: upstream's uploadSoundFile ($lib/matrix/soundboard), except that the
-// duration comes from expo-audio loading the picked file's URI (audioDuration
-// below), where upstream loads the File in an HTMLAudioElement.
-async function uploadSoundFile(
-    file: File,
-    uri: string,
-): Promise<{ mxcUrl: string; info: SoundInfo }> {
-    const client = getClient();
-    if (!client) throw new Error(t("client.notLoggedIn"));
-    const problem = soundFileProblem(file);
-    if (problem === "notAudio") throw new Error(t("soundboard.notAudio"));
-    if (problem === "tooBig") throw new Error(t("soundboard.tooBig"));
-    const duration = await audioDuration(uri);
-    if (duration === null) throw new Error(t("soundboard.unreadable"));
-    if (duration > MAX_SOUND_SECONDS)
-        throw new Error(
-            t("soundboard.tooLong", { seconds: MAX_SOUND_SECONDS }),
-        );
-    // Listeners stream a clip while it downloads, which an MP4 with its index
-    // at the end cannot do: move the index to the front, as for chat videos.
-    const upload = isMp4Audio(file) ? await faststartMp4(file) : file;
-    const { content_uri } = await client.uploadContent(upload, {
-        name: upload.name,
-    });
-    return {
-        mxcUrl: content_uri,
-        info: {
-            mimetype: upload.type,
-            size: upload.size,
-            // AudioInfo: milliseconds.
-            duration: Math.round(duration * 1000),
-        },
-    };
-}
-
-// Zami: the clip's length in seconds, read by loading it in an expo-audio player;
-// null when it can't be loaded.
-function audioDuration(uri: string): Promise<number | null> {
-    return new Promise((resolve) => {
-        const player = createAudioPlayer(uri);
-        let settled = false;
-        const done = (value: number | null) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeout);
-            subscription.remove();
-            player.remove();
-            resolve(value);
-        };
-        const timeout = setTimeout(() => done(null), 10_000);
-        const subscription = player.addListener(
-            "playbackStatusUpdate",
-            (status) => {
-                if (status.isLoaded && status.duration > 0)
-                    done(status.duration);
-                else if (status.error) done(null);
-            },
-        );
-        if (player.isLoaded && player.duration > 0) done(player.duration);
-    });
-}
-
 // Zami: <input type="file" accept="audio/*"> → expo-document-picker. Resolves to
-// the picked file and its URI, or null when cancelled.
-async function pickAudio(): Promise<{ file: File; uri: string } | null> {
+// the picked file, or null when cancelled.
+async function pickAudio(): Promise<File | null> {
     const result = await DocumentPicker.getDocumentAsync({
         type: "audio/*",
         copyToCacheDirectory: true,
     });
     const asset = result.canceled ? undefined : result.assets[0];
     if (!asset) return null;
-    const file = await pickedFile(asset);
-    return { file, uri: asset.uri };
+    return pickedFile(asset);
 }

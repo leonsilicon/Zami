@@ -43,8 +43,14 @@ import {
     Spin,
     SvgIcon,
 } from "@-/com.leonsilicon.zami.rn";
+import {
+    isModifierHeld,
+    useHardwareKeyboard,
+    useInputKeys,
+} from "@-/com.leonsilicon.zami.browser";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
+import { keybindsState, pickerForKey } from "$lib/stores/keybinds.svelte";
 import type { MatrixEvent, Room } from "matrix-js-sdk";
 import {
     sendTextMessage,
@@ -214,8 +220,6 @@ interface Props {
     disabled?: boolean;
     replyToEvent?: MatrixEvent | null;
     onCancelReply?: () => void;
-    /** Zami: never called. ArrowUp in an empty composer asks for it, a
-     *  hardware key a TextInput doesn't report. */
     onRequestEditLast?: () => void;
     /** `s/old/new/`: apply it to the user's last message here (the
      *  caller knows which messages that means). */
@@ -258,6 +262,9 @@ function useLiveState<T>(initial: T): [T, (next: T) => void, RefObject<T>] {
 // before setSelection moves it). Reports that soon after a programmatic change
 // are those, not the user moving the caret.
 const MODEL_SETTLE_MS = 250;
+
+/** Zami: how long the text a Tab typed takes to arrive (see tabPick). */
+const TAB_SETTLE_MS = 300;
 
 const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
 
@@ -440,6 +447,7 @@ export default function MessageInput({
     disabled: disabledProp = false,
     replyToEvent = null,
     onCancelReply,
+    onRequestEditLast,
     onSedEdit,
     onThreadCreated,
     scrollEl,
@@ -452,6 +460,8 @@ export default function MessageInput({
 }: Props) {
     const isMobile = useRune(() => interfaceState.isMobile);
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
+    // Zami: whether the user types on a hardware keyboard, whose Enter sends.
+    const hardwareKeyboard = useHardwareKeyboard();
     const spellCheckEnabled = useRune(() => settingsState.spellCheckEnabled);
     const roomsTick = useRune(() => roomsState.roomsTick);
     const windowSize = useWindowDimensions();
@@ -546,7 +556,18 @@ export default function MessageInput({
     // focus this composer. Only the main composer claims the global hook.
     useEffect(() => {
         if (!isThread) {
-            interfaceState.focusComposer = () => textareaEl.current?.focus();
+            // Zami: AppShell's type-to-focus passes the key it saw: with
+            // nothing focused it typed nothing, so the composer types it.
+            interfaceState.focusComposer = (typed?: string) => {
+                textareaEl.current?.focus();
+                if (!typed) return;
+                const prev = textRef.current;
+                const { start, end } = selectionRef.current;
+                setComposerText(
+                    prev.slice(0, start) + typed + prev.slice(end),
+                    start + typed.length,
+                );
+            };
             interfaceState.composerUpload = () =>
                 chooseFiles(pickFiles, onFileSelected);
             return () => {
@@ -1894,15 +1915,201 @@ export default function MessageInput({
         }
     }
 
-    // Zami: onKeydown, for the keys a TextInput reports. Enter is the return
-    // key: on a phone (isMobile) it adds a line, as upstream's touch branch has
-    // it, and the send button sends; elsewhere it submits (`submitBehavior`),
-    // sending as a physical Enter does. Either way an open suggestion list
-    // takes it first (pickSuggestion). Escape is VoiceOver's escape gesture
-    // (onEscape). Not ported: the hardware-keyboard keys a TextInput doesn't
-    // report: Ctrl+Z/Ctrl+Y, the picker shortcuts (Settings > Keybinds),
-    // PageUp/PageDown, the arrow keys and Tab in the suggestion lists,
-    // Shift+Enter for a line break, and ArrowUp to edit the last message.
+    // Zami: hardware key presses are observed, not intercepted (see
+    // @-/com.leonsilicon.zami.browser): the TextInput has taken each key by the
+    // time onKeydown runs, so preventDefault() can't stop it. So:
+    //   - Enter is the TextInput's return key: on a phone (isMobile) typing on
+    //     its own keyboard it adds a line, as upstream's touch branch has it,
+    //     and the send button sends; with a hardware keyboard, or off a phone,
+    //     it submits (`submitBehavior`), sending as a physical Enter does, or
+    //     with Shift held adding a line (onSubmitEditing). Either way an open
+    //     suggestion list takes it first (pickSuggestion).
+    //   - Tab in a suggestion list types a tab (after accepting any
+    //     autocorrection), which picks instead of landing (syncFromEditor), as
+    //     the return key does on a phone.
+    //   - ArrowUp/ArrowDown in a suggestion list also move the caret, which
+    //     is put back (onSelectionChange).
+    // Escape is also VoiceOver's escape gesture (onEscape).
+    // Not ported: Ctrl+Z/Ctrl+Y through the model's history, since the
+    // TextInput's own undo takes them (see TextUndoHistory below); and
+    // PageUp/PageDown scrolling the timeline, which `scrollEl` (a
+    // TimelineScroller) can't page.
+
+    /** Zami: a caret an arrow key moved while a suggestion list had it: the
+     *  selection to put back, and when the key was pressed. */
+    const arrowCaret = useRef<{
+        selection: { start: number; end: number };
+        at: number;
+    } | null>(null);
+    /** Zami: a Tab a suggestion list took, until the text it typed arrives
+     *  (syncFromEditor), or with none, until it picks on its own. */
+    const tabPick = useRef<{
+        at: number;
+        timer: ReturnType<typeof setTimeout>;
+    } | null>(null);
+
+    /** Zami: an arrow key a suggestion list takes: its caret move is undone. */
+    function holdCaret() {
+        arrowCaret.current = {
+            selection: { ...selectionRef.current },
+            at: Date.now(),
+        };
+    }
+
+    /** Zami: a Tab a suggestion list takes: it picks once the text it types
+     *  arrives, or on its own if none does. */
+    function pickOnTab() {
+        if (tabPick.current) clearTimeout(tabPick.current.timer);
+        tabPick.current = {
+            at: Date.now(),
+            timer: setTimeout(() => {
+                tabPick.current = null;
+                pickSuggestion();
+            }, TAB_SETTLE_MS),
+        };
+    }
+
+    function onKeydown(e: KeyboardEvent) {
+        // Ctrl/Cmd chords: undo/redo through the model history, and the
+        // picker shortcuts. Handled here (not only in AppShell) so they open
+        // THIS composer's picker, e.g. the thread composer's when focused;
+        // AppShell skips events already defaultPrevented.
+        // Zami: not ported: undo/redo (see above).
+        // Picker shortcuts (Settings > Keybinds).
+        if (!keybindsState.recording) {
+            const picker = pickerForKey(e);
+            if (picker) {
+                e.preventDefault();
+                openPicker(picker);
+                return;
+            }
+        }
+
+        // Slash-command picker navigation
+        if (slashQuery !== null && slashCandidates.length > 0) {
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                holdCaret();
+                setSlashSelectedIdx(
+                    (slashSelectedIdx - 1 + slashCandidates.length) %
+                        slashCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                holdCaret();
+                setSlashSelectedIdx(
+                    (slashSelectedIdx + 1) % slashCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                e.preventDefault();
+                // Zami: picks through the text the key types (pickOnTab,
+                // onSubmitEditing).
+                if (e.key === "Tab") pickOnTab();
+                return;
+            }
+            if (e.key === "Escape") {
+                setSlashQuery(null);
+                return;
+            }
+        }
+
+        // Mention picker navigation
+        if (mentionQuery !== null && mentionCandidates.length > 0) {
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                holdCaret();
+                setMentionSelectedIdx(
+                    (mentionSelectedIdx - 1 + mentionCandidates.length) %
+                        mentionCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                holdCaret();
+                setMentionSelectedIdx(
+                    (mentionSelectedIdx + 1) % mentionCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                e.preventDefault();
+                // Zami: picks through the text the key types (pickOnTab,
+                // onSubmitEditing).
+                if (e.key === "Tab") pickOnTab();
+                return;
+            }
+            if (e.key === "Escape") {
+                setMentionQuery(null);
+                return;
+            }
+        }
+
+        // Emoji picker navigation
+        if (emojiQuery !== null && emojiCandidates.length > 0) {
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                holdCaret();
+                setEmojiSelectedIdx(
+                    (emojiSelectedIdx - 1 + emojiCandidates.length) %
+                        emojiCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                holdCaret();
+                setEmojiSelectedIdx(
+                    (emojiSelectedIdx + 1) % emojiCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+                e.preventDefault();
+                // Zami: picks through the text the key types (pickOnTab,
+                // onSubmitEditing).
+                if (e.key === "Tab") pickOnTab();
+                return;
+            }
+            if (e.key === "Escape") {
+                setEmojiQuery(null);
+                return;
+            }
+        }
+
+        // Zami: Shift+Enter and the physical Enter are onSubmitEditing's.
+
+        // Picker dismissal is handled centrally (+page Escape/back). Here we
+        // only cancel an in-progress reply, and only when nothing else is open.
+        if (
+            e.key === "Escape" &&
+            !interfaceState.modal &&
+            !interfaceState.sidebar &&
+            replyToEvent
+        ) {
+            onCancelReply?.();
+        }
+        // Ctrl+E / Ctrl+S (open pickers) are global shortcuts handled
+        // centrally in AppShell.
+        if (
+            e.key === "ArrowUp" &&
+            !text &&
+            !e.altKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.shiftKey
+        ) {
+            e.preventDefault();
+            onRequestEditLast?.();
+        }
+    }
+
+    // Zami: `onkeydown={onKeydown}` on the editor.
+    useInputKeys(textareaEl, { onKeydown });
 
     /** The suggestion lists' Enter/Tab: pick the highlighted entry. */
     function pickSuggestion(): boolean {
@@ -1928,8 +2135,27 @@ export default function MessageInput({
     }
 
     function onSubmitEditing() {
+        // Zami: Shift+Enter on a hardware keyboard: a line break, through the
+        // model (upstream's insertLineBreakAtCaret).
+        if (isModifierHeld("Shift")) {
+            insertLineBreakAtCaret();
+            return;
+        }
         if (pickSuggestion()) return;
         void send();
+    }
+
+    /** Zami: upstream's insertLineBreakAtCaret, on the model's selection. */
+    function insertLineBreakAtCaret() {
+        const prev = textRef.current;
+        const { start, end } = selectionRef.current;
+        setComposerText(
+            prev.slice(0, start) + "\n" + prev.slice(end),
+            start + 1,
+        );
+        detectMentionQuery();
+        detectEmojiQuery();
+        detectSlashQuery();
     }
 
     function onEscape() {
@@ -2018,9 +2244,9 @@ export default function MessageInput({
         setRenamingItem(item);
     }
 
-    // Zami: not ported: insertLineBreakAtCaret and onBeforeInput, which route
-    // the browser's line breaks through the model; the TextInput inserts its
-    // own "\n", which is the model's line break. Nor onPaste's images (a
+    // Zami: not ported: onBeforeInput, which routes the browser's line breaks
+    // through the model; the TextInput inserts its own "\n", which is the
+    // model's line break. Nor onPaste's images (a
     // pasted screenshot attaching itself): a TextInput only pastes text, which
     // arrives through onChangeText like typing, its line endings normalised
     // there as pastedPlainText does.
@@ -2063,14 +2289,31 @@ export default function MessageInput({
     function syncFromEditor(next: string) {
         const prev = textRef.current;
         const selection = selectionRef.current;
+        // Zami: a Tab a suggestion list took (onKeydown) types a tab, after
+        // accepting any autocorrection of the word being completed. The
+        // autocorrection is dropped, and the tab picks from the list as it
+        // stood.
+        const tab = tabPick.current;
+        if (tab && Date.now() - tab.at < TAB_SETTLE_MS) {
+            const tabs = (value: string) => value.split("\t").length;
+            if (tabs(next) <= tabs(prev)) return;
+            clearTimeout(tab.timer);
+            tabPick.current = null;
+            if (pickSuggestion()) return;
+        }
         // Zami: the return key on a phone adds a line rather than reporting a
         // keydown, so the suggestion lists' Enter is a line break typed over
-        // the selection while one is open: it picks instead of landing.
+        // the selection while one is open: it picks instead of landing. So
+        // does a hardware Tab, which types a tab.
         if (
-            next ===
+            (next ===
                 prev.slice(0, selection.start) +
                     "\n" +
-                    prev.slice(selection.end) &&
+                    prev.slice(selection.end) ||
+                next ===
+                    prev.slice(0, selection.start) +
+                        "\t" +
+                        prev.slice(selection.end)) &&
             pickSuggestion()
         )
             return;
@@ -2127,6 +2370,24 @@ export default function MessageInput({
     // the caret. The TextInput reports every caret move; one that only echoes
     // a caret the model just placed is skipped (MODEL_SETTLE_MS).
     function onSelectionChange(selection: { start: number; end: number }) {
+        // Zami: an arrow key a suggestion list took moved the caret too: put
+        // it back (see onKeydown).
+        const held = arrowCaret.current;
+        if (held && Date.now() - held.at < MODEL_SETTLE_MS) {
+            arrowCaret.current = null;
+            if (
+                selection.start !== held.selection.start ||
+                selection.end !== held.selection.end
+            ) {
+                modelSetAt.current = Date.now();
+                selectionRef.current = held.selection;
+                textareaEl.current?.setSelection(
+                    held.selection.start,
+                    held.selection.end,
+                );
+            }
+            return;
+        }
         if (Date.now() - modelSetAt.current < MODEL_SETTLE_MS) return;
         selectionRef.current = selection;
         detectMentionQuery();
@@ -2620,7 +2881,11 @@ export default function MessageInput({
                             onSelectionChange={(e) =>
                                 onSelectionChange(e.nativeEvent.selection)
                             }
-                            submitBehavior={isMobile ? "newline" : "submit"}
+                            submitBehavior={
+                                isMobile && !hardwareKeyboard
+                                    ? "newline"
+                                    : "submit"
+                            }
                             onSubmitEditing={onSubmitEditing}
                             onFocus={() => setFocused(true)}
                             onBlur={() => setFocused(false)}

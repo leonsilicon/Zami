@@ -1,5 +1,3 @@
-import { createAudioPlayer, type AudioPlayer } from "expo-audio";
-import { File, Paths } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
 import {
     Pressable,
@@ -8,10 +6,13 @@ import {
     type AccessibilityActionEvent,
     type GestureResponderEvent,
 } from "react-native";
-import { mediaSource, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
-import { mxcToHttp } from "$lib/matrix/client";
-import { decryptAttachment } from "$lib/utils/decryptAttachment";
+import {
+    fetchAttachmentBlob,
+    fetchDecryptedAttachmentBlob,
+    mxcToHttp,
+} from "$lib/matrix/client";
 import { formatCallDuration } from "$lib/utils/callDuration";
 
 type EncryptedFile = {
@@ -41,91 +42,6 @@ interface Props {
     durationMs: number;
 }
 
-// The file extension that tells AVPlayer and ExoPlayer the clip's container.
-// Zami: not ported: Ogg and WebM (Opus) clips, what Element and Chromium or
-// Firefox send, play on Android but not on iOS: AVPlayer has neither container.
-const AUDIO_EXTENSIONS: [string, string][] = [
-    ["mp4", ".m4a"],
-    ["m4a", ".m4a"],
-    ["aac", ".aac"],
-    ["ogg", ".ogg"],
-    ["opus", ".ogg"],
-    ["webm", ".webm"],
-    ["mpeg", ".mp3"],
-    ["mp3", ".mp3"],
-    ["wav", ".wav"],
-    ["3gpp", ".3gp"],
-    ["amr", ".amr"],
-];
-
-function audioExtension(mimetype: string | undefined): string {
-    const type = mimetype?.toLowerCase() ?? "";
-    return AUDIO_EXTENSIONS.find(([name]) => type.includes(name))?.[1] ?? "";
-}
-
-/**
- * Zami: upstream fetches the clip into a blob: URL (`fetchAttachmentBlob`, or
- * `fetchDecryptedAttachmentBlob` for an encrypted one). React Native can't build
- * those Blobs from bytes, and AVPlayer and ExoPlayer can't open a blob: URL, so
- * the clip is downloaded to a cache file instead, decrypted in place when it's
- * encrypted. The caller owns the file and must delete it.
- */
-async function fetchAudioFile(
-    httpUrl: string,
-    encryptedFile: EncryptedFile | undefined,
-    mimetype: string | undefined,
-): Promise<File> {
-    const file = new File(
-        Paths.cache,
-        `voice-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${audioExtension(mimetype)}`,
-    );
-    try {
-        // `mediaSource` attaches the account's token only to its own
-        // homeserver's media, the guard the blob fetchers apply.
-        await File.downloadFileAsync(httpUrl, file, {
-            headers: mediaSource(httpUrl)?.headers,
-            idempotent: true,
-        });
-        if (encryptedFile) {
-            const plaintext = await decryptAttachment(
-                await file.arrayBuffer(),
-                encryptedFile,
-            );
-            await file.write(new Uint8Array(plaintext));
-        }
-        return file;
-    } catch (err) {
-        if (file.exists) file.delete();
-        throw err;
-    }
-}
-
-const LOAD_TIMEOUT_MS = 10_000;
-
-/** Resolves once `player` can play its source; rejects if it can't load it. */
-function whenLoaded(player: AudioPlayer): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const settle = (error?: Error) => {
-            subscription.remove();
-            clearTimeout(timer);
-            if (error) reject(error);
-            else resolve();
-        };
-        const subscription = player.addListener(
-            "playbackStatusUpdate",
-            (status) => {
-                if (status.isLoaded) settle();
-                else if (status.error) settle(new Error(status.error));
-            },
-        );
-        const timer = setTimeout(
-            () => settle(new Error("timed out loading the clip")),
-            LOAD_TIMEOUT_MS,
-        );
-        if (player.isLoaded) settle();
-    });
-}
-
 export default function VoiceMessagePlayer({
     mxcUrl,
     encryptedFile,
@@ -133,18 +49,16 @@ export default function VoiceMessagePlayer({
     waveform,
     durationMs,
 }: Props) {
-    // Zami: an expo-audio player stands in for the <audio> element, and the
-    // downloaded file for the blob URL it plays.
-    const audioEl = useRef<AudioPlayer | null>(null);
-    const audioFile = useRef<File | null>(null);
+    // Zami: the hidden <audio> is an element nothing displays, made with the
+    // blob URL it plays (Zami's `Audio` plays Ogg and WebM Opus too).
+    const audioEl = useRef<HTMLAudioElement | null>(null);
     const [blobUrl, setBlobUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [playing, setPlaying] = useState(false);
     const [currentMs, setCurrentMsState] = useState(0);
     const [mediaDurationMs, setMediaDurationMs] = useState(0);
     const raf = useRef(0);
-    // What the player's events and `toggle` (across its awaits) read.
-    const playingRef = useRef(false);
+    // What the element's events and `toggle` (across its awaits) read.
     const currentMsRef = useRef(0);
     const destroyed = useRef(false);
     // The seek bar's width, for turning a tap's x into a position.
@@ -153,11 +67,6 @@ export default function VoiceMessagePlayer({
     function setCurrentMs(ms: number) {
         currentMsRef.current = ms;
         setCurrentMsState(ms);
-    }
-
-    function setPlayingState(value: boolean) {
-        playingRef.current = value;
-        setPlaying(value);
     }
 
     // Prefer the media's real duration once known — but MediaRecorder webm blobs
@@ -171,26 +80,30 @@ export default function VoiceMessagePlayer({
     );
 
     async function ensureLoaded(): Promise<boolean> {
-        if (blobUrl) return true;
+        if (audioEl.current) return true;
         setLoading(true);
-        let file: File | null = null;
-        let player: AudioPlayer | null = null;
         try {
-            const http = mxcToHttp(encryptedFile ? encryptedFile.url : mxcUrl);
-            if (!http) return false;
-            file = await fetchAudioFile(http, encryptedFile, mimetype);
-            player = createAudioPlayer({ uri: file.uri });
-            listen(player);
-            // Seeking (and so playing from a pre-seek) needs the clip loaded.
-            await whenLoaded(player);
-            if (destroyed.current) throw new Error("unmounted");
-            audioEl.current = player;
-            audioFile.current = file;
-            setBlobUrl(file.uri);
+            let url: string;
+            if (encryptedFile) {
+                url = await fetchDecryptedAttachmentBlob(
+                    encryptedFile,
+                    mimetype,
+                );
+            } else {
+                const http = mxcToHttp(mxcUrl);
+                if (!http) return false;
+                url = await fetchAttachmentBlob(http);
+            }
+            if (destroyed.current) {
+                URL.revokeObjectURL(url);
+                return false;
+            }
+            // Zami: upstream's `await tick()` lets the <audio> mount and bind;
+            // here the element is made now.
+            audioEl.current = createAudio(url);
+            setBlobUrl(url);
             return true;
         } catch {
-            player?.remove();
-            if (file?.exists) file.delete();
             return false;
         } finally {
             if (!destroyed.current) setLoading(false);
@@ -205,13 +118,13 @@ export default function VoiceMessagePlayer({
         if (!(await ensureLoaded())) return;
         const audio = audioEl.current;
         if (audio && currentMsRef.current > 0)
-            await audio.seekTo(currentMsRef.current / 1000); // resume from a pre-seek
-        audio?.play();
+            audio.currentTime = currentMsRef.current / 1000; // resume from a pre-seek
+        await audio?.play().catch(() => {});
     }
 
     function seekTo(ms: number) {
         setCurrentMs(ms);
-        if (audioEl.current && blobUrl) void audioEl.current.seekTo(ms / 1000);
+        if (audioEl.current && blobUrl) audioEl.current.currentTime = ms / 1000;
     }
 
     function seekFromEvent(e: GestureResponderEvent) {
@@ -232,13 +145,13 @@ export default function VoiceMessagePlayer({
         }
     }
 
-    // Drive progress at animation-frame rate while playing — the player's
-    // status updates only arrive every 500ms, which makes the fill jump.
+    // Drive progress at animation-frame rate while playing — the audio
+    // element's `timeupdate` only fires ~4×/s, which makes the fill jump.
     function startProgressLoop() {
         cancelAnimationFrame(raf.current);
         const step = () => {
             const audio = audioEl.current;
-            if (audio?.playing) {
+            if (audio && !audio.paused) {
                 setCurrentMs(audio.currentTime * 1000);
                 raf.current = requestAnimationFrame(step);
             }
@@ -246,38 +159,43 @@ export default function VoiceMessagePlayer({
         raf.current = requestAnimationFrame(step);
     }
 
-    // The <audio> element's onplay / onpause / onended / onloadedmetadata.
-    function listen(player: AudioPlayer) {
-        player.addListener("playbackStatusUpdate", (status) => {
-            if (
-                status.isLoaded &&
-                Number.isFinite(status.duration) &&
-                status.duration > 0
-            )
-                setMediaDurationMs(status.duration * 1000);
-            if (status.didJustFinish) {
-                setPlayingState(false);
-                cancelAnimationFrame(raf.current);
-                setCurrentMs(0);
-                // A finished player stays at the end; the next play starts over.
-                void player.seekTo(0);
-            } else if (status.playing && !playingRef.current) {
-                setPlayingState(true);
-                startProgressLoop();
-            } else if (!status.playing && playingRef.current) {
-                setPlayingState(false);
-                cancelAnimationFrame(raf.current);
-                setCurrentMs(player.currentTime * 1000);
-            }
-        });
+    // The <audio> element, with its onplay / onpause / onended /
+    // onloadedmetadata.
+    function createAudio(src: string): HTMLAudioElement {
+        const audio = new Audio();
+        audio.onplay = () => {
+            setPlaying(true);
+            startProgressLoop();
+        };
+        audio.onpause = () => {
+            setPlaying(false);
+            cancelAnimationFrame(raf.current);
+            setCurrentMs(audio.currentTime * 1000);
+        };
+        audio.onended = () => {
+            setPlaying(false);
+            cancelAnimationFrame(raf.current);
+            setCurrentMs(0);
+        };
+        audio.onloadedmetadata = () => {
+            if (Number.isFinite(audio.duration))
+                setMediaDurationMs(audio.duration * 1000);
+        };
+        audio.src = src;
+        return audio;
     }
 
     useEffect(
         () => () => {
             destroyed.current = true;
             cancelAnimationFrame(raf.current);
-            audioEl.current?.remove();
-            if (audioFile.current?.exists) audioFile.current.delete();
+            const audio = audioEl.current;
+            if (audio) {
+                // Zami: an unmounted <audio> stops; this one isn't in a page.
+                audio.onpause = null;
+                audio.pause();
+                URL.revokeObjectURL(audio.src);
+            }
         },
         [],
     );

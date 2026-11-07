@@ -2,6 +2,7 @@
 // model as the composer (plain text, decorated so custom emotes show their
 // image), with the composer's `:shortcode` suggestions and conversion.
 // Zami: a multiline TextInput holding the same plain-text model.
+import { isModifierHeld, useInputKeys } from "@-/com.leonsilicon.zami.browser";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import {
     useEffect,
@@ -91,6 +92,9 @@ export default function MessageEditBox({
     // the caret to restore once a text the model changed has rendered.
     const textRef = useRef(text);
     const caretRef = useRef(text.length);
+    // Zami: where the selection the TextInput last reported starts (upstream's
+    // selectedLength), for replaceSelection.
+    const selectionStartRef = useRef(text.length);
     const pendingCaret = useRef<number | null>(null);
     const [caretTick, setCaretTick] = useState(0);
     useLayoutEffect(() => {
@@ -101,6 +105,7 @@ export default function MessageEditBox({
         if (pos === null) return;
         pendingCaret.current = null;
         caretRef.current = pos;
+        selectionStartRef.current = pos;
         inputEl.current?.setSelection(pos, pos);
     }, [caretTick]);
     function render(nextCaret: number) {
@@ -184,11 +189,39 @@ export default function MessageEditBox({
         render(next.caret);
     }
 
+    function replaceSelection(insert: string) {
+        const end = caret();
+        const start = Math.min(selectionStartRef.current, end);
+        setText(
+            textRef.current.slice(0, start) +
+                insert +
+                textRef.current.slice(end),
+            start + insert.length,
+        );
+    }
+
     // Zami: not ported: IME composition tracking (`composing`). The TextInput
     // owns its marked text, and onChangeText reports the text with it.
 
     /** Read the editor into the model. */
     function syncFromEditor(next: string) {
+        // Zami: a hardware Tab the suggestion list took (onKeydown) types a
+        // tab, after accepting any autocorrection of the shortcode being
+        // completed. The autocorrection is dropped, and the tab picks from
+        // the list as it stood.
+        const prev = textRef.current;
+        const tab = tabPick.current;
+        if (tab && Date.now() - tab.at < 300) {
+            const tabs = (value: string) => value.split("\t").length;
+            if (tabs(next) <= tabs(prev)) return;
+            clearTimeout(tab.timer);
+            tabPick.current = null;
+            const candidate = emojiCandidates[emojiIdx];
+            if (emojiQueryRef.current && candidate) {
+                commitEmoji(candidate);
+                return;
+            }
+        }
         // Zami: the caret after the edit, from what changed: onChangeText
         // fires before onSelectionChange reports it.
         let pos = diffCaret(textRef.current, next);
@@ -207,17 +240,99 @@ export default function MessageEditBox({
         }
         textRef.current = value;
         caretRef.current = pos;
+        selectionStartRef.current = pos;
         onTextChange?.(value);
         detectEmojiQuery(value, pos);
     }
 
-    // Zami: onKeydown, for the keys a TextInput reports. Enter is the return
-    // key, which submits rather than adding a line (`submitBehavior="submit"`),
-    // as Enter saves here on every platform; Escape is VoiceOver's escape
-    // gesture. Not ported: Shift+Enter for a line break, Ctrl+Z/Ctrl+Y, and the
-    // arrow keys and Tab in the suggestion list: hardware-keyboard keys a
-    // TextInput doesn't report.
+    // Zami: hardware key presses are observed, not intercepted (see
+    // @-/com.leonsilicon.zami.browser), so the TextInput has taken each key by
+    // the time onKeydown runs. Enter is the return key, which submits rather
+    // than adding a line (`submitBehavior="submit"`), as Enter saves here on
+    // every platform: onSubmitEditing saves, picks from the suggestion list,
+    // or with Shift held adds a line. Tab in the suggestion list types a tab
+    // (after accepting any autocorrection), which picks instead of landing
+    // (syncFromEditor), and the arrow keys
+    // there also move the caret, which is put back (onSelectionChange).
+    // Escape is also VoiceOver's escape gesture (onEscape). Not ported:
+    // Ctrl+Z/Ctrl+Y through TextUndoHistory (see above).
+
+    /** Zami: a Tab the suggestion list took, until the text it typed arrives
+     *  (syncFromEditor), or with none, until it picks on its own. */
+    const tabPick = useRef<{
+        at: number;
+        timer: ReturnType<typeof setTimeout>;
+    } | null>(null);
+
+    /** Zami: a caret an arrow key moved while the suggestion list had it. */
+    const arrowCaret = useRef<{
+        start: number;
+        end: number;
+        at: number;
+    } | null>(null);
+
+    function onKeydown(e: KeyboardEvent) {
+        if (e.isComposing) return;
+        // An open suggestion list takes the keys first: Enter/Tab pick and
+        // Escape closes it before a second Escape cancels the edit.
+        if (emojiQuery && emojiCandidates.length > 0) {
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                e.preventDefault();
+                arrowCaret.current = {
+                    start: selectionStartRef.current,
+                    end: caretRef.current,
+                    at: Date.now(),
+                };
+                const step = e.key === "ArrowUp" ? -1 : 1;
+                setEmojiIdx(
+                    (emojiIdx + step + emojiCandidates.length) %
+                        emojiCandidates.length,
+                );
+                return;
+            }
+            if (e.key === "Tab") {
+                e.preventDefault();
+                const candidate = emojiCandidates[emojiIdx];
+                if (tabPick.current) clearTimeout(tabPick.current.timer);
+                tabPick.current = {
+                    at: Date.now(),
+                    timer: setTimeout(() => {
+                        tabPick.current = null;
+                        if (candidate) commitEmoji(candidate);
+                    }, 300),
+                };
+                return;
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                return;
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                emojiQueryRef.current = null;
+                setEmojiQuery(null);
+                return;
+            }
+        }
+        if (e.key === "Enter") {
+            e.preventDefault();
+            return;
+        }
+        if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+        }
+    }
+
+    // Zami: `onkeydown={onKeydown}` on the editor.
+    useInputKeys(inputEl, { onKeydown });
+
     function onSubmitEditing() {
+        // Zami: Shift+Enter on a hardware keyboard: a line break.
+        if (isModifierHeld("Shift")) {
+            replaceSelection("\n");
+            return;
+        }
         // An open suggestion list takes the keys first: Enter/Tab pick and
         // Escape closes it before a second Escape cancels the edit.
         if (emojiQuery && emojiCandidates.length > 0) {
@@ -244,7 +359,18 @@ export default function MessageEditBox({
                 value={text}
                 onChangeText={syncFromEditor}
                 onSelectionChange={(e) => {
-                    caretRef.current = e.nativeEvent.selection.end;
+                    const { start, end } = e.nativeEvent.selection;
+                    // Zami: an arrow key the suggestion list took moved the
+                    // caret too: put it back (see onKeydown).
+                    const held = arrowCaret.current;
+                    if (held && Date.now() - held.at < 250) {
+                        arrowCaret.current = null;
+                        if (start !== held.start || end !== held.end)
+                            inputEl.current?.setSelection(held.start, held.end);
+                        return;
+                    }
+                    caretRef.current = end;
+                    selectionStartRef.current = start;
                     // Upstream re-reads the query on a click, which moves the caret.
                     detectEmojiQuery();
                 }}

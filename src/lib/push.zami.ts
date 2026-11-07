@@ -14,6 +14,10 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, type Token } from "@capacitor/push-notifications";
+// Zami: iOS push is APNs through expo-notifications (initApns, at the end).
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
+import { GENERIC_NOTIFICATION_BODY } from "$lib/utils/notificationPrivacy";
 import {
     checkPusherGateway,
     mergeGatewayStatus,
@@ -48,20 +52,30 @@ const PUSH_GATEWAY_URL =
 
 // Must match the app_id configured for this app in Sygnal. UnifiedPush pushers
 // use it too: Matrix gateways for UnifiedPush ignore the app_id.
-const APP_ID = "moe.crafty.matrix";
+// Zami: on iOS, Zami's APNs app: Sygnal needs an `apns` app with this id (the
+// bundle id, as its APNs topic) and Zami's APNs key.
+const ZAMI_IOS = Platform.OS === "ios";
+const APP_ID = ZAMI_IOS ? "com.leonsilicon.zami" : "moe.crafty.matrix";
 
 // FCM push is only attempted when a real gateway is configured. Builds shipped
 // WITHOUT a Firebase google-services.json are caught natively instead
 // (UnifiedPushPlugin.fcmAvailable): calling into FCM with no Firebase config
 // throws ("Default FirebaseApp is not initialized"). UnifiedPush needs neither
 // and is gated on neither.
-const PUSH_ENABLED = !PUSH_GATEWAY_URL.includes("sygnal.example.com");
+// Zami: and Zam's own gateway, for Zami's app: it has no app with Zami's id,
+// so it would reject every push, and test users' event ids, room ids and APNs
+// tokens would go to Zam's server. Zami registers no pusher until
+// EXPO_PUBLIC_PUSH_GATEWAY_URL names a Sygnal with Zami's APNs app.
+const PUSH_ENABLED =
+    !PUSH_GATEWAY_URL.includes("sygnal.example.com") &&
+    !(ZAMI_IOS && PUSH_GATEWAY_URL.includes("sygnal.crafty.moe"));
 
 let pushInitialised = false;
 
 // Which transport this session's pusher went through, so teardown undoes the
 // right one. null until initPush picked one.
-let activeProvider: "fcm" | "unifiedpush" | null = null;
+// Zami: "apns" on iOS.
+let activeProvider: "fcm" | "unifiedpush" | "apns" | null = null;
 let stopUnifiedPushEvents: (() => Promise<void>) | null = null;
 
 // The pushkey (FCM token or UnifiedPush endpoint) we actually registered this
@@ -98,7 +112,8 @@ export interface PushDebugState {
 }
 
 export const pushDebug: PushDebugState = {
-    native: Capacitor.isNativePlatform(),
+    // Zami: the iOS app is native too.
+    native: Capacitor.isNativePlatform() || ZAMI_IOS,
     gatewayUrl: PUSH_GATEWAY_URL,
     pushEnabled: PUSH_ENABLED,
     permission: "unknown",
@@ -115,6 +130,8 @@ export const pushDebug: PushDebugState = {
 export async function initPush(
     matrixClient: import("matrix-js-sdk").MatrixClient,
 ): Promise<void> {
+    // Zami: iOS registers with APNs.
+    if (ZAMI_IOS) return initApns(matrixClient);
     if (!Capacitor.isNativePlatform()) return;
     if (pushInitialised) return;
     pushInitialised = true;
@@ -281,7 +298,8 @@ async function registerPusher(
             kind: "http",
             app_id: APP_ID,
             app_display_name: "Zam",
-            device_display_name: `Android (${deviceId})`,
+            // Zami: "iOS (…)" on iOS.
+            device_display_name: devicePusherName(deviceId),
             pushkey,
             lang: navigator.language || "en",
             data: {
@@ -290,7 +308,8 @@ async function registerPusher(
                 // Names the account in every push: several accounts on this
                 // device share the pushkey, and the native service picks the
                 // matching session by this (MatrixMessagingService.ACCOUNT_KEY).
-                default_payload: { zam_account: userId },
+                // Zami: on iOS, plus the alert APNs shows (ZAMI_APNS_PAYLOAD).
+                default_payload: { zam_account: userId, ...ZAMI_APNS_PAYLOAD },
             },
             // multi-account: false would delete other users' pushers for this token
             append: true,
@@ -340,7 +359,8 @@ async function removeStaleDevicePushers(
         for (const p of (res?.pushers ?? []) as any[]) {
             if (
                 p.app_id === APP_ID &&
-                p.device_display_name === `Android (${deviceId})` &&
+                // Zami: "iOS (…)" on iOS.
+                p.device_display_name === devicePusherName(deviceId) &&
                 typeof p.pushkey === "string" &&
                 p.pushkey &&
                 p.pushkey !== keep
@@ -389,6 +409,8 @@ async function stopTransport(): Promise<void> {
     if (activeProvider === "fcm") {
         await PushNotifications.removeAllListeners().catch(() => {});
     }
+    // Zami: APNs token changes stop re-registering (taps still open rooms).
+    if (activeProvider === "apns") stopApnsTokenListener();
     if (stopUnifiedPushEvents) {
         await stopUnifiedPushEvents().catch(() => {});
         stopUnifiedPushEvents = null;
@@ -460,7 +482,8 @@ export async function requestNativeNotificationPermission(
 export async function unregisterPush(
     matrixClient: import("matrix-js-sdk").MatrixClient,
 ): Promise<void> {
-    if (!Capacitor.isNativePlatform()) return;
+    // Zami: and on iOS.
+    if (!Capacitor.isNativePlatform() && !ZAMI_IOS) return;
     const deviceId = matrixClient.getDeviceId();
     if (!deviceId) return;
 
@@ -489,6 +512,12 @@ export async function unregisterPush(
  * hang the way out of a session.
  */
 export function clearDeliveredNativeNotifications(): void {
+    // Zami: on iOS, everything in Notification Center: pushes, and the
+    // page's own notifications (the Notification stand-in's).
+    if (ZAMI_IOS) {
+        Notifications.dismissAllNotificationsAsync().catch(() => {});
+        return;
+    }
     if (!Capacitor.isNativePlatform()) return;
     PushNotifications.removeAllDeliveredNotifications().catch(() => {});
 }
@@ -627,3 +656,161 @@ export async function checkGatewayHealth(): Promise<GatewayHealth> {
 /** The configured gateway notify endpoint (for display). */
 export const PUSH_GATEWAY_NOTIFY_URL = PUSH_GATEWAY_URL;
 export const PUSH_APP_ID = APP_ID;
+
+// ── Zami: iOS (APNs) ────────────────────────────────────────────────────────
+// expo-notifications registers the app with APNs and hands over its device
+// token, which becomes the pushkey of a pusher in the format Sygnal's `apns`
+// pushkin expects (base64: Sygnal hex-encodes it back for APNs). Pushes are
+// event_id_only, as on Android, so the gateway and Apple see no message
+// content. Decrypting and naming the sender would need a Notification Service
+// Extension (mutable-content asks for one); without it, iOS shows the alert
+// below. A tap opens the room the push names, through the shell's
+// __matrixOpenRoom, as MainActivity's taps do on Android.
+
+/** The alert iOS shows for a push, merged into the pusher's default_payload. */
+const ZAMI_APNS_PAYLOAD: Record<string, unknown> = ZAMI_IOS
+    ? {
+          aps: {
+              alert: { body: GENERIC_NOTIFICATION_BODY },
+              sound: "default",
+              "mutable-content": 1,
+          },
+      }
+    : {};
+
+function devicePusherName(deviceId: string): string {
+    return `${ZAMI_IOS ? "iOS" : "Android"} (${deviceId})`;
+}
+
+/** The APNs device token (hex, as expo-notifications gives it) as Sygnal's pushkey. */
+function apnsPushkey(hexToken: string): string {
+    const bytes = hexToken.match(/[0-9a-f]{2}/gi) ?? [];
+    return btoa(
+        bytes.map((b) => String.fromCharCode(parseInt(b, 16))).join(""),
+    );
+}
+
+let apnsTokenListener: { remove(): void } | null = null;
+let apnsTapListener: { remove(): void } | null = null;
+// A response can arrive both as the launch response and through the
+// listener; each push opens its room once.
+const openedApnsPushes = new Set<string>();
+
+function stopApnsTokenListener(): void {
+    apnsTokenListener?.remove();
+    apnsTokenListener = null;
+}
+
+async function initApns(
+    matrixClient: import("matrix-js-sdk").MatrixClient,
+): Promise<void> {
+    if (pushInitialised) return;
+    pushInitialised = true;
+    try {
+        // Taps first: a push that launched the app opens its room even if
+        // registering below fails.
+        if (!apnsTapListener) {
+            apnsTapListener =
+                Notifications.addNotificationResponseReceivedListener(
+                    openRoomFromApnsTap,
+                );
+            const launch = Notifications.getLastNotificationResponse();
+            if (launch) openRoomFromApnsTap(launch);
+        }
+
+        let permission = await Notifications.getPermissionsAsync();
+        if (!permission.granted && permission.canAskAgain) {
+            // The prompt through the Notification API, so the page's
+            // Notification.permission follows it.
+            await Notification.requestPermission();
+            permission = await Notifications.getPermissionsAsync();
+        }
+        pushDebug.permission = permission.granted
+            ? "granted"
+            : permission.canAskAgain
+              ? "prompt"
+              : "denied";
+        if (!permission.granted) {
+            // Not latched: granting later from Settings re-runs this.
+            pushInitialised = false;
+            pushDebug.lastError = "Notification permission not granted";
+            console.warn("[push] Notification permission denied");
+            return;
+        }
+        if (!PUSH_ENABLED) {
+            pushInitialised = false;
+            pushDebug.provider = "none";
+            pushDebug.lastError = "No push gateway configured";
+            return;
+        }
+
+        activeProvider = "apns";
+        pushDebug.provider = "apns";
+        apnsTokenListener ??= Notifications.addPushTokenListener((token) => {
+            console.log("[push] APNs token changed");
+            const pushkey = apnsPushkey(String(token.data));
+            pushDebug.fcmToken = pushkey;
+            void registerPusher(matrixClient, pushkey, PUSH_GATEWAY_URL);
+        });
+        // Never log the token: see initFcm.
+        const token = await Notifications.getDevicePushTokenAsync();
+        console.log("[push] APNs registration received");
+        const pushkey = apnsPushkey(String(token.data));
+        pushDebug.fcmToken = pushkey;
+        await registerPusher(matrixClient, pushkey, PUSH_GATEWAY_URL);
+    } catch (err) {
+        pushInitialised = false;
+        activeProvider = null;
+        stopApnsTokenListener();
+        pushDebug.lastError = "APNs registration failed: " + String(err);
+        console.warn("[push] Push init failed - continuing without push.", err);
+    }
+}
+
+/** A tapped push: open the room (and event) it names, for the account it names. */
+function openRoomFromApnsTap(response: Notifications.NotificationResponse) {
+    const { request } = response.notification;
+    // (expo-notifications' trigger type also covers the scheduling inputs.)
+    const trigger = request.trigger as {
+        type?: string;
+        payload?: Record<string, unknown>;
+    } | null;
+    if (trigger?.type !== "push") return;
+    if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER)
+        return;
+    if (openedApnsPushes.has(request.identifier)) return;
+    openedApnsPushes.add(request.identifier);
+    const payload = trigger.payload ?? {};
+    const text = (value: unknown) =>
+        typeof value === "string" && value ? value : undefined;
+    const roomId = text(payload.room_id);
+    if (!roomId) return;
+    openRoomWhenShellReady(
+        roomId,
+        text(payload.zam_account),
+        text(payload.event_id),
+    );
+}
+
+/**
+ * The shell defines __matrixOpenRoom once it's mounted (and it checks the push
+ * is for an account signed in here); a push that launched the app is waited
+ * for, up to half a minute.
+ */
+function openRoomWhenShellReady(
+    roomId: string,
+    userId: string | undefined,
+    eventId: string | undefined,
+    attempt = 0,
+): void {
+    const open = (window as any).__matrixOpenRoom;
+    if (typeof open === "function") {
+        open(roomId, userId, false, eventId);
+        return;
+    }
+    if (attempt < 120)
+        setTimeout(
+            () => openRoomWhenShellReady(roomId, userId, eventId, attempt + 1),
+            250,
+        );
+}

@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { Easing, FadeIn, Keyframe } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { t } from "$lib/i18n";
 import { motionOK } from "$lib/utils/motionPreference";
 
@@ -89,6 +90,10 @@ export default function ModalDialog({
     }, [handlesEscape]);
 
     const duration = motionOK() ? 150 : 0;
+    // Zami: the viewport a browser lays the panel out in excludes the status
+    // bar, the notch and the home indicator; here the layer is the whole
+    // screen, so the panel is laid out within the safe area.
+    const insets = useSafeAreaInsets();
 
     // Zam's layer is `position: fixed`; here it is rendered at the app root
     // through the Portal, as an absolute-fill layer. Only the layer's z-index
@@ -142,26 +147,39 @@ export default function ModalDialog({
                 >
                     <View
                         pointerEvents="box-none"
-                        className={`flex-1 flex-row ${layerClass}`}
+                        style={{
+                            flex: 1,
+                            paddingTop: insets.top,
+                            paddingBottom: insets.bottom,
+                            paddingLeft: insets.left,
+                            paddingRight: insets.right,
+                        }}
                     >
-                        {/*
+                        <View
+                            pointerEvents="box-none"
+                            className={`flex-1 flex-row ${layerClass}`}
+                        >
+                            {/*
                           `shrink`: a web flex item shrinks to fit by default, so a
                           `w-full mx-4` panel keeps its margins; React Native's
                           don't.
                         */}
-                        <Animated.View
-                            role="dialog"
-                            accessibilityViewIsModal
-                            aria-labelledby={labelledBy}
-                            accessibilityLabel={label}
-                            onAccessibilityEscape={
-                                handlesEscape ? onClose : undefined
-                            }
-                            entering={duration ? scaleIn(duration) : undefined}
-                            className={`z-10 shrink ${panelClass}`}
-                        >
-                            {children}
-                        </Animated.View>
+                            <Animated.View
+                                role="dialog"
+                                accessibilityViewIsModal
+                                aria-labelledby={labelledBy}
+                                accessibilityLabel={label}
+                                onAccessibilityEscape={
+                                    handlesEscape ? onClose : undefined
+                                }
+                                entering={
+                                    duration ? scaleIn(duration) : undefined
+                                }
+                                className={`z-10 shrink ${panelClass}`}
+                            >
+                                {children}
+                            </Animated.View>
+                        </View>
                     </View>
                 </KeyboardAvoidingView>
             </View>

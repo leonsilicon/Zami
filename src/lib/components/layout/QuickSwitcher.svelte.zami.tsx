@@ -1,6 +1,14 @@
+import { keepFocus, useKeyScope } from "@-/com.leonsilicon.zami.browser";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useMemo, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import {
+    FlatList,
+    Pressable,
+    Text,
+    TextInput,
+    View,
+    type TextInputInstance,
+} from "react-native";
 import { t } from "$lib/i18n";
 // Ctrl+K: jump to any room, DM or space by name, as in Discord. With
 // nothing typed it lists the rooms visited this session, then unread ones.
@@ -43,6 +51,8 @@ const MAX_RESULTS = 30;
 export default function QuickSwitcher({ onClose }: Props) {
     const [query, setQuery] = useState("");
     const [selected, setSelected] = useState(0);
+    const inputEl = useRef<TextInputInstance>(null);
+    const listEl = useRef<FlatList<Entry>>(null);
     const activeRoomId = useRune(() => roomsState.activeRoomId);
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
 
@@ -105,10 +115,37 @@ export default function QuickSwitcher({ onClose }: Props) {
         else navigateToRoom(e.room.roomId);
     }
 
-    // Zami: not ported: `move` and the ArrowUp/ArrowDown/Tab handling of
-    // `onKeydown`, with the scrolling that kept the selection in view. A
-    // TextInput reports none of those keys; rooms are picked by touch, and
-    // Enter (onSubmitEditing) picks the selected one as upstream does.
+    function move(step: number) {
+        if (results.length === 0) return;
+        const next = (selected + step + results.length) % results.length;
+        setSelected(next);
+        // Zami: `scrollIntoView({ block: "nearest" })`.
+        listEl.current?.scrollToIndex({
+            index: next,
+            viewPosition: step > 0 ? 1 : 0,
+            animated: false,
+        });
+    }
+
+    // Zami: hardware keys are observed, not intercepted: Enter is the
+    // TextInput's return key (onSubmitEditing picks), and Tab still moves
+    // focus to the next field, so focus is put back (keepFocus).
+    function onKeydown(e: KeyboardEvent) {
+        if (e.key === "Tab") keepFocus(inputEl);
+        if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
+            e.preventDefault();
+            move(1);
+        } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
+            e.preventDefault();
+            move(-1);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+        }
+    }
+
+    // Zami: ModalDialog's `onKeydown`: the dialog's keys, with focus in its
+    // input or nowhere.
+    useKeyScope({ onKeydown }, [inputEl]);
 
     return (
         <ModalDialog
@@ -126,6 +163,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                     {t("quickSwitcher.title")}
                 </Text>
                 <TextInput
+                    ref={inputEl}
                     value={query}
                     onChangeText={(value) => {
                         setQuery(value);
@@ -149,6 +187,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                     </Text>
                 ) : null}
                 <FlatList
+                    ref={listEl}
                     nativeID="quick-switcher-list"
                     accessibilityRole="list"
                     className="max-h-80 flex-grow-0 -mx-1"
@@ -156,6 +195,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                     data={results}
                     extraData={selected}
                     keyExtractor={(e) => e.room.roomId}
+                    onScrollToIndexFailed={() => {}}
                     renderItem={({ item: e, index: i }) => (
                         <Pressable
                             nativeID={`quick-switcher-${i}`}

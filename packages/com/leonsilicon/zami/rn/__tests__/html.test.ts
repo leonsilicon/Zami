@@ -195,6 +195,18 @@ describe("images", () => {
     ).toBe('<img alt="😀">');
   });
 
+  test("puts a picture on a line of its own, and leaves custom emoji inline", () => {
+    const laid = (input: string) => layout(layoutHtml(parseHtml(input, { resolveMxc })));
+    expect(laid('Two: <img src="mxc://hs/a" alt="a"> and <img src="mxc://hs/b" alt="b">')).toBe(
+      "[Two:]<img></img>[and]<img></img>",
+    );
+    expect(laid('<p>hi <img data-mx-emoticon src="mxc://hs/e" alt=":e:"> there</p>')).toBe(
+      '<p>[hi <img data-mx-emoticon="" src="https://hs/media/hs/e" alt=":e:"> there]</p>',
+    );
+    const [picture] = layoutHtml(parseHtml('<img src="mxc://hs/a" alt="a">', { resolveMxc }));
+    expect(picture).toMatchObject({ type: "block", tag: "img", image: { tag: "img" } });
+  });
+
   test("keeps custom emoji's data-mx-emoticon", () => {
     expect(
       clean('<img data-mx-emoticon src="mxc://hs/e" alt=":blob:" title=":blob:" height="32">', {

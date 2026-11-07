@@ -1,0 +1,6 @@
+{
+  "extends": "../../../../../apps/zami/tsconfig.json",
+  // Metro's `require.context`, which the app's tsconfig gets through Zam's code.
+  "compilerOptions": { "types": ["svelte", "react-native", "expo/types"] },
+  "include": ["*.ts", "*.tsx", "__tests__/*.ts", "../../../../../apps/zami/uniwind-types.d.ts"]
+}

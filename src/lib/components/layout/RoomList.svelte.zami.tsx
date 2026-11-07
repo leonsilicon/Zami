@@ -129,6 +129,7 @@ import VoiceCallPanel from "$lib/components/layout/VoiceCallPanel.svelte";
 import CallParticipantMenu from "$lib/components/layout/CallParticipantMenu.svelte";
 import Portal from "$lib/components/ui/Portal.svelte";
 import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
+import { setNavRooms } from "$lib/keybinds/runner";
 
 interface Props {
     onOpenSpaceSettings?: (room: Room) => void;
@@ -136,9 +137,9 @@ interface Props {
 }
 
 // Zami: React Native has no right-click (`oncontextmenu`): the `longPress` action
-// (500 ms, a 50 ms vibrate) opens the menus, as on a touchscreen. Nor does it have
-// AppShell's keyboard room navigation, which finds rows by `data-nav-room`,
-// `data-nav-unread` and `data-nav-mention`. Zami: not ported: both.
+// (500 ms, a 50 ms vibrate) opens the menus, as on a touchscreen. AppShell's
+// keyboard room navigation finds rows by `data-nav-room`, `data-nav-unread` and
+// `data-nav-mention`; here the list publishes them (setNavRooms) instead.
 const LONG_PRESS_MS = 500;
 function vibrate(): void {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2273,6 +2274,22 @@ export default function RoomList({
     useLayoutEffect(() => {
         prevRows.current = rows;
     }, [rows]);
+
+    // Zami: the keyboard room navigation's rows, upstream's `data-nav-room`
+    // rows (channels and DMs), read when a shortcut runs.
+    useEffect(
+        () =>
+            setNavRooms(() =>
+                prevRows.current.flatMap((row) => {
+                    if (row.kind !== "channel" && row.kind !== "dm") return [];
+                    const { unread, highlight } = roomButton(row.room);
+                    return [
+                        { id: row.room.roomId, unread, mention: highlight > 0 },
+                    ];
+                }),
+            ),
+        [],
+    );
 
     // The `loadSubHierarchy` action on each category: fetch an expanded one's
     // hierarchy the first time it shows.

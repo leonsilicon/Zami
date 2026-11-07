@@ -1,3 +1,4 @@
+import { keepFocus, useInputKeys } from "@-/com.leonsilicon.zami.browser";
 import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -361,6 +362,44 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
         );
     }
 
+    // Zami: the input's `onkeydown`. Hardware keys are observed, not
+    // intercepted: Enter is the TextInput's return key (onSubmitEditing
+    // commits), ArrowUp/ArrowDown also move its caret, which is put back so
+    // the token being completed stays active, and Tab also moves focus on.
+    const arrowCaret = useRef<{ caret: number; at: number } | null>(null);
+    function onKeydown(e: KeyboardEvent) {
+        if (activeToken && suggestions.length > 0) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                arrowCaret.current = {
+                    caret: inputCaret.current,
+                    at: Date.now(),
+                };
+                setSelectedIdx((selectedIdx + 1) % suggestions.length);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                arrowCaret.current = {
+                    caret: inputCaret.current,
+                    at: Date.now(),
+                };
+                setSelectedIdx(
+                    (selectedIdx - 1 + suggestions.length) % suggestions.length,
+                );
+            } else if (e.key === "Tab") {
+                e.preventDefault();
+                commit(suggestions[selectedIdx]);
+                // Zami: Tab also moved focus to the next field.
+                keepFocus(inputEl);
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                setActiveToken(null);
+            }
+        }
+    }
+    useInputKeys(inputEl, { onKeydown });
+
     // Zami: the form's submit (Enter in the input).
     function onSubmitEditing() {
         if (activeToken && suggestions.length > 0) {
@@ -392,11 +431,6 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
             </View>
 
             <View className="p-2 border-b border-discord-divider flex-shrink-0">
-                {/* Zami: not ported: ArrowUp/ArrowDown moving the highlighted
-                    suggestion, Tab committing it and Escape dismissing the
-                    list. A TextInput reports none of those keys; suggestions
-                    are picked by touch, and Enter commits the highlighted
-                    one as upstream does. */}
                 <TextInput
                     ref={inputEl}
                     value={term}
@@ -406,6 +440,18 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                         updateActiveToken();
                     }}
                     onSelectionChange={(e) => {
+                        // Zami: an arrow key the suggestions took moved the
+                        // caret too: put it back (see onKeydown).
+                        const held = arrowCaret.current;
+                        if (held && Date.now() - held.at < 250) {
+                            arrowCaret.current = null;
+                            if (e.nativeEvent.selection.start !== held.caret)
+                                inputEl.current?.setSelection(
+                                    held.caret,
+                                    held.caret,
+                                );
+                            return;
+                        }
                         inputCaret.current = e.nativeEvent.selection.start;
                         updateActiveToken();
                     }}

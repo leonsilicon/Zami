@@ -136,7 +136,8 @@ import {
     type NoiseSuppressionMode,
 } from "$lib/utils/noiseSuppressionMode";
 import {
-    planMicProcessing,
+    // Zami: wrapped below (planMicProcessing).
+    planMicProcessing as planZamMicProcessing,
     type MicProcessingPlan,
     type MicTuning,
 } from "$lib/utils/micProcessing";
@@ -153,6 +154,81 @@ import {
     openShareAudioTrack,
     type ShareAudioTrack,
 } from "$lib/audio/shareAudioTrack";
+
+/** Zami: not ported: Zam's mic chain (its noise filters and gain stages). It
+ *  runs in an AudioWorklet, most stages in WebAssembly, and LiveKit hangs it on
+ *  a track's AudioContext; React Native has none of the three. The platform's
+ *  own noise suppression and gain control (iOS voice processing) stand in for
+ *  the stages, as Zam's settings fall back to the browser's suppressor for a
+ *  model the browser can't run. */
+function planMicProcessing(
+    ...args: Parameters<typeof planZamMicProcessing>
+): MicProcessingPlan {
+    const plan = planZamMicProcessing(...args);
+    if (!plan.chain || micChainSupported()) return plan;
+    return {
+        noiseSuppression: plan.noiseSuppression || !!plan.chain.denoise,
+        autoGainControl: plan.autoGainControl || !!plan.chain.level,
+        chain: null,
+    };
+}
+
+/** Zami: whether Zam's mic chain can run (see planMicProcessing). */
+function micChainSupported(): boolean {
+    return (
+        typeof AudioWorkletNode !== "undefined" &&
+        typeof WebAssembly !== "undefined"
+    );
+}
+
+/** Zami: whether call audio can go through Web Audio (see ensureAudioGraph). */
+const CALL_WEB_AUDIO = false;
+
+/** Zami: Android's call audio (audio focus; speaker, earpiece or headset) is
+ *  LiveKit's AudioSession, which runs while a call does. iOS's audio session
+ *  follows WebRTC's audio engine by itself (apps/zami/calls.ts). Never throws:
+ *  the call goes on with the system's routing. */
+async function callAudioSession(on: boolean): Promise<void> {
+    // (Zami's navigator says "iPhone" on iOS.)
+    if (navigator.platform === "iPhone") return;
+    try {
+        const { AudioSession } = await import("@livekit/react-native");
+        if (on) await AudioSession.startAudioSession();
+        else await AudioSession.stopAudioSession();
+    } catch (err) {
+        console.warn("[voice] call audio session:", err);
+    }
+}
+
+/** Zami: React Native has no <audio> to play call audio: WebRTC plays every
+ *  subscribed track itself. The (detached) element stays as the handle Zam's
+ *  code keeps for each track, and its `volume` and `muted` set the track's own
+ *  playback volume (react-native-webrtc's per-track gain). */
+function playNatively(el: HTMLAudioElement, track: RemoteTrack): void {
+    const audio = track as LivekitClient.RemoteAudioTrack;
+    let volume = 1;
+    let muted = false;
+    const apply = () => audio.setVolume(muted ? 0 : volume);
+    Object.defineProperties(el, {
+        volume: {
+            configurable: true,
+            get: () => volume,
+            set: (v: number) => {
+                volume = v;
+                apply();
+            },
+        },
+        muted: {
+            configurable: true,
+            get: () => muted,
+            set: (m: boolean) => {
+                muted = m;
+                apply();
+            },
+        },
+    });
+    el.srcObject = track.mediaStream ?? null;
+}
 
 type LivekitModule = typeof import("livekit-client");
 type LivekitRoom = LivekitClient.Room;
@@ -277,6 +353,12 @@ function userIdFromIdentity(identity: string): string {
 }
 
 function ensureAudioGraph(call: ActiveVoiceCall): CallAudioGraph | null {
+    // Zami: not ported: the Web Audio graph. WebRTC's audio can't reach React
+    // Native's Web Audio (react-native-audio-api has no MediaStream source),
+    // and its context would take the audio session over from the call. So
+    // voices stay at their tracks' own volume (up to 100%, not normalized), and
+    // soundboard clips don't play.
+    if (!CALL_WEB_AUDIO) return null;
     if (call.audioGraph === null) {
         call.audioGraph =
             createCallAudioGraph({
@@ -907,6 +989,8 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
                     ? "share"
                     : "voice";
             const el = document.createElement("audio");
+            // Zami: WebRTC plays the track; the element sets its volume.
+            playNatively(el, track);
             elKind.set(el, kind);
             call.audioEls.add(el);
             call.elByTrack.set(track, el);
@@ -916,7 +1000,8 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
                 `Call audio: ${participant.identity} (${
                     kind === "share" ? "screen share" : "voice"
                 })`,
-                () => track.attach(el),
+                // Zami: nothing to attach to (playNatively).
+                () => {},
             ).then(() => {
                 if (activeVoice !== call || call.elByTrack.get(track) !== el) {
                     // Left, or unsubscribed again, while it waited its turn.
@@ -1415,7 +1500,9 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
     // end. Sending plain media into it would leave everyone else unable to
     // play ours, so a device that can't encrypt doesn't join.
     const encrypted = room.hasEncryptionStateEvent();
-    if (encrypted && !lk.isE2EESupported()) {
+    // Zami: React Native's WebRTC encrypts frames itself (setupCallE2EE), which
+    // livekit-client's check (the browser's insertable streams) doesn't see.
+    if (encrypted && !lk.isE2EESupported() && !NATIVE_E2EE) {
         throw new Error(t("client.encryptedCallsUnsupported"));
     }
     const e2ee = encrypted ? await setupCallE2EE(lk, session) : null;
@@ -1630,6 +1717,7 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
         await bypassProxyFor(url);
         if (e2ee) await lkRoom.setE2EEEnabled(true);
         sfuUrlOf.set(lkRoom, url);
+        await callAudioSession(true); // Zami
         await lkRoom.connect(url, jwt);
         connected = true;
         // Whoever was here first, muted, sent no event we were around for.
@@ -1746,6 +1834,8 @@ async function leaveVoiceCallInternal(): Promise<void> {
             ...callLkRooms(call).map((r) => r.disconnect()),
             call.session.leave(10_000),
         ]);
+        // Zami: unless a new call started meanwhile.
+        if (!activeVoice) await callAudioSession(false);
     })();
     voiceLeaveInFlight = run;
     try {
@@ -2480,12 +2570,21 @@ async function bypassProxyFor(url: string): Promise<void> {
 // LiveKit identity it belongs to; each goes to LiveKit as HKDF key material
 // for that identity. Every LiveKit connection gets a worker of its own, as
 // one worker gets confused by streams from several rooms.
+//
+// Zami: React Native has no workers; its WebRTC encrypts and decrypts frames
+// itself. Every LiveKit connection gets a native E2EE manager of its own
+// (@livekit/react-native's RNE2EEManager) in place of a worker, all reading
+// one native key provider that derives each key with HKDF, as livekit-client
+// derives HKDF key material.
+
+/** Zami: frames are encrypted natively (see above). */
+const NATIVE_E2EE = true;
 
 interface CallE2EE {
     /** `e2ee` options for a new LiveKit Room. */
+    // Zami: a native E2EE manager in place of the key provider and worker.
     roomOptions: () => {
-        keyProvider: LivekitClient.BaseKeyProvider;
-        worker: Worker;
+        e2eeManager: LivekitClient.BaseE2EEManager;
     };
     /** Stop listening for keys and end the workers. */
     stop: () => void;
@@ -2497,13 +2596,53 @@ async function setupCallE2EE(
     lk: LivekitModule,
     session: ReturnType<MatrixClient["matrixRTC"]["getRoomSession"]>,
 ): Promise<CallE2EE> {
+    // Zami: LiveKit's React Native SDK, loaded with the call as livekit-client is.
+    const [{ RNE2EEManager }, webrtc] = await Promise.all([
+        import("@livekit/react-native"),
+        import("@livekit/react-native-webrtc"),
+    ]);
+    const managers: InstanceType<typeof RNE2EEManager>[] = [];
     // Element Call's MatrixKeyProvider settings.
+    // Zami: keys go to WebRTC's native key provider, which RNE2EEManager's frame
+    // cryptors read (`rtcKeyProvider`), raw: it derives them with HKDF itself.
     class MatrixKeyProvider extends lk.BaseKeyProvider {
+        readonly rtcKeyProvider =
+            webrtc.RTCFrameCryptorFactory.createDefaultKeyProvider({
+                sharedKey: false,
+                ratchetSalt: "LKFrameEncryptionKey",
+                ratchetWindowSize: 10,
+                keyRingSize: 256,
+                uncryptedMagicBytes: new TextEncoder().encode("LK-ROCKS"),
+                keyDerivationAlgorithm: webrtc.RTCKeyDerivationAlgorithm.HKDF,
+            });
+        private readonly latest = new Map<string, number>();
         constructor() {
             super({ ratchetWindowSize: 10, keyringSize: 256 });
         }
-        setParticipantKey(key: CryptoKey, identity: string, index: number) {
-            this.onSetEncryptionKey(key, identity, index);
+        setParticipantKey(key: Uint8Array, identity: string, index: number) {
+            this.latest.set(identity, index);
+            void this.rtcKeyProvider.setKey(identity, key, index).then(() => {
+                // A cryptor takes its key index when it's made: move the ones
+                // already running (our own, after a key rotation) to the new key.
+                for (const manager of managers)
+                    for (const cryptor of (
+                        manager as unknown as {
+                            frameCryptors: Map<
+                                string,
+                                InstanceType<typeof webrtc.RTCFrameCryptor>
+                            >;
+                        }
+                    ).frameCryptors.values())
+                        if (cryptor.participantId === identity)
+                            void cryptor.setKeyIndex(index);
+            });
+        }
+        /** The index RNE2EEManager gives a new cryptor. */
+        getLatestKeyIndex(identity: string): number {
+            return this.latest.get(identity) ?? 0;
+        }
+        setSifTrailer(trailer: Uint8Array): void {
+            void this.rtcKeyProvider.setSifTrailer(trailer);
         }
     }
     const keyProvider = new MatrixKeyProvider();
@@ -2513,31 +2652,23 @@ async function setupCallE2EE(
         _membership: unknown,
         identity: string,
     ) => {
-        crypto.subtle
-            .importKey("raw", key, "HKDF", false, ["deriveBits", "deriveKey"])
-            .then(
-                (material) =>
-                    keyProvider.setParticipantKey(material, identity, index),
-                (err: unknown) =>
-                    console.error("Couldn't import a call media key:", err),
-            );
+        // Zami: the raw key (see MatrixKeyProvider).
+        keyProvider.setParticipantKey(key, identity, index);
     };
     session.on(MEDIA_KEY_EVENT as never, onKey as never);
     session.reemitEncryptionKeys();
-    const { default: E2EEWorker } =
-        await import("livekit-client/e2ee-worker?worker");
-    const workers: Worker[] = [];
     return {
         roomOptions: () => {
-            const worker = new E2EEWorker();
-            workers.push(worker);
-            return { keyProvider, worker };
+            // Zami: a native E2EE manager per connection, as a worker was.
+            const manager = new RNE2EEManager(keyProvider as never);
+            managers.push(manager);
+            return { e2eeManager: manager };
         },
         stop: () => {
             session.off(MEDIA_KEY_EVENT as never, onKey as never);
             // After the rooms have disconnected, which flushes their streams.
             setTimeout(() => {
-                for (const worker of workers) worker.terminate();
+                void keyProvider.rtcKeyProvider.dispose();
             }, 5000);
         },
     };

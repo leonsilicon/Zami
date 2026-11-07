@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.browser",
   "version": "0.0.0",
   "private": true,
-  "description": "window, document and navigator for Zam's code in React Native, backed by AppState, Dimensions, Linking and Uniwind. Metro points Zam's references to them here.",
+  "description": "window, document and navigator for Zam's code in React Native, backed by AppState, Dimensions, Linking and Uniwind, and the Notification API on expo-notifications. Metro points Zam's references to them here.",
   "type": "module",
   "imports": {
     "#*": "./*.ts"
@@ -11,16 +11,24 @@
     ".": "./+.ts"
   },
   "dependencies": {
+    "@-/com.leonsilicon.zami.keyboard": "workspace:*",
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
+    "expo-asset": "catalog:",
     "expo-clipboard": "catalog:",
     "expo-file-system": "catalog:",
     "expo-localization": "catalog:",
     "expo-location": "catalog:",
+    "expo-notifications": "catalog:",
     "expo-sharing": "catalog:",
     "linkedom": "catalog:",
+    "react-native-audio-api": "catalog:",
     "uniwind": "catalog:"
   },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
   "peerDependencies": {
+    "react": "*",
     "react-native": "*"
   }
 }

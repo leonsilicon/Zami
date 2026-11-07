@@ -1,7 +1,8 @@
 import { Portal } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import type { Track } from "livekit-client";
-import { Maximize2, MonitorUp, PictureInPicture2, Video } from "lucide-svelte";
+import { VideoView } from "@livekit/react-native";
+import type { Track, VideoTrack } from "livekit-client";
+import { Maximize2, PictureInPicture2 } from "lucide-svelte";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,7 +33,8 @@ export default function VideoTile({
 
     // Camera fills the tile (cover); a shared screen must never be cropped
     // (contain). Mirror only ever applies to a local camera self-view.
-    const fit = tile.source === "camera" ? "object-cover" : "object-contain";
+    // Zami: the video view's `objectFit` takes the fit.
+    const fit = tile.source === "camera" ? "cover" : "contain";
 
     // Fullscreen the whole tile (video + label).
     // Zami: the Fullscreen API → the tile drawn over the whole app through a
@@ -57,21 +59,17 @@ export default function VideoTile({
 
     const contents = (
         <View className="group relative w-full h-full bg-black">
-            {/* Zami: not ported: LiveKit video. LiveKit's React Native SDK isn't
-                installed, so `tile.track` has nowhere to play; this placeholder
-                stands where its video goes, with the same fit and mirroring
-                (muted when `tile.isLocal`). */}
-            <View
-                className={`w-full h-full items-center justify-center ${fit} ${
-                    mirror ? "scale-x-[-1]" : ""
-                }`}
-            >
-                {tile.source === "camera" ? (
-                    <Video size={32} className="text-discord-textMuted" />
-                ) : (
-                    <MonitorUp size={32} className="text-discord-textMuted" />
-                )}
-            </View>
+            {/* Zami: the <video> with `use:videoTrack` → LiveKit's VideoView,
+                which renders the track natively (a local one is never heard:
+                video tracks carry no audio). A new track gets a new view, as
+                the action re-attached. */}
+            <VideoView
+                key={(tile.track as VideoTrack).sid ?? tile.key}
+                videoTrack={tile.track as VideoTrack}
+                objectFit={fit}
+                mirror={mirror}
+                style={{ width: "100%", height: "100%" }}
+            />
             {!compact && (
                 <>
                     {/* Zami: `max-w-[calc(100%-1rem)]` → the end inset. */}

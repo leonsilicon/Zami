@@ -83,9 +83,8 @@ const SOURCE_ORDER: StreamSource[] = [
     "unknown",
 ];
 
-// Zami: not ported: LiveKit's React Native SDK. Without it there's no call, so
-// getCallDebugStats() finds none and the panel says it isn't in one; everything
-// below runs on whatever stats a call gives it once there is.
+// Zami: the stats are React Native WebRTC's (LiveKit's React Native SDK). It
+// has no <video> elements, so each video's painted-frame count stays empty.
 export default function CallStatsPanel({ onClose }: Props) {
     const close = useEffectEvent(() => onClose());
     useEffect(() => {

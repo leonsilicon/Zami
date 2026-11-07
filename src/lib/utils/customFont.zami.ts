@@ -134,6 +134,14 @@ export async function deleteStoredFont(): Promise<void> {
 
 // ---- FontFace registration. Live-verified only, DOM-guarded. ----
 
+// Zami: React Native has no FontFace: the app saves the font as a file and loads
+// it with expo-font (@-/com.leonsilicon.zami.fonts, which decodes WOFF2).
+function isReactNative(): boolean {
+    return (
+        typeof navigator !== "undefined" && navigator.product === "ReactNative"
+    );
+}
+
 function fontSet(): FontFaceSet | null {
     if (typeof document === "undefined") return null;
     const set = (document as unknown as { fonts?: FontFaceSet }).fonts;
@@ -142,6 +150,13 @@ function fontSet(): FontFaceSet | null {
 
 /** Remove any previously-registered custom FontFace so re-upload replaces. */
 export function unregisterCustomFontFace(): void {
+    // Zami: see isReactNative.
+    if (isReactNative()) {
+        void import("@-/com.leonsilicon.zami.fonts").then((fonts) =>
+            fonts.unregisterCustomFont(CUSTOM_FONT_FAMILY),
+        );
+        return;
+    }
     const set = fontSet();
     if (!set) return;
     const stale: FontFace[] = [];
@@ -156,6 +171,11 @@ export function unregisterCustomFontFace(): void {
 export async function registerCustomFontFace(
     data: ArrayBuffer,
 ): Promise<boolean> {
+    // Zami: see isReactNative.
+    if (isReactNative()) {
+        const fonts = await import("@-/com.leonsilicon.zami.fonts");
+        return fonts.registerCustomFont(CUSTOM_FONT_FAMILY, data);
+    }
     const set = fontSet();
     if (!set) return false;
     try {

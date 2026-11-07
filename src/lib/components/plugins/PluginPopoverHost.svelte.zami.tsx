@@ -1,9 +1,11 @@
+import { DomMount } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useState } from "react";
 import {
     BackHandler,
+    Keyboard,
+    Platform,
     Pressable,
-    Text,
     useWindowDimensions,
     type LayoutChangeEvent,
 } from "react-native";
@@ -13,6 +15,7 @@ import Portal from "$lib/components/ui/Portal.svelte";
 import { motionOK } from "$lib/utils/motionPreference";
 import { closeModal } from "$lib/stores/interface.svelte";
 import { pluginPopover } from "$lib/plugins/pluginPopover.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 
 interface Rect {
     left: number;
@@ -21,9 +24,17 @@ interface Rect {
     height: number;
 }
 
-/** Zami: a plugin's anchor is the element it was opened from. Measured with
- *  `measureInWindow` when it is a React Native view; null otherwise. */
+/** Zami: a plugin's anchor is the element it was opened from: an element a
+ *  DomView shows, or a composer button's `anchorElement`, both with
+ *  `getBoundingClientRect()`; or a React Native view, measured with
+ *  `measureInWindow`. */
 type Measurable = {
+    getBoundingClientRect?: () => {
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+    };
     measureInWindow?: (
         callback: (x: number, y: number, width: number, height: number) => void,
     ) => void;
@@ -41,16 +52,46 @@ function scaleIn(duration: number) {
     }).duration(duration);
 }
 
+// Zami: `{#key current}`: a key per popover state.
+const popoverKeys = new WeakMap<object, number>();
+let nextPopoverKey = 0;
+function popoverKey(current: object): number {
+    let key = popoverKeys.get(current);
+    if (key === undefined) popoverKeys.set(current, (key = ++nextPopoverKey));
+    return key;
+}
+
 export default function PluginPopoverHost() {
     const current = useRune(() => pluginPopover.current);
     const windowSize = useWindowDimensions();
+    // Zami: the keyboard covers the bottom of the window (a browser shrinks
+    // the viewport above it instead), so the card stays above it.
+    const [keyboardHeight, setKeyboardHeight] = useState(
+        () => Keyboard.metrics()?.height ?? 0,
+    );
+    useEffect(() => {
+        const ios = Platform.OS === "ios";
+        const show = Keyboard.addListener(
+            ios ? "keyboardWillShow" : "keyboardDidShow",
+            (e) => setKeyboardHeight(e.endCoordinates.height),
+        );
+        const hide = Keyboard.addListener(
+            ios ? "keyboardWillHide" : "keyboardDidHide",
+            () => setKeyboardHeight(0),
+        );
+        return () => {
+            show.remove();
+            hide.remove();
+        };
+    }, []);
 
     // Position the card near its anchor: prefer directly above the anchor;
     // fall back below when there is no room. Clamp inside the viewport. Mirrors
     // ReactorPopover.svelte's positionCard, driven by the anchor's rect.
-    // Zami: the anchor's rect comes from `measureInWindow`, and the card's size
-    // from its first layout; it stays hidden until it has both. An anchor that
-    // can't be measured centers the card.
+    // Zami: the anchor's rect comes from `getBoundingClientRect` (or
+    // `measureInWindow`), and the card's size from its first layout; it stays
+    // hidden until it has both. An anchor that can't be measured centers the
+    // card.
     const [anchorRect, setAnchorRect] = useState<Rect | null>(null);
     const [cardSize, setCardSize] = useState<{ w: number; h: number } | null>(
         null,
@@ -60,6 +101,17 @@ export default function PluginPopoverHost() {
         setAnchorRect(null);
         setCardSize(null);
         const measurable = anchor as Measurable | undefined;
+        if (typeof measurable?.getBoundingClientRect === "function") {
+            const r = measurable.getBoundingClientRect();
+            if (r.width > 0 || r.height > 0 || r.left > 0 || r.top > 0)
+                setAnchorRect({
+                    left: r.left,
+                    top: r.top,
+                    width: r.width,
+                    height: r.height,
+                });
+            return;
+        }
         if (typeof measurable?.measureInWindow !== "function") return;
         measurable.measureInWindow((x, y, width, height) =>
             setAnchorRect({ left: x, top: y, width, height }),
@@ -68,7 +120,7 @@ export default function PluginPopoverHost() {
     function positionCard() {
         if (!cardSize) return { left: 0, top: 0, opacity: 0 };
         const vw = windowSize.width;
-        const vh = windowSize.height;
+        const vh = windowSize.height - keyboardHeight;
         const { w, h } = cardSize;
         const r = anchorRect ?? {
             left: vw / 2,
@@ -127,12 +179,13 @@ export default function PluginPopoverHost() {
                 entering={motionOK() ? scaleIn(120) : undefined}
                 className="absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl overflow-hidden"
             >
-                {/* Zami: not ported: the plugin's content. `pluginMount` hands
-                    `current.render` an HTMLElement to build DOM into, and React
-                    Native has none; the card shows the plugin's name instead. */}
-                <Text className="px-3 py-2 text-sm text-discord-textMuted">
-                    {current.label ?? t("pluginPopoverHost.plugin")}
-                </Text>
+                {/* Zami: the plugin builds DOM into the element (pluginMount),
+                    which DomView shows. */}
+                <DomMount
+                    key={popoverKey(current)}
+                    document={document}
+                    mount={(el) => pluginMount(el, current.render).destroy}
+                />
             </Animated.View>
         </Portal>
     );

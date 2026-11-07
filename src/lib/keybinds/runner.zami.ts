@@ -106,9 +106,46 @@ export function resetNavHistory(): void {
 
 // ── Sidebar navigation ──────────────────────────────────────────────────
 
+// Zami: the app has no rendered DOM to query (`document` is a detached one),
+// and a virtualized list renders only some of its rows anyway. RoomList and
+// SpaceSidebar publish their rows here instead, in display order: what
+// upstream's `data-nav-room` (with `data-nav-unread` / `-mention`) and
+// `data-nav-space` mark. Without them (the tests), the DOM is queried.
+export interface NavRoom {
+    id: string;
+    unread: boolean;
+    mention: boolean;
+}
+let navRoomSource: (() => NavRoom[]) | null = null;
+let navSpaceSource: (() => string[]) | null = null;
+
+/** RoomList's rows, read when a shortcut runs. Returns the unregister. */
+export function setNavRooms(source: () => NavRoom[]): () => void {
+    navRoomSource = source;
+    return () => {
+        if (navRoomSource === source) navRoomSource = null;
+    };
+}
+
+/** SpaceSidebar's spaces ("" for Home), in order. Returns the unregister. */
+export function setNavSpaces(source: () => string[]): () => void {
+    navSpaceSource = source;
+    return () => {
+        if (navSpaceSource === source) navSpaceSource = null;
+    };
+}
+
 function navRooms(): { id: string; unread: boolean; mention: boolean }[] {
     const seen = new Set<string>();
     const out: { id: string; unread: boolean; mention: boolean }[] = [];
+    if (navRoomSource) {
+        for (const row of navRoomSource()) {
+            if (seen.has(row.id)) continue;
+            seen.add(row.id);
+            out.push(row);
+        }
+        return out;
+    }
     for (const el of document.querySelectorAll<HTMLElement>(
         "[data-nav-room]",
     )) {
@@ -145,9 +182,12 @@ function stepRoom(
 }
 
 function stepSpace(dir: 1 | -1): boolean {
-    const ids = [
-        ...document.querySelectorAll<HTMLElement>("[data-nav-space]"),
-    ].map((el) => el.dataset.navSpace ?? "");
+    // Zami: the published spaces, if SpaceSidebar is mounted.
+    const ids = navSpaceSource
+        ? navSpaceSource()
+        : [...document.querySelectorAll<HTMLElement>("[data-nav-space]")].map(
+              (el) => el.dataset.navSpace ?? "",
+          );
     if (ids.length < 2) return false;
     const cur = Math.max(0, ids.indexOf(roomsState.activeSpaceId ?? ""));
     const next = ids[(cur + dir + ids.length) % ids.length];

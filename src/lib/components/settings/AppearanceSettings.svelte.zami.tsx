@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
-import { Select } from "@-/com.leonsilicon.zami.rn";
+import { Select, SettingAnchor } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { LOCALES, getLocale, setLocale, t, type Locale } from "$lib/i18n";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
@@ -50,6 +50,8 @@ function applyingCustomCss(set: () => void): void {
     }
 }
 
+// Zami: `data-setting-anchor` elements → SettingAnchor, which settings search
+// scrolls to and flashes.
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text. `data-setting-anchor`
 // (settings search scrolls to it) is not ported.
@@ -85,7 +87,7 @@ export default function AppearanceSettings() {
 
     return (
         <View className="gap-6">
-            <View>
+            <SettingAnchor anchor="appearance-language">
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.language")}
                 </Text>
@@ -116,12 +118,15 @@ export default function AppearanceSettings() {
                         }))}
                     />
                 </View>
-            </View>
-            <View>
+            </SettingAnchor>
+            <SettingAnchor anchor="appearance-layout">
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.layout")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <SettingAnchor
+                    anchor="theme-rightalign"
+                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                >
                     <View className="flex-1 min-w-0">
                         <Text className="text-sm text-discord-textPrimary">
                             {t(
@@ -141,8 +146,11 @@ export default function AppearanceSettings() {
                             "appearanceSettings.rightAlignMyMessagesBubbleLayout",
                         )}
                     />
-                </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                </SettingAnchor>
+                <SettingAnchor
+                    anchor="appearance-namecolours"
+                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                >
                     <View className="flex-1 min-w-0">
                         <Text className="text-sm text-discord-textPrimary">
                             {t("appearanceSettings.showNameColours")}
@@ -156,8 +164,11 @@ export default function AppearanceSettings() {
                         onChange={setShowNameColours}
                         label={t("appearanceSettings.showNameColours")}
                     />
-                </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                </SettingAnchor>
+                <SettingAnchor
+                    anchor="appearance-keepsidebar"
+                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                >
                     <View className="flex-1 min-w-0">
                         <Text className="text-sm text-discord-textPrimary">
                             {t("appearanceSettings.keepRoomListOpen")}
@@ -171,11 +182,11 @@ export default function AppearanceSettings() {
                         onChange={setKeepSidebarOpen}
                         label={t("appearanceSettings.keepRoomListOpen")}
                     />
-                </View>
-            </View>
+                </SettingAnchor>
+            </SettingAnchor>
             <ThemeColorEditor />
 
-            <View>
+            <SettingAnchor anchor="appearance-custom-css">
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.customCss")}
                 </Text>
@@ -217,9 +228,9 @@ export default function AppearanceSettings() {
                 <Text className="mt-1 text-xs text-discord-textMuted">
                     {t("appearanceSettings.customCssRecovery")}
                 </Text>
-            </View>
+            </SettingAnchor>
 
-            <View>
+            <SettingAnchor anchor="cust-timestamps">
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.timestamps")}
                 </Text>
@@ -307,9 +318,9 @@ export default function AppearanceSettings() {
                         label={t("appearanceSettings.alwaysShowAbsoluteDates")}
                     />
                 </View>
-            </View>
+            </SettingAnchor>
 
-            <View>
+            <SettingAnchor anchor="appearance-reducemotion">
                 <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
                     <View className="flex-1 min-w-0">
                         <Text className="text-sm text-discord-textPrimary">
@@ -327,7 +338,7 @@ export default function AppearanceSettings() {
                         label={t("appearanceSettings.reduceMotion")}
                     />
                 </View>
-            </View>
+            </SettingAnchor>
         </View>
     );
 }

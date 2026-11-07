@@ -4,6 +4,23 @@
 @config "../tailwind.config.zami.js";
 @source "./**/*.zami.tsx";
 @source "../apps/zami";
+/* Zami: React Native takes one font family, not a stack (which Uniwind can't
+   compile either), so `font-sans` and `font-mono` name one each: the system's
+   font, which the font chosen in Settings > Appearance replaces as it does all
+   text's (@-/com.leonsilicon.zami.fonts), and the platform's monospace. */
+@theme inline {
+    --font-sans: var(--zami-font-sans);
+    --font-mono: var(--zami-font-mono);
+}
+:root {
+    --zami-font-sans: System;
+    @variant ios {
+        --zami-font-mono: Menlo;
+    }
+    @variant android {
+        --zami-font-mono: monospace;
+    }
+}
 
 /* Bundled message fonts (device-local font picker, item 1). Self-hosted
    woff2, no external CDN (prod CSP is font-src 'self'). Inter is a variable

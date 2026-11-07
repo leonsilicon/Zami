@@ -14,6 +14,7 @@ import {
     type ScrollViewInstance,
     type TextInputInstance,
 } from "react-native";
+import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
 import { Image, mediaSource, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -28,6 +29,9 @@ import { roomsState } from "$lib/stores/rooms.svelte";
 import { interfaceState } from "$lib/stores/interface.svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { scrollBehavior } from "$lib/utils/motionPreference";
+import { nextActiveIndex } from "$lib/utils/listboxNavigation";
+import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
+import { stickerOptionKeys } from "$lib/utils/pickerOptionKeys";
 
 interface Props {
     roomId?: string | null;
@@ -82,11 +86,14 @@ export default function StickerPicker({
     const scrollEl = useRef<FlatList<Row>>(null);
     const tabBarEl = useRef<ScrollViewInstance>(null);
     const searchEl = useRef<TextInputInstance>(null);
-    // Zami: not ported: the keyboard cursor (`selectedIndex`, its anchor
-    // `selectedKey`, `moveCursor` and the arrow/Home/End/Enter handling).
-    // A TextInput reports no arrow keys, so nothing could move it; stickers
-    // are picked by touch. The combobox/listbox ARIA ids it drove (`listId`,
-    // aria-activedescendant) have no React Native equivalent either.
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    // The identity of the option `selectedIndex` was placed on. See
+    // `moveCursor` below and utils/listboxAnchor.ts for why an index alone is
+    // not enough.
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    // Zami: not ported: the combobox/listbox ARIA ids the cursor drives
+    // (`listId`, aria-activedescendant), which React Native has no
+    // equivalent of.
     // Zami: no `revealedSections`: the FlatList only renders the rows near
     // the viewport, which is what the IntersectionObserver reveal did.
 
@@ -153,11 +160,20 @@ export default function StickerPicker({
         [search, stickerPacks],
     );
 
+    // Reset selection when search changes
+    useEffect(() => {
+        moveCursor(-1);
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only `search`, as upstream's effect does.
+    }, [search]);
+
     // Flat ordered list of every sticker
     const flatItems = useMemo((): CustomSticker[] => {
         if (search) return searchResults;
         return stickerPacks.flatMap((p) => p.stickers);
     }, [search, searchResults, stickerPacks]);
+
+    // Identity of every option, in render order — the anchor's key list.
+    const activeKeys = useMemo(() => stickerOptionKeys(flatItems), [flatItems]);
 
     // Start index of each section in the flat list (non-search mode only)
     const sectionOffsets = useMemo((): Map<string, number> => {
@@ -173,6 +189,14 @@ export default function StickerPicker({
         }
         return offsets;
     }, [search, stickerPacks]);
+
+    // The cursor, but only while the option it was placed on is still sitting
+    // at that index (see upstream's comment on `activeIndex`).
+    const activeIndex = anchoredActiveIndex(
+        selectedIndex,
+        selectedKey,
+        activeKeys,
+    );
 
     // True exactly when the box below is really rendering options. With no
     // options (a search that matches nothing) it is a plain view, so its
@@ -193,6 +217,7 @@ export default function StickerPicker({
     }
 
     function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+        listView.current.y = e.nativeEvent.contentOffset.y;
         if (search) return;
         const top = e.nativeEvent.contentOffset.y;
         let current = "";
@@ -212,8 +237,77 @@ export default function StickerPicker({
         [onSelect, onClose],
     );
 
-    // Zami: not ported: Escape closing the picker (`onKeydown`). A TextInput
-    // reports no Escape key; the touch drawer closes from its backdrop.
+    function onKeydown(e: KeyboardEvent) {
+        if (e.key === "Escape") {
+            onClose();
+            return;
+        }
+        // Ctrl+E/S/G picker switching is handled globally in +page.svelte.
+    }
+
+    // Zami: the panel's `onkeydown`: its keys, with focus in the search field
+    // or nowhere.
+    useKeyScope({ onKeydown }, [searchEl]);
+
+    /** The ONLY place `selectedIndex` may be assigned. See `activeIndex`. */
+    function moveCursor(next: number) {
+        setSelectedIndex(next);
+        setSelectedKey(next >= 0 ? (activeKeys[next] ?? null) : null);
+    }
+
+    // Zami: hardware keys are observed, not intercepted, so the arrow keys
+    // also move the search field's caret, as they do there with nothing
+    // selected.
+    function onSearchKeydown(e: KeyboardEvent) {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (activeIndex === -1) {
+                if (flatItems.length > 0) moveCursor(0);
+            } else {
+                moveCursor(Math.min(activeIndex + cols, flatItems.length - 1));
+            }
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (activeIndex < cols) {
+                moveCursor(-1);
+            } else {
+                moveCursor(activeIndex - cols);
+            }
+        } else if (e.key === "ArrowRight" && activeIndex >= 0) {
+            // A step of one along the flat list is exactly a listbox's
+            // ArrowDown, so the horizontal keys borrow that arithmetic --
+            // with `loop: false`, because walking off the last sticker has
+            // always stopped there rather than wrapping to the first.
+            e.preventDefault();
+            moveCursor(
+                nextActiveIndex(activeIndex, flatItems.length, "ArrowDown", {
+                    loop: false,
+                }),
+            );
+        } else if (e.key === "ArrowLeft" && activeIndex >= 0) {
+            e.preventDefault();
+            moveCursor(
+                nextActiveIndex(activeIndex, flatItems.length, "ArrowUp", {
+                    loop: false,
+                }),
+            );
+        } else if ((e.key === "Home" || e.key === "End") && activeIndex >= 0) {
+            // Only once the user is actually navigating the grid: this is an
+            // editable text field, so with nothing selected Home/End still
+            // belong to the caret.
+            e.preventDefault();
+            moveCursor(nextActiveIndex(activeIndex, flatItems.length, e.key));
+        } else if (e.key === "Enter" && activeIndex >= 0) {
+            // `activeIndex`, like every branch above: a raw `selectedIndex`
+            // left past the end by a shrinking pack reads `undefined` here.
+            e.preventDefault();
+            const sticker = flatItems[activeIndex];
+            if (sticker) pick(sticker);
+        }
+    }
+
+    // Zami: the search field's `onkeydown`.
+    useInputKeys(searchEl, { onKeydown: onSearchKeydown });
 
     // Zami: the rows the FlatList renders, with their heights and offsets.
     // Header text is `text-xs` (a 16px line, scaled with the system text
@@ -284,6 +378,40 @@ export default function StickerPicker({
         sectionOffsets,
     ]);
 
+    // Update the active tab and scroll the selected item into view.
+    // Zami: the FlatList renders every row near the viewport, so there's no
+    // pack to reveal; `scrollIntoView({ block: "nearest" })` is worked out
+    // from the row offsets and the list's own scroll position.
+    const listView = useRef({ y: 0, height: 0 });
+    useEffect(() => {
+        const idx = activeIndex;
+        if (idx < 0 || idx >= flatItems.length) return;
+
+        if (!search) {
+            for (const pack of stickerPacks) {
+                const start = sectionOffsets.get(pack.id) ?? 0;
+                if (idx >= start && idx < start + pack.stickers.length) {
+                    if (activeTab !== pack.id) setActiveTab(pack.id);
+                    break;
+                }
+            }
+        }
+
+        const item = flatItems[idx];
+        const row = rows.find(
+            (r) => r.kind === "cells" && r.items.includes(item),
+        );
+        const view = listView.current;
+        if (!row || !scrollEl.current || view.height === 0) return;
+        let y: number | null = null;
+        if (row.offset < view.y) y = row.offset;
+        else if (row.offset + row.length > view.y + view.height)
+            y = row.offset + row.length - view.height;
+        if (y !== null)
+            scrollEl.current.scrollToOffset({ offset: y, animated: false });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
     const renderRow = useCallback(
         ({ item: row }: ListRenderItemInfo<Row>) => {
             if (row.kind === "header")
@@ -305,27 +433,38 @@ export default function StickerPicker({
                     style={{ height: row.length, paddingTop: row.paddingTop }}
                     className="flex-row gap-1"
                 >
-                    {row.items.map((s) => (
-                        <Pressable
-                            key={s.shortcode}
-                            onPress={() => pick(s)}
-                            accessibilityRole="button"
-                            accessibilityLabel={s.shortcode}
-                            style={{ width: cell, height: cell }}
-                            className="p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center"
-                        >
-                            <Image
-                                source={mediaSource(s.url)}
+                    {row.items.map((s) => {
+                        // Zami: `class:ring-2` / `class:ring-discord-accent`
+                        // on the option the cursor is on.
+                        const selected =
+                            activeIndex >= 0 && flatItems[activeIndex] === s;
+                        return (
+                            <Pressable
+                                key={s.shortcode}
+                                onPress={() => pick(s)}
+                                accessibilityRole="button"
                                 accessibilityLabel={s.shortcode}
-                                className="w-14 h-14"
-                                contentFit="contain"
-                            />
-                        </Pressable>
-                    ))}
+                                accessibilityState={{ selected }}
+                                style={{ width: cell, height: cell }}
+                                className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${
+                                    selected
+                                        ? " border-2 border-discord-accent"
+                                        : ""
+                                }`}
+                            >
+                                <Image
+                                    source={mediaSource(s.url)}
+                                    accessibilityLabel={s.shortcode}
+                                    className="w-14 h-14"
+                                    contentFit="contain"
+                                />
+                            </Pressable>
+                        );
+                    })}
                 </View>
             );
         },
-        [cell, pick],
+        [cell, pick, activeIndex, flatItems],
     );
 
     // Zami: `height: 50dvh` on touch. The desktop panel keeps the composer
@@ -397,6 +536,9 @@ export default function StickerPicker({
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="search"
+                    // Zami: Enter picks the selected sticker (onSearchKeydown)
+                    // and otherwise does nothing, rather than blurring.
+                    submitBehavior="submit"
                     className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
                 />
             </View>
@@ -501,9 +643,11 @@ export default function StickerPicker({
                             offset: rows[index].offset,
                             index,
                         })}
-                        onLayout={(e) =>
-                            setScrollWidth(e.nativeEvent.layout.width)
-                        }
+                        onLayout={(e) => {
+                            setScrollWidth(e.nativeEvent.layout.width);
+                            listView.current.height =
+                                e.nativeEvent.layout.height;
+                        }}
                         onScroll={onScroll}
                         scrollEventThrottle={16}
                         // Zami: one tap picks a sticker even while the search

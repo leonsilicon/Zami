@@ -17,6 +17,7 @@ import {
 import { Path } from "react-native-svg";
 import { WebView } from "react-native-webview";
 import {
+    DomMount,
     Image,
     Pulse,
     SvgIcon,
@@ -30,6 +31,7 @@ import { t } from "$lib/i18n";
 import {
     getUrlPreview,
     getHomeserverBaseUrl,
+    mxcToHttp,
     type UrlPreview,
 } from "$lib/matrix/client";
 import Lightbox from "$lib/components/ui/Lightbox.svelte";
@@ -57,7 +59,7 @@ import { galleryNav, galleryPositionLabel } from "$lib/utils/mediaGallery";
 import { isInstagramUrl } from "$lib/utils/instagramUrl";
 import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
-import { resolveEmbed } from "$lib/plugins/embeds";
+import { resolveEmbed, mountEmbed } from "$lib/plugins/embeds";
 import { applyPreviewUrlTransforms } from "$lib/plugins/outgoingTransforms";
 
 // What each link resolved to this session. The timeline unmounts rows
@@ -992,10 +994,20 @@ export default function LinkPreview({ url }: Props) {
             // Plugin custom embed: renders a nicer card for a matching URL. ADDITIVE
             // and host-sanitized — see src/lib/plugins/embeds.ts. Keyed so a change
             // of matched embed (plugin toggled/reordered) or url forces a re-mount.
-            // Zami: not ported: the embed itself. mountEmbed hands the plugin's
-            // render an HTMLElement to build DOM into, and React Native has none.
+            // Zami: the plugin builds DOM into the element (mountEmbed), which
+            // DomView shows; Html's message text classes are the embed's.
             return (
-                <View key={`${matchedEmbed.entryId}:${url}`} className="mt-1" />
+                <DomMount
+                    key={`${matchedEmbed.entryId}:${url}`}
+                    className="mt-1"
+                    textClassName="text-sm text-discord-textPrimary"
+                    resolveMxc={mxcToHttp}
+                    document={document}
+                    mount={(el) =>
+                        mountEmbed(el, { embed: matchedEmbed.value, url })
+                            .destroy
+                    }
+                />
             );
         if (pending && !preview) {
             if (likelyMedia)
