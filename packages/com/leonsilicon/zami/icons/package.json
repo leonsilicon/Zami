@@ -1,0 +1,21 @@
+{
+  "name": "@-/com.leonsilicon.zami.icons",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React Native stand-in for lucide-svelte: every lucide-react-native icon, taking Zam's Tailwind classes for its size and color.",
+  "type": "module",
+  "imports": {
+    "#icon": "./icon.tsx"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "lucide-react-native": "catalog:",
+    "react-native-svg": "catalog:",
+    "uniwind": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*"
+  }
+}

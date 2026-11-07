@@ -1,1 +1,1 @@
-export { useRune } from "#use-rune";
+export { useDeepRune, useRune } from "#use-rune";

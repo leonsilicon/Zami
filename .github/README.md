@@ -70,7 +70,9 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | `packages/com/leonsilicon/zami/metro` | Metro config: resolves only `.zami.` files in Zam's tree; compiles rune modules; handles Vite's build-time features |
 | `packages/com/leonsilicon/zami/vite` | The same for Vite, so upstream's tests run against the Zami files |
 | `packages/com/leonsilicon/zami/sveltekit` | Stand-ins for `$app/environment`, `$app/navigation` and `$app/state`, and for the tsconfig `svelte-kit sync` generates |
-| `packages/com/leonsilicon/zami/svelte-react` | `useRune`: React components re-render when Svelte runes change |
+| `packages/com/leonsilicon/zami/svelte-react` | `useRune`/`useDeepRune`: React components re-render when Svelte runes change |
+| `packages/com/leonsilicon/zami/icons` | `lucide-svelte` for the app: lucide-react-native icons that take Zam's Tailwind classes |
+| `packages/com/leonsilicon/zami/rn` | What translations share in place of web features: `Portal`, `Html`, `Image`/`mediaSource` |
 | `packages/com/leonsilicon/zami/dev` | `_dev`: builds, installs and runs the app with its dev server |
 | `zami-ports.json` | Which upstream files have a Zami version (all but the unused configuration in `exclude`), and the override (`package.json`) |
 | `zami-ports.lock.json` | The upstream commit each Zami file was last synced with (written by `_zami`) |

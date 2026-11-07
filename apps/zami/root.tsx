@@ -5,9 +5,11 @@
 // driving React (`$lib/stores/toasts.svelte` through useRune), translated components,
 // Zam's Tailwind theme through Uniwind, and Matrix end-to-end encryption.
 import "../../src/app.css";
+import { PortalHost } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as matrixCrypto from "@matrix-org/matrix-sdk-crypto-wasm";
 import { StatusBar } from "expo-status-bar";
+import { ShieldCheck } from "lucide-svelte";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import Splash from "$lib/components/layout/Splash.svelte";
@@ -34,7 +36,10 @@ function Checks() {
 
   return (
     <View className="gap-4 p-6">
-      <Text className="text-lg font-semibold text-discord-textPrimary">Zami preview</Text>
+      <View className="flex-row items-center gap-2">
+        <ShieldCheck size={20} className="text-discord-accent" />
+        <Text className="text-lg font-semibold text-discord-textPrimary">Zami preview</Text>
+      </View>
       <Text className="text-discord-textMuted">i18n: {t("splash.restoringSession")}</Text>
       <Text className="text-discord-textMuted" testID="crypto-status">
         Encryption: {crypto}
@@ -76,6 +81,7 @@ export function Root() {
       ) : (
         <Splash message={null} />
       )}
+      <PortalHost />
     </View>
   );
 }

@@ -13,6 +13,9 @@
   "dependencies": {
     "svelte": "catalog:"
   },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
   "peerDependencies": {
     "react": "*"
   }

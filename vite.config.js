@@ -9,6 +9,7 @@
 // `.zami.` files in it, whatever upstream adds later.
 import { readdirSync, readFileSync } from "node:fs";
 import { isZamiPath, mapUpstreamPath } from "@-/com.leonsilicon.zami.ports";
+import { svelteRunes } from "@-/com.leonsilicon.zami.vite";
 import flatcap from "eslint-plugin-flatcap";
 import { defineConfig } from "vite-plus";
 
@@ -66,6 +67,8 @@ const generated = [
 const ZAM_TESTS = "packages/com/leonsilicon/zami/vite/vitest.zam.config.ts";
 
 export default defineConfig({
+  // Compiles the rune modules in Zami's packages for the tooling tests.
+  plugins: [svelteRunes()],
   lint: {
     ...flatcap.configs.oxlint,
     // Type-aware rules read Zam's tree through Zam's tsconfig.json, which extends

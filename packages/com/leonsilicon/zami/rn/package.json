@@ -1,0 +1,23 @@
+{
+  "name": "@-/com.leonsilicon.zami.rn",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images.",
+  "type": "module",
+  "imports": {
+    "#html": "./html.tsx",
+    "#image": "./image.tsx",
+    "#portal": "./portal.tsx"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "expo-image": "catalog:",
+    "uniwind": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

@@ -105,7 +105,12 @@ same order, same names, same branches.
   - `$derived` → a value computed during render (or `useMemo` if it's expensive).
   - `$effect` → `useEffect`.
   - Reading a store's runes → `useRune(() => store.value)` from
-    `@-/com.leonsilicon.zami.svelte-react`.
+    `@-/com.leonsilicon.zami.svelte-react`. It re-renders when what the getter read
+    changes, and only that: read down to the values you render
+    (`useRune(() => messagesState.byRoom[roomId], [roomId])`, not `messagesState.byRoom`).
+    For a `$state` tree Zam mutates in place (`.push`, `obj[key] = …`), use
+    `useDeepRune`, which also tracks everything inside the plain objects and arrays it
+    returns. Pass the getter's props and state as `deps`.
   - Store functions (`showToast(...)`) are called directly.
 - **Control flow.**
   - `{#if}` → a conditional.
@@ -114,7 +119,46 @@ same order, same names, same branches.
 - **Imports.** Import other components by their upstream specifier (`./Child.svelte`,
   `$lib/components/ui/ToggleSwitch.svelte`); it resolves to the Zami version. Logic
   imports (`$lib/i18n`, `$lib/stores/…`) stay exactly as upstream wrote them.
-- **Can't be ported yet** (DOM measurement, portals, Web Audio, …): render the closest
+- **Icons.** Import them from `lucide-svelte` as upstream does; Metro resolves it to
+  `@-/com.leonsilicon.zami.icons`. Icons take `size` and `className`. On the web an icon
+  is its parent's text color; here nothing inherits, so give it that color:
+  `<X size={16} className="text-discord-textMuted" />`.
+- **Overlays.** `Portal` → `Portal` from `@-/com.leonsilicon.zami.rn` (the app root
+  renders its `PortalHost`). Use the translated `ModalDialog` and `BottomSheet` as
+  upstream does. A backdrop that closes on click → a `Pressable` filling the layer.
+- **Transitions.** `transition:`/`in:`/`out:` → react-native-reanimated's
+  `Animated.View` with `entering`/`exiting` (`fade` → `FadeIn`/`FadeOut`, `scale` →
+  `ZoomIn`/`ZoomOut`, `fly` → `SlideInDown`/`SlideOutDown` and the like), keeping
+  upstream's duration. Reanimated honors the system's reduced-motion setting, as
+  `motionOK()` does.
+- **HTML.** `{@html …}` of message or topic HTML → `<Html html={…} />` from
+  `@-/com.leonsilicon.zami.rn`, which renders the Matrix spec's allowed tags and drops
+  the rest. Keep upstream's calls that build the string (`sanitize(…)`, `withTwemoji(…)`).
+  `{@html renderPlainTextWithTwemoji(x)}` and other emoji-only helpers → `<Text>{x}</Text>`:
+  iOS draws emoji itself.
+- **Images.** `<img src={url}>` → `<Image source={mediaSource(url)} />`, both from
+  `@-/com.leonsilicon.zami.rn` (expo-image, with the account's token for authenticated
+  Matrix media). Give it an explicit size: React Native images have none of their own.
+- **Lists and scrolling.** `overflow-y-auto` containers → `ScrollView`; long lists (the
+  timeline, the room list, member lists) → `FlatList`. `bind:this` plus DOM measurement
+  or scrolling → a ref, `onLayout`, and the list's `scrollToIndex`/`scrollToOffset`.
+- **Inputs.** `bind:value` → state with `value`/`onChangeText`. `onkeydown` for Enter →
+  `onSubmitEditing`. Keyboard shortcuts and other desktop-only key handling: leave them
+  out with a `// Zami: not ported:` comment.
+- **DOM-only actions.** `use:focusTrap`, `use:clickOutside`, `use:tooltip` and the like
+  have no React Native equivalent: drop them, keeping what they do for touch (a backdrop
+  `Pressable` for click-outside).
+- **Platform services.** Use Expo modules where Zam uses web APIs: `expo-clipboard`
+  (`navigator.clipboard`), `expo-haptics` (`navigator.vibrate`), `expo-image-picker` and
+  `expo-document-picker` (`<input type="file">`), `expo-sharing`, `expo-linking`/
+  `expo-web-browser` (opening links), `expo-camera`, `expo-location`, `expo-audio`,
+  `expo-video` and `react-native-maps`.
+- **Layout.** Zam has a mobile layout: `interfaceState.isMobile` and
+  `interfaceState.isTouchscreen` choose it. Keep both branches as upstream has them; the
+  app sets those flags from the window size (a phone is mobile and a touchscreen). Where
+  Zam pads for the safe area (`pb-safe`, `env(safe-area-inset-*)`), use
+  `useSafeAreaInsets()` from react-native-safe-area-context.
+- **Can't be ported yet** (Web Audio, WebRTC screen sharing, …): render the closest
   React Native equivalent. Leave a short `// Zami: not ported:` comment naming what's
   missing, so the gap is greppable.
 

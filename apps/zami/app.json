@@ -14,6 +14,38 @@
     "android": {
       "package": "com.leonsilicon.zami"
     },
-    "plugins": ["expo-sqlite"]
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Zami uses the camera to scan sign-in QR codes and for video calls.",
+          "microphonePermission": "Zami uses the microphone for voice messages and calls.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Zami uses the microphone for voice messages and calls."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Zami lets you send photos and videos from your library.",
+          "cameraPermission": "Zami uses the camera to take photos to send."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Zami shares your location only when you choose to send it."
+        }
+      ],
+      "expo-notifications",
+      "expo-video",
+      "expo-localization"
+    ]
   }
 }

@@ -6,6 +6,9 @@
 //   __APP_VERSION__                     -> Zam's package.json version (Zam's Vite `define`)
 //   import.meta.glob("./dir/*.ts", …)   -> a require.context over the Zami versions, keyed
 //                                          by the upstream paths Zam's code looks up
+//   new Worker(new URL("./w.ts",        -> throws where it runs: React Native has no Web
+//     import.meta.url))                    Workers, and Metro would otherwise bundle the
+//                                          worker and whatever wasm it imports
 import fs from "node:fs";
 import path from "node:path";
 
@@ -60,9 +63,33 @@ export function zamiVitePlugin({ types: t, template }) {
       EAGER ? context(key) : () => Promise.resolve(context(key)),
     ])))(require.context(DIR_LITERAL, false, REGEX, MODE))
   `);
+  const buildNoWorker = template.expression(`
+    (() => {
+      throw new Error("Zami: Web Workers don't exist in React Native (" + WORKER + ")");
+    })()
+  `);
   return {
     name: "zami-vite",
     visitor: {
+      NewExpression(nodePath) {
+        const { node } = nodePath;
+        const [urlNode] = node.arguments;
+        if (
+          node.callee.type === "Identifier" &&
+          (node.callee.name === "Worker" || node.callee.name === "SharedWorker") &&
+          !nodePath.scope.hasBinding(node.callee.name) &&
+          urlNode?.type === "NewExpression" &&
+          urlNode.callee.type === "Identifier" &&
+          urlNode.callee.name === "URL" &&
+          urlNode.arguments[0]?.type === "StringLiteral" &&
+          urlNode.arguments[1]?.type === "MemberExpression" &&
+          isImportMeta(urlNode.arguments[1].object)
+        ) {
+          nodePath.replaceWith(
+            buildNoWorker({ WORKER: t.stringLiteral(urlNode.arguments[0].value) }),
+          );
+        }
+      },
       Identifier(nodePath) {
         if (
           nodePath.node.name === "__APP_VERSION__" &&

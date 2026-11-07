@@ -14,6 +14,7 @@
       "$app/environment": ["../../packages/com/leonsilicon/zami/sveltekit/+app__environment.ts"],
       "$app/navigation": ["../../packages/com/leonsilicon/zami/sveltekit/+app__navigation.ts"],
       "$app/state": ["../../packages/com/leonsilicon/zami/sveltekit/+app__state.ts"],
+      "lucide-svelte": ["../../packages/com/leonsilicon/zami/icons/lucide-svelte.d.ts"],
       "@matrix-org/matrix-sdk-crypto-wasm": ["./node_modules/react-native-matrix-sdk-crypto-wasm"]
     },
     "types": ["svelte", "react-native"]
@@ -22,7 +23,13 @@
     "*.ts",
     "*.tsx",
     "*.cjs",
-    "../../packages/com/leonsilicon/zami/{sveltekit,svelte-react}/*.ts",
+    // (TypeScript's include patterns have no braces.)
+    "../../packages/com/leonsilicon/zami/sveltekit/*.ts",
+    "../../packages/com/leonsilicon/zami/svelte-react/*.ts",
+    "../../packages/com/leonsilicon/zami/rn/*.ts",
+    "../../packages/com/leonsilicon/zami/rn/*.tsx",
+    // Every translated component, whether or not the app reaches it yet.
+    "../../src/**/*.svelte.zami.tsx",
     "../../src/app.zami.d.ts"
   ]
 }

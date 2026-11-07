@@ -8,10 +8,15 @@ import { zamiPathFor, isZamiPath, upstreamCandidates } from "#zami-paths";
 
 const require = createRequire(import.meta.url);
 
-const SVELTEKIT_SHIMS = {
+// Web-only modules Zam imports, and their React Native stand-ins.
+const SHIMS = {
   "$app/environment": "@-/com.leonsilicon.zami.sveltekit/app/environment",
   "$app/navigation": "@-/com.leonsilicon.zami.sveltekit/app/navigation",
   "$app/state": "@-/com.leonsilicon.zami.sveltekit/app/state",
+};
+// The same, for stand-ins that are a file rather than a package's entrypoint.
+const FILE_SHIMS = {
+  "lucide-svelte": "packages/com/leonsilicon/zami/icons/lucide-svelte.cjs",
 };
 
 // Zam directories the app never imports from; keeping them out of Metro's file map
@@ -84,8 +89,9 @@ export function withZami(config, { repoRoot }) {
   config.resolver.resolveRequest = (context, moduleName, platform) => {
     const resolve = next ?? context.resolveRequest;
     const origin = context.originModulePath;
-    if (moduleName in SVELTEKIT_SHIMS)
-      return resolve(context, SVELTEKIT_SHIMS[moduleName], platform);
+    if (moduleName in SHIMS) return resolve(context, SHIMS[moduleName], platform);
+    if (moduleName in FILE_SHIMS)
+      return { type: "sourceFile", filePath: path.join(repoRoot, FILE_SHIMS[moduleName]) };
 
     let target = null;
     if (moduleName === "$lib" || moduleName.startsWith("$lib/")) {
