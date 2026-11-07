@@ -1,0 +1,178 @@
+import { describe, it, expect } from "vitest";
+import {
+    backupCodecFor,
+    codecsEveryoneDecodes,
+    codecsFromMimeTypes,
+    effectiveCodec,
+    encodeDecodeAttribute,
+    parseDecodeAttribute,
+    planCodecs,
+} from "./videoCodecs";
+
+describe("codecsFromMimeTypes", () => {
+    it("keeps the video codecs, best first, once each", () => {
+        expect(
+            codecsFromMimeTypes([
+                "video/VP8",
+                "video/rtx",
+                "video/H264",
+                "video/H264",
+                "video/red",
+                "video/ulpfec",
+                "video/AV1",
+                "video/H265",
+                "video/VP9",
+            ]),
+        ).toEqual(["av1", "h265", "vp9", "h264", "vp8"]);
+    });
+
+    it("reads HEVC and ignores case", () => {
+        expect(codecsFromMimeTypes(["VIDEO/hevc", "video/vp8"])).toEqual([
+            "h265",
+            "vp8",
+        ]);
+    });
+});
+
+describe("codecsEveryoneDecodes", () => {
+    const sendable = ["av1", "h265", "vp9", "h264", "vp8"] as const;
+
+    it("offers everything we send when nobody said what they decode", () => {
+        expect(codecsEveryoneDecodes(sendable, [])).toEqual([...sendable]);
+    });
+
+    it("drops what any announced participant can't decode", () => {
+        expect(
+            codecsEveryoneDecodes(sendable, [
+                ["av1", "vp9", "h264", "vp8"],
+                ["h265", "vp9", "h264", "vp8"],
+            ]),
+        ).toEqual(["vp9", "h264", "vp8"]);
+    });
+
+    it("always keeps the mandatory codecs", () => {
+        expect(codecsEveryoneDecodes(sendable, [["av1"]])).toEqual([
+            "av1",
+            "h264",
+            "vp8",
+        ]);
+    });
+
+    it("never offers what we can't send", () => {
+        expect(
+            codecsEveryoneDecodes(["vp9", "h264", "vp8"], [["h265", "vp9"]]),
+        ).toEqual(["vp9", "h264", "vp8"]);
+    });
+});
+
+describe("backupCodecFor", () => {
+    it("has none for the mandatory codecs", () => {
+        expect(backupCodecFor("h264", ["h264", "vp8"])).toBeNull();
+        expect(backupCodecFor("vp8", ["h264", "vp8"])).toBeNull();
+    });
+
+    it("backs anything else with H.264, or VP8 without H.264", () => {
+        expect(backupCodecFor("h265", ["h265", "h264", "vp8"])).toBe("h264");
+        expect(backupCodecFor("av1", ["av1", "vp8"])).toBe("vp8");
+    });
+});
+
+describe("effectiveCodec", () => {
+    it("sends the pick when it can, else H.264, else VP8", () => {
+        expect(effectiveCodec("vp9", ["vp9", "h264", "vp8"])).toBe("vp9");
+        expect(effectiveCodec("h265", ["vp9", "h264", "vp8"])).toBe("h264");
+        expect(effectiveCodec("h265", ["vp9", "vp8"])).toBe("vp8");
+        expect(effectiveCodec("av1", [])).toBe("h264");
+    });
+});
+
+describe("the decode attribute", () => {
+    it("round-trips", () => {
+        expect(
+            parseDecodeAttribute(
+                encodeDecodeAttribute(["h265", "h264", "vp8"]),
+            ),
+        ).toEqual(["h265", "h264", "vp8"]);
+    });
+
+    it("drops unknown names and is null when not set", () => {
+        expect(parseDecodeAttribute("vp8, theora,h264,")).toEqual([
+            "vp8",
+            "h264",
+        ]);
+        expect(parseDecodeAttribute("")).toEqual([]);
+        expect(parseDecodeAttribute(undefined)).toBeNull();
+    });
+});
+
+describe("planCodecs", () => {
+    const sendable = ["av1", "h265", "vp9", "h264", "vp8"] as const;
+
+    it("unencrypted: sends the pick, with an H.264 backup for silent viewers", () => {
+        expect(
+            planCodecs("h265", sendable, [null, ["h265", "h264"]], false),
+        ).toEqual({
+            available: ["h265", "h264", "vp8"],
+            current: "h265",
+            backup: "h264",
+        });
+    });
+
+    it("unencrypted: keeps the pick even when an announced viewer can't play it", () => {
+        const plan = planCodecs("av1", sendable, [["vp9", "h264"]], false);
+        expect(plan.available).not.toContain("av1");
+        expect(plan.current).toBe("av1");
+        expect(plan.backup).toBe("h264");
+    });
+
+    it("encrypted: silent viewers only play the mandatory codecs, and there's no backup", () => {
+        expect(planCodecs("h265", sendable, [null, ["h265"]], true)).toEqual({
+            available: ["h264", "vp8"],
+            current: "h264",
+            backup: null,
+        });
+    });
+
+    it("encrypted: sends the pick when everyone can play it", () => {
+        expect(
+            planCodecs(
+                "vp9",
+                sendable,
+                [
+                    ["vp9", "h264"],
+                    ["av1", "vp9"],
+                ],
+                true,
+            ),
+        ).toEqual({
+            available: ["vp9", "h264", "vp8"],
+            current: "vp9",
+            backup: null,
+        });
+    });
+});
+
+describe("planCodecs with auto", () => {
+    const sendable = ["av1", "h265", "vp9", "h264", "vp8"] as const;
+
+    it("takes the best codec the GPU encodes and everyone decodes", () => {
+        const plan = planCodecs(
+            "auto",
+            sendable,
+            [["h265", "vp9", "h264"]],
+            false,
+            ["av1", "h265", "h264"],
+        );
+        expect(plan.current).toBe("h265");
+    });
+
+    it("stays on H.264 when nothing is encoded on the GPU", () => {
+        expect(planCodecs("auto", sendable, [], false).current).toBe("h264");
+    });
+
+    it("stays on a mandatory codec while someone unknown is in an open call", () => {
+        const plan = planCodecs("auto", sendable, [null], false, ["av1"]);
+        expect(plan.current).toBe("h264");
+        expect(plan.backup).toBeNull();
+    });
+});

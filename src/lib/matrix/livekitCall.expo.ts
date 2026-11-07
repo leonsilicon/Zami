@@ -1,0 +1,3328 @@
+/**
+ * The LiveKit side of MatrixRTC voice/video calls: joining and leaving, the
+ * SFU connections, local mic/camera/screen-share tracks, remote audio
+ * playback and per-participant volume, device switching, and the subscriber
+ * hooks the call UI binds to.
+ *
+ * Split out of `client.ts`, which keeps the MatrixRTC membership side (who is
+ * in which call, call summaries) and re-exports this module's API. Reads the
+ * client through the runtime slot, like `media.ts`.
+ */
+import { t } from "$lib/i18n";
+import { EventType, type MatrixClient, type Room } from "matrix-js-sdk";
+import type * as LivekitClient from "livekit-client";
+import { matrixClient } from "./runtime";
+import { getDirectRoomIds, getRoomCallMemberships } from "./client";
+import {
+    ensureFreshWebrtcRealm,
+    markWebrtcRealmStale,
+    onWebrtcRealm,
+    webrtcRealmStale,
+    webrtcWindow,
+} from "./webrtcRealm";
+import {
+    dismissToast,
+    showToast,
+    type ToastAction,
+} from "$lib/stores/toasts.svelte";
+import {
+    callEndedMembershipMessage,
+    pickLivekitTransport,
+    pickOwnLivekitTransport,
+    remoteLivekitTargets,
+    livekitTargetKey,
+    memberPublishTransport,
+    mutedIdentities,
+    type LivekitTarget,
+    sfuJwtUrl,
+    screenShareCaptureResolution,
+} from "$lib/utils/voiceCall";
+import {
+    screenShareEncodingFor,
+    applyScreenShareEncoding,
+} from "$lib/utils/screenShareEncoding";
+import { baselineH264Answer } from "$lib/utils/h264Profile";
+import {
+    buildVideoTiles,
+    type VideoPublicationInput,
+    type VideoTileDescriptor,
+    type VideoSource,
+} from "$lib/utils/videoTiles";
+import {
+    voiceDeviceNotices,
+    type VoiceInputKind,
+} from "$lib/utils/voiceDeviceWatch";
+import {
+    effectiveVolume,
+    needsBoost,
+    withVolume,
+    withShareVolume,
+    withSoundVolume,
+    withLocalMute,
+    withVideoHidden,
+    DEFAULT_PARTICIPANT_AUDIO,
+    type AudioKind,
+    type ParticipantAudio,
+} from "$lib/utils/participantAudio";
+import { runWithMediaTitle } from "$lib/utils/mediaTitle";
+import { mxcToHttp } from "./media";
+import {
+    deleteCachedSound,
+    getCachedSound,
+    putCachedSound,
+} from "./soundCache";
+import { streamSound } from "./soundStream";
+import {
+    MAX_SOUND_BYTES,
+    MAX_SOUND_SECONDS,
+    SOUNDBOARD_TOPIC,
+    createSenderLimiter,
+    SOUND_START_TTL_MS,
+    decodeSoundboardMessage,
+    encodeSoundboardMessage,
+    soundGain,
+    type Sound,
+} from "$lib/utils/soundboard";
+import {
+    settingsState,
+    setAudioInputDeviceId,
+    setVideoInputDeviceId,
+    setCallVideoCodec,
+    setBlockedDecodeCodecs,
+} from "$lib/stores/settings.svelte";
+import { lazyModule } from "$lib/utils/lazyModule";
+import {
+    availableOutgoingBitrate,
+    summarizeTransport,
+    type TransportSummary,
+    type RawStat,
+    type StreamOwner,
+    type VideoTrackDebug,
+} from "$lib/utils/callStats";
+import { clampBitrate } from "$lib/utils/screenShareBitrate";
+import {
+    codecsFromMimeTypes,
+    codecFromMime,
+    isBlockedMime,
+    isDecodeStall,
+    isMandatoryCodec,
+    withoutBlocked,
+    VIDEO_CODEC_LABELS,
+    planCodecs,
+    DECODE_ATTRIBUTE,
+    encodeDecodeAttribute,
+    parseDecodeAttribute,
+    type VideoCodec,
+} from "$lib/utils/videoCodecs";
+import {
+    clearLiveUploadEstimate,
+    noteUploadEstimate,
+    screenShareBitrateCeiling,
+} from "$lib/stores/uploadEstimate.svelte";
+import {
+    createCallAudioGraph,
+    type CallAudioGraph,
+} from "$lib/audio/callAudioGraph";
+import {
+    createMicProcessor,
+    PASSTHROUGH_CHAIN,
+    type MicProcessor,
+} from "$lib/audio/micProcessor";
+import { deepFilterSupported } from "$lib/audio/deepFilter";
+import { prepareDenoiser } from "$lib/audio/prepareDenoiser";
+import type { MicGainMode } from "$lib/utils/micGainMode";
+import {
+    noiseSuppressionUsesGpu,
+    type NoiseSuppressionMode,
+} from "$lib/utils/noiseSuppressionMode";
+import {
+    planMicProcessing,
+    type MicProcessingPlan,
+    type MicTuning,
+} from "$lib/utils/micProcessing";
+import { matrixErrorMessage } from "$lib/utils/knock";
+import { shouldRingPeers } from "$lib/utils/callNotify";
+import {
+    pickerOffersShareAudio,
+    takeShareAudio,
+    cancelShareAudioWait,
+    releaseShareAudio,
+    stopShareAudioCapture,
+} from "$lib/desktopScreenShare";
+import {
+    openShareAudioTrack,
+    type ShareAudioTrack,
+} from "$lib/audio/shareAudioTrack";
+
+type LivekitModule = typeof import("livekit-client");
+type LivekitRoom = LivekitClient.Room;
+type RemoteTrack = LivekitClient.RemoteTrack;
+type RemoteTrackPublication = LivekitClient.RemoteTrackPublication;
+type RemoteParticipant = LivekitClient.RemoteParticipant;
+type LocalParticipant = LivekitClient.LocalParticipant;
+type TrackPublication = LivekitClient.TrackPublication;
+type Track = LivekitClient.Track;
+
+/** livekit-client is ~half a megabyte of WebRTC that a text-only session
+ *  never touches. It is fetched when a call starts; every value use in
+ *  this file is inside the call region, and the loaded namespace is
+ *  carried on ActiveVoiceCall so those uses cannot outrun the fetch. */
+const livekit = lazyModule<LivekitModule>(() => import("livekit-client"));
+
+interface ActiveVoiceCall {
+    roomId: string;
+    session: ReturnType<MatrixClient["matrixRTC"]["getRoomSession"]>;
+    /** Where we publish: our own homeserver's SFU (multi-SFU), or the
+     *  shared one when our homeserver advertises none. */
+    lkRoom: LivekitRoom;
+    publishKey: string;
+    /** Multi-SFU: listen-only connections to the SFUs other members publish
+     *  on, keyed by livekitTargetKey. lk-jwt-service only lets a homeserver's
+     *  own users publish on its SFU, so everyone publishes at home and
+     *  listens everywhere else. */
+    remotes: Map<string, LivekitRoom>;
+    /** Keys with a connect in flight, so a burst of membership changes
+     *  doesn't open the same SFU twice. */
+    remotesConnecting: Set<string>;
+    /** SFUs we already told the user we couldn't reach (once per call). */
+    remoteFailuresNotified: Set<string>;
+    /** Active speakers per connection; the UI gets their union. */
+    speakersByRoom: Map<LivekitRoom, string[]>;
+    onMembershipsChanged: () => void;
+    /** The loaded livekit-client namespace. Held here rather than read from
+     *  a module global so the synchronous helpers below cannot reach for a
+     *  Track enum before the chunk exists — an ActiveVoiceCall can only be
+     *  constructed after the await. */
+    lk: LivekitModule;
+    audioEls: Set<HTMLAudioElement>;
+    /** identity ("@user:server:DEVICE") → that publication's elements, so a
+     *  per-user volume can be applied without disturbing anyone else. */
+    elsByIdentity: Map<string, Set<HTMLAudioElement>>;
+    /** Each subscribed audio track's element. Not `track.detach()`: LiveKit
+     *  detaches before it emits TrackUnsubscribed, so that returns nothing
+     *  there. */
+    elByTrack: Map<RemoteTrack, HTMLAudioElement>;
+    /** Web Audio path for boosted (>100%) and normalized users, built on
+     *  first need. `false` once building failed: stay on plain elements. */
+    audioGraph: CallAudioGraph | null | false;
+    onMmError: (err: unknown) => void;
+    onMyMembership: (room: Room, membership: string) => void;
+    /** What this device can send and decode (localVideoCodecs). */
+    codecs: LocalVideoCodecs;
+    /** End-to-end encryption, when the room is encrypted (setupCallE2EE). */
+    e2ee: CallE2EE | null;
+    /** identity -> media from them that failed to decrypt (debug panel). */
+    decryptErrors: Map<string, number>;
+}
+
+/** The SFU URL each connection was opened to (debug panel). */
+const sfuUrlOf = new WeakMap<LivekitRoom, string>();
+
+let activeVoice: ActiveVoiceCall | null = null;
+
+/** Every LiveKit connection of a call: the publishing one first. */
+function callLkRooms(call: ActiveVoiceCall): LivekitRoom[] {
+    return [call.lkRoom, ...call.remotes.values()];
+}
+// Monotonic token for joinVoiceCall: a newer join bumps it, and any older
+// in-flight invocation bails out at its next staleness check instead of
+// reconnecting a room it no longer owns.
+let voiceJoinSeq = 0;
+// Serialize screen-share quality changes so concurrent setScreenShareQuality
+// calls don't interleave their getParameters/setParameters on the sender
+// (WebRTC requires each setParameters to be preceded by a fresh getParameters
+// with nothing else calling setParameters in between).
+let screenShareQualityChain: Promise<void> = Promise.resolve();
+/** The desktop app's per-application share audio, published beside the
+ *  screen share (LiveKit only publishes audio getDisplayMedia returns). */
+let shareAudio: {
+    call: ActiveVoiceCall;
+    track: LivekitClient.LocalAudioTrack;
+    handle: ShareAudioTrack;
+} | null = null;
+let voicePlaybackMuted = false;
+// The mic state the user last asked for; consulted after connect so a mute
+// toggled during the connect window isn't clobbered.
+let desiredMicMuted = false;
+/** Whether a new call should start with the mic closed (push to talk not
+ *  held); registered by the voice call store. */
+let micClosedAtJoin: () => boolean = () => false;
+export function setMicClosedAtJoin(fn: () => boolean): void {
+    micClosedAtJoin = fn;
+}
+// Whether the user currently wants the camera on. Intent, not LiveKit state:
+// turning the camera off only MUTES the publication, so "is a camera track
+// published" cannot answer this — see ensureVoiceDeviceWatch.
+let desiredCameraOn = false;
+
+// Output routing/volume for every tracked <audio> element. Captured from
+// settings at join (account switches reload the page and re-read).
+let voiceOutputDeviceId: string | null = null;
+let voiceOutputVolume = 1;
+// Incoming-voice normalization; captured at join like the above.
+let voiceNormalize = false;
+
+// Per-user local audio (slider + local mute), keyed by userId — one entry per
+// human, applied to every device they are joined from. Primed from persisted
+// settings at init and kept here so a track that subscribes later (a late
+// joiner, or a reconnect re-subscribing everything) gets the right level.
+let participantAudio = new Map<string, ParticipantAudio>();
+/** Whether an element plays someone's voice or the sound of their share, so
+ *  each follows its own slider. */
+const elKind = new WeakMap<HTMLAudioElement, AudioKind>();
+
+/** "@user:server:DEVICE" → "@user:server". Device ids never contain ":". */
+function userIdFromIdentity(identity: string): string {
+    return identity.slice(0, identity.lastIndexOf(":"));
+}
+
+function ensureAudioGraph(call: ActiveVoiceCall): CallAudioGraph | null {
+    if (call.audioGraph === null) {
+        call.audioGraph =
+            createCallAudioGraph({
+                sinkId: voiceOutputDeviceId,
+                muted: voicePlaybackMuted,
+                normalize: voiceNormalize,
+                onSuspendedChange: () => refreshPlaybackBlocked(call),
+            }) ?? false;
+    }
+    return call.audioGraph || null;
+}
+
+/** Apply a user's level to one of their elements. Up to 100% (and without
+ *  normalization) the element's own volume does it; past that the element
+ *  is routed through the Web Audio graph and muted, and stays routed for
+ *  its lifetime so dragging across 100% doesn't hop paths. Where Web Audio
+ *  is unavailable the level is capped at 100%. */
+function applyElementVolume(el: HTMLAudioElement, identity: string): void {
+    const call = activeVoice;
+    const gain = effectiveVolume(
+        voiceOutputVolume,
+        participantAudio.get(userIdFromIdentity(identity)),
+        elKind.get(el) ?? "voice",
+    );
+    let graph = call?.audioGraph || null;
+    if (call && !graph?.has(el) && (voiceNormalize || needsBoost(gain))) {
+        graph = ensureAudioGraph(call);
+        if (graph?.route(el, userIdFromIdentity(identity)))
+            refreshPlaybackBlocked(call);
+    }
+    if (graph?.has(el)) {
+        graph.setGain(el, gain);
+        el.muted = true;
+    } else {
+        el.volume = Math.min(1, gain);
+        el.muted = voicePlaybackMuted;
+    }
+}
+
+function applyVolumeForUser(userId: string): void {
+    if (!activeVoice) return;
+    for (const [identity, els] of activeVoice.elsByIdentity) {
+        if (userIdFromIdentity(identity) !== userId) continue;
+        for (const el of els) applyElementVolume(el, identity);
+    }
+}
+
+/** Seed persisted per-user levels before any call starts. */
+export function primeParticipantAudio(
+    map: Map<string, ParticipantAudio>,
+): void {
+    participantAudio = new Map(map);
+}
+
+export function setParticipantVolume(userId: string, volume: number): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withVolume(current, volume));
+    applyVolumeForUser(userId);
+}
+
+export function setParticipantShareVolume(
+    userId: string,
+    volume: number,
+): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withShareVolume(current, volume));
+    applyVolumeForUser(userId);
+}
+
+/** Whether this user is sharing the sound of a screen or application right
+ *  now, which is what makes a second volume slider worth showing. */
+export function participantHasShareAudio(userId: string): boolean {
+    if (!activeVoice) return false;
+    const source = activeVoice.lk.Track.Source.ScreenShareAudio;
+    for (const lkRoom of callLkRooms(activeVoice))
+        for (const p of lkRoom.remoteParticipants.values()) {
+            if (userIdFromIdentity(p.identity) !== userId) continue;
+            if (p.getTrackPublication(source)) return true;
+        }
+    return false;
+}
+
+export function setParticipantLocalMute(userId: string, muted: boolean): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withLocalMute(current, muted));
+    applyVolumeForUser(userId);
+}
+
+export function setParticipantVideoHidden(
+    userId: string,
+    hidden: boolean,
+): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withVideoHidden(current, hidden));
+    applyVideoHiddenForUser(userId, hidden);
+}
+
+function applyVideoHiddenForUser(userId: string, hidden: boolean): void {
+    if (!activeVoice) return;
+    const lk = activeVoice.lk;
+    for (const lkRoom of callLkRooms(activeVoice))
+        for (const p of lkRoom.remoteParticipants.values()) {
+            if (userIdFromIdentity(p.identity) !== userId) continue;
+            for (const pub of p.videoTrackPublications.values()) {
+                if (pub.source === lk.Track.Source.Camera)
+                    pub.setEnabled(!hidden);
+            }
+        }
+}
+
+function applyVoiceSink(el: HTMLAudioElement): void {
+    const sinkEl = el as HTMLAudioElement & {
+        setSinkId?: (id: string) => Promise<void>;
+    };
+    // "" selects the default sink; missing setSinkId (Android) → OS routes.
+    void sinkEl.setSinkId?.(voiceOutputDeviceId ?? "").catch(() => {});
+}
+
+// Mid-call input unplug: on a track ending (livekit-client 2.20.1
+// `handleTrackEnded`) LiveKit restarts the mic against `deviceId: "default"`,
+// but restarts the camera against its existing NON-exact constraints — so the
+// camera either lands on some other camera or fails and mutes. Hence the mic
+// notice can promise a fallback and the camera notice cannot.
+// One notice per kind per call.
+// The devicechange listener is installed once and lives for the page: it bails
+// when no call is active, so there is nothing to tear down.
+let voiceDeviceWatchStarted = false;
+let audioInputGoneNotified: ActiveVoiceCall | null = null;
+let videoInputGoneNotified: ActiveVoiceCall | null = null;
+
+const VOICE_DEVICE_NOTICE: Record<VoiceInputKind, string> = {
+    audioinput: t("client.microphoneDisconnectedSwitchedToTheDefault"),
+    videoinput: t("client.cameraDisconnected"),
+};
+
+/** The camera's REAL capture device, read off the live publication rather than
+ *  `settingsState.videoInputDeviceId`: `setCameraEnabled` passes that id as a
+ *  non-exact constraint, so the browser may have substituted another camera
+ *  and warning about the saved one would be a phantom.
+ *
+ *  Deliberately NOT `isCameraEnabled`: that is `!isMuted`, and the unplug we
+ *  are trying to report is exactly what makes LiveKit mute the track. The
+ *  publication and its stopped MediaStreamTrack outlive that mute, which is
+ *  what keeps the id readable — but it also means a non-null answer does NOT
+ *  mean the camera is on, so callers gate on `desiredCameraOn` first.
+ *
+ *  Null when nothing was ever published, or if an engine ever stops reporting
+ *  `deviceId` for a stopped track — both fail quiet (no notice). */
+function activeCameraDeviceId(call: ActiveVoiceCall): string | null {
+    const track = call.lkRoom.localParticipant.getTrackPublication(
+        call.lk.Track.Source.Camera,
+    )?.videoTrack?.mediaStreamTrack;
+    return track?.getSettings().deviceId ?? null;
+}
+
+function ensureVoiceDeviceWatch(): void {
+    if (voiceDeviceWatchStarted || !navigator.mediaDevices?.addEventListener)
+        return;
+    const onChange = async () => {
+        const call = activeVoice;
+        if (!call) return;
+        // Snapshot before the await: LiveKit reacts to the same unplug, and
+        // with a second camera present its restart succeeds onto that one —
+        // reading afterwards would find a present device and stay silent.
+        const cameraId = desiredCameraOn ? activeCameraDeviceId(call) : null;
+        // null (not []) on failure: an empty list means "nothing is plugged
+        // in", a rejection means "we do not know" — see voiceDeviceNotices.
+        const devices = await navigator.mediaDevices
+            .enumerateDevices()
+            .catch(() => null);
+        if (activeVoice !== call) return;
+        const notices = voiceDeviceNotices({
+            devices,
+            audioInputId: settingsState.audioInputDeviceId,
+            videoInputId: cameraId,
+            audioNotified: audioInputGoneNotified === call,
+            videoNotified: videoInputGoneNotified === call,
+        });
+        for (const kind of notices) {
+            if (kind === "audioinput") audioInputGoneNotified = call;
+            else videoInputGoneNotified = call;
+            notifyVoiceNotice(VOICE_DEVICE_NOTICE[kind]);
+        }
+    };
+    navigator.mediaDevices.addEventListener("devicechange", onChange);
+    voiceDeviceWatchStarted = true;
+}
+
+type VoiceConnStateCb = (
+    state: "connecting" | "connected" | "reconnecting" | null,
+    roomId: string | null,
+) => void;
+const voiceConnStateSubscribers = new Set<VoiceConnStateCb>();
+const activeSpeakerSubscribers = new Set<(memberIds: string[]) => void>();
+const participantMuteSubscribers = new Set<
+    (mutedIdentities: string[]) => void
+>();
+
+function notifyVoiceConnState(
+    state: "connecting" | "connected" | "reconnecting" | null,
+): void {
+    const roomId = activeVoice?.roomId ?? null;
+    for (const cb of voiceConnStateSubscribers) cb(state, roomId);
+}
+
+export function onVoiceConnStateChanged(cb: VoiceConnStateCb): () => void {
+    voiceConnStateSubscribers.add(cb);
+    return () => voiceConnStateSubscribers.delete(cb);
+}
+
+export function onActiveSpeakersChanged(
+    cb: (memberIds: string[]) => void,
+): () => void {
+    activeSpeakerSubscribers.add(cb);
+    return () => activeSpeakerSubscribers.delete(cb);
+}
+
+/**
+ * Fires with every currently mic-muted remote identity whenever any of them
+ * changes. Only meaningful for the call we are connected to — LiveKit reports
+ * track mute state only for a room we have joined. Remote deafen is not
+ * knowable and is never reported here.
+ */
+export function onParticipantMuteChanged(
+    cb: (mutedIdentities: string[]) => void,
+): () => void {
+    participantMuteSubscribers.add(cb);
+    return () => participantMuteSubscribers.delete(cb);
+}
+
+const videoTracksSubscribers = new Set<
+    (tiles: VideoTileDescriptor[]) => void
+>();
+
+/** Fires with the current renderable video tiles (remote + local camera and
+ *  screenshare) whenever any video track is added or removed. Emits [] on
+ *  teardown. Only meaningful for the call we are connected to. */
+export function onVideoTracksChanged(
+    cb: (tiles: VideoTileDescriptor[]) => void,
+): () => void {
+    videoTracksSubscribers.add(cb);
+    return () => videoTracksSubscribers.delete(cb);
+}
+
+/** Walk every connection's participants and collect subscribed video tracks
+ *  as normalized inputs for buildVideoTiles(). Local tracks live on the
+ *  publishing connection only. */
+function currentVideoInputs(call: ActiveVoiceCall): VideoPublicationInput[] {
+    const lk = call.lk;
+    const out: VideoPublicationInput[] = [];
+    const addFrom = (
+        p: RemoteParticipant | LocalParticipant,
+        isLocal: boolean,
+    ): void => {
+        for (const pub of p.videoTrackPublications.values()) {
+            const track = (pub as TrackPublication).track;
+            if (!track) continue; // remote: not subscribed yet
+            // A dead frame stays published in two ways: turning a camera off
+            // MUTES its track (LiveKit unpublishes only screenshares), and a
+            // stopped remote share can arrive as an SFU stream *pause* rather
+            // than an unpublish. Either way skip it so the tile drops back to
+            // the avatar / disappears instead of freezing on a black frame.
+            if (
+                (pub as TrackPublication).isMuted ||
+                track.streamState === lk.Track.StreamState.Paused
+            )
+                continue;
+            let source: VideoSource | null = null;
+            if (pub.source === lk.Track.Source.Camera) source = "camera";
+            else if (pub.source === lk.Track.Source.ScreenShare)
+                source = "screenshare";
+            if (!source) continue;
+            out.push({
+                userId: userIdFromIdentity(p.identity),
+                identity: p.identity,
+                source,
+                isLocal,
+                track,
+            });
+        }
+    };
+    for (const lkRoom of callLkRooms(call))
+        for (const p of lkRoom.remoteParticipants.values()) addFrom(p, false);
+    addFrom(call.lkRoom.localParticipant, true);
+    return out;
+}
+
+const voiceErrorSubscribers = new Set<(message: string) => void>();
+
+/** Fires when an established/joining call fails fatally (e.g. the server
+ *  rejects our membership state event) and has been torn down. */
+export function onVoiceCallError(cb: (message: string) => void): () => void {
+    voiceErrorSubscribers.add(cb);
+    return () => voiceErrorSubscribers.delete(cb);
+}
+
+const voiceNoticeSubscribers = new Set<(message: string) => void>();
+
+/** Non-fatal call notices (device errors, silent mic): toast, no teardown.
+ *  Kept separate from onVoiceCallError so error-sound logic never misfires. */
+export function onVoiceNotice(cb: (message: string) => void): () => void {
+    voiceNoticeSubscribers.add(cb);
+    return () => voiceNoticeSubscribers.delete(cb);
+}
+
+function notifyVoiceNotice(message: string): void {
+    for (const cb of voiceNoticeSubscribers) cb(message);
+}
+
+const micUnavailableSubscribers = new Set<(err: unknown) => void>();
+
+/** Fires when a join carries on without a microphone (permission refused, none
+ *  plugged in, in use elsewhere). The call stays up, muted, and unmuting asks
+ *  for the mic again. */
+export function onCallMicUnavailable(cb: (err: unknown) => void): () => void {
+    micUnavailableSubscribers.add(cb);
+    return () => micUnavailableSubscribers.delete(cb);
+}
+
+function notifyCallMicUnavailable(err: unknown): void {
+    for (const cb of micUnavailableSubscribers) cb(err);
+}
+
+// --- GPU-process exits ------------------------------------------------------
+
+/** A call waiting to reconnect for hardware video encoding after GPU exits:
+ *  the timer runs until the GPU has stayed up for GPU_SETTLE_MS. */
+let gpuReconnect: {
+    call: ActiveVoiceCall;
+    timer: ReturnType<typeof setTimeout> | null;
+} | null = null;
+/** When the GPU process last exited. */
+let lastGpuExitAt = 0;
+/** The sticky GPU notice on screen, replaced by the next one. */
+let gpuNoticeId: number | null = null;
+/** Chromium gave up on the GPU, which lasts for the rest of the run. */
+let gpuGivenUp = false;
+
+/** How long the GPU must stay up before a call reconnects to get hardware
+ *  encoding back. Out of video memory (a game holding it), the GPU process
+ *  exits again and again; reconnecting after each one cut the call's audio
+ *  every time, while waiting keeps the call going with video in software. */
+const GPU_SETTLE_MS = 15_000;
+
+function showGpuNotice(message: string, action: ToastAction): void {
+    if (gpuNoticeId !== null) dismissToast(gpuNoticeId);
+    gpuNoticeId = showToast(message, { action, sticky: true });
+}
+
+/** How the GPU stands after its process exited: off by the user's choice,
+ *  given up on by Chromium for the rest of this run (only a restart undoes
+ *  that; the desktop app turns its crash limit off, so this is a fallback),
+ *  or still in use. */
+async function gpuStateAfterExit(): Promise<"off" | "given-up" | "on"> {
+    try {
+        const info = await window.desktop?.gpu?.info();
+        if (!info) return "on";
+        if (!info.hardwareAccelerationAtLaunch) return "off";
+        const compositing = info.featureStatus?.gpu_compositing ?? "";
+        return compositing.startsWith("disabled") ? "given-up" : "on";
+    } catch {
+        return "on";
+    }
+}
+
+/** Whether we send video in `call` (camera or screen share): what a GPU exit
+ *  moves to software encoding. Received video decodes in software until
+ *  the next call, which is cheap enough not to cut the call for. */
+function callSendsVideo(call: ActiveVoiceCall): boolean {
+    return currentVideoInputs(call).some((v) => v.isLocal);
+}
+
+/** Chromium's GPU process exited. Every video encoder and decoder of this
+ *  window's peer connections is in software from now on (webrtcRealm.ts);
+ *  audio is unaffected, so the call carries on as it is. Once the GPU has
+ *  stayed up for a while, a call that sends video reconnects with peer
+ *  connections from a fresh window to encode on the GPU again. */
+async function onGpuProcessGone(): Promise<void> {
+    markWebrtcRealmStale();
+    lastGpuExitAt = Date.now();
+    const call = activeVoice;
+    if (!call) return;
+    const gpu = await gpuStateAfterExit();
+    if (activeVoice !== call || gpu === "off" || gpuGivenUp) return;
+    if (gpu === "given-up") {
+        gpuGivenUp = true;
+        cancelGpuReconnect();
+        showGpuNotice(t("voiceCall.gpuGivenUp"), {
+            label: t("voiceCall.restartZam"),
+            run: () => window.desktop?.gpu?.relaunch(),
+        });
+        return;
+    }
+    scheduleGpuReconnect(call);
+}
+
+function cancelGpuReconnect(): void {
+    if (gpuReconnect?.timer) clearTimeout(gpuReconnect.timer);
+    gpuReconnect = null;
+}
+
+/** Reconnect `call` for hardware encoding once the GPU has settled, if it
+ *  still needs it then. Also run when the call's video changes, so a camera
+ *  turned on after a GPU exit gets there too. */
+function scheduleGpuReconnect(call: ActiveVoiceCall): void {
+    if (gpuGivenUp || !webrtcRealmStale()) return;
+    if (gpuReconnect?.call === call && gpuReconnect.timer) return;
+    cancelGpuReconnect();
+    const pending: NonNullable<typeof gpuReconnect> = { call, timer: null };
+    gpuReconnect = pending;
+    const check = () => {
+        pending.timer = null;
+        if (gpuReconnect !== pending || activeVoice !== call) return;
+        const wait = lastGpuExitAt + GPU_SETTLE_MS - Date.now();
+        if (wait > 0) {
+            pending.timer = setTimeout(check, wait);
+            return;
+        }
+        // Nothing to win yet; the next video change looks again.
+        if (!webrtcRealmStale() || !callSendsVideo(call)) return;
+        gpuReconnect = null;
+        if (!ensureFreshWebrtcRealm()) return;
+        call.lkRoom.once(call.lk.RoomEvent.Reconnected, () => {
+            if (activeVoice !== call) return;
+            showToast(t("voiceCall.gpuRecovered"), { tone: "accent" });
+        });
+        for (const lkRoom of callLkRooms(call))
+            void lkRoom.simulateScenario("full-reconnect").catch((err) => {
+                console.error("Call reconnect after a GPU exit failed:", err);
+            });
+    };
+    pending.timer = setTimeout(check, 0);
+}
+
+if (typeof window !== "undefined")
+    window.desktop?.gpu?.onProcessGone?.(() => void onGpuProcessGone());
+
+let voicePlaybackBlocked = false;
+const voicePlaybackBlockedSubscribers = new Set<(blocked: boolean) => void>();
+
+/** Autoplay policy blocked remote audio; show "Enable audio" and call
+ *  resumeVoicePlayback() from a user gesture. */
+export function onVoicePlaybackBlockedChanged(
+    cb: (blocked: boolean) => void,
+): () => void {
+    voicePlaybackBlockedSubscribers.add(cb);
+    return () => voicePlaybackBlockedSubscribers.delete(cb);
+}
+
+function setVoicePlaybackBlocked(blocked: boolean): void {
+    if (voicePlaybackBlocked === blocked) return;
+    voicePlaybackBlocked = blocked;
+    for (const cb of voicePlaybackBlockedSubscribers) cb(blocked);
+}
+
+/** Autoplay-blocked: a LiveKit connection can't play, or the Web Audio
+ *  graph's context is held suspended. */
+function refreshPlaybackBlocked(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    setVoicePlaybackBlocked(
+        callLkRooms(call).some((r) => !r.canPlaybackAudio) ||
+            (!!call.audioGraph && call.audioGraph.suspended),
+    );
+}
+
+export async function resumeVoicePlayback(): Promise<void> {
+    const call = activeVoice;
+    if (!call) return;
+    await Promise.all([
+        ...callLkRooms(call).map((r) => r.startAudio().catch(() => {})),
+        call.audioGraph ? call.audioGraph.resume() : undefined,
+    ]);
+    refreshPlaybackBlocked(call);
+}
+
+export function getActiveVoiceRoomId(): string | null {
+    return activeVoice?.roomId ?? null;
+}
+
+/** The homeserver's advertised MatrixRTC foci (MSC4143 .well-known). */
+export async function configuredRtcFoci(): Promise<unknown[]> {
+    if (!matrixClient) return [];
+    let wk = matrixClient.getClientWellKnown() as
+        Record<string, unknown> | undefined;
+    if (!wk) {
+        // startClient() doesn't pass clientWellKnownPollPeriod, so the SDK
+        // never fetches .well-known on its own and getClientWellKnown()
+        // stays undefined — fetch it once on demand (the SDK caches it). A
+        // failed fetch just means no advertised foci, not a failed call.
+        wk = (await matrixClient.waitForClientWellKnown().catch(() => {
+            return undefined;
+        })) as Record<string, unknown> | undefined;
+    }
+    const foci = wk?.["org.matrix.msc4143.rtc_foci"];
+    return Array.isArray(foci) ? foci : [];
+}
+
+/** Ask an SFU's lk-jwt-service for a LiveKit token (legacy /sfu/get). On our
+ *  own SFU it may publish; on another homeserver's it is listen-only. */
+async function fetchSfuJwt(
+    target: LivekitTarget,
+): Promise<{ url: string; jwt: string }> {
+    if (!matrixClient) throw new Error(t("client.notLoggedIn"));
+    const openIdToken = await matrixClient.getOpenIdToken();
+    await bypassProxyFor(target.serviceUrl);
+    const res = await fetch(sfuJwtUrl(target.serviceUrl), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            room: target.alias,
+            openid_token: openIdToken,
+            device_id: matrixClient.getDeviceId(),
+        }),
+    });
+    if (!res.ok) {
+        throw new Error(
+            t("client.voiceServerRejectedTheJoin", { status: res.status }),
+        );
+    }
+    return (await res.json()) as { url: string; jwt: string };
+}
+
+/** Our homeserver's SFU, for a LiveKit room of the given name. */
+export async function ownSfuTarget(
+    alias: string,
+): Promise<LivekitTarget | null> {
+    return pickLivekitTransport([], await configuredRtcFoci(), alias);
+}
+
+/** Join a LiveKit room no call knows about. Nothing goes in the Matrix room,
+ *  so only someone told its name can find it (see fileTransfer.ts). */
+export async function joinHiddenSfuRoom(target: LivekitTarget) {
+    const lk = await livekit.load();
+    const { url, jwt } = await fetchSfuJwt(target);
+    await bypassProxyFor(url);
+    const room = new lk.Room();
+    await room.connect(url, jwt, { autoSubscribe: false });
+    return { room, lk };
+}
+
+/** Remote identities with no open mic, across every connection. */
+function notifyCallMutes(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const peers: { identity: string; micOn: boolean }[] = [];
+    for (const lkRoom of callLkRooms(call))
+        for (const p of lkRoom.remoteParticipants.values()) {
+            const mic = p.getTrackPublication(call.lk.Track.Source.Microphone);
+            peers.push({ identity: p.identity, micOn: !!mic && !mic.isMuted });
+        }
+    const muted = mutedIdentities(peers);
+    for (const cb of participantMuteSubscribers) cb(muted);
+}
+
+function notifyCallVideo(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const tiles = buildVideoTiles(currentVideoInputs(call));
+    for (const cb of videoTracksSubscribers) cb(tiles);
+    if (webrtcRealmStale()) scheduleGpuReconnect(call);
+}
+
+function notifyCallSpeakers(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const ids = new Set<string>();
+    for (const list of call.speakersByRoom.values())
+        for (const id of list) ids.add(id);
+    for (const cb of activeSpeakerSubscribers) cb([...ids]);
+}
+
+/** Remote media for one connection of `call` (publishing or listen-only):
+ *  attach audio, honour per-user video hiding, and feed the merged speaker,
+ *  mute and video-tile views. */
+function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
+    const lk = call.lk;
+    // Who sends unencrypted media in an encrypted call (the indicator).
+    const encryptionChanged = () => notifyCallEncryption(call);
+    lkRoom.on(lk.RoomEvent.TrackPublished, encryptionChanged);
+    // Counted for the debug panel: a viewer whose video arrives but never
+    // decodes is told it doesn't decrypt (an older client, a missing key).
+    lkRoom.on(
+        lk.RoomEvent.EncryptionError,
+        (_err: Error, participant?: { identity: string }) => {
+            const id = participant?.identity;
+            if (!id || participant === lkRoom.localParticipant) return;
+            call.decryptErrors.set(id, (call.decryptErrors.get(id) ?? 0) + 1);
+        },
+    );
+    lkRoom.on(lk.RoomEvent.TrackUnpublished, encryptionChanged);
+    lkRoom.on(lk.RoomEvent.ParticipantDisconnected, encryptionChanged);
+    // What the people we publish to decode (utils/videoCodecs): LiveKit
+    // hands over everyone's attributes on joining and reports changes.
+    if (lkRoom === call.lkRoom) {
+        const codecsChanged = () => notifyCallCodecs(call);
+        lkRoom.on(lk.RoomEvent.ParticipantConnected, codecsChanged);
+        lkRoom.on(lk.RoomEvent.ParticipantDisconnected, codecsChanged);
+        lkRoom.on(
+            lk.RoomEvent.ParticipantAttributesChanged,
+            (changed: Record<string, string>) => {
+                if (DECODE_ATTRIBUTE in changed) codecsChanged();
+            },
+        );
+    }
+    lkRoom.on(
+        lk.RoomEvent.TrackSubscribed,
+        (
+            track: RemoteTrack,
+            pub: RemoteTrackPublication,
+            participant: RemoteParticipant,
+        ) => {
+            if (track.kind === lk.Track.Kind.Video) {
+                const uid = userIdFromIdentity(participant.identity);
+                if (
+                    participantAudio.get(uid)?.videoHidden &&
+                    pub.source === lk.Track.Source.Camera
+                ) {
+                    pub.setEnabled(false);
+                }
+                return;
+            }
+            if (track.kind !== lk.Track.Kind.Audio) return;
+            if (activeVoice !== call) {
+                // Call already superseded/left — don't attach at all.
+                track.detach().forEach((el) => el.remove());
+                return;
+            }
+            const kind: AudioKind =
+                pub.source === lk.Track.Source.ScreenShareAudio
+                    ? "share"
+                    : "voice";
+            const el = document.createElement("audio");
+            elKind.set(el, kind);
+            call.audioEls.add(el);
+            call.elByTrack.set(track, el);
+            // Named for DevTools' Media panel; the source is set inside.
+            void runWithMediaTitle(
+                el,
+                `Call audio: ${participant.identity} (${
+                    kind === "share" ? "screen share" : "voice"
+                })`,
+                () => track.attach(el),
+            ).then(() => {
+                if (activeVoice !== call || call.elByTrack.get(track) !== el) {
+                    // Left, or unsubscribed again, while it waited its turn.
+                    track.detach(el);
+                    el.remove();
+                    return;
+                }
+                applyVoiceSink(el);
+                // LiveKit's startAudio() unmutes every attached element (ours
+                // via resumeVoicePlayback, Safari's on each return to the
+                // page), which would undo deafen and double up graph-routed
+                // audio: put it back.
+                el.addEventListener("volumechange", () => {
+                    if (activeVoice !== call) return;
+                    const want =
+                        voicePlaybackMuted ||
+                        (!!call.audioGraph && call.audioGraph.has(el));
+                    if (el.muted !== want) el.muted = want;
+                });
+                let els = call.elsByIdentity.get(participant.identity);
+                if (!els) {
+                    els = new Set();
+                    call.elsByIdentity.set(participant.identity, els);
+                }
+                els.add(el);
+                document.body.appendChild(el);
+                // Last: routing into the graph reads the attached stream, and
+                // the element must already be tracked for later level changes.
+                applyElementVolume(el, participant.identity);
+            });
+        },
+    );
+    lkRoom.on(lk.RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+        const el = call.elByTrack.get(track);
+        if (!el) return;
+        call.elByTrack.delete(track);
+        elKind.delete(el);
+        // Must leave the graph: a remote track is only disabled on
+        // unsubscribe, and a rejoin can re-enable the same receiver track,
+        // so a forgotten graph source would play again alongside the new
+        // one (each rejoin adding another copy).
+        if (call.audioGraph) call.audioGraph.remove(el);
+        call.audioEls.delete(el);
+        for (const [identity, els] of call.elsByIdentity) {
+            els.delete(el);
+            if (els.size === 0) call.elsByIdentity.delete(identity);
+        }
+        el.srcObject = null;
+        el.remove();
+    });
+    lkRoom.on(lk.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        call.speakersByRoom.set(
+            lkRoom,
+            speakers.map((p) => p.identity),
+        );
+        notifyCallSpeakers(call);
+    });
+    const mutes = () => notifyCallMutes(call);
+    lkRoom.on(lk.RoomEvent.TrackMuted, mutes);
+    lkRoom.on(lk.RoomEvent.TrackUnmuted, mutes);
+    // A participant arriving already muted fires neither event, and one
+    // without a mic has no track to fire them about.
+    lkRoom.on(lk.RoomEvent.TrackSubscribed, mutes);
+    lkRoom.on(lk.RoomEvent.TrackPublished, mutes);
+    lkRoom.on(lk.RoomEvent.TrackUnpublished, mutes);
+    lkRoom.on(lk.RoomEvent.ParticipantConnected, mutes);
+    lkRoom.on(lk.RoomEvent.ParticipantDisconnected, mutes);
+    const video = () => notifyCallVideo(call);
+    lkRoom.on(lk.RoomEvent.TrackSubscribed, video);
+    lkRoom.on(lk.RoomEvent.TrackUnsubscribed, video);
+    // Camera off = track.mute(), not unpublish — recompute on mute/unmute
+    // too, so the tile drops to the avatar (and returns) as it toggles.
+    lkRoom.on(lk.RoomEvent.TrackMuted, video);
+    lkRoom.on(lk.RoomEvent.TrackUnmuted, video);
+    // A remote stopping a share can surface as a bare TrackUnpublished
+    // (no TrackUnsubscribed, if the track was already detached) or as an
+    // SFU stream-state pause — recompute on both so their tile clears.
+    lkRoom.on(lk.RoomEvent.TrackUnpublished, video);
+    lkRoom.on(lk.RoomEvent.TrackStreamStateChanged, video);
+    lkRoom.on(lk.RoomEvent.ParticipantDisconnected, video);
+    lkRoom.on(lk.RoomEvent.AudioPlaybackStatusChanged, () =>
+        refreshPlaybackBlocked(call),
+    );
+    lkRoom.on(
+        lk.RoomEvent.DataReceived,
+        (
+            payload: Uint8Array,
+            participant?: RemoteParticipant,
+            _kind?: unknown,
+            topic?: string,
+        ) => {
+            if (topic !== SOUNDBOARD_TOPIC || !participant) return;
+            if (activeVoice !== call) return;
+            // The `encryptionType` LiveKit passes cannot tell plaintext from
+            // decrypted: its sender leaves the field unset on encrypted
+            // packets, so every genuine one arrives as NONE. Filtering on it
+            // dropped all soundboard messages in encrypted calls.
+            const msg = decodeSoundboardMessage(payload);
+            if (msg)
+                void playSoundboardClip(
+                    call,
+                    userIdFromIdentity(participant.identity),
+                    msg.mxcUrl,
+                );
+        },
+    );
+}
+
+// Soundboard. A sound is sent as a reference (a data message naming the
+// media); every client plays it locally, so each listener sets how loud each
+// person's sounds are, apart from that person's voice. A sound not seen
+// before is streamed while it downloads (soundStream.ts) and stored on the
+// device (soundCache.ts); every later play decodes the stored copy.
+const soundLimiter = createSenderLimiter(() => settingsState.soundIntervalMs);
+/** Raw clips by mxc, most recently used last: the first stop before disk. */
+const soundBytes = new Map<string, ArrayBuffer>();
+const SOUND_MEMORY_MAX_BYTES = 8 * MAX_SOUND_BYTES;
+let soundBytesTotal = 0;
+const soundBuffers = new WeakMap<CallAudioGraph, Map<string, AudioBuffer>>();
+/** Streams still downloading, resolved with the file (null if cut short), so
+ *  a second play of the same sound waits instead of downloading it again. */
+const soundDownloads = new Map<string, Promise<ArrayBuffer | null>>();
+
+function forgetSoundBytes(mxcUrl: string): void {
+    const old = soundBytes.get(mxcUrl);
+    if (!old) return;
+    soundBytes.delete(mxcUrl);
+    soundBytesTotal -= old.byteLength;
+}
+
+function rememberSoundBytes(mxcUrl: string, bytes: ArrayBuffer): void {
+    forgetSoundBytes(mxcUrl);
+    soundBytes.set(mxcUrl, bytes);
+    soundBytesTotal += bytes.byteLength;
+    for (const key of [...soundBytes.keys()]) {
+        if (soundBytesTotal <= SOUND_MEMORY_MAX_BYTES || key === mxcUrl) break;
+        forgetSoundBytes(key);
+    }
+}
+
+/** The clip from memory or the on-device cache; null when never downloaded. */
+async function storedSoundBytes(mxcUrl: string): Promise<ArrayBuffer | null> {
+    const held = soundBytes.get(mxcUrl);
+    if (held) return held;
+    const stored = await getCachedSound(mxcUrl);
+    if (stored) rememberSoundBytes(mxcUrl, stored);
+    return stored;
+}
+
+async function soundBuffer(
+    graph: CallAudioGraph,
+    mxcUrl: string,
+    bytes: ArrayBuffer,
+): Promise<AudioBuffer | null> {
+    let buffers = soundBuffers.get(graph);
+    if (!buffers) soundBuffers.set(graph, (buffers = new Map()));
+    const have = buffers.get(mxcUrl);
+    if (have) return have;
+    // decodeAudioData detaches its input; keep the stored original intact.
+    const buffer = await graph.decode(bytes.slice(0));
+    // Cheap size limits can lie about the length once decoded. A file that
+    // fails here will fail every time: stop keeping it.
+    if (!buffer || buffer.duration > MAX_SOUND_SECONDS + 1) {
+        forgetSoundBytes(mxcUrl);
+        void deleteCachedSound(mxcUrl);
+        return null;
+    }
+    buffers.set(mxcUrl, buffer);
+    return buffer;
+}
+
+/** Stream a clip that is not stored yet, and store it when it has arrived.
+ *  False when nothing started. */
+function streamNewSound(
+    graph: CallAudioGraph,
+    userId: string,
+    mxcUrl: string,
+    gain: number,
+): boolean {
+    const httpUrl = mxcToHttp(mxcUrl);
+    if (!httpUrl) return false;
+    let settle: (bytes: ArrayBuffer | null) => void = () => {};
+    const pending = new Promise<ArrayBuffer | null>((r) => (settle = r));
+    soundDownloads.set(mxcUrl, pending);
+    const settled = (bytes: ArrayBuffer | null) => {
+        if (soundDownloads.get(mxcUrl) === pending)
+            soundDownloads.delete(mxcUrl);
+        settle(bytes);
+    };
+    const stop = streamSound({
+        graph,
+        httpUrl,
+        gain,
+        maxBytes: MAX_SOUND_BYTES,
+        maxSeconds: MAX_SOUND_SECONDS,
+        onDownloaded(bytes) {
+            rememberSoundBytes(mxcUrl, bytes);
+            void putCachedSound(mxcUrl, bytes);
+            settled(bytes);
+        },
+        onEnd() {
+            soundLimiter.done(userId);
+            settled(null);
+        },
+    });
+    if (!stop) settled(null);
+    return !!stop;
+}
+
+/** Play one soundboard clip from `userId` at their soundboard level. */
+async function playSoundboardClip(
+    call: ActiveVoiceCall,
+    userId: string,
+    mxcUrl: string,
+): Promise<void> {
+    const audio = participantAudio.get(userId);
+    const gain = soundGain(
+        voiceOutputVolume,
+        audio?.soundVolume,
+        !!audio?.muted,
+    );
+    if (gain <= 0 || voicePlaybackMuted) return;
+    const arrivedAt = Date.now();
+    if (!soundLimiter.allow(userId, arrivedAt)) return;
+    let started = false;
+    try {
+        const graph = ensureAudioGraph(call);
+        if (!graph || activeVoice !== call) return;
+        let buffer = soundBuffers.get(graph)?.get(mxcUrl) ?? null;
+        if (!buffer) {
+            let bytes = await storedSoundBytes(mxcUrl);
+            if (!bytes) bytes = (await soundDownloads.get(mxcUrl)) ?? null;
+            if (bytes) buffer = await soundBuffer(graph, mxcUrl, bytes);
+        }
+        if (activeVoice !== call) return;
+        if (buffer && Date.now() - arrivedAt > SOUND_START_TTL_MS) return;
+        if (buffer) {
+            started =
+                graph.playBuffer(buffer, gain, () =>
+                    soundLimiter.done(userId),
+                ) !== null;
+        } else {
+            started = streamNewSound(graph, userId, mxcUrl, gain);
+        }
+    } catch (err) {
+        console.warn("[voice] couldn't play soundboard clip", err);
+    } finally {
+        if (!started) soundLimiter.done(userId);
+    }
+}
+
+/** Play a sound for everyone in the call, and for ourselves. False when not
+ *  in a call or the send failed. */
+export async function playSoundboardSound(sound: Sound): Promise<boolean> {
+    const call = activeVoice;
+    const me = matrixClient?.getUserId();
+    if (!call || !me) return false;
+    try {
+        await call.lkRoom.localParticipant.publishData(
+            encodeSoundboardMessage({
+                mxcUrl: sound.mxcUrl,
+                shortcode: sound.name,
+            }),
+            { reliable: true, topic: SOUNDBOARD_TOPIC },
+        );
+    } catch (err) {
+        console.warn("[voice] couldn't send soundboard clip", err);
+        return false;
+    }
+    void playSoundboardClip(call, me, sound.mxcUrl);
+    return true;
+}
+
+export function setParticipantSoundVolume(
+    userId: string,
+    volume: number,
+): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withSoundVolume(current, volume));
+}
+
+// How long a join waits for the noise filter model (see joinVoiceCall).
+const DENOISE_JOIN_WAIT_MS = 10_000;
+
+// Retry an SFU we lost or couldn't reach, while the call still needs it.
+const REMOTE_SFU_RETRY_MS = 10_000;
+
+type RtcSession = ReturnType<MatrixClient["matrixRTC"]["getRoomSession"]>;
+
+/** Where each of the session's members publishes, in membership order
+ *  (oldest first); see memberPublishTransport. */
+function memberPublishTransports(
+    session: RtcSession,
+    room: Room | null,
+): unknown[] {
+    // A legacy m.call.member's focus_active, which CallMembership no longer
+    // exposes, read off the state event it was parsed from. An m.rtc.member
+    // is a sticky event, not state, so it finds none (and has no such field).
+    const focusSelections = new Map<string, string>();
+    for (const ev of room?.currentState.getStateEvents(
+        EventType.GroupCallMemberPrefix,
+    ) ?? []) {
+        const selection = ev.getContent().focus_active?.focus_selection;
+        const id = ev.getId();
+        if (id) focusSelections.set(id, String(selection));
+    }
+    const members = session.memberships.map((m) => ({
+        transports: m.transports,
+        focusSelection: focusSelections.get(m.eventId) ?? null,
+    }));
+    return members.map((_, i) => memberPublishTransport(members, i));
+}
+
+/** Bring `call`'s listen-only connections in line with where the other
+ *  members publish: connect to new SFUs, drop ones nobody uses any more. */
+async function syncRemoteSfus(call: ActiveVoiceCall): Promise<void> {
+    if (activeVoice !== call || !matrixClient) return;
+    const me = matrixClient.getUserId();
+    const myDevice = matrixClient.getDeviceId();
+    const published = memberPublishTransports(
+        call.session,
+        matrixClient.getRoom(call.roomId),
+    );
+    const transports = call.session.memberships
+        .map((m, i) => ({ m, transport: published[i] }))
+        .filter(({ m }) => !(m.userId === me && m.deviceId === myDevice))
+        .map(({ transport }) => transport);
+    const wanted = remoteLivekitTargets(
+        transports,
+        call.publishKey,
+        call.roomId,
+    );
+    for (const [key, lkRoom] of call.remotes) {
+        if (wanted.has(key)) continue;
+        call.remotes.delete(key);
+        call.speakersByRoom.delete(lkRoom);
+        void lkRoom.disconnect().catch(() => {});
+    }
+    for (const [key, target] of wanted)
+        if (!call.remotes.has(key) && !call.remotesConnecting.has(key))
+            void connectRemoteSfu(call, key, target);
+    notifyCallMutes(call);
+    notifyCallVideo(call);
+    notifyCallSpeakers(call);
+}
+
+async function connectRemoteSfu(
+    call: ActiveVoiceCall,
+    key: string,
+    target: LivekitTarget,
+): Promise<void> {
+    call.remotesConnecting.add(key);
+    const lkRoom = new call.lk.Room({
+        ...(call.e2ee ? { e2ee: call.e2ee.roomOptions() } : {}),
+        adaptiveStream: settingsState.adaptiveStream,
+    });
+    try {
+        const { url, jwt } = await fetchSfuJwt(target);
+        if (activeVoice !== call) return;
+        wireCallMedia(call, lkRoom);
+        lkRoom.on(call.lk.RoomEvent.Disconnected, () => {
+            // Dropped by the SFU or the network (our own disconnects remove
+            // the entry first): forget it and try again shortly.
+            if (call.remotes.get(key) !== lkRoom) return;
+            call.remotes.delete(key);
+            call.speakersByRoom.delete(lkRoom);
+            notifyCallMutes(call);
+            notifyCallVideo(call);
+            notifyCallSpeakers(call);
+            setTimeout(() => void syncRemoteSfus(call), REMOTE_SFU_RETRY_MS);
+        });
+        await bypassProxyFor(url);
+        if (call.e2ee) await lkRoom.setE2EEEnabled(true);
+        sfuUrlOf.set(lkRoom, url);
+        await lkRoom.connect(url, jwt);
+        if (activeVoice !== call) {
+            await lkRoom.disconnect().catch(() => {});
+            return;
+        }
+        call.remotes.set(key, lkRoom);
+        notifyCallMutes(call);
+        announceCodecs(call, lkRoom);
+        notifyCallEncryption(call);
+        call.remoteFailuresNotified.delete(key);
+        // Settles anything that changed while connecting (incl. the SFU no
+        // longer being wanted) and refreshes the merged views.
+        void syncRemoteSfus(call);
+    } catch (err) {
+        await lkRoom.disconnect().catch(() => {});
+        if (activeVoice !== call) return;
+        console.warn("[voice] couldn't connect to", target.serviceUrl, err);
+        if (!call.remoteFailuresNotified.has(key)) {
+            call.remoteFailuresNotified.add(key);
+            let server = target.serviceUrl;
+            try {
+                server = new URL(target.serviceUrl).host;
+            } catch {
+                /* not a URL: show it as-is */
+            }
+            notifyVoiceNotice(t("client.couldNotReachCallServer", { server }));
+        }
+        setTimeout(() => void syncRemoteSfus(call), REMOTE_SFU_RETRY_MS);
+    } finally {
+        call.remotesConnecting.delete(key);
+    }
+}
+
+/**
+ * Join the MatrixRTC voice call in a room.
+ *
+ * Resolves without joining when superseded mid-flight by a newer
+ * `joinVoiceCall` or an explicit `leaveVoiceCall`; rejects on JWT or SFU
+ * failure. A microphone that can't be had doesn't stop the join: the call
+ * starts muted (`onCallMicUnavailable`). Observe the actual state via
+ * `onVoiceConnStateChanged` / `getActiveVoiceRoomId`, not the returned
+ * promise.
+ */
+export async function joinVoiceCall(roomId: string): Promise<void> {
+    if (!matrixClient) throw new Error(t("client.notLoggedIn"));
+    const room = matrixClient.getRoom(roomId);
+    if (!room) throw new Error(t("client.unknownRoom"));
+    const seq = ++voiceJoinSeq;
+    // Start the chunk fetch now so it overlaps leaveVoiceCallInternal(), the
+    // mic permission prompt and configuredRtcFoci(); it is awaited just
+    // before the Room is constructed. The no-op catch only stops an
+    // unhandled rejection if we bail out before that await — awaiting this
+    // same promise below still throws.
+    const livekitLoad = livekit.load();
+    livekitLoad.catch(() => {});
+    // Same for the noise filter: compiled now, awaited before the mic exists
+    // so the call never starts unfiltered. Bounded, so a first download on a
+    // slow link delays the join rather than blocking it.
+    const joinChain = planMicProcessing(
+        settingsState.noiseSuppressionMode,
+        settingsState.micGainMode,
+        deepFilterSupported(),
+        micTuning(),
+    ).chain;
+    const joinDenoise = joinChain?.denoise;
+    const denoiseLoad = joinDenoise
+        ? prepareDenoiser(
+              joinDenoise,
+              DENOISE_JOIN_WAIT_MS,
+              joinChain?.feGpu ?? false,
+          )
+        : Promise.resolve(false);
+    await leaveVoiceCallInternal();
+    if (seq !== voiceJoinSeq) return; // superseded while leaving
+
+    // Settle the mic permission before announcing membership. Refusing it (or
+    // having no mic) still joins: listening and screen sharing don't need one.
+    let micFailure: { err: unknown } | null = null;
+    try {
+        const probe = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+        });
+        probe.getTracks().forEach((t) => t.stop());
+    } catch (err) {
+        console.warn("Joining the call without a microphone:", err);
+        micFailure = { err };
+    }
+    if (seq !== voiceJoinSeq) return;
+
+    const session = matrixClient.matrixRTC.getRoomSession(room);
+    const memberTransports = memberPublishTransports(session, room).filter(
+        (t) => !!t,
+    );
+    const foci = await configuredRtcFoci();
+    if (seq !== voiceJoinSeq) return;
+    // Multi-SFU: publish on our own homeserver's SFU (the only one whose
+    // lk-jwt-service lets us publish) and listen on everyone else's. A
+    // homeserver without one falls back to the shared SFU of the oldest member.
+    const ownTarget = pickOwnLivekitTransport(foci, roomId);
+    const target =
+        ownTarget ?? pickLivekitTransport(memberTransports, foci, roomId);
+    if (!target) throw new Error("No LiveKit focus available for this call");
+
+    const userId = matrixClient.getUserId()!;
+    const deviceId = matrixClient.getDeviceId()!;
+    // Snapshot the call's non-self peers BEFORE our own membership publishes,
+    // so we can tell "starting a call" (ring the peer) from "answering one"
+    // (stay silent). See the ring-send after session.join below.
+    const callPeersBeforeJoin = getRoomCallMemberships(room)
+        .map((m) => m.userId)
+        .filter((id) => id !== userId);
+    const lk = await livekitLoad;
+    await denoiseLoad;
+    if (seq !== voiceJoinSeq) return; // superseded while loading livekit
+    // A GPU-process exit since the last call left this window's WebRTC in
+    // software; this call's peer connections come from a fresh window.
+    ensureFreshWebrtcRealm();
+    const localCodecs = await localVideoCodecs(lk);
+    platformBlocked = await platformUndecodable();
+    if (seq !== voiceJoinSeq) return;
+    // Element Call's rule: a call in an encrypted room is encrypted end to
+    // end. Sending plain media into it would leave everyone else unable to
+    // play ours, so a device that can't encrypt doesn't join.
+    const encrypted = room.hasEncryptionStateEvent();
+    if (encrypted && !lk.isE2EESupported()) {
+        throw new Error(t("client.encryptedCallsUnsupported"));
+    }
+    const e2ee = encrypted ? await setupCallE2EE(lk, session) : null;
+    if (seq !== voiceJoinSeq) {
+        e2ee?.stop();
+        return;
+    }
+    const micPlan = planMicProcessing(
+        settingsState.noiseSuppressionMode,
+        settingsState.micGainMode,
+        deepFilterSupported(),
+        micTuning(),
+    );
+    // `encryption` also covers data messages (LiveKit reads the two as one
+    // setup). `e2ee` stays because LiveKit checks only that one to turn off
+    // simulcast on iOS below 17.2.
+    const e2eeOptions = e2ee?.roomOptions();
+    const lkRoom = new lk.Room({
+        ...(e2eeOptions ? { e2ee: e2eeOptions, encryption: e2eeOptions } : {}),
+        audioCaptureDefaults: {
+            deviceId: settingsState.audioInputDeviceId ?? undefined,
+            noiseSuppression: micPlan.noiseSuppression,
+            echoCancellation: settingsState.echoCancellation,
+            autoGainControl: micPlan.autoGainControl,
+            // LiveKit's own defaults turn this on, which would stack the
+            // platform's voice isolation on top of our denoiser (and make the
+            // call sound different from the settings mic test, which never
+            // asks for it).
+            voiceIsolation: false,
+            // No `processor` here: see setCallMicEnabled.
+        },
+        // Each video publish sets its own backup codec
+        // (videoCodecPublishOptions).
+        // Speech, not the SDK's music preset: a lower bitrate that holds up
+        // on lossy links. RED carries the redundancy that recovers losses.
+        publishDefaults: {
+            backupCodec: false,
+            audioPreset: lk.AudioPresets.speech,
+            dtx: true,
+            red: true,
+        },
+        // Stop encoding simulcast layers (and codecs) no subscriber is
+        // watching. Only this room publishes; remote SFUs are receive-only.
+        dynacast: true,
+        // Receive side: subscribe at the size each tile is drawn at, and
+        // pause video that is off screen. Needs track.attach() (videoTrack).
+        adaptiveStream: settingsState.adaptiveStream,
+    });
+    voiceOutputDeviceId = settingsState.audioOutputDeviceId;
+    voiceOutputVolume = settingsState.callOutputVolume;
+    voiceNormalize = settingsState.normalizeCallAudio;
+    // The SDK's MembershipManager gives up for good on some failures (e.g.
+    // a 403 on the call.member state PUT in rooms where we lack power) and
+    // only reports it via this session event — without it we'd stay
+    // connected to LiveKit, audible but invisible to everyone else.
+    const onMmError = (err: unknown) => {
+        if (activeVoice !== call) return;
+        console.error("Voice call membership failed:", err);
+        const detail = matrixErrorMessage(
+            err,
+            t("client.theServerRejectedItYouMay"),
+        );
+        for (const cb of voiceErrorSubscribers)
+            cb(t("client.callMembershipFailed", { detail }));
+        void leaveVoiceCall();
+    };
+    const onMyMembership = (room: Room, membership: string) => {
+        // Someone removed me (kick/ban) or I left elsewhere while in this
+        // call: the SFU connection + mic would otherwise stay live in a room
+        // I'm no longer in. Tear down and say why.
+        if (activeVoice !== call || room.roomId !== call.roomId) return;
+        const me = matrixClient!.getUserId();
+        if (!me) return;
+        // Prefer the member object's cached event, but fall back to the live
+        // state event — either can be missing after I leave from another device.
+        const sender =
+            room.getMember(me)?.events?.member?.getSender() ??
+            room.currentState.getStateEvents("m.room.member", me)?.getSender();
+        const msg = callEndedMembershipMessage(membership, sender, me);
+        if (!msg) return;
+        for (const cb of voiceErrorSubscribers) cb(msg);
+        void leaveVoiceCall();
+    };
+    const call: ActiveVoiceCall = {
+        roomId,
+        session,
+        lkRoom,
+        publishKey: livekitTargetKey(target),
+        remotes: new Map(),
+        remotesConnecting: new Set(),
+        remoteFailuresNotified: new Set(),
+        speakersByRoom: new Map(),
+        onMembershipsChanged: () => void syncRemoteSfus(call),
+        lk,
+        audioEls: new Set(),
+        audioGraph: null,
+        elsByIdentity: new Map(),
+        elByTrack: new Map(),
+        onMmError,
+        onMyMembership,
+        codecs: localCodecs,
+        e2ee,
+        decryptErrors: new Map(),
+    };
+    activeVoice = call;
+    installDecodePreferences();
+    startUploadSampling(call);
+    ensureVoiceDeviceWatch();
+    desiredMicMuted = !!micFailure || micClosedAtJoin();
+    desiredCameraOn = false;
+    notifyVoiceConnState("connecting");
+    if (micFailure) notifyCallMicUnavailable(micFailure.err);
+    session.on("membership_manager_error" as never, onMmError as never);
+    matrixClient.on("Room.myMembership" as never, onMyMembership as never);
+
+    let connected = false;
+    try {
+        // MSC4075 ring: if WE are the first into a DM call, the SDK sends an
+        // rtc.notification ring once our membership lands, so the peer's
+        // devices ring even with the app closed. It skips the ring itself if
+        // someone else is already in the call by then; answering (a peer
+        // already present at snapshot time) never asks for one.
+        const ring = shouldRingPeers(
+            getDirectRoomIds().has(roomId),
+            callPeersBeforeJoin,
+        );
+        const transport = {
+            type: "livekit",
+            livekit_service_url: target.serviceUrl,
+            livekit_alias: target.alias,
+        };
+        // Advertises the SFU we publish on, as multi_sfu: our own, or the
+        // oldest member's shared one when our homeserver has none. (The SDK
+        // no longer publishes oldest_membership; a client that reads multi_sfu
+        // takes foci_preferred[0], the same SFU.)
+        session.join(
+            { userId, deviceId, memberId: `${userId}:${deviceId}` },
+            [transport],
+            {
+                membershipEventExpiryMs: 4 * 60 * 60 * 1000,
+                // Make our media key, send it to everyone's devices, and
+                // report theirs (setupCallE2EE).
+                manageMediaKeys: encrypted,
+                ...(ring
+                    ? { notificationType: "ring" as const, callIntent: "audio" }
+                    : {}),
+            },
+        );
+
+        const { url, jwt } = await fetchSfuJwt(target);
+        if (seq !== voiceJoinSeq) return;
+
+        wireCallMedia(call, lkRoom);
+        // Our own camera/screenshare tiles: only the publishing connection
+        // has local tracks.
+        lkRoom.on(lk.RoomEvent.LocalTrackPublished, () =>
+            notifyCallVideo(call),
+        );
+        lkRoom.on(lk.RoomEvent.LocalTrackUnpublished, (publication) => {
+            // However the share ended (our button, the OS's stop sharing),
+            // its separately published audio ends with it.
+            if (
+                publication.source === lk.Track.Source.ScreenShare &&
+                republishingSource !== publication.source
+            ) {
+                stopShareAudio();
+            }
+            notifyCallVideo(call);
+        });
+        lkRoom.on(lk.RoomEvent.Reconnecting, () => {
+            if (activeVoice !== call) return;
+            notifyVoiceConnState("reconnecting");
+        });
+        lkRoom.on(lk.RoomEvent.Reconnected, () => {
+            if (activeVoice !== call) return;
+            notifyVoiceConnState("connected");
+        });
+        lkRoom.on(lk.RoomEvent.Disconnected, () => {
+            // SFU kicked us or the connection died for good — tear down
+            // fully and tell the user. User-initiated leaves null
+            // activeVoice first, so this only fires on genuine drops.
+            // LiveKit emits Disconnected while still Connecting when the
+            // connect fails; the join's own catch reports that failure
+            // exactly once, so only act here when we were connected.
+            if (connected && activeVoice?.lkRoom === lkRoom) {
+                for (const cb of voiceErrorSubscribers)
+                    cb(t("client.voiceCallDisconnected"));
+                void leaveVoiceCall();
+            }
+        });
+        let silenceNotified = false;
+        lkRoom.on(lk.RoomEvent.LocalAudioSilenceDetected, () => {
+            if (activeVoice !== call || silenceNotified) return;
+            silenceNotified = true;
+            notifyVoiceNotice(t("client.yourMicrophoneAppearsSilentCheckYour"));
+        });
+        lkRoom.on(lk.RoomEvent.MediaDevicesError, (e: Error, kind) => {
+            if (activeVoice !== call) return;
+            // LiveKit emits this BEFORE it rethrows the getUserMedia/
+            // getDisplayMedia rejection, so it also fires on every ordinary
+            // dismissal of a picker or permission prompt. Without this guard,
+            // cancelling the screen-share picker toasts a bogus "Audio device
+            // error", and a denied camera permission double-toasts alongside
+            // setCameraEnabled's own (accurate) message. A mic that won't
+            // open is reported the same way, by whoever tried to open it.
+            if (isUserCancel(e) || kind === "audioinput") return;
+            notifyVoiceNotice(
+                t("client.audioDeviceError", { message: e.message }),
+            );
+        });
+
+        await bypassProxyFor(url);
+        if (e2ee) await lkRoom.setE2EEEnabled(true);
+        sfuUrlOf.set(lkRoom, url);
+        await lkRoom.connect(url, jwt);
+        connected = true;
+        // Whoever was here first, muted, sent no event we were around for.
+        notifyCallMutes(call);
+        // The server's enabled codecs are known now.
+        announceCodecs(call, lkRoom);
+        notifyCallCodecs(call);
+        notifyCallEncryption(call);
+        if (seq !== voiceJoinSeq) {
+            await lkRoom.disconnect().catch(() => {});
+            return;
+        }
+        try {
+            await setCallMicEnabled(call, !desiredMicMuted);
+        } catch (err) {
+            // The probe passed but the chosen device wouldn't open.
+            console.warn("Joining the call without a microphone:", err);
+            if (seq === voiceJoinSeq) {
+                desiredMicMuted = true;
+                notifyCallMicUnavailable(err);
+            }
+        }
+        if (seq !== voiceJoinSeq) {
+            await lkRoom.disconnect().catch(() => {});
+            return;
+        }
+        notifyVoiceConnState("connected");
+        setVoicePlaybackBlocked(!lkRoom.canPlaybackAudio);
+        // Now listen on every other member's SFU, and keep that set in step
+        // with the call's membership.
+        session.on(
+            "memberships_changed" as never,
+            call.onMembershipsChanged as never,
+        );
+        void syncRemoteSfus(call);
+    } catch (err) {
+        if (activeVoice === call) {
+            await leaveVoiceCall();
+            throw err;
+        } else {
+            // Superseded mid-join: tear down our own resources only. The
+            // superseder's leave already left the RTC session; don't touch
+            // the per-room session object a rejoin may be re-joining. Return
+            // without throwing — the superseder owns the outcome, and the
+            // function's doc contract says it resolves without joining when
+            // superseded.
+            for (const el of call.audioEls) el.remove();
+            call.audioEls.clear();
+            if (call.audioGraph) call.audioGraph.close();
+            await Promise.allSettled(
+                callLkRooms(call).map((r) => r.disconnect()),
+            );
+            return;
+        }
+    }
+}
+
+export async function leaveVoiceCall(): Promise<void> {
+    // An explicit leave invalidates any in-flight join, which bails at its
+    // next staleness check instead of resurrecting the call.
+    voiceJoinSeq++;
+    await leaveVoiceCallInternal();
+}
+
+let voiceLeaveInFlight: Promise<void> | null = null;
+
+async function leaveVoiceCallInternal(): Promise<void> {
+    while (voiceLeaveInFlight) await voiceLeaveInFlight;
+    const call = activeVoice;
+    if (!call) return;
+    const run = (async () => {
+        activeVoice = null;
+        cancelGpuReconnect();
+        // The room disconnect below unpublishes it; this stops the capture.
+        stopShareAudio();
+        cancelShareAudioWait();
+        // These only ever hold the call they belong to; dropping them here
+        // keeps a finished call's LiveKit Room and audio elements collectable.
+        audioInputGoneNotified = null;
+        videoInputGoneNotified = null;
+        // Playback mute (deafen) is per-call state — a stale flag would attach
+        // every remote track of the NEXT call muted while the UI shows undeafened.
+        voicePlaybackMuted = false;
+        // Notify subscribers before the network teardown below so the UI clears
+        // instantly; the join seq guard protects a racing join.
+        for (const cb of activeSpeakerSubscribers) cb([]);
+        for (const cb of participantMuteSubscribers) cb([]);
+        for (const cb of videoTracksSubscribers) cb([]);
+        for (const cb of codecSubscribers) cb(null);
+        for (const cb of encryptionSubscribers) cb(null);
+        call.e2ee?.stop();
+        notifyVoiceConnState(null);
+        setVoicePlaybackBlocked(false);
+        call.session.off(
+            "membership_manager_error" as never,
+            call.onMmError as never,
+        );
+        matrixClient?.off(
+            "Room.myMembership" as never,
+            call.onMyMembership as never,
+        );
+        call.session.off(
+            "memberships_changed" as never,
+            call.onMembershipsChanged as never,
+        );
+        for (const el of call.audioEls) el.remove();
+        call.audioEls.clear();
+        if (call.audioGraph) call.audioGraph.close();
+        // In parallel, not SFU-first: the membership leave is what other
+        // users' rosters see, and it must fit the account-switch and logout
+        // windows even when the LiveKit teardown is slow (audit IMP-1).
+        // Both settle quietly: a rejected disconnect means already gone.
+        await Promise.allSettled([
+            ...callLkRooms(call).map((r) => r.disconnect()),
+            call.session.leave(10_000),
+        ]);
+    })();
+    voiceLeaveInFlight = run;
+    try {
+        await run;
+    } finally {
+        voiceLeaveInFlight = null;
+    }
+}
+
+// The first-mic-track creation in flight, so a double unmute can't publish
+// two microphones.
+let micCreation: Promise<void> | null = null;
+
+/** Turn the call's mic on or off. Once a mic track exists this is LiveKit's
+ *  own mute/unmute. Creating the FIRST one with Zam's mic chain on is done
+ *  here instead: LiveKit applies an `audioCaptureDefaults.processor` inside
+ *  createLocalTracks, before the track has the AudioContext setProcessor
+ *  requires, so it always threw ("Audio context needs to be set on
+ *  LocalAudioTrack"). localParticipant.createTracks gives the track its
+ *  context; the processor goes on before publishing, so nothing unfiltered
+ *  is ever sent. */
+async function setCallMicEnabled(
+    call: ActiveVoiceCall,
+    enabled: boolean,
+): Promise<void> {
+    const lp = call.lkRoom.localParticipant;
+    const source = call.lk.Track.Source.Microphone;
+    while (micCreation) await micCreation;
+    const chain = planMicProcessing(
+        settingsState.noiseSuppressionMode,
+        settingsState.micGainMode,
+        deepFilterSupported(),
+        micTuning(),
+    ).chain;
+    if (!enabled || !chain || lp.getTrackPublication(source)) {
+        await lp.setMicrophoneEnabled(enabled);
+        return;
+    }
+    const run = (async () => {
+        const [track] = await lp.createTracks({ audio: true });
+        if (activeVoice !== call) {
+            track.stop();
+            return;
+        }
+        try {
+            await (track as LivekitClient.LocalAudioTrack).setProcessor(
+                createMicProcessor(chain),
+            );
+        } catch (err) {
+            // Better heard unprocessed than not at all.
+            console.error("Mic processing failed, sending raw mic:", err);
+            notifyVoiceNotice(
+                t("client.couldnTApplyAudioProcessingChange", {
+                    error: errorLabel(err),
+                }),
+            );
+        }
+        await lp.publishTrack(track, { source });
+    })();
+    micCreation = run;
+    try {
+        await run;
+    } finally {
+        micCreation = null;
+    }
+}
+
+/** Returns false when the device refused (e.g. unmuting a dead mic) so the
+ *  caller can roll the UI back to the truth. */
+export async function setMicMuted(muted: boolean): Promise<boolean> {
+    desiredMicMuted = muted;
+    const call = activeVoice;
+    if (!call) return true;
+    try {
+        await setCallMicEnabled(call, !muted);
+        return true;
+    } catch {
+        // A failed unmute leaves the mic muted in reality.
+        if (activeVoice === call && !muted) desiredMicMuted = true;
+        return false;
+    }
+}
+
+export function setVoicePlaybackMuted(muted: boolean): void {
+    voicePlaybackMuted = muted;
+    if (!activeVoice) return;
+    const graph = activeVoice.audioGraph || null;
+    graph?.setMuted(muted);
+    // Routed elements stay muted: their audio plays from the graph's output.
+    for (const el of activeVoice.audioEls)
+        if (!graph?.has(el)) el.muted = muted;
+}
+
+/** Route call audio to an output device (null = system default). Applies to
+ *  the live call and to future attaches; no-op where setSinkId is missing. */
+export function setVoiceOutputDevice(deviceId: string | null): void {
+    voiceOutputDeviceId = deviceId;
+    if (!activeVoice) return;
+    for (const el of activeVoice.audioEls) applyVoiceSink(el);
+    if (activeVoice.audioGraph) activeVoice.audioGraph.setSink(deviceId);
+}
+
+/** Turn incoming-voice normalization on or off for the live call and later
+ *  joins. Turning it on routes everyone through the Web Audio graph; turning
+ *  it off leaves them routed at unity normalization gain. */
+export function setVoiceNormalization(on: boolean): void {
+    voiceNormalize = on;
+    if (!activeVoice) return;
+    const graph = activeVoice.audioGraph || null;
+    graph?.setNormalize(on);
+    for (const [identity, els] of activeVoice.elsByIdentity)
+        for (const el of els) applyElementVolume(el, identity);
+}
+
+export function setVoiceOutputVolume(volume: number): void {
+    voiceOutputVolume = Math.min(1, Math.max(0, volume));
+    if (!activeVoice) return;
+    for (const [identity, els] of activeVoice.elsByIdentity) {
+        for (const el of els) applyElementVolume(el, identity);
+    }
+}
+
+/** Switch a live call input device. LiveKit's restart stops the current
+ *  track BEFORE acquiring the new device, so a failed switch (device held by
+ *  another app, vanished id) leaves the published track ended and silent.
+ *  On failure, restore the previous device (else the system default), point
+ *  the saved selection back at the device actually in use (callers persist
+ *  the pick before switching), and tell the user. Resolves either way; never
+ *  throws. A muted mic is not covered: LiveKit defers its restart to unmute. */
+async function switchInputWithRecovery(
+    call: ActiveVoiceCall,
+    kind: "audioinput" | "videoinput",
+    deviceId: string,
+    exact: boolean,
+    what: string,
+): Promise<void> {
+    const source =
+        kind === "audioinput"
+            ? call.lk.Track.Source.Microphone
+            : call.lk.Track.Source.Camera;
+    const track =
+        call.lkRoom.localParticipant.getTrackPublication(source)?.track;
+    const previousId = track?.mediaStreamTrack.getSettings().deviceId;
+    const persist =
+        kind === "audioinput" ? setAudioInputDeviceId : setVideoInputDeviceId;
+    const trySwitch = async (id: string, ex: boolean): Promise<boolean> => {
+        try {
+            return (
+                (await call.lkRoom.switchActiveDevice(kind, id, ex)) !== false
+            );
+        } catch {
+            return false;
+        }
+    };
+    if (await trySwitch(deviceId, exact)) return;
+    if (activeVoice !== call) return;
+    // exact: Chromium treats a bare (ideal) deviceId as a hint and hands back
+    // the default device, which LiveKit then reports as a failed switch.
+    if (
+        previousId &&
+        previousId !== "default" &&
+        (await trySwitch(previousId, true))
+    ) {
+        persist(previousId);
+        if (activeVoice === call)
+            notifyVoiceNotice(t("client.couldnTSwitchToThatKept", { what }));
+        return;
+    }
+    const onDefault = await trySwitch("default", false);
+    if (onDefault) persist(null);
+    if (activeVoice !== call) return;
+    notifyVoiceNotice(
+        onDefault
+            ? t("client.couldnTSwitchToThatUsing", { what })
+            : t("client.couldnTSwitchToThatPick", { what }),
+    );
+}
+
+/** Switch the live call's microphone. A null deviceId selects the system
+ *  default device live (previously this was a no-op that only took effect on
+ *  the next join). */
+export async function setVoiceInputDevice(
+    deviceId: string | null,
+): Promise<void> {
+    const call = activeVoice;
+    if (!call) return;
+    // A real device uses exact:true (switchActiveDevice's default). System
+    // default: LiveKit resolves the "default" sentinel to the OS default
+    // input; exact:false so browsers without a literal "default" device id
+    // (Firefox) fall back to their default instead of throwing.
+    await switchInputWithRecovery(
+        call,
+        "audioinput",
+        deviceId ?? "default",
+        !!deviceId,
+        t("client.deviceNounMicrophone"),
+    );
+}
+
+/** getDisplayMedia rejects with NotAllowedError/AbortError when the user
+ *  dismisses the OS picker — that is a choice, not a failure, so it must not
+ *  toast. */
+function isUserCancel(err: unknown): boolean {
+    return (
+        err instanceof DOMException &&
+        (err.name === "NotAllowedError" || err.name === "AbortError")
+    );
+}
+
+/** The screen-share quality settings, to notice a change mid-picker. */
+function screenShareQualityKey(): string {
+    return `${settingsState.screenShareResolution}|${settingsState.screenShareFps}|${screenShareBitrateNow()}`;
+}
+
+/** Start/stop publishing a screen share (with system audio per settings).
+ *  Returns whether a share is now being published. The store drives its UI
+ *  state from LocalTrackPublished/Unpublished, so this return is advisory. */
+export async function setScreenShareEnabled(on: boolean): Promise<boolean> {
+    const call = activeVoice;
+    if (!call) return false;
+    // The capture and encoding below are read now, but the desktop picker
+    // (which offers the quality settings too) answers later: a change made
+    // there is applied once the share is up.
+    const startedWith = screenShareQualityKey();
+    try {
+        await call.lkRoom.localParticipant.setScreenShareEnabled(
+            on,
+            {
+                // The desktop picker asks about audio itself (defaulting to
+                // this setting), and per-application choices need it asked.
+                audio:
+                    pickerOffersShareAudio() || settingsState.shareSystemAudio,
+                resolution: screenShareCaptureResolution(
+                    settingsState.screenShareResolution,
+                    Number(settingsState.screenShareFps),
+                ),
+                // A screen share is mostly text/UI: bias the encoder toward
+                // keeping resolution sharp rather than dropping it to hold
+                // framerate under load (which blurs text while scrolling).
+                // The opposite of camera video — do NOT flip this back to
+                // "motion"/"maintain-framerate" for the screen-share path.
+                contentHint: "detail",
+            },
+            {
+                screenShareEncoding: screenShareEncodingFor(
+                    screenShareBitrateNow(),
+                    Number(settingsState.screenShareFps),
+                ),
+                degradationPreference: "maintain-resolution",
+                ...videoCodecPublishOptions(call),
+            },
+        );
+        if (on) void publishShareAudio(call);
+        else stopShareAudio();
+        if (on && screenShareQualityKey() !== startedWith)
+            void setScreenShareQuality(
+                settingsState.screenShareResolution,
+                Number(settingsState.screenShareFps),
+            );
+        return on;
+    } catch (err) {
+        if (on) cancelShareAudioWait();
+        if (isUserCancel(err)) return false;
+        console.error("Screen share failed:", err);
+        // Left the call while the picker was open: LiveKit already dropped
+        // the late track, and a failure toast for an ended call is noise.
+        if (activeVoice !== call) return false;
+        notifyVoiceNotice(t("client.couldNotStartScreenShare"));
+        return false;
+    }
+}
+
+/** Publish the audio the desktop picker set up for the share just started,
+ *  if any. Failure leaves the share running without audio. */
+async function publishShareAudio(call: ActiveVoiceCall): Promise<void> {
+    const audio = await takeShareAudio();
+    if (!audio || audio.kind === "none") return;
+    let handle: ShareAudioTrack | null = null;
+    try {
+        if (audio.kind !== "failed") handle = await openShareAudioTrack(audio);
+    } catch (err) {
+        console.error("Screen share audio failed:", err);
+    }
+    if (!handle) {
+        releaseShareAudio(audio);
+        if (activeVoice === call) {
+            notifyVoiceNotice(t("client.couldNotShareScreenAudio"));
+        }
+        return;
+    }
+    const lp = call.lkRoom.localParticipant;
+    const sharing = () =>
+        activeVoice === call &&
+        !!lp.getTrackPublication(call.lk.Track.Source.ScreenShare);
+    if (!sharing()) {
+        handle.close();
+        stopShareAudioCapture();
+        return;
+    }
+    stopShareAudio();
+    const track = new call.lk.LocalAudioTrack(handle.track, undefined, false);
+    shareAudio = { call, track, handle };
+    try {
+        await lp.publishTrack(track, {
+            source: call.lk.Track.Source.ScreenShareAudio,
+            audioPreset: call.lk.AudioPresets.musicHighQualityStereo,
+            forceStereo: true,
+            dtx: false,
+            red: false,
+        });
+    } catch (err) {
+        console.error("Screen share audio publish failed:", err);
+        if (shareAudio?.track === track) stopShareAudio();
+        return;
+    }
+    // The share may have ended while this published.
+    if (!sharing() && shareAudio?.track === track) stopShareAudio();
+}
+
+/** Stop and unpublish the share's own audio track, if there is one. */
+function stopShareAudio(): void {
+    const s = shareAudio;
+    shareAudio = null;
+    if (!s) return;
+    s.handle.close();
+    stopShareAudioCapture();
+    if (activeVoice === s.call) {
+        void s.call.lkRoom.localParticipant
+            .unpublishTrack(s.track)
+            .catch(() => {});
+    }
+}
+
+/** The picked screen-share bitrate, held under the measured upload. */
+function screenShareBitrateNow(): number {
+    return clampBitrate(
+        settingsState.screenShareBitrate,
+        screenShareBitrateCeiling(),
+    );
+}
+
+/** Re-target the currently published screen share to a new quality without
+ *  re-acquiring the capture: applyConstraints moves the running capture's
+ *  resolution/fps, then the publish encoding (bitrate/framerate cap) follows.
+ *  No-op when nothing is being shared. */
+async function applyScreenShareQualityNow(
+    resKey: string,
+    fps: number,
+): Promise<void> {
+    const call = activeVoice;
+    if (!call) return;
+    const track = call.lkRoom.localParticipant.getTrackPublication(
+        call.lk.Track.Source.ScreenShare,
+    )?.videoTrack;
+    const sender = track?.sender;
+    if (!track || !sender) return;
+    try {
+        // Apply the new capture constraints first, so the underlying capture
+        // adjusts before we change the encoding bitrate/framerate caps. Use
+        // ideal so a smaller capture doesn't throw OverconstrainedError.
+        const { width, height, frameRate } = screenShareCaptureResolution(
+            resKey,
+            fps,
+        );
+        await track.mediaStreamTrack.applyConstraints({
+            width: { ideal: width },
+            height: { ideal: height },
+            frameRate: { ideal: frameRate },
+        });
+
+        const params = sender.getParameters();
+        if (
+            applyScreenShareEncoding(
+                params,
+                screenShareEncodingFor(screenShareBitrateNow(), fps),
+            )
+        ) {
+            // Match setScreenShareEnabled: screen content prefers a sharp
+            // resolution over a steady framerate under load.
+            params.degradationPreference = "maintain-resolution";
+            await sender.setParameters(params);
+        }
+    } catch (err) {
+        console.error("Screen share quality change failed:", err);
+        if (activeVoice === call) {
+            notifyVoiceNotice(t("client.couldnTChangeScreenShareQuality"));
+        }
+    }
+}
+
+export function setScreenShareQuality(
+    resKey: string,
+    fps: number,
+): Promise<void> {
+    screenShareQualityChain = screenShareQualityChain.then(() =>
+        applyScreenShareQualityNow(resKey, fps),
+    );
+    return screenShareQualityChain;
+}
+
+/** Start/stop publishing the camera, using the configured input device. The
+ *  one way a call's camera starts, so "Disabled" in settings is enforced here
+ *  whichever button, keybind or system control asked. */
+export async function setCameraEnabled(on: boolean): Promise<boolean> {
+    const call = activeVoice;
+    if (!call) return false;
+    if (on && settingsState.cameraDisabled) {
+        notifyVoiceNotice(t("client.cameraIsDisabledInSettings"));
+        return false;
+    }
+    try {
+        await call.lkRoom.localParticipant.setCameraEnabled(
+            on,
+            { deviceId: settingsState.videoInputDeviceId ?? undefined },
+            videoCodecPublishOptions(call),
+        );
+        // Disabled while it was starting (its permission prompt, say).
+        if (on && settingsState.cameraDisabled) return setCameraEnabled(false);
+        if (activeVoice === call) desiredCameraOn = on;
+        return on;
+    } catch (err) {
+        console.error("Camera enable failed:", err);
+        // Same as screen share: no toast once the call has ended.
+        if (activeVoice !== call) return false;
+        notifyVoiceNotice(t("client.couldNotStartTheCameraCheck"));
+        return false;
+    }
+}
+
+/** Switch the live call's camera. Null (system default) takes effect on the
+ *  next enable. No-op when not sharing camera. */
+export async function setVideoInputDevice(
+    deviceId: string | null,
+): Promise<void> {
+    const call = activeVoice;
+    if (!call || !deviceId) return;
+    await switchInputWithRecovery(
+        call,
+        "videoinput",
+        deviceId,
+        true,
+        t("client.deviceNounCamera"),
+    );
+}
+
+/** Put Zam's mic chain on a live mic track. Once attached the processor
+ *  stays and is reconfigured in place (a pass-through when nothing is
+ *  wanted): LiveKit's swap and stop paths can throw and drop the mic (see
+ *  $lib/audio/micProcessor). A restart keeps it too: LiveKit re-inits it on
+ *  the new track. */
+async function applyMicProcessor(
+    track: LivekitClient.LocalAudioTrack,
+    chain: MicProcessingPlan["chain"],
+): Promise<void> {
+    const current = track.getProcessor() as MicProcessor | undefined;
+    if (current?.name === "zam-mic-processor") {
+        await current.reconfigure(chain ?? PASSTHROUGH_CHAIN);
+        return;
+    }
+    // Only attach where nothing is: setProcessor on a track that already has
+    // a processor goes through the same throwing teardown.
+    if (chain && !current) await track.setProcessor(createMicProcessor(chain));
+}
+
+/** The debug-screen mic chain tuning, as set now. */
+function micTuning(): MicTuning {
+    return {
+        pauseGate: settingsState.micPauseGate,
+        attenuationDb: settingsState.dfAttenuationDb,
+        feGpu: noiseSuppressionUsesGpu(
+            settingsState.noiseSuppressionMode,
+            settingsState.noiseSuppressionGpu,
+        ),
+    };
+}
+
+/** Live NS/EC/AGC change on the published mic track (no-op when not in a
+ *  call — the next join reads the settings via audioCaptureDefaults). */
+export async function setVoiceCaptureConstraints(opts: {
+    noiseSuppressionMode: NoiseSuppressionMode;
+    echoCancellation: boolean;
+    micGainMode: MicGainMode;
+}): Promise<void> {
+    const call = activeVoice;
+    if (!call) return;
+    const plan = planMicProcessing(
+        opts.noiseSuppressionMode,
+        opts.micGainMode,
+        deepFilterSupported(),
+        micTuning(),
+    );
+    const c = {
+        noiseSuppression: plan.noiseSuppression,
+        echoCancellation: opts.echoCancellation,
+        autoGainControl: plan.autoGainControl,
+        // restartTrack doesn't merge audioCaptureDefaults; see joinVoiceCall.
+        voiceIsolation: false,
+    };
+    // Keep the defaults in step so a mic track created later (first unmute
+    // after joining muted) gets the same constraints; setCallMicEnabled
+    // reads the settings again for its processor.
+    const defaults = call.lkRoom.options.audioCaptureDefaults;
+    if (defaults) Object.assign(defaults, c);
+    const track = call.lkRoom.localParticipant.getTrackPublication(
+        call.lk.Track.Source.Microphone,
+    )?.audioTrack;
+    if (!track) return;
+    // Pass the current device along so restartTrack doesn't switch to the
+    // OS default. Prefer the live track's device id, else the saved selection.
+    // It must be `exact`: Chromium treats a bare (ideal) deviceId as a hint
+    // and re-acquired the default mic in live testing. If the exact device
+    // can't be re-opened, try it as a hint before giving up rather than
+    // leaving the mic dead (the restart has already stopped the old track).
+    const deviceId =
+        track.mediaStreamTrack.getSettings().deviceId ??
+        settingsState.audioInputDeviceId ??
+        undefined;
+    const attempts = deviceId ? [{ exact: deviceId }, deviceId] : [undefined];
+    let failure: unknown = null;
+    for (const id of attempts) {
+        try {
+            await track.restartTrack({ ...c, deviceId: id });
+            failure = null;
+            break;
+        } catch (err) {
+            console.warn("Mic restart failed (deviceId %o):", id, err);
+            failure = err;
+        }
+    }
+    if (!failure) {
+        try {
+            await applyMicProcessor(track, plan.chain);
+        } catch (err) {
+            failure = err;
+        }
+    }
+    if (failure) {
+        console.error("Voice capture constraints change failed:", failure);
+        if (activeVoice === call)
+            notifyVoiceNotice(
+                t("client.couldnTApplyAudioProcessingChange", {
+                    error: errorLabel(failure),
+                }),
+            );
+    }
+}
+
+/** Short name for an error in a notice ("OverconstrainedError: deviceId"),
+ *  so a report says what actually failed. */
+function errorLabel(err: unknown): string {
+    if (err instanceof Error || err instanceof DOMException) {
+        const detail =
+            (err as { constraint?: string }).constraint || err.message;
+        return detail ? `${err.name}: ${detail}` : err.name;
+    }
+    return String(err);
+}
+
+/** Live srcObject streams of the call's remote <audio> elements (feeds the
+ *  settings tab's incoming-audio meter; re-read on voiceTick changes). */
+export function getRemoteAudioStreams(): MediaStream[] {
+    if (!activeVoice) return [];
+    const streams: MediaStream[] = [];
+    for (const el of activeVoice.audioEls)
+        if (el.srcObject instanceof MediaStream) streams.push(el.srcObject);
+    return streams;
+}
+
+/** One participant as the call debug panel shows them. */
+export interface CallDebugParticipant {
+    identity: string;
+    userId: string;
+    /** LiveKit's server-side grade of THEIR connection: excellent/good/poor/lost. */
+    quality: string;
+    /** Their microphone's receive-side stats, or null when not subscribed. */
+    audio: RawStat[] | null;
+}
+
+/** One LiveKit connection of the call (the publishing one, or a listen-only remote SFU). */
+export interface CallDebugConnection {
+    /** Stable across polls: the publish key, or the remote's key. */
+    key: string;
+    /** The SFU's service host, for display. */
+    server: string;
+    publishing: boolean;
+    state: string;
+    /** WebSocket signalling round trip, ms. */
+    signalRttMs: number | null;
+    region: string | null;
+    serverVersion: string | null;
+    publisher: RawStat[] | null;
+    subscriber: RawStat[] | null;
+    /** LiveKit's grade of OUR connection to this SFU. */
+    localQuality: string;
+    participants: CallDebugParticipant[];
+    /** MediaStreamTrack id -> whose track it is and what it carries, so
+     *  the RTP streams in the reports can be labelled. */
+    owners: Record<string, StreamOwner>;
+    /** Every camera and screen share on this connection, ours included. */
+    videos: VideoTrackDebug[];
+    /** The SFU's signalling URL, to ask how it is routed (proxy). */
+    sfuUrl: string | null;
+}
+
+/** What the debug panel needs to know about one video track. */
+function videoTrackDebug(
+    call: ActiveVoiceCall,
+    pub: TrackPublication,
+    identity: string | null,
+): VideoTrackDebug {
+    const lk = call.lk;
+    const track = pub.track as
+        | (Track & {
+              streamState?: unknown;
+              attachedElements: HTMLMediaElement[];
+          })
+        | undefined;
+    const mst = track?.mediaStreamTrack;
+    const settings = (identity === null ? mst?.getSettings() : undefined) as
+        (MediaTrackSettings & { displaySurface?: string }) | undefined;
+    const els = (track?.attachedElements ?? []).filter(
+        (el): el is HTMLVideoElement => el instanceof HTMLVideoElement,
+    );
+    let elementFrames: number | null = null;
+    for (const el of els) {
+        const q = el.getVideoPlaybackQuality?.();
+        if (q) elementFrames = (elementFrames ?? 0) + q.totalVideoFrames;
+    }
+    const remote = pub as TrackPublication & {
+        isSubscribed?: boolean;
+        isEnabled?: boolean;
+    };
+    return {
+        identity,
+        source:
+            pub.source === lk.Track.Source.ScreenShare
+                ? "screen_share"
+                : pub.source === lk.Track.Source.Camera
+                  ? "camera"
+                  : "unknown",
+        subscribed: identity === null ? true : !!remote.isSubscribed,
+        muted: pub.isMuted,
+        enabled: identity === null ? true : remote.isEnabled !== false,
+        streamPaused: track?.streamState === lk.Track.StreamState.Paused,
+        trackState: mst?.readyState ?? null,
+        trackMuted: mst ? mst.muted : null,
+        captureWidth: settings?.width ?? null,
+        captureHeight: settings?.height ?? null,
+        captureFps: settings?.frameRate ?? null,
+        displaySurface: settings?.displaySurface ?? null,
+        elements: els.length,
+        elementFrames,
+        elementWidth: els[0]?.videoWidth ?? null,
+        elementHeight: els[0]?.videoHeight ?? null,
+        decryptErrors: identity ? (call.decryptErrors.get(identity) ?? 0) : 0,
+    };
+}
+
+function connectionVideos(
+    call: ActiveVoiceCall,
+    lkRoom: LivekitRoom,
+    publishing: boolean,
+): VideoTrackDebug[] {
+    const out: VideoTrackDebug[] = [];
+    if (publishing)
+        for (const pub of lkRoom.localParticipant.videoTrackPublications.values())
+            out.push(videoTrackDebug(call, pub as TrackPublication, null));
+    for (const p of lkRoom.remoteParticipants.values())
+        for (const pub of p.videoTrackPublications.values())
+            out.push(
+                videoTrackDebug(call, pub as TrackPublication, p.identity),
+            );
+    return out;
+}
+
+/** Every track of this connection by MediaStreamTrack id: ours (both the
+ *  captured track and a processor's output, which is what is sent) and each
+ *  remote participant's subscribed ones. */
+function trackOwners(lkRoom: LivekitRoom): Record<string, StreamOwner> {
+    const owners: Record<string, StreamOwner> = {};
+    const add = (
+        track: unknown,
+        source: string,
+        identity: string | null,
+    ): void => {
+        const t = track as
+            | {
+                  mediaStreamTrack?: MediaStreamTrack;
+                  processor?: { processedTrack?: MediaStreamTrack };
+              }
+            | undefined;
+        const owner = { source: source as StreamOwner["source"], identity };
+        for (const mst of [t?.mediaStreamTrack, t?.processor?.processedTrack])
+            if (mst) owners[mst.id] = owner;
+    };
+    for (const pub of lkRoom.localParticipant.trackPublications.values())
+        add(pub.track, pub.source, null);
+    for (const p of lkRoom.remoteParticipants.values())
+        for (const pub of p.trackPublications.values())
+            add(pub.track, pub.source, p.identity);
+    return owners;
+}
+
+/** Desktop, when calls are set to go direct (electron/proxy.cjs): name a
+ *  call server (token service or SFU) before connecting to it, so its
+ *  host skips the proxy. Media needs nothing: every IP address goes direct
+ *  in that mode. The homeserver's own host is never named, so a call
+ *  server sharing it keeps the homeserver on the proxy. Resolves once the
+ *  rules apply; never throws. */
+async function bypassProxyFor(url: string): Promise<void> {
+    const proxy = window.desktop?.proxy;
+    if (!proxy) return;
+    try {
+        const host = new URL(url).hostname;
+        const homeserver = matrixClient
+            ? new URL(matrixClient.getHomeserverUrl()).hostname
+            : null;
+        if (host === homeserver) return;
+        await proxy.callTargets([host]);
+    } catch {
+        /* the call goes on with the rules it has */
+    }
+}
+
+// --- end-to-end encryption ----------------------------------------------------
+//
+// Element Call's scheme, so the two can share an encrypted call (its
+// sdk/src/media-backend/livekit): every participant encrypts with a key of
+// its own. matrix-js-sdk makes ours and sends it to each participant's
+// devices over Matrix (manageMediaKeys), then reports every key with the
+// LiveKit identity it belongs to; each goes to LiveKit as HKDF key material
+// for that identity. Every LiveKit connection gets a worker of its own, as
+// one worker gets confused by streams from several rooms.
+
+interface CallE2EE {
+    /** `e2ee` options for a new LiveKit Room. */
+    roomOptions: () => {
+        keyProvider: LivekitClient.BaseKeyProvider;
+        worker: Worker;
+    };
+    /** Stop listening for keys and end the workers. */
+    stop: () => void;
+}
+
+const MEDIA_KEY_EVENT = "encryption_key_changed"; // MatrixRTCSessionEvent
+
+async function setupCallE2EE(
+    lk: LivekitModule,
+    session: ReturnType<MatrixClient["matrixRTC"]["getRoomSession"]>,
+): Promise<CallE2EE> {
+    // Element Call's MatrixKeyProvider settings.
+    class MatrixKeyProvider extends lk.BaseKeyProvider {
+        constructor() {
+            super({ ratchetWindowSize: 10, keyringSize: 256 });
+        }
+        setParticipantKey(key: CryptoKey, identity: string, index: number) {
+            this.onSetEncryptionKey(key, identity, index);
+        }
+    }
+    const keyProvider = new MatrixKeyProvider();
+    const onKey = (
+        key: Uint8Array<ArrayBuffer>,
+        index: number,
+        _membership: unknown,
+        identity: string,
+    ) => {
+        crypto.subtle
+            .importKey("raw", key, "HKDF", false, ["deriveBits", "deriveKey"])
+            .then(
+                (material) =>
+                    keyProvider.setParticipantKey(material, identity, index),
+                (err: unknown) =>
+                    console.error("Couldn't import a call media key:", err),
+            );
+    };
+    session.on(MEDIA_KEY_EVENT as never, onKey as never);
+    session.reemitEncryptionKeys();
+    const { default: E2EEWorker } =
+        await import("livekit-client/e2ee-worker?worker");
+    const workers: Worker[] = [];
+    return {
+        roomOptions: () => {
+            const worker = new E2EEWorker();
+            workers.push(worker);
+            return { keyProvider, worker };
+        },
+        stop: () => {
+            session.off(MEDIA_KEY_EVENT as never, onKey as never);
+            // After the rooms have disconnected, which flushes their streams.
+            setTimeout(() => {
+                for (const worker of workers) worker.terminate();
+            }, 5000);
+        },
+    };
+}
+
+export interface CallEncryptionState {
+    /** Whether we encrypt, and expect others to. */
+    encrypted: boolean;
+    /** In an encrypted call, who sends unencrypted media (an app without
+     *  encryption): we still play it, since LiveKit passes a participant's
+     *  frames through when the server marks their tracks unencrypted, but
+     *  they can't play ours. User ids, once each. */
+    unencrypted: string[];
+}
+
+const encryptionSubscribers = new Set<
+    (state: CallEncryptionState | null) => void
+>();
+
+/** Fires with the call's encryption state whenever it changes; null when the
+ *  call ends. */
+export function onCallEncryptionChanged(
+    cb: (state: CallEncryptionState | null) => void,
+): () => void {
+    encryptionSubscribers.add(cb);
+    return () => encryptionSubscribers.delete(cb);
+}
+
+function notifyCallEncryption(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const unencrypted = new Set<string>();
+    if (call.e2ee) {
+        for (const lkRoom of callLkRooms(call))
+            for (const p of lkRoom.remoteParticipants.values())
+                for (const pub of p.trackPublications.values())
+                    if (!pub.isEncrypted)
+                        unencrypted.add(userIdFromIdentity(p.identity));
+    }
+    const state: CallEncryptionState = {
+        encrypted: call.e2ee !== null,
+        unencrypted: [...unencrypted].sort(),
+    };
+    for (const cb of encryptionSubscribers) cb(state);
+}
+
+// --- video codecs -------------------------------------------------------------
+
+interface LocalVideoCodecs {
+    /** What this browser can send that LiveKit will publish as asked. */
+    send: VideoCodec[];
+    /** What it can decode; announced to the others. */
+    decode: VideoCodec[];
+    /** The sendable ones it encodes on the GPU. */
+    hardware: VideoCodec[];
+    /** The sendable H.264/HEVC ones whose GPU encoder also does temporal
+     *  layers (L1T3). LiveKit only layers VP9/AV1 by itself. */
+    temporalHardware: VideoCodec[];
+}
+
+const WEBRTC_MIME: Record<VideoCodec, string> = {
+    av1: "video/AV1",
+    h265: "video/H265",
+    vp9: "video/VP9",
+    h264: "video/H264",
+    vp8: "video/VP8",
+};
+
+function rtpCodecMimes(kind: "send" | "receive"): string[] {
+    try {
+        const win = webrtcWindow();
+        const api = kind === "send" ? win.RTCRtpSender : win.RTCRtpReceiver;
+        return (
+            api.getCapabilities?.("video")?.codecs.map((c) => c.mimeType) ?? []
+        );
+    } catch {
+        return [];
+    }
+}
+
+async function localVideoCodecs(lk: LivekitModule): Promise<LocalVideoCodecs> {
+    // LiveKit quietly publishes its default instead of AV1, VP9 or HEVC where
+    // it doesn't trust the browser's support, so those aren't offered there.
+    const send = codecsFromMimeTypes(rtpCodecMimes("send")).filter((c) =>
+        c === "av1"
+            ? lk.supportsAV1()
+            : c === "vp9"
+              ? lk.supportsVP9()
+              : c === "h265"
+                ? lk.supportsH265()
+                : true,
+    );
+    const hardware = await Promise.all(
+        send.map(async (codec) => {
+            try {
+                const info =
+                    await webrtcWindow().navigator.mediaCapabilities.encodingInfo(
+                        {
+                            type: "webrtc",
+                            video: {
+                                contentType: WEBRTC_MIME[codec],
+                                width: 1920,
+                                height: 1080,
+                                bitrate: 4_000_000,
+                                framerate: 30,
+                            },
+                        },
+                    );
+                return info.powerEfficient ? codec : null;
+            } catch {
+                return null;
+            }
+        }),
+    );
+    const temporalHardware = await Promise.all(
+        send.map(async (codec): Promise<VideoCodec | null> => {
+            if (codec !== "h264" && codec !== "h265") return null;
+            try {
+                const info =
+                    await webrtcWindow().navigator.mediaCapabilities.encodingInfo(
+                        {
+                            type: "webrtc",
+                            video: {
+                                contentType: WEBRTC_MIME[codec],
+                                width: 1920,
+                                height: 1080,
+                                bitrate: 4_000_000,
+                                framerate: 30,
+                                scalabilityMode: "L1T3",
+                            },
+                        } as MediaEncodingConfiguration,
+                    );
+                return info.supported && info.powerEfficient ? codec : null;
+            } catch {
+                return null;
+            }
+        }),
+    );
+    // The receiver's capability list is what the call server and the other
+    // participants go by, and it can name codecs no decoder here backs. Ask
+    // MediaCapabilities too, and keep only what it confirms.
+    const listed = codecsFromMimeTypes(rtpCodecMimes("receive"));
+    const decode = await Promise.all(
+        listed.map(async (codec) => {
+            if (isMandatoryCodec(codec)) return codec;
+            try {
+                const info =
+                    await webrtcWindow().navigator.mediaCapabilities.decodingInfo(
+                        {
+                            type: "webrtc",
+                            video: {
+                                contentType: WEBRTC_MIME[codec],
+                                width: 1920,
+                                height: 1080,
+                                bitrate: 4_000_000,
+                                framerate: 30,
+                            },
+                        },
+                    );
+                return info.supported ? codec : null;
+            } catch {
+                return codec; // can't tell: believe the capability list
+            }
+        }),
+    );
+    return {
+        send,
+        decode: decode.filter((c): c is VideoCodec => c !== null),
+        hardware: hardware.filter((c): c is VideoCodec => c !== null),
+        temporalHardware: temporalHardware.filter(
+            (c): c is VideoCodec => c !== null,
+        ),
+    };
+}
+
+/** What we can send on the publishing connection: our codecs, less any the
+ *  server doesn't accept (it lists those once connected). */
+function sendableCodecs(call: ActiveVoiceCall): VideoCodec[] {
+    const enabled =
+        (
+            call.lkRoom.localParticipant as unknown as {
+                enabledPublishVideoCodecs?: { mime: string }[];
+            }
+        ).enabledPublishVideoCodecs ?? [];
+    if (enabled.length === 0) return call.codecs.send;
+    const allowed = codecsFromMimeTypes(enabled.map((c) => c.mime));
+    return call.codecs.send.filter((c) => allowed.includes(c));
+}
+
+/** The codec part of a video publish: the picked codec if we can send it,
+ *  and for anything but VP8/H.264 an H.264 (or VP8) backup. The server asks
+ *  for the backup only once a viewer can't decode the main stream, and sends
+ *  it to them alone; everyone else keeps the picked codec. */
+function codecPlan(call: ActiveVoiceCall) {
+    return planCodecs(
+        settingsState.callVideoCodec,
+        sendableCodecs(call),
+        peerDecode(call),
+        call.e2ee !== null,
+        call.codecs.hardware,
+    );
+}
+
+function videoCodecPublishOptions(call: ActiveVoiceCall) {
+    const { current, backup } = codecPlan(call);
+    return {
+        videoCodec: current,
+        backupCodec: backup ? { codec: backup } : false,
+        backupCodecPolicy: call.lk.BackupCodecPolicy.SIMULCAST,
+    } as const;
+}
+
+/** Codecs this platform lists but can't show, known from how it is set up
+ *  (filled in at the start of a call, see platformUndecodable). */
+let platformBlocked: VideoCodec[] = [];
+
+/** Codecs left out of what we decode: the user's list plus the platform's. */
+function blockedCodecs(): VideoCodec[] {
+    // Debug override: offer and accept every codec the browser lists.
+    if (settingsState.ignoreCodecSupport) return [];
+    return [
+        ...new Set([...settingsState.blockedDecodeCodecs, ...platformBlocked]),
+    ];
+}
+
+/** The Flatpak's NVIDIA video decoding (Settings > Debug) is the only way
+ *  Chromium decodes HEVC on Linux, and what it produces for HEVC is a black
+ *  picture, while H.264 and VP9 through the same path are fine. Treat HEVC
+ *  as undecodable there so senders use H.264 instead. */
+async function platformUndecodable(): Promise<VideoCodec[]> {
+    try {
+        const info = await window.desktop?.gpu?.info();
+        return info?.nvidiaVideo?.activeAtLaunch ? ["h265"] : [];
+    } catch {
+        return [];
+    }
+}
+
+/** What this device tells the call it can watch: what it has, less what is
+ *  known not to work (settings). */
+function localDecode(call: ActiveVoiceCall): VideoCodec[] {
+    return withoutBlocked(call.codecs.decode, blockedCodecs());
+}
+
+/** The blocked-codec list changed (Settings, or a stream that never decoded):
+ *  tell everyone and renegotiate what we receive. */
+export function refreshDecodeSupport(): void {
+    const call = activeVoice;
+    if (!call) return;
+    for (const lkRoom of callLkRooms(call)) announceCodecs(call, lkRoom);
+    resubscribeVideo(call);
+}
+
+/** Drop and re-take video subscriptions so the server offers them again
+ *  and, with the codecs we can't show now out of our answer (see
+ *  installDecodePreferences), sends the backup stream instead. */
+function resubscribeVideo(call: ActiveVoiceCall): void {
+    const camera = call.lk.Track.Source.Camera;
+    const share = call.lk.Track.Source.ScreenShare;
+    for (const lkRoom of callLkRooms(call))
+        for (const p of lkRoom.remoteParticipants.values())
+            for (const pub of p.videoTrackPublications.values()) {
+                if (pub.source !== camera && pub.source !== share) continue;
+                pub.setSubscribed(false);
+                setTimeout(() => {
+                    if (activeVoice === call) pub.setSubscribed(true);
+                }, 500);
+            }
+}
+
+let decodePreferencesInstalled = false;
+
+/** The codecs a subscription is answered with come from the browser's
+ *  capability list, so a codec listed but not working here would still be
+ *  accepted, and the server would send it instead of the H.264 backup. Take
+ *  the blocked ones out of every video receiver once the server's offer is
+ *  in. Does nothing while nothing is blocked. */
+function installDecodePreferences(): void {
+    if (decodePreferencesInstalled) return;
+    if (
+        typeof RTCPeerConnection === "undefined" ||
+        typeof RTCRtpReceiver === "undefined" ||
+        !RTCRtpReceiver.getCapabilities
+    )
+        return;
+    decodePreferencesInstalled = true;
+    // On the RTCPeerConnection of every window calls use (webrtcRealm).
+    onWebrtcRealm(patchDecodePreferences);
+    onWebrtcRealm(patchBaselineAnswer);
+    onWebrtcRealm(patchTemporalLayers);
+}
+
+/** Whether the video we publish now is H.264/HEVC that a GPU encoder can
+ *  give temporal layers (a backup codec has to manage them too). */
+function sendsTemporalLayers(call: ActiveVoiceCall): boolean {
+    const { current, backup } = codecPlan(call);
+    const ok = (c: VideoCodec) => call.codecs.temporalHardware.includes(c);
+    return ok(current) && (!backup || ok(backup));
+}
+
+/** LiveKit asks for scalabilityMode only on VP9/AV1. Where the GPU encoder
+ *  does temporal layers for H.264/HEVC, add L1T3 to the encodings of the
+ *  video transceivers it creates, so a viewer short on bandwidth can drop
+ *  frames instead of quality. Without it, or if the browser refuses it, the
+ *  transceiver is made as before. */
+function patchTemporalLayers(pc: typeof RTCPeerConnection): void {
+    const original = pc.prototype.addTransceiver;
+    pc.prototype.addTransceiver = function (
+        this: RTCPeerConnection,
+        ...args: Parameters<RTCPeerConnection["addTransceiver"]>
+    ) {
+        const [source, init] = args;
+        const call = activeVoice;
+        const isVideo =
+            typeof source === "string"
+                ? source === "video"
+                : source.kind === "video";
+        if (call && isVideo && init?.sendEncodings?.length) {
+            let layered = false;
+            try {
+                layered = sendsTemporalLayers(call);
+            } catch {
+                /* plan unavailable: send as before */
+            }
+            if (layered) {
+                try {
+                    return original.call(this, source, {
+                        ...init,
+                        sendEncodings: init.sendEncodings.map((e) => ({
+                            ...e,
+                            scalabilityMode: "L1T3",
+                        })),
+                    } as RTCRtpTransceiverInit);
+                } catch (err) {
+                    console.warn("Temporal layers refused:", err);
+                }
+            }
+        }
+        return original.apply(this, args);
+    };
+}
+
+/** The server's answer names H.264 profile 42e01f, which GPU encoders aren't
+ *  offered, so the share is encoded in software (see utils/h264Profile).
+ *  Only where this browser lists 42001f as a send format of its own. */
+function patchBaselineAnswer(pc: typeof RTCPeerConnection): void {
+    const original = pc.prototype.setRemoteDescription;
+    pc.prototype.setRemoteDescription = function (
+        this: RTCPeerConnection,
+        ...args: Parameters<RTCPeerConnection["setRemoteDescription"]>
+    ) {
+        const [description] = args;
+        if (
+            description?.type === "answer" &&
+            description.sdp &&
+            settingsState.h264ProfileFix
+        ) {
+            const sends =
+                webrtcWindow().RTCRtpSender.getCapabilities?.("video");
+            const hasBaseline = sends?.codecs.some((c) =>
+                c.sdpFmtpLine?.includes("profile-level-id=42001f"),
+            );
+            if (hasBaseline) {
+                args[0] = {
+                    type: "answer",
+                    sdp: baselineH264Answer(description.sdp),
+                };
+            }
+        }
+        return original.apply(this, args);
+    } as RTCPeerConnection["setRemoteDescription"];
+}
+
+function patchDecodePreferences(pc: typeof RTCPeerConnection): void {
+    const original = pc.prototype.setRemoteDescription;
+    pc.prototype.setRemoteDescription = async function (
+        this: RTCPeerConnection,
+        ...args: Parameters<RTCPeerConnection["setRemoteDescription"]>
+    ) {
+        const result = await original.apply(this, args);
+        const blocked = blockedCodecs();
+        if (blocked.length > 0 && args[0]?.type === "offer") {
+            try {
+                const codecs =
+                    webrtcWindow().RTCRtpReceiver.getCapabilities(
+                        "video",
+                    )?.codecs;
+                const kept = codecs?.filter(
+                    (c) => !isBlockedMime(c.mimeType, blocked),
+                );
+                if (kept && codecs && kept.length < codecs.length) {
+                    for (const tr of this.getTransceivers()) {
+                        if (tr.receiver.track.kind !== "video") continue;
+                        if (tr.direction === "inactive") continue;
+                        try {
+                            tr.setCodecPreferences(kept);
+                        } catch {
+                            /* leave this one as negotiated */
+                        }
+                    }
+                }
+            } catch {
+                /* keep the original answer */
+            }
+        }
+        return result;
+    } as RTCPeerConnection["setRemoteDescription"];
+}
+
+// A received video stream that has delivered data for a few samples and
+// decoded nothing means this device can't decode its codec.
+const decodeWatch = new Map<string, { samples: number }>();
+
+async function checkDecodeHealth(call: ActiveVoiceCall): Promise<void> {
+    // In an encrypted call a stream whose frames can't be decrypted (no key
+    // yet, an older client) never reaches the decoder either, which looks
+    // the same as a decoder that doesn't work. Don't blame the codec there;
+    // the announced decode list and the Settings picker still apply.
+    if (call.e2ee !== null) return;
+    // Debug override: let a codec that doesn't decode fail visibly.
+    if (settingsState.ignoreCodecSupport) return;
+    const pcm = (
+        call.lkRoom.engine as
+            | {
+                  pcManager?: {
+                      subscriber?: {
+                          getStats(): Promise<RTCStatsReport> | undefined;
+                      };
+                  };
+              }
+            | undefined
+    )?.pcManager;
+    const stats = await reportValues(pcm?.subscriber?.getStats());
+    if (!stats || activeVoice !== call) return;
+    const byId = new Map(stats.map((s) => [s.id, s]));
+    const seen = new Set<string>();
+    for (const s of stats) {
+        if (s.type !== "inbound-rtp" || (s.kind ?? s.mediaType) !== "video")
+            continue;
+        seen.add(s.id);
+        const w = decodeWatch.get(s.id) ?? { samples: 0 };
+        w.samples++;
+        decodeWatch.set(s.id, w);
+        const mime = String(byId.get(String(s.codecId ?? ""))?.mimeType ?? "");
+        const codec = codecFromMime(mime);
+        if (
+            !codec ||
+            isMandatoryCodec(codec) ||
+            isBlockedMime(mime, blockedCodecs()) ||
+            !isDecodeStall({
+                bytes: Number(s.bytesReceived) || 0,
+                framesDecoded: Number(s.framesDecoded) || 0,
+                samples: w.samples,
+            })
+        )
+            continue;
+        setBlockedDecodeCodecs([...settingsState.blockedDecodeCodecs, codec]);
+        notifyVoiceNotice(
+            t("client.codecCouldNotBeDecoded", {
+                codec: VIDEO_CODEC_LABELS[codec],
+            }),
+        );
+        refreshDecodeSupport();
+    }
+    for (const id of [...decodeWatch.keys()])
+        if (!seen.has(id)) decodeWatch.delete(id);
+}
+
+/** Tell everyone on `lkRoom` what we decode. Set on every connection, since
+ *  whoever publishes on a remote one needs it too. */
+function announceCodecs(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
+    if (activeVoice !== call) return;
+    void lkRoom.localParticipant
+        .setAttributes({
+            [DECODE_ATTRIBUTE]: encodeDecodeAttribute(localDecode(call)),
+        })
+        .catch((err: unknown) =>
+            console.warn("Couldn't announce video codecs:", err),
+        );
+}
+
+/** What each participant we publish to decodes; null for those who didn't
+ *  say. */
+function peerDecode(call: ActiveVoiceCall): (VideoCodec[] | null)[] {
+    // Debug override: treat every peer as not having said, so the picked
+    // codec is sent even to someone who reports they can't decode it.
+    if (settingsState.ignoreCodecSupport)
+        return [...call.lkRoom.remoteParticipants.values()].map(() => null);
+    return [...call.lkRoom.remoteParticipants.values()].map((p) =>
+        parseDecodeAttribute(p.attributes[DECODE_ATTRIBUTE]),
+    );
+}
+
+export interface CallCodecState {
+    /** What we can send. */
+    sendable: VideoCodec[];
+    /** What we can send that everyone who said what they decode can watch. */
+    available: VideoCodec[];
+    /** The sendable codecs this device encodes on the GPU. */
+    hardware: VideoCodec[];
+    /** What our camera and screen share use. */
+    current: VideoCodec;
+    /** What the user picked; differs from `current` in an encrypted call
+     *  while someone can't watch the pick. */
+    picked: VideoCodec;
+    /** Whether the call is end-to-end encrypted. */
+    encrypted: boolean;
+}
+
+const codecSubscribers = new Set<(state: CallCodecState | null) => void>();
+
+/** Fires with the call's codec choices whenever they change; null when the
+ *  call ends. */
+export function onCallCodecsChanged(
+    cb: (state: CallCodecState | null) => void,
+): () => void {
+    codecSubscribers.add(cb);
+    return () => codecSubscribers.delete(cb);
+}
+
+function notifyCallCodecs(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const plan = codecPlan(call);
+    const state: CallCodecState = {
+        sendable: sendableCodecs(call),
+        available: plan.available,
+        hardware: call.codecs.hardware,
+        current: plan.current,
+        // Automatic never differs from what it sends.
+        picked:
+            settingsState.callVideoCodec === "auto"
+                ? plan.current
+                : settingsState.callVideoCodec,
+        encrypted: call.e2ee !== null,
+    };
+    for (const cb of codecSubscribers) cb(state);
+    // Encrypted, the codec follows who's in the call (planCodecs): move what
+    // we're sending when that changes. A no-op when it already matches.
+    if (call.e2ee) queueVideoRepublish();
+}
+
+// Set while a video track is unpublished to come straight back with another
+// codec, so LocalTrackUnpublished doesn't take it for the share ending.
+let republishingSource: string | null = null;
+let codecSwitchChain: Promise<void> = Promise.resolve();
+
+/** Pick the codec for the camera and screen share, and move whatever is
+ *  being sent now over to it. A published track can't change codec, so each
+ *  is unpublished and published again: viewers see it drop for a moment. */
+export function switchCallVideoCodec(codec: VideoCodec): Promise<void> {
+    setCallVideoCodec(codec);
+    const call = activeVoice;
+    if (call) notifyCallCodecs(call);
+    return queueVideoRepublish();
+}
+
+/** Republish the camera and screen share wherever their codec isn't the
+ *  one codecPlan wants. */
+function queueVideoRepublish(): Promise<void> {
+    codecSwitchChain = codecSwitchChain.then(async () => {
+        const c = activeVoice;
+        if (!c) return;
+        for (const source of [
+            c.lk.Track.Source.Camera,
+            c.lk.Track.Source.ScreenShare,
+        ])
+            await republishVideo(c, source);
+    });
+    return codecSwitchChain;
+}
+
+/** publishTrack, tried once more after a short wait: publishing right after
+ *  an unpublish occasionally fails while the server is still dropping the
+ *  old track. */
+async function publishWithRetry(
+    lp: LivekitRoom["localParticipant"],
+    track: Parameters<LivekitRoom["localParticipant"]["publishTrack"]>[0],
+    options: Parameters<LivekitRoom["localParticipant"]["publishTrack"]>[1],
+): Promise<void> {
+    try {
+        await lp.publishTrack(track, options);
+    } catch (err) {
+        const media =
+            "mediaStreamTrack" in track ? track.mediaStreamTrack : track;
+        if (media.readyState === "ended") throw err;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await lp.publishTrack(track, options);
+    }
+}
+
+async function republishVideo(
+    call: ActiveVoiceCall,
+    source: LivekitClient.Track.Source,
+): Promise<void> {
+    const lp = call.lkRoom.localParticipant;
+    const pub = lp.getTrackPublication(source);
+    const track = pub?.videoTrack;
+    if (!pub || !track) return;
+    const codecOptions = videoCodecPublishOptions(call);
+    if (pub.options?.videoCodec === codecOptions.videoCodec) return;
+    // What it was published with, to go back to if the new codec won't start.
+    const previous = { ...pub.options, source };
+    const options = { ...pub.options, ...codecOptions, source };
+    if (source === call.lk.Track.Source.ScreenShare) {
+        options.screenShareEncoding = screenShareEncodingFor(
+            screenShareBitrateNow(),
+            Number(settingsState.screenShareFps),
+        );
+    }
+    republishingSource = source;
+    try {
+        await lp.unpublishTrack(track, false);
+        if (activeVoice !== call) {
+            track.stop();
+            return;
+        }
+        await publishWithRetry(lp, track, options);
+    } catch (err) {
+        console.error("Video codec switch failed:", err);
+        if (activeVoice === call) {
+            // The old publication is already gone, so a failure here would
+            // end the share. Put it back the way it was while the capture
+            // still runs.
+            try {
+                await publishWithRetry(lp, track, previous);
+            } catch (restoreErr) {
+                console.error("Couldn't restore the video track:", restoreErr);
+            }
+            notifyVoiceNotice(t("client.couldNotSwitchVideoCodec"));
+        }
+    } finally {
+        republishingSource = null;
+    }
+}
+
+// Upload bandwidth for the screen-share bitrate slider
+// (stores/uploadEstimate.svelte): WebRTC's estimate on the publishing
+// connection, sampled only while we send video, since with just a microphone
+// it barely probes and reads far too low.
+const UPLOAD_SAMPLE_MS = 3000;
+
+function startUploadSampling(call: ActiveVoiceCall): void {
+    clearLiveUploadEstimate();
+    const timer = setInterval(() => {
+        if (activeVoice !== call) {
+            clearInterval(timer);
+            clearLiveUploadEstimate();
+            return;
+        }
+        void sampleUpload(call);
+        void checkDecodeHealth(call);
+    }, UPLOAD_SAMPLE_MS);
+}
+
+async function sampleUpload(call: ActiveVoiceCall): Promise<void> {
+    const lp = call.lkRoom.localParticipant;
+    const sendingVideo = [
+        call.lk.Track.Source.ScreenShare,
+        call.lk.Track.Source.Camera,
+    ].some((source) => {
+        const pub = lp.getTrackPublication(source);
+        return !!pub?.track && !pub.isMuted;
+    });
+    if (!sendingVideo) return;
+    const pcm = (
+        call.lkRoom.engine as
+            | {
+                  pcManager?: {
+                      publisher?: {
+                          getStats(): Promise<RTCStatsReport> | undefined;
+                      };
+                  };
+              }
+            | undefined
+    )?.pcManager;
+    const stats = await reportValues(pcm?.publisher?.getStats());
+    if (!stats) return;
+    // WebRTC's estimate only climbs as far as the sender gives it reason to,
+    // so it can sit well under the line's speed. What actually went out
+    // proves at least that much fits, so the larger of the two counts.
+    const summary = summarizeTransport(
+        stats,
+        Date.now(),
+        lastPublisherSample.get(call) ?? null,
+    );
+    lastPublisherSample.set(call, summary);
+    const bps = Math.max(
+        availableOutgoingBitrate(stats) ?? 0,
+        (summary.sendKbps ?? 0) * 1000,
+    );
+    if (bps > 0 && activeVoice === call) noteUploadEstimate(bps);
+}
+
+/** The previous publisher-transport sample of a call, for send rates. */
+const lastPublisherSample = new WeakMap<ActiveVoiceCall, TransportSummary>();
+
+async function reportValues(
+    report: Promise<RTCStatsReport | undefined> | undefined,
+): Promise<RawStat[] | null> {
+    try {
+        const r = await report;
+        return r ? ([...r.values()] as RawStat[]) : null;
+    } catch {
+        return null;
+    }
+}
+
+function serverHost(key: string): string {
+    const serviceUrl = key.split("|")[0];
+    try {
+        return new URL(serviceUrl).host;
+    } catch {
+        return serviceUrl;
+    }
+}
+
+/**
+ * A raw stats snapshot of every connection of the active call, for the debug
+ * panel (utils/callStats folds it). Null when not in a call. Reads LiveKit's
+ * transports through `engine.pcManager`, which is public on the engine but
+ * not part of the documented surface, so every step is optional: a library
+ * update that moves it degrades to empty transports, never a throw.
+ */
+export async function getCallDebugStats(): Promise<
+    CallDebugConnection[] | null
+> {
+    const call = activeVoice;
+    if (!call) return null;
+    const entries: [string, LivekitRoom, boolean][] = [
+        [call.publishKey, call.lkRoom, true],
+        ...[...call.remotes].map(
+            ([key, r]) => [key, r, false] as [string, LivekitRoom, boolean],
+        ),
+    ];
+    return Promise.all(
+        entries.map(async ([key, lkRoom, publishing]) => {
+            const engine = lkRoom.engine as
+                | {
+                      pcManager?: {
+                          publisher?: {
+                              getStats(): Promise<RTCStatsReport> | undefined;
+                          };
+                          subscriber?: {
+                              getStats(): Promise<RTCStatsReport> | undefined;
+                          };
+                      };
+                      client?: { rtt?: number };
+                  }
+                | undefined;
+            const pcm = engine?.pcManager;
+            const [publisher, subscriber, participants] = await Promise.all([
+                reportValues(pcm?.publisher?.getStats()),
+                reportValues(pcm?.subscriber?.getStats()),
+                Promise.all(
+                    [...lkRoom.remoteParticipants.values()].map(async (p) => {
+                        const pub = p.getTrackPublication(
+                            call.lk.Track.Source.Microphone,
+                        );
+                        return {
+                            identity: p.identity,
+                            userId: userIdFromIdentity(p.identity),
+                            quality: String(p.connectionQuality),
+                            audio: pub?.track
+                                ? await reportValues(
+                                      pub.track.getRTCStatsReport(),
+                                  )
+                                : null,
+                        };
+                    }),
+                ),
+            ]);
+            const rtt = engine?.client?.rtt;
+            return {
+                key,
+                server: serverHost(key),
+                publishing,
+                state: String(lkRoom.state),
+                signalRttMs: typeof rtt === "number" && rtt > 0 ? rtt : null,
+                region: lkRoom.serverInfo?.region || null,
+                serverVersion: lkRoom.serverInfo?.version || null,
+                publisher,
+                subscriber,
+                localQuality: String(lkRoom.localParticipant.connectionQuality),
+                participants,
+                owners: trackOwners(lkRoom),
+                videos: connectionVideos(call, lkRoom, publishing),
+                sfuUrl: sfuUrlOf.get(lkRoom) ?? null,
+            };
+        }),
+    );
+}

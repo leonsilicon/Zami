@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <link rel="icon" href="%sveltekit.assets%/favicon.png" />
+        <link
+            rel="icon"
+            href="%sveltekit.assets%/favicon.svg"
+            type="image/svg+xml"
+        />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+        <meta name="theme-color" content="#313338" />
+        <script>
+            try {
+                var base =
+                    localStorage.getItem("settings:themeBase") ||
+                    localStorage.getItem("settings:theme");
+                if (base === "light" || base === "amoled") {
+                    document.documentElement.dataset.theme = base;
+                    var color = base === "light" ? "#f2f3f5" : "#000000";
+                    document
+                        .querySelector('meta[name="theme-color"]')
+                        ?.setAttribute("content", color);
+                }
+                // Language and direction from the last run, before first
+                // paint, so an RTL UI never flashes laid out left-to-right.
+                // $lib/i18n keeps both keys current (and corrects them before
+                // the app renders if the browser language has changed).
+                var loc = localStorage.getItem("settings:locale");
+                var dir = localStorage.getItem("settings:localeDir");
+                if (loc) document.documentElement.lang = loc;
+                if (dir === "rtl" || dir === "ltr")
+                    document.documentElement.dir = dir;
+                var vars = localStorage.getItem("settings:themeVars");
+                if (vars) {
+                    document.documentElement.style.cssText += vars;
+                }
+            } catch {}
+        </script>
+        <link rel="apple-touch-icon" href="%sveltekit.assets%/favicon.png" />
+        %sveltekit.head%
+    </head>
+    <body data-sveltekit-preload-data="hover" class="h-screen overflow-hidden">
+        <div style="display: contents">%sveltekit.body%</div>
+    </body>
+</html>

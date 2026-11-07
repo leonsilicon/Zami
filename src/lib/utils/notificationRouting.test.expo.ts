@@ -1,0 +1,134 @@
+import { describe, it, expect } from "vitest";
+import { decideNotificationRoute } from "./notificationRouting";
+
+const SESSION = { userId: "@me:example.org" };
+
+describe("decideNotificationRoute", () => {
+    it("navigates when the poster is the account that is signed in", () => {
+        expect(
+            decideNotificationRoute(
+                { roomId: "!r:example.org", userId: "@me:example.org" },
+                SESSION,
+            ),
+        ).toEqual({ action: "navigate", roomId: "!r:example.org" });
+    });
+
+    it("drops a notification posted by a different account", () => {
+        expect(
+            decideNotificationRoute(
+                { roomId: "!r:example.org", userId: "@other:example.org" },
+                SESSION,
+            ),
+        ).toEqual({ action: "drop", reason: "other-account" });
+    });
+
+    it("drops everything when nobody is signed in", () => {
+        for (const session of [{ userId: null }, { userId: undefined }, {}])
+            expect(
+                decideNotificationRoute(
+                    { roomId: "!r:example.org", userId: "@me:example.org" },
+                    session,
+                ),
+            ).toEqual({ action: "drop", reason: "signed-out" });
+    });
+
+    it("drops when there is no room to open", () => {
+        for (const roomId of [undefined, null, ""])
+            expect(
+                decideNotificationRoute(
+                    { roomId, userId: "@me:example.org" },
+                    SESSION,
+                ),
+            ).toEqual({ action: "drop", reason: "no-room" });
+    });
+
+    it("checks the room BEFORE the session, so a signed-out click on a room-less notification still reports no-room", () => {
+        expect(
+            decideNotificationRoute({ roomId: "" }, { userId: null }),
+        ).toEqual({ action: "drop", reason: "no-room" });
+    });
+
+    it("drops an unknown-poster notification even when signed in (fail closed — SEC-M4: a forged intent / pre-stamp tray notification cannot force navigation)", () => {
+        for (const userId of [undefined, null, ""])
+            expect(
+                decideNotificationRoute(
+                    { roomId: "!r:example.org", userId },
+                    SESSION,
+                ),
+            ).toEqual({ action: "drop", reason: "no-poster" });
+    });
+
+    it("still drops an unknown-poster notification when nobody is signed in", () => {
+        expect(
+            decideNotificationRoute({ roomId: "!r:example.org" }, {}),
+        ).toEqual({ action: "drop", reason: "signed-out" });
+    });
+
+    it("compares user ids exactly — no case folding, no trimming", () => {
+        expect(
+            decideNotificationRoute(
+                { roomId: "!r:example.org", userId: "@ME:example.org" },
+                SESSION,
+            ),
+        ).toEqual({ action: "drop", reason: "other-account" });
+        expect(
+            decideNotificationRoute(
+                { roomId: "!r:example.org", userId: " @me:example.org" },
+                SESSION,
+            ),
+        ).toEqual({ action: "drop", reason: "other-account" });
+    });
+
+    it("returns the room id it approved, so callers cannot navigate to a different one", () => {
+        const decision = decideNotificationRoute(
+            { roomId: "!approved:example.org", userId: "@me:example.org" },
+            SESSION,
+        );
+        expect(decision).toEqual({
+            action: "navigate",
+            roomId: "!approved:example.org",
+        });
+    });
+
+    it("carries the event id into the navigate decision so the caller can jump to the exact message", () => {
+        expect(
+            decideNotificationRoute(
+                {
+                    roomId: "!r:example.org",
+                    userId: "@me:example.org",
+                    eventId: "$evt:example.org",
+                },
+                SESSION,
+            ),
+        ).toEqual({
+            action: "navigate",
+            roomId: "!r:example.org",
+            eventId: "$evt:example.org",
+        });
+    });
+
+    it("navigates with no event id when the notification did not record one (room-level jump)", () => {
+        const decision = decideNotificationRoute(
+            { roomId: "!r:example.org", userId: "@me:example.org" },
+            SESSION,
+        );
+        expect(decision).toEqual({
+            action: "navigate",
+            roomId: "!r:example.org",
+        });
+        expect((decision as { eventId?: string }).eventId).toBeUndefined();
+    });
+
+    it("an event id never bypasses the poster/session gates — a foreign-account tap still drops", () => {
+        expect(
+            decideNotificationRoute(
+                {
+                    roomId: "!r:example.org",
+                    userId: "@other:example.org",
+                    eventId: "$evt:example.org",
+                },
+                SESSION,
+            ),
+        ).toEqual({ action: "drop", reason: "other-account" });
+    });
+});

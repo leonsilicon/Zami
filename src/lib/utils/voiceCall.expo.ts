@@ -1,0 +1,379 @@
+/**
+ * Pure decision logic for MatrixRTC voice calls: participant display,
+ * Discord-style mute/deafen semantics, and LiveKit transport selection.
+ * SDK/media wiring lives in $lib/matrix/client; this module stays testable.
+ */
+
+import { t } from "$lib/i18n";
+export interface VoiceParticipant {
+    userId: string;
+    deviceId: string;
+    joinedTs: number;
+}
+
+/** One entry per user (earliest joined device wins), ordered by join time. */
+export function dedupeParticipants(
+    memberships: VoiceParticipant[],
+): VoiceParticipant[] {
+    const byUser = new Map<string, VoiceParticipant>();
+    for (const m of memberships) {
+        const existing = byUser.get(m.userId);
+        if (!existing || m.joinedTs < existing.joinedTs)
+            byUser.set(m.userId, m);
+    }
+    return [...byUser.values()].sort((a, b) => a.joinedTs - b.joinedTs);
+}
+
+export type CallBannerAction = "leave" | "join";
+
+/** How long, after THIS device leaves a room's call, we keep suppressing the
+ *  solo-leave "Join" flicker. Outside this window a self-only roster (we are in
+ *  the call from another device, or a ghost membership lingers) shows Join. */
+export const RECENTLY_LEFT_WINDOW_MS = 10_000;
+
+export interface LastLeftCall {
+    roomId: string;
+    ts: number;
+}
+
+/** True while we are still inside the recently-left window for THIS room. */
+export function isRecentlyLeftHere(
+    last: LastLeftCall | null,
+    roomId: string,
+    now: number,
+): boolean {
+    return (
+        last !== null &&
+        last.roomId === roomId &&
+        now - last.ts < RECENTLY_LEFT_WINDOW_MS
+    );
+}
+
+export interface CallBannerInput {
+    /** Whether we are connected to THIS room's call. */
+    inThisCall: boolean;
+    /** Deduped roster user ids currently in the call (may include self). */
+    participantUserIds: string[];
+    /** Our own user id, or null before it is known. */
+    selfUserId: string | null;
+    /** True while THIS device is inside the recently-left window for this room. */
+    recentlyLeftHere: boolean;
+}
+
+export interface CallBannerDecision {
+    visible: boolean;
+    /** The right-hand action, or null while the banner is hidden. */
+    action: CallBannerAction | null;
+}
+
+/**
+ * Whether the active-call banner shows, and whether its action is Leave or
+ * Join. Visible when we are in the call OR some OTHER user is in it.
+ *
+ * Excluding self from the "someone is here" test is what kills the solo-leave
+ * flicker. On leave, `inThisCall` flips false the instant our connection drops,
+ * but the roster still holds our own stale membership for a beat. A plain "any
+ * participant" test would keep the banner up showing "Join" — a call whose only
+ * member is us, which we are not in — until the roster empties. Requiring a
+ * NON-self participant means that transient state never renders, while a call
+ * someone else started (they are the sole member, we are not in it yet) still
+ * shows a Join banner. The recently-left window extends the flicker suppression
+ * for ~10s after leaving, but lets Join reappear for a self-only roster once
+ * that window passes — restoring the escape hatch for multi-device / ghost states.
+ */
+export function callBannerDecision(input: CallBannerInput): CallBannerDecision {
+    if (input.inThisCall) return { visible: true, action: "leave" };
+    const hasOthers = input.participantUserIds.some(
+        (id) => id !== input.selfUserId,
+    );
+    if (hasOthers) return { visible: true, action: "join" };
+    // Not in the call and no other user present. A self-only roster is either
+    // the solo-leave transient (our own stale membership, we just left here) —
+    // keep suppressing the flicker — or a call we're in from ANOTHER device / a
+    // ghost membership, where the Join escape hatch must come back once the
+    // leave window passes. An EMPTY roster is neither: no call to join here.
+    const selfOnly = input.participantUserIds.length > 0;
+    if (selfOnly && !input.recentlyLeftHere)
+        return { visible: true, action: "join" };
+    return { visible: false, action: null };
+}
+
+export type CallControlMode = "controls" | "join" | "none";
+
+/**
+ * The CallView footer control (and the header start-call button): show the
+ * in-call controls, offer "Join Call", or show nothing. A 3-way sibling of
+ * callBannerDecision — it delegates the leave/join split to that function so
+ * the two never drift, and adds only the "none" state.
+ *
+ * "none" is the solo-leave transient: teardown nulls our connection
+ * (inThisCall → false) a beat before the RTC leave prunes our membership, so
+ * the roster still lists our own stale self. callBannerDecision hides the
+ * banner in that window; here we render nothing rather than flash "Join Call"
+ * under our own still-visible tile. The recently-left window extends this
+ * suppression for ~10s, then offers Join again (multi-device restore). An EMPTY
+ * roster is NOT that transient — it is a fresh/empty call, so we still offer
+ * "join" to start one.
+ */
+export function callControlMode(input: CallBannerInput): CallControlMode {
+    const { action } = callBannerDecision(input);
+    if (action === "leave") return "controls";
+    if (action === "join") return "join";
+    // action === null (banner hidden): distinguish an empty call (offer join)
+    // from the stale-self transient (render nothing).
+    return input.participantUserIds.length > 0 ? "none" : "join";
+}
+
+export type VoiceConnState = "connecting" | "connected" | "reconnecting" | null;
+
+export function connStateLabel(state: VoiceConnState): string {
+    switch (state) {
+        case "connecting":
+            return t("voiceCall.connecting");
+        case "connected":
+            return t("voiceCall.voiceConnected");
+        case "reconnecting":
+            return t("voiceCall.reconnecting");
+        default:
+            return "";
+    }
+}
+
+/**
+ * Discord semantics: deafen implies mute; un-deafening restores the mic only
+ * if the deafen action muted it; unmuting while deafened lifts the deafen too.
+ */
+export interface MuteState {
+    micMuted: boolean;
+    deafened: boolean;
+    mutedByDeafen: boolean;
+}
+
+export function toggleMute(s: MuteState): MuteState {
+    if (s.micMuted)
+        return { micMuted: false, deafened: false, mutedByDeafen: false };
+    return { ...s, micMuted: true };
+}
+
+export function toggleDeafen(s: MuteState): MuteState {
+    if (s.deafened) {
+        return {
+            micMuted: s.mutedByDeafen ? false : s.micMuted,
+            deafened: false,
+            mutedByDeafen: false,
+        };
+    }
+    return { micMuted: true, deafened: true, mutedByDeafen: !s.micMuted };
+}
+
+/** lk-jwt-service JWT endpoint for a LiveKit focus service URL. */
+export function sfuJwtUrl(serviceUrl: string): string {
+    return `${serviceUrl.replace(/\/+$/, "")}/sfu/get`;
+}
+
+export interface LivekitTarget {
+    serviceUrl: string;
+    alias: string;
+}
+
+function asLivekit(
+    t: unknown,
+): { livekit_service_url: string; livekit_alias?: string } | null {
+    if (typeof t !== "object" || t === null) return null;
+    const o = t as Record<string, unknown>;
+    if (o.type !== "livekit" || typeof o.livekit_service_url !== "string")
+        return null;
+    return {
+        livekit_service_url: o.livekit_service_url,
+        // Remote membership data — a non-string alias must not leak through.
+        livekit_alias:
+            typeof o.livekit_alias === "string" ? o.livekit_alias : undefined,
+    };
+}
+
+/**
+ * Choose the LiveKit SFU to connect to: an existing member's transport wins
+ * (everyone must meet in the same SFU room), otherwise the homeserver's
+ * configured focus with this room's id as the alias.
+ */
+export function pickLivekitTransport(
+    memberTransports: unknown[],
+    configuredFoci: unknown[],
+    roomId: string,
+): LivekitTarget | null {
+    for (const t of memberTransports) {
+        const lk = asLivekit(t);
+        if (lk)
+            return {
+                serviceUrl: lk.livekit_service_url,
+                alias: lk.livekit_alias ?? roomId,
+            };
+    }
+    for (const t of configuredFoci) {
+        const lk = asLivekit(t);
+        if (lk) return { serviceUrl: lk.livekit_service_url, alias: roomId };
+    }
+    return null;
+}
+
+/** Identifies one LiveKit room on one SFU: one connection per key. */
+export function livekitTargetKey(t: LivekitTarget): string {
+    return `${t.serviceUrl.replace(/\/+$/, "")}|${t.alias}`;
+}
+
+/**
+ * Multi-SFU: where WE publish. Our own homeserver's first LiveKit focus, the
+ * one SFU where lk-jwt-service grants us full access (publishing). Null when
+ * the homeserver advertises none; the caller then falls back to the shared
+ * `pickLivekitTransport` SFU.
+ */
+export function pickOwnLivekitTransport(
+    configuredFoci: unknown[],
+    roomId: string,
+): LivekitTarget | null {
+    for (const t of configuredFoci) {
+        const lk = asLivekit(t);
+        if (lk) return { serviceUrl: lk.livekit_service_url, alias: roomId };
+    }
+    return null;
+}
+
+/** What decides where one call member publishes. */
+export interface MemberTransportInfo {
+    /** `transports.published` (m.rtc.member) or `foci_preferred` (m.call.member). */
+    transports: unknown[];
+    /** A legacy m.call.member's `focus_active.focus_selection`; null for an
+     *  m.rtc.member, which has no such field. */
+    focusSelection: string | null;
+}
+
+/**
+ * Where `members[index]` publishes, with `members[0]` the oldest membership.
+ * matrix-js-sdk 44 dropped `oldest_membership` and reads every legacy member
+ * as `foci_preferred[0]`, but a member that still selects `oldest_membership`
+ * (older Zam versions, older Element Call) sits on the oldest member's SFU,
+ * not its own preference. This keeps the SDK 43 `getTransport(oldest)` rule.
+ */
+export function memberPublishTransport(
+    members: MemberTransportInfo[],
+    index: number,
+): unknown {
+    const member = members[index];
+    if (!member) return undefined;
+    switch (member.focusSelection) {
+        case null:
+        case "multi_sfu":
+            return member.transports[0];
+        case "oldest_membership":
+            if (index === 0) return member.transports[0];
+            return memberPublishTransport(members, 0);
+        default:
+            // A focus selection we don't understand.
+            return undefined;
+    }
+}
+
+/**
+ * Multi-SFU: the SFUs we must also connect to (listen-only) to hear everyone.
+ * `memberTransports` is each OTHER member's publishing transport
+ * (memberPublishTransport); entries that are not LiveKit, or that land on the
+ * SFU we publish to, are dropped. Deduplicated by key.
+ */
+export function remoteLivekitTargets(
+    memberTransports: unknown[],
+    publishKey: string,
+    roomId: string,
+): Map<string, LivekitTarget> {
+    const out = new Map<string, LivekitTarget>();
+    for (const t of memberTransports) {
+        const lk = asLivekit(t);
+        if (!lk) continue;
+        const target = {
+            serviceUrl: lk.livekit_service_url,
+            alias: lk.livekit_alias ?? roomId,
+        };
+        const key = livekitTargetKey(target);
+        if (key !== publishKey && !out.has(key)) out.set(key, target);
+    }
+    return out;
+}
+
+export interface ScreenResolutionOption {
+    key: string;
+    label: string;
+    width: number;
+    height: number;
+}
+
+/** Screen-share capture resolutions offered in settings. A target/cap — the
+ *  browser yields at most the source's native resolution. */
+export const SCREEN_RESOLUTIONS: ScreenResolutionOption[] = [
+    { key: "720", label: "720p", width: 1280, height: 720 },
+    { key: "1080", label: "1080p", width: 1920, height: 1080 },
+    { key: "1440", label: "1440p", width: 2560, height: 1440 },
+    { key: "2160", label: "4K", width: 3840, height: 2160 },
+];
+
+export const SCREEN_FPS_OPTIONS = [15, 30, 60] as const;
+
+/** Map a stored resolution key + frame rate to a LiveKit VideoResolution.
+ *  Unknown key → 1080p (LiveKit's own default); non-preset fps → 30. */
+export function screenShareCaptureResolution(
+    resKey: string,
+    fps: number,
+): { width: number; height: number; frameRate: number } {
+    const res =
+        SCREEN_RESOLUTIONS.find((o) => o.key === resKey) ??
+        SCREEN_RESOLUTIONS[1];
+    const frameRate = (SCREEN_FPS_OPTIONS as readonly number[]).includes(fps)
+        ? fps
+        : 30;
+    return { width: res.width, height: res.height, frameRate };
+}
+
+/**
+ * Message to show when MY room membership changed during a call, or null when
+ * the change doesn't end the call. `sender` is who sent the m.room.member event
+ * that removed me; `me` is my own user id. An absent/unknown sender is treated
+ * as a self-leave: leaving from another device can prune my member object
+ * before this fires, so a missing sender would otherwise misread as "You were
+ * removed". A genuine kick carries its actor in the fresh state event.
+ */
+export function callEndedMembershipMessage(
+    membership: string,
+    sender: string | undefined,
+    me: string,
+): string | null {
+    if (membership === "ban") return t("voiceCall.youWereBannedFromThisRoom");
+    if (membership === "leave") {
+        const removedBySelf = !sender || sender === me;
+        return removedBySelf
+            ? t("voiceCall.youLeftThisRoomCallEnded")
+            : t("voiceCall.youWereRemovedFromThisRoom");
+    }
+    return null; // join / invite / knock: no teardown
+}
+
+/** "@user:server:DEVICE" → "@user:server". Device ids never contain ":". */
+export function identityToUserId(identity: string): string {
+    return identity.slice(0, identity.lastIndexOf(":"));
+}
+
+/** The distinct user ids present in a list of "user:device" identities. */
+export function usersFromIdentities(identities: string[]): Set<string> {
+    return new Set(identities.map(identityToUserId));
+}
+
+/**
+ * Identities with no open mic on any connection. A device publishes on one SFU
+ * and only listens on the others, so finding no mic for it on one connection
+ * says nothing: it counts as muted only if no connection has one open. That
+ * includes a participant who joined without a mic at all.
+ */
+export function mutedIdentities(
+    peers: { identity: string; micOn: boolean }[],
+): string[] {
+    const heard = new Set(peers.filter((p) => p.micOn).map((p) => p.identity));
+    const everyone = new Set(peers.map((p) => p.identity));
+    return [...everyone].filter((id) => !heard.has(id));
+}

@@ -1,0 +1,726 @@
+/* Zami: Uniwind (Tailwind v4 for React Native), with Zam's Tailwind config. */
+@import "tailwindcss";
+@import "uniwind";
+@config "../tailwind.config.expo.js";
+@source "./**/*.expo.tsx";
+@source "../expo/apps/zami";
+
+/* Bundled message fonts (device-local font picker, item 1). Self-hosted
+   woff2, no external CDN (prod CSP is font-src 'self'). Inter is a variable
+   font covering 400-700; Atkinson Hyperlegible is static (two weights). */
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url("/fonts/inter.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Atkinson Hyperlegible";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/atkinson-400.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Atkinson Hyperlegible";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/fonts/atkinson-700.woff2") format("woff2");
+}
+
+html,
+body {
+    overscroll-behavior-x: none;
+}
+
+/* Physical side names for the rare value that has no logical form, such as a
+   gradient direction: `linear-gradient(to var(--end-side), ...)`. */
+html,
+[dir="ltr"] {
+    --start-side: left;
+    --end-side: right;
+}
+[dir="rtl"] {
+    --start-side: right;
+    --end-side: left;
+}
+
+@keyframes message-highlight-fade {
+    0% {
+        background-color: rgb(var(--discord-mention-highlight-rgb) / 0.35);
+    }
+    70% {
+        background-color: rgb(var(--discord-mention-highlight-rgb) / 0.35);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.message-highlight {
+    animation: message-highlight-fade 2s ease-out forwards;
+}
+
+:root {
+    color-scheme: dark;
+    /* ── Brand (classic blurple) ─────────────────────────
+       Only the steps the accent tokens actually source are kept (the rest
+       of the old 25-step ramp had zero usages; see git history for it).
+       Every blurple in both themes derives from these: 500 is the brand
+       accent, 560/600 are the darker steps white text can sit on (4.81 /
+       6.33), so filled buttons and own bubbles stay classic blurple
+       rather than Discord's 2021 "new blurple". */
+    --brand-500: #7289da;
+    --brand-530: #687dc6;
+    --brand-560: #5c6fb1;
+    --brand-600: #4e5d94;
+
+    --brand-500-rgb: 114 137 218;
+    --brand-530-rgb: 104 125 198;
+    --brand-560-rgb: 92 111 177;
+    --brand-600-rgb: 78 93 148;
+
+    /* ── Backgrounds ─────────────────────────────────── */
+    --discord-bg: #36393f;
+    --discord-bg-secondary: #2f3136;
+    --discord-bg-tertiary: #202225;
+    --discord-bg-dark: #202226;
+    --discord-bg-hover: #32353b;
+    --discord-bg-selected: #282b30;
+    /* RGB channels for opacity modifier support */
+    --discord-bg-rgb: 54 57 63;
+    --discord-bg-secondary-rgb: 47 49 54;
+
+    /* ── Text ────────────────────────────────────────── */
+    --discord-text-primary: #dcddde;
+    /* muted/secondary were #4f545c / #72767d — 1.5:1 and 2.9:1 against the
+       app background, far below the 4.5:1 WCAG AA floor. Raised until every
+       pair in themeContrast.test.ts clears AA; the three-step brightness
+       ramp (muted < secondary < primary) is preserved. */
+    --discord-text-secondary: #babec4;
+    --discord-text-muted: #a4a7ae;
+
+    /* ── Semantic accents ────────────────────────────── */
+    --discord-accent: var(--brand-500);
+    --discord-accent-hover: var(--brand-530);
+    /* RGB channels for opacity modifier support (e.g. bg-discord-accent/30) */
+    --discord-accent-rgb: var(--brand-500-rgb);
+    --discord-accent-hover-rgb: var(--brand-530-rgb);
+    --discord-mention-highlight-rgb: 114 137 218;
+    --discord-danger-rgb: 237 66 69;
+    --discord-warning-rgb: 250 166 26;
+    --discord-divider: #41444e;
+
+    /* ── Status / role colours ───────────────────────── */
+    --discord-online: #3ba55c;
+    --discord-idle: #faa61a;
+    --discord-dnd: #ed4245;
+    --discord-offline: #747f8d;
+    --discord-danger: #ed4245;
+    --discord-danger-hover: #c03537;
+    --discord-warning: #faa61a;
+    --discord-positive: #23a559;
+    --discord-star: #faa61a;
+
+    /* ── Contrast-split semantic tokens (A11Y-10) ─────────────────────
+       `--discord-accent` / `--discord-danger` stay the BRAND values and
+       keep serving borders, rings, focus outlines and alpha tints. They
+       cannot also carry text: in the dark theme white-on-accent is 3.33
+       and accent-as-text is 3.48, and the two fixes pull in opposite
+       directions. So each hue gets two derived tokens:
+         *-fill  → a background that white text sits on   (>= 4.5 vs #fff)
+         *-text  → the hue used AS text on our surfaces   (>= 4.5 vs every bg)
+       Ratios are enforced by src/lib/utils/themeContrast.test.ts — change a
+       value there and the suite tells you which direction you broke.
+       accent-text is --discord-accent lightened in HSL (hue and saturation
+       held: 226.7deg 58.4% 65.1% -> 227.0deg 58.9% 72.4%), giving
+       4.61 / 5.18 / 6.35 on bg / bg-secondary / bg-tertiary. */
+    --discord-accent-fill: var(--brand-560);
+    --discord-accent-fill-hover: var(--brand-600);
+    --discord-accent-text: #8fa1e2;
+    --discord-accent-fill-rgb: var(--brand-560-rgb);
+    --discord-accent-fill-hover-rgb: var(--brand-600-rgb);
+    --discord-accent-text-rgb: 143 161 226;
+    --discord-danger-fill: #d83c3f;
+    --discord-danger-fill-hover: #c03537;
+    --discord-danger-text: #ff777c;
+    --discord-danger-fill-rgb: 216 60 63;
+    --discord-danger-fill-hover-rgb: 192 53 55;
+    --discord-danger-text-rgb: 255 119 124;
+    --discord-link: #8fa1e2;
+    --discord-link-rgb: 143 161 226;
+
+    /* ── Spoiler ─────────────────────────────────────── */
+    --discord-spoiler-bg: #1e1f22;
+    --discord-spoiler-revealed-bg: rgba(255, 255, 255, 0.1);
+
+    /* ── Own message bubble ──────────────────────────── */
+    --discord-own-bubble: var(--discord-accent-fill);
+
+    /* ── Syntax highlighting ─────────────────────────── */
+    --syntax-keyword: #ff7ab2;
+    --syntax-string: #a8cc8c;
+    --syntax-number: #d2a8ff;
+    --syntax-title: #82aaff;
+    --syntax-comment: #8b949e;
+    --syntax-variable: #f8c555;
+
+    /* ── Avatar palette (deterministic bg colours) ───── */
+    --avatar-color-0: var(--brand-500);
+    --avatar-color-1: #3ba55c;
+    --avatar-color-2: #ed4245;
+    --avatar-color-3: #faa61a;
+    --avatar-color-4: #eb459e;
+    --avatar-color-5: #00b0f0;
+    --avatar-color-6: #9475f5;
+    --avatar-color-7: #23a559;
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+
+    --discord-bg: #f2f3f5;
+    --discord-bg-secondary: #ffffff;
+    --discord-bg-tertiary: #e3e5e8;
+    --discord-bg-dark: #dfe1e5;
+    --discord-bg-hover: #e7e9ed;
+    --discord-bg-selected: #d8dbe0;
+    --discord-bg-rgb: 242 243 245;
+    --discord-bg-secondary-rgb: 255 255 255;
+
+    --discord-text-primary: #2e3338;
+    --discord-text-secondary: #4e5058;
+    /* was #6d6f78 — 4.0:1 on --discord-bg-tertiary, below AA. */
+    --discord-text-muted: #5f6169;
+
+    /* The brand 500 step is too light to read on light surfaces, so the
+       light theme's accent is the 560 step throughout. */
+    --discord-accent: var(--brand-560);
+    --discord-accent-hover: var(--brand-600);
+    --discord-accent-rgb: var(--brand-560-rgb);
+    --discord-accent-hover-rgb: var(--brand-600-rgb);
+    --discord-mention-highlight-rgb: var(--brand-560-rgb);
+    --discord-divider: #d4d7dc;
+
+    --discord-online: #248046;
+    --discord-idle: #b87900;
+    --discord-dnd: #d83c3e;
+    --discord-offline: #80848e;
+    --discord-danger: #d83c3e;
+    /* Tailwind resolves discord-danger/discord-warning through the -rgb form
+       (for <alpha-value> support). Light mode redeclared only the hex vars, so
+       the Tailwind tokens kept the dark-theme red/orange. */
+    --discord-danger-rgb: 216 60 62;
+    --discord-danger-hover: #b92d30;
+    --discord-warning: #a86600;
+    --discord-warning-rgb: 168 102 0;
+    --discord-positive: #1f7a43;
+    --discord-star: #a86600;
+
+    /* Contrast-split semantic tokens (A11Y-10) — see the dark block. The
+       light theme needs the opposite move for accent-as-text: --discord-accent
+       is 3.81 on --discord-bg-tertiary, so accent-text is the next step
+       darker (600), giving 5.70 / 6.33 / 5.02 on bg / bg-secondary /
+       bg-tertiary. */
+    --discord-accent-fill: var(--brand-560);
+    --discord-accent-fill-hover: var(--brand-600);
+    --discord-accent-text: var(--brand-600);
+    --discord-accent-fill-rgb: var(--brand-560-rgb);
+    --discord-accent-fill-hover-rgb: var(--brand-600-rgb);
+    --discord-accent-text-rgb: var(--brand-600-rgb);
+    --discord-danger-fill: #d83c3e;
+    --discord-danger-fill-hover: #b92d30;
+    --discord-danger-text: #bc3436;
+    --discord-danger-fill-rgb: 216 60 62;
+    --discord-danger-fill-hover-rgb: 185 45 48;
+    --discord-danger-text-rgb: 188 52 54;
+    --discord-link: var(--brand-600);
+    --discord-link-rgb: var(--brand-600-rgb);
+
+    --discord-spoiler-bg: #c9ccd1;
+    --discord-spoiler-revealed-bg: rgba(0, 0, 0, 0.08);
+
+    --discord-own-bubble: var(--discord-accent-fill);
+
+    --syntax-keyword: #a626a4;
+    --syntax-string: #40781f;
+    --syntax-number: #7c3ab5;
+    --syntax-title: #285db5;
+    --syntax-comment: #687078;
+    --syntax-variable: #986000;
+}
+
+:root[data-theme="amoled"] {
+    color-scheme: dark;
+
+    /* True-black base surfaces */
+    --discord-bg: #000000;
+    --discord-bg-secondary: #000000;
+    --discord-bg-tertiary: #000000;
+    --discord-bg-dark: #000000;
+    /* Near-black interactive elevations (kept visibly distinct from #000) */
+    --discord-bg-hover: #17191d;
+    --discord-bg-selected: #202329;
+    /* RGB twins MUST match the hex above (Tailwind <alpha-value> support) */
+    --discord-bg-rgb: 0 0 0;
+    --discord-bg-secondary-rgb: 0 0 0;
+
+    /* Divider visible against pure black */
+    --discord-divider: #23262c;
+
+    /* Spoiler cover on true black */
+    --discord-spoiler-bg: #000000;
+
+    --discord-own-bubble: var(--discord-accent-fill);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--discord-bg);
+    color: var(--discord-text-primary);
+    /* The user-picked font (bundled or custom upload) applies APP-WIDE: the
+       whole UI inherits from here (Tailwind preflight makes form controls
+       inherit too). --zam-font-family is set/removed by applyMessageFont;
+       unset ("system") falls back to the stock stack. Monospace surfaces
+       (code blocks, font-mono) set their own family directly and win. */
+    font-family: var(
+        --zam-font-family,
+        "gg sans",
+        "Helvetica Neue",
+        Helvetica,
+        Arial,
+        sans-serif
+    );
+}
+
+#app {
+    height: 100%;
+}
+
+/* Custom scrollbar — Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--discord-bg-tertiary) transparent;
+}
+
+/* Custom scrollbar — Webkit */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--discord-bg-tertiary);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--discord-text-muted);
+    background-clip: content-box;
+}
+
+/* Selection color.
+   White-on-fill, exactly like .btn-primary below, so it uses the fill token:
+   the brand --discord-accent is only 3.33:1 against white in the dark theme,
+   which would make selected text harder to read than unselected text. */
+::selection {
+    background-color: var(--discord-accent-fill);
+    color: white;
+}
+
+/* Utility classes */
+.flex-1 {
+    flex: 1;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+/* Animation utilities */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.animate-slide-in {
+    animation: slideIn 0.2s ease-out;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* Adjustable message text size (device-local, item 1).
+   Unlayered so it beats Tailwind's `text-sm` utility (in @layer utilities)
+   with no markup change. The root font-size is scaled by applyAppTextScale
+   (utils/messageDisplay, sets document.documentElement.style.fontSize as a %
+   of the browser base). .message-body uses a plain rem so it follows the
+   scaled root instead of scaling twice. The picked FONT is app-wide since
+   v1.6.1 (inherited from body — see the html,body rule), so no family here.
+   Code keeps its own monospace family + fixed size (see MessageItem.svelte
+   `.message-body pre code`) because a directly-set font-family beats an
+   inherited one. */
+.message-body {
+    font-size: 0.875rem;
+}
+
+/* Links inside message content.
+   The app's most numerous accent-as-TEXT surface, so it takes the text token,
+   not the brand one: --discord-accent as a link colour is 3.48 / 3.91 / 3.69
+   against --discord-bg / -bg-secondary / -bg-hover in the dark theme, and
+   4.06 / 4.21 on -bg-tertiary / -bg-hover in the light one. --discord-accent-text
+   clears 4.5 on all of them (dark 4.61 / 5.18 / 6.35 / 4.90, light 5.28 / 5.86 /
+   4.65 / 4.82 on bg / -secondary / -tertiary / -hover), pinned by
+   src/lib/utils/themeContrast.test.ts.
+   :hover deliberately carries NO colour change: --discord-accent-hover is worse
+   still (2.94 / 3.31 / 3.12 dark), and there is no AA-clearing "hover" step
+   light enough to read as a distinct shade. The underline is the hover
+   affordance on its own. */
+.message-body a {
+    color: var(--discord-link, var(--discord-accent-text));
+}
+.message-body .room-mention {
+    color: var(--discord-link, var(--discord-accent-text));
+}
+.message-body a:hover {
+    text-decoration: underline;
+}
+
+/* Blockquotes */
+.message-body blockquote {
+    border-inline-start: 4px solid var(--discord-divider);
+    padding-inline-start: 0.75rem;
+    margin: 0.25rem 0;
+    color: var(--discord-text-secondary);
+}
+
+/* Headings */
+.message-body h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0.25rem 0;
+}
+.message-body h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0.25rem 0;
+}
+.message-body h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0.25rem 0;
+}
+
+/* Subtext (-#) */
+.message-body small {
+    font-size: 0.75rem;
+    color: var(--discord-text-secondary);
+}
+
+/* Lists */
+.message-body ul {
+    list-style-type: disc;
+    padding-inline-start: 1.5rem;
+    margin: 0.25rem 0;
+}
+.message-body ol {
+    list-style-type: decimal;
+    padding-inline-start: 1.5rem;
+    margin: 0.25rem 0;
+}
+
+/* Right-aligned own-message bubble (opt-in). Unlayered so it wins over
+   Tailwind utility layers, same rationale as .message-body. Applied only
+   to an OWN message's text body when the toggle is on. */
+.own-bubble {
+    display: inline-block;
+    position: relative;
+    max-width: min(80%, 42rem);
+    width: fit-content;
+    margin-inline-start: auto; /* end-align within the content column */
+    padding: 0.5rem 0.75rem;
+    border-radius: 1rem;
+    background: var(--discord-own-bubble, var(--discord-accent-fill));
+    color: #fff;
+}
+.own-bubble .message-body {
+    color: #fff;
+}
+/* Links in own bubbles: white + underline (computed link colour is ~1.8:1 on the bubble). */
+.own-bubble .message-body .room-mention,
+.own-bubble .message-body a {
+    color: #fff;
+    text-decoration: underline;
+}
+/* Keep code/pre readable inside a coloured bubble (they carry their own bg). */
+.own-bubble :where(code, pre) {
+    color: var(--discord-text-primary);
+}
+/* Small tail pointing off the bottom-end corner (bottom-right in LTR). */
+.own-bubble::after {
+    content: "";
+    position: absolute;
+    right: -5px;
+    bottom: 6px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 6px 0 0 8px;
+    border-color: transparent transparent transparent
+        var(--discord-own-bubble, var(--discord-accent-fill));
+}
+/* RTL: the bubble sits on the left, so the tail mirrors to the bottom-left. */
+.own-bubble:dir(rtl)::after {
+    right: auto;
+    left: -5px;
+    border-width: 6px 8px 0 0;
+    border-color: transparent
+        var(--discord-own-bubble, var(--discord-accent-fill)) transparent
+        transparent;
+}
+
+/* Twemoji images inside room/space names (sidebar rows, invite cards, room
+   header). Deliberately smaller than the message-body .twemoji rule: a name
+   sits on a single dense row. Defined here, not in a component <style>, so it
+   does not depend on which components happen to be mounted. */
+.name-twemoji {
+    height: 1.1em;
+    width: 1.1em;
+    vertical-align: -0.2em;
+    display: inline-block;
+    object-fit: contain;
+}
+
+/* Focus styles */
+:focus-visible {
+    outline: 2px solid var(--discord-accent);
+    outline-offset: 2px;
+}
+
+/* Button hover effects. The canonical white-on-accent surface, so it takes
+   the FILL token, not the brand one (A11Y-10). The :focus-visible outline
+   above deliberately stays on --discord-accent: it is a non-text UI component
+   boundary, where WCAG's bar is 3:1. */
+.btn-primary {
+    background-color: var(--discord-accent-fill);
+    color: white;
+    transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: var(--discord-accent-fill-hover);
+}
+
+/* Input styles */
+.input-dark {
+    background-color: var(--discord-bg-secondary);
+    border: 1px solid transparent;
+    color: var(--discord-text-primary);
+    transition: border-color 0.2s;
+}
+
+.input-dark:focus {
+    border-color: var(--discord-accent);
+    outline: none;
+}
+
+.input-dark::placeholder {
+    color: var(--discord-text-muted);
+}
+
+/* On the native (Capacitor) app, suppress the WebView's long-press callout on
+   links so our long-press-to-copy handler can take over. */
+.cap-native a {
+    -webkit-touch-callout: none;
+}
+
+/* iOS Safari (and therefore installed PWAs) auto-zooms the viewport when a
+   focused field's text is under 16px, and never zooms back out. Enforce the
+   floor on touch devices, where our text-xs/text-sm fields would otherwise
+   trip it. `!important` is required: these are element selectors and would
+   lose to Tailwind's class-based text-* utilities on specificity alone. */
+@media (pointer: coarse) {
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"]) {
+        font-size: 16px !important;
+    }
+}
+
+@layer utilities {
+    /* `pb-safe` was in use by two bottom sheets (CallParticipantMenu,
+       RoomList) but was never defined — tailwind.config.js has no plugins
+       and no padding extension, so those sheets silently got no inset.
+       Define it once here. */
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+}
+
+/* ── Reduced motion (A11Y-09) ────────────────────────────────────────
+   Users who ask for reduced motion get no non-essential animation. The
+   blanket override below is the standard recipe, but note the two
+   deliberate carve-outs underneath it.
+
+   `!important` is required: it has to beat Tailwind's `animate-*`
+   utilities and component-scoped `<style>` blocks alike. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    /* `message-highlight` is `animation-fill-mode: forwards` over a
+       keyframe that ENDS transparent, so collapsing its duration lands
+       on the final frame and the highlight simply never appears. That is
+       the correct outcome — do NOT switch this to `animation: none`,
+       which would freeze it on frame 0 (a permanent 35% accent wash over
+       the jumped-to message). */
+
+    /* Spinners are the one animation that carries meaning: a still
+       spinner is indistinguishable from a hung app. Keep them turning,
+       just slower and without the snap. */
+    .animate-spin {
+        animation-duration: 1.5s !important;
+        animation-iteration-count: infinite !important;
+    }
+}
+
+/* ── Reduced motion — in-app toggle (R1) ─────────────────────────────
+   The Customization → "Reduce motion" toggle forces the SAME suppression
+   the OS media query above applies, even when the OS itself requests no
+   reduction. `applyReduceMotion` (utils/theme.ts) sets/clears the
+   data-reduce-motion attribute on :root; the rule is kept separate from
+   the @media block so it fires on the toggle regardless of OS state, and
+   so both carve-outs (spinner keeps turning; message-highlight lands on
+   its final transparent frame via the collapsed duration, never frozen at
+   frame 0) stay identical. `!important` for the same reasons as above. */
+:root[data-reduce-motion="true"] *,
+:root[data-reduce-motion="true"] *::before,
+:root[data-reduce-motion="true"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+}
+
+:root[data-reduce-motion="true"] .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+}
+
+/* Rich contenteditable editors: the composer (MessageInput) and the inline
+   message editor (MessageEditBox). Decorations come from composerDecorate.ts. */
+.composer-editor {
+    min-height: 1.625rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+/* The placeholder is one line that ellipsizes: a long room name must never
+   wrap and grow the composer. */
+.composer-editor:empty::before {
+    content: attr(placeholder);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--discord-text-muted);
+    pointer-events: none;
+}
+
+.composer-editor .composer-mention {
+    padding: 0 0.2rem;
+    border-radius: 3px;
+    color: rgb(var(--discord-accent-rgb));
+    background-color: rgb(var(--discord-accent-rgb) / 0.18);
+    font-weight: 500;
+}
+
+.composer-editor .composer-custom-emoji {
+    color: var(--discord-text-primary);
+}
+
+.composer-editor .composer-link {
+    color: rgb(var(--discord-accent-rgb));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.composer-editor .composer-custom-emoji img {
+    display: inline-block;
+    width: auto;
+    height: 1.25em;
+    margin-inline-end: 0.15rem;
+    vertical-align: -0.25em;
+    object-fit: contain;
+}
+
+.composer-editor .composer-spoiler {
+    padding: 0 3px;
+    border-radius: 3px;
+    color: transparent;
+    background-color: var(--discord-spoiler-bg);
+    text-shadow: none;
+}
+
+.composer-editor code {
+    padding: 0.05rem 0.25rem;
+    border-radius: 3px;
+    background-color: var(--discord-bg-tertiary);
+    font-family:
+        ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    font-size: 0.875em;
+}
+
+.composer-editor a {
+    color: rgb(var(--discord-accent-rgb));
+    text-decoration: none;
+}
+
+/* AMOLED: every surface is #000, so the server rail needs a hairline to
+   separate it from the channel list beside it. */
+:root[data-theme="amoled"] .space-rail {
+    border-inline-end: 1px solid rgba(255, 255, 255, 0.15);
+}

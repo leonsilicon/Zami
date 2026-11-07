@@ -1,0 +1,991 @@
+import { describe, it, expect } from "vitest";
+import {
+    mediaItemFromEvent,
+    mediaFilterDefinition,
+    mergeMediaPages,
+    splitMediaItems,
+    formatMediaSize,
+    formatMediaDuration,
+    mediaThumbnailMxc,
+    mediaViewerKind,
+    mediaViewerItem,
+    encryptedFileRef,
+    videoSource,
+    videoPoster,
+    mediaTileSource,
+    type MediaSourceEvent,
+    type RoomMediaItem,
+} from "./roomMedia";
+
+const ev = (
+    over: Partial<MediaSourceEvent> & {
+        content?: Record<string, unknown>;
+    } = {},
+): MediaSourceEvent => ({
+    eventId: "$1",
+    sender: "@alice:example.org",
+    ts: 1000,
+    type: "m.room.message",
+    content: {
+        msgtype: "m.image",
+        body: "cat.png",
+        url: "mxc://example.org/abc",
+    },
+    ...over,
+});
+
+const item = (
+    over: Partial<RoomMediaItem> & { eventId: string },
+): RoomMediaItem => ({
+    sender: "@alice:example.org",
+    ts: 1000,
+    kind: "image",
+    name: "cat.png",
+    url: "mxc://example.org/abc",
+    thumbnailUrl: null,
+    mimetype: null,
+    size: null,
+    durationMs: null,
+    ...over,
+});
+
+describe("mediaItemFromEvent", () => {
+    it("maps an m.image message to an image item", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.image",
+                    body: "cat.png",
+                    url: "mxc://example.org/abc",
+                    info: { mimetype: "image/png", size: 2048 },
+                },
+            }),
+        );
+        expect(result).toEqual({
+            eventId: "$1",
+            sender: "@alice:example.org",
+            ts: 1000,
+            kind: "image",
+            name: "cat.png",
+            url: "mxc://example.org/abc",
+            thumbnailUrl: null,
+            mimetype: "image/png",
+            size: 2048,
+            durationMs: null,
+            encrypted: false,
+            encryptedFile: undefined,
+        });
+    });
+
+    it("prefers the MSC2530 filename over the body", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.file",
+                    filename: "report.pdf",
+                    body: "here is the report",
+                    url: "mxc://example.org/f",
+                },
+            }),
+        );
+        expect(result?.name).toBe("report.pdf");
+        expect(result?.kind).toBe("file");
+    });
+
+    it("carries a video's server thumbnail through", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.video",
+                    body: "clip.mp4",
+                    url: "mxc://example.org/v",
+                    info: { thumbnail_url: "mxc://example.org/t" },
+                },
+            }),
+        );
+        expect(result?.kind).toBe("video");
+        expect(result?.thumbnailUrl).toBe("mxc://example.org/t");
+    });
+
+    it("carries a video's duration through", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.video",
+                    body: "clip.mp4",
+                    url: "mxc://example.org/v",
+                    info: { duration: 65000 },
+                },
+            }),
+        );
+        expect(result?.durationMs).toBe(65000);
+    });
+
+    it("nulls a duration the sender did not send as a number", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.video",
+                    body: "clip.mp4",
+                    url: "mxc://example.org/v",
+                    info: { duration: "65000" },
+                },
+            }),
+        );
+        expect(result?.durationMs).toBeNull();
+    });
+
+    it("falls back to a kind label when there is no name at all", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: { msgtype: "m.audio", url: "mxc://example.org/a" },
+            }),
+        );
+        expect(result?.name).toBe("Audio");
+    });
+
+    it("rejects a text message", () => {
+        expect(
+            mediaItemFromEvent(
+                ev({ content: { msgtype: "m.text", body: "hello" } }),
+            ),
+        ).toBeNull();
+    });
+
+    it("rejects a non-message event type", () => {
+        expect(mediaItemFromEvent(ev({ type: "m.room.member" }))).toBeNull();
+    });
+
+    it("rejects a redacted media event (empty content)", () => {
+        expect(mediaItemFromEvent(ev({ content: {} }))).toBeNull();
+    });
+
+    it("enumerates encrypted-attachment media with encrypted flag", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.image",
+                    body: "secret.png",
+                    file: {
+                        url: "mxc://example.org/e",
+                        key: { k: "test" },
+                        iv: "test-iv",
+                        hashes: { sha256: "test-hash" },
+                    },
+                },
+            }),
+        );
+        expect(result).not.toBeNull();
+        expect(result?.encrypted).toBe(true);
+        expect(result?.url).toBe("mxc://example.org/e");
+        expect(result?.encryptedFile).toMatchObject({
+            url: "mxc://example.org/e",
+            key: { k: "test" },
+            iv: "test-iv",
+            hashes: { sha256: "test-hash" },
+        });
+    });
+
+    it("rejects a non-mxc url", () => {
+        expect(
+            mediaItemFromEvent(
+                ev({
+                    content: {
+                        msgtype: "m.image",
+                        body: "x",
+                        url: "https://evil.example/x.png",
+                    },
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it("rejects an event with no id", () => {
+        expect(mediaItemFromEvent(ev({ eventId: null }))).toBeNull();
+    });
+
+    // A msgtype is remote-controlled: any room member can send one. Looking it
+    // up on a plain object literal would resolve Object.prototype members and
+    // hand back a truthy non-MediaKind.
+    it.each(["toString", "constructor", "valueOf"])(
+        "rejects the prototype-chain msgtype %s",
+        (msgtype) => {
+            expect(
+                mediaItemFromEvent(
+                    ev({
+                        content: {
+                            msgtype,
+                            body: "evil",
+                            url: "mxc://example.org/p",
+                        },
+                    }),
+                ),
+            ).toBeNull();
+        },
+    );
+
+    it("defaults a missing sender and timestamp", () => {
+        const result = mediaItemFromEvent(ev({ sender: null, ts: null }));
+        expect(result?.sender).toBe("");
+        expect(result?.ts).toBe(0);
+    });
+
+    it("keeps a zero size rather than nulling it", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.image",
+                    body: "empty.png",
+                    url: "mxc://example.org/z",
+                    info: { size: 0 },
+                },
+            }),
+        );
+        expect(result?.size).toBe(0);
+        expect(formatMediaSize(result?.size ?? null)).toBe("");
+    });
+
+    it("survives info that is not an object", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.image",
+                    body: "odd.png",
+                    url: "mxc://example.org/o",
+                    info: "not an object",
+                },
+            }),
+        );
+        expect(result?.mimetype).toBeNull();
+        expect(result?.thumbnailUrl).toBeNull();
+        expect(result?.size).toBeNull();
+    });
+});
+
+describe("mediaFilterDefinition", () => {
+    it("asks the server for url-bearing messages in a clear room", () => {
+        expect(mediaFilterDefinition(false, 40)).toEqual({
+            room: {
+                timeline: {
+                    types: ["m.room.message"],
+                    contains_url: true,
+                    limit: 40,
+                },
+            },
+        });
+    });
+
+    it("drops contains_url in an encrypted room, where bodies are opaque", () => {
+        expect(mediaFilterDefinition(true, 40)).toEqual({
+            room: {
+                timeline: {
+                    types: ["m.room.message", "m.room.encrypted"],
+                    limit: 40,
+                },
+            },
+        });
+    });
+});
+
+describe("mergeMediaPages", () => {
+    it("appends a later page after the earlier one", () => {
+        const merged = mergeMediaPages(
+            [item({ eventId: "$1" })],
+            [item({ eventId: "$2" })],
+        );
+        expect(merged.map((i) => i.eventId)).toEqual(["$1", "$2"]);
+    });
+
+    it("drops an event id already present", () => {
+        const merged = mergeMediaPages(
+            [item({ eventId: "$1" })],
+            [item({ eventId: "$1" }), item({ eventId: "$2" })],
+        );
+        expect(merged.map((i) => i.eventId)).toEqual(["$1", "$2"]);
+    });
+
+    it("de-duplicates within the incoming page too", () => {
+        const merged = mergeMediaPages(
+            [],
+            [item({ eventId: "$1" }), item({ eventId: "$1" })],
+        );
+        expect(merged).toHaveLength(1);
+    });
+
+    it("returns the existing array's contents when nothing is new", () => {
+        expect(mergeMediaPages([item({ eventId: "$1" })], [])).toEqual([
+            item({ eventId: "$1" }),
+        ]);
+    });
+});
+
+describe("splitMediaItems", () => {
+    it("puts images and videos in the visual tab", () => {
+        const { visual, files } = splitMediaItems([
+            item({ eventId: "$1", kind: "image" }),
+            item({ eventId: "$2", kind: "video" }),
+        ]);
+        expect(visual.map((i) => i.eventId)).toEqual(["$1", "$2"]);
+        expect(files).toHaveLength(0);
+    });
+
+    it("puts files and audio in the files tab", () => {
+        const { visual, files } = splitMediaItems([
+            item({ eventId: "$1", kind: "file" }),
+            item({ eventId: "$2", kind: "audio" }),
+        ]);
+        expect(files.map((i) => i.eventId)).toEqual(["$1", "$2"]);
+        expect(visual).toHaveLength(0);
+    });
+
+    it("preserves order within each tab", () => {
+        const { visual, files } = splitMediaItems([
+            item({ eventId: "$1", kind: "image" }),
+            item({ eventId: "$2", kind: "file" }),
+            item({ eventId: "$3", kind: "image" }),
+        ]);
+        expect(visual.map((i) => i.eventId)).toEqual(["$1", "$3"]);
+        expect(files.map((i) => i.eventId)).toEqual(["$2"]);
+    });
+});
+
+describe("formatMediaSize", () => {
+    it("formats sub-megabyte sizes in KB, matching the message renderer", () => {
+        expect(formatMediaSize(2048)).toBe("2.0 KB");
+    });
+
+    it("formats larger sizes in MB", () => {
+        expect(formatMediaSize(5 * 1048576)).toBe("5.0 MB");
+    });
+
+    it("switches to MB exactly at one megabyte", () => {
+        expect(formatMediaSize(1048575)).toBe("1024.0 KB");
+        expect(formatMediaSize(1048576)).toBe("1.0 MB");
+    });
+
+    it("is empty for an unknown size", () => {
+        expect(formatMediaSize(null)).toBe("");
+        expect(formatMediaSize(undefined)).toBe("");
+        expect(formatMediaSize(0)).toBe("");
+    });
+});
+
+describe("formatMediaDuration", () => {
+    it("formats milliseconds as mm:ss", () => {
+        expect(formatMediaDuration(65000)).toBe("01:05");
+    });
+
+    it("rolls over to h:mm:ss past an hour", () => {
+        expect(formatMediaDuration(3723000)).toBe("1:02:03");
+    });
+
+    it("is empty when the sender gave no duration", () => {
+        expect(formatMediaDuration(null)).toBe("");
+        expect(formatMediaDuration(undefined)).toBe("");
+        expect(formatMediaDuration(0)).toBe("");
+    });
+
+    it("is empty for a nonsense duration rather than rendering NaN", () => {
+        expect(formatMediaDuration(-5000)).toBe("");
+        expect(formatMediaDuration(Number.NaN)).toBe("");
+        expect(formatMediaDuration(Number.POSITIVE_INFINITY)).toBe("");
+    });
+});
+
+describe("mediaThumbnailMxc", () => {
+    it("thumbnails an image from its own url", () => {
+        expect(mediaThumbnailMxc(item({ eventId: "$1", kind: "image" }))).toBe(
+            "mxc://example.org/abc",
+        );
+    });
+
+    it("prefers a video's uploaded thumbnail", () => {
+        expect(
+            mediaThumbnailMxc(
+                item({
+                    eventId: "$1",
+                    kind: "video",
+                    thumbnailUrl: "mxc://example.org/t",
+                }),
+            ),
+        ).toBe("mxc://example.org/t");
+    });
+
+    // Never the video's own mxc: continuwuity answers /media/thumbnail for a
+    // video with the original file, so an <img> pointed at it would download
+    // the whole video only to fail decoding. No source means placeholder tile.
+    it("has no thumbnail for a video the sender did not thumbnail", () => {
+        expect(
+            mediaThumbnailMxc(
+                item({ eventId: "$1", kind: "video", thumbnailUrl: null }),
+            ),
+        ).toBeNull();
+    });
+
+    it("has nothing to show for a file or audio row", () => {
+        expect(
+            mediaThumbnailMxc(item({ eventId: "$1", kind: "file" })),
+        ).toBeNull();
+        expect(
+            mediaThumbnailMxc(item({ eventId: "$2", kind: "audio" })),
+        ).toBeNull();
+    });
+});
+
+describe("mediaViewerKind", () => {
+    it("views images and videos", () => {
+        expect(mediaViewerKind(item({ eventId: "$1", kind: "image" }))).toBe(
+            "image",
+        );
+        expect(mediaViewerKind(item({ eventId: "$2", kind: "video" }))).toBe(
+            "video",
+        );
+    });
+
+    it("does not view files or audio", () => {
+        expect(
+            mediaViewerKind(item({ eventId: "$1", kind: "file" })),
+        ).toBeNull();
+        expect(
+            mediaViewerKind(item({ eventId: "$2", kind: "audio" })),
+        ).toBeNull();
+    });
+});
+
+describe("mediaViewerItem", () => {
+    const resolve = {
+        full: (mxc: string) => `https://hs/full/${mxc.slice("mxc://".length)}`,
+        poster: (mxc: string) =>
+            `https://hs/thumb/${mxc.slice("mxc://".length)}`,
+    };
+
+    it("maps an image to an image viewer item with no poster", () => {
+        expect(
+            mediaViewerItem(item({ eventId: "$1", kind: "image" }), resolve),
+        ).toEqual({
+            kind: "image",
+            src: "https://hs/full/example.org/abc",
+            poster: null,
+            filename: "cat.png",
+        });
+    });
+
+    it("maps a video to a video viewer item posted on its thumbnail", () => {
+        expect(
+            mediaViewerItem(
+                item({
+                    eventId: "$1",
+                    kind: "video",
+                    name: "clip.mp4",
+                    url: "mxc://example.org/v",
+                    thumbnailUrl: "mxc://example.org/t",
+                }),
+                resolve,
+            ),
+        ).toEqual({
+            kind: "video",
+            src: "https://hs/full/example.org/v",
+            poster: "https://hs/thumb/example.org/t",
+            filename: "clip.mp4",
+        });
+    });
+
+    it("still maps a video whose poster cannot be resolved", () => {
+        const result = mediaViewerItem(
+            item({
+                eventId: "$1",
+                kind: "video",
+                url: "mxc://example.org/v",
+                thumbnailUrl: "mxc://example.org/t",
+            }),
+            { full: resolve.full, poster: () => null },
+        );
+        expect(result?.src).toBe("https://hs/full/example.org/v");
+        expect(result?.poster).toBeNull();
+    });
+
+    // The common case: no uploaded thumbnail, so the player gets no poster
+    // rather than a poster URL that would stream the whole video back.
+    it("gives a thumbnail-less video no poster at all", () => {
+        const result = mediaViewerItem(
+            item({
+                eventId: "$1",
+                kind: "video",
+                url: "mxc://example.org/v",
+                thumbnailUrl: null,
+            }),
+            resolve,
+        );
+        expect(result?.kind).toBe("video");
+        expect(result?.poster).toBeNull();
+    });
+
+    // mxcToHttp returns null before login and for a malformed mxc; there is
+    // nothing to show, so the caller must not mount a viewer at all.
+    it("is null when the full url cannot be resolved", () => {
+        expect(
+            mediaViewerItem(item({ eventId: "$1", kind: "image" }), {
+                full: () => null,
+                poster: resolve.poster,
+            }),
+        ).toBeNull();
+    });
+
+    it("is null for a file or audio item", () => {
+        expect(
+            mediaViewerItem(item({ eventId: "$1", kind: "file" }), resolve),
+        ).toBeNull();
+    });
+});
+
+describe("encryptedFileRef", () => {
+    it("accepts a valid encrypted file object", () => {
+        const file = {
+            url: "mxc://example.org/enc",
+            key: { k: "test-key-material" },
+            iv: "test-iv-16-bytes",
+            hashes: { sha256: "test-hash" },
+            v: "v2",
+        };
+        expect(encryptedFileRef(file)).toEqual({
+            url: "mxc://example.org/enc",
+            key: { k: "test-key-material" },
+            iv: "test-iv-16-bytes",
+            hashes: { sha256: "test-hash" },
+            v: "v2",
+        });
+    });
+
+    it("accepts a minimal valid file (no v field)", () => {
+        const file = {
+            url: "mxc://example.org/enc",
+            key: { k: "k" },
+            iv: "iv",
+            hashes: { sha256: "hash" },
+        };
+        expect(encryptedFileRef(file)).toEqual(file);
+    });
+
+    it("rejects a non-mxc url", () => {
+        expect(
+            encryptedFileRef({
+                url: "https://evil.example/file",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            }),
+        ).toBeNull();
+    });
+
+    it("rejects missing key.k", () => {
+        expect(
+            encryptedFileRef({
+                url: "mxc://example.org/enc",
+                key: {},
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            }),
+        ).toBeNull();
+    });
+
+    it("rejects missing iv", () => {
+        expect(
+            encryptedFileRef({
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                hashes: { sha256: "hash" },
+            }),
+        ).toBeNull();
+    });
+
+    it("rejects missing hashes.sha256", () => {
+        expect(
+            encryptedFileRef({
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: {},
+            }),
+        ).toBeNull();
+    });
+
+    it("rejects null", () => {
+        expect(encryptedFileRef(null)).toBeNull();
+    });
+
+    it("rejects undefined", () => {
+        expect(encryptedFileRef(undefined)).toBeNull();
+    });
+
+    it("rejects a non-object", () => {
+        expect(encryptedFileRef("not an object")).toBeNull();
+        expect(encryptedFileRef(42)).toBeNull();
+    });
+});
+
+describe("videoSource", () => {
+    it("returns encrypted source for content.file", () => {
+        const source = videoSource({
+            msgtype: "m.video",
+            file: {
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            info: { mimetype: "video/mp4" },
+        });
+        expect(source).toEqual({
+            kind: "encrypted",
+            file: {
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            mimetype: "video/mp4",
+        });
+    });
+
+    it("returns plain source for content.url", () => {
+        const source = videoSource({
+            msgtype: "m.video",
+            url: "mxc://example.org/vid",
+        });
+        expect(source).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/vid",
+        });
+    });
+
+    it("falls back to plain url when file is invalid", () => {
+        const source = videoSource({
+            msgtype: "m.video",
+            file: { url: "https://evil.example/x" },
+            url: "mxc://example.org/vid",
+        });
+        expect(source).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/vid",
+        });
+    });
+
+    it("returns null when both file and url are invalid", () => {
+        expect(
+            videoSource({
+                msgtype: "m.video",
+                file: { url: "https://evil.example/x" },
+            }),
+        ).toBeNull();
+    });
+
+    it("returns null for absent content", () => {
+        expect(videoSource(null)).toBeNull();
+        expect(videoSource(undefined)).toBeNull();
+    });
+
+    it("carries mimetype from info", () => {
+        const source = videoSource({
+            file: {
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            info: { mimetype: "video/webm" },
+        });
+        expect(source?.kind).toBe("encrypted");
+        if (source?.kind === "encrypted") {
+            expect(source.mimetype).toBe("video/webm");
+        }
+    });
+
+    it("sets mimetype to null when info is missing", () => {
+        const source = videoSource({
+            file: {
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+        });
+        expect(source?.kind).toBe("encrypted");
+        if (source?.kind === "encrypted") {
+            expect(source.mimetype).toBeNull();
+        }
+    });
+});
+
+describe("videoPoster", () => {
+    it("returns encrypted source for info.thumbnail_file", () => {
+        const poster = videoPoster({
+            msgtype: "m.video",
+            url: "mxc://example.org/vid",
+            info: {
+                thumbnail_file: {
+                    url: "mxc://example.org/thumb-enc",
+                    key: { k: "k" },
+                    iv: "iv",
+                    hashes: { sha256: "hash" },
+                },
+                thumbnail_info: { mimetype: "image/jpeg" },
+            },
+        });
+        expect(poster).toEqual({
+            kind: "encrypted",
+            file: {
+                url: "mxc://example.org/thumb-enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            mimetype: "image/jpeg",
+        });
+    });
+
+    it("returns plain source for info.thumbnail_url", () => {
+        const poster = videoPoster({
+            msgtype: "m.video",
+            url: "mxc://example.org/vid",
+            info: { thumbnail_url: "mxc://example.org/thumb" },
+        });
+        expect(poster).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/thumb",
+        });
+    });
+
+    it("falls back to thumbnail_url when thumbnail_file is invalid", () => {
+        const poster = videoPoster({
+            msgtype: "m.video",
+            url: "mxc://example.org/vid",
+            info: {
+                thumbnail_file: { url: "https://evil.example/x" },
+                thumbnail_url: "mxc://example.org/thumb",
+            },
+        });
+        expect(poster).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/thumb",
+        });
+    });
+
+    it("never falls back to the video url", () => {
+        expect(
+            videoPoster({
+                msgtype: "m.video",
+                url: "mxc://example.org/vid",
+                info: {},
+            }),
+        ).toBeNull();
+    });
+
+    it("returns null for absent content", () => {
+        expect(videoPoster(null)).toBeNull();
+        expect(videoPoster(undefined)).toBeNull();
+    });
+});
+
+describe("mediaTileSource", () => {
+    it("returns encrypted source for an encrypted image", () => {
+        const source = mediaTileSource(
+            item({
+                eventId: "$1",
+                kind: "image",
+                url: "mxc://example.org/enc",
+                mimetype: "image/png",
+                encrypted: true,
+                encryptedFile: {
+                    url: "mxc://example.org/enc",
+                    key: { k: "k" },
+                    iv: "iv",
+                    hashes: { sha256: "hash" },
+                },
+            }),
+        );
+        expect(source).toEqual({
+            kind: "encrypted",
+            file: {
+                url: "mxc://example.org/enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            mimetype: "image/png",
+        });
+    });
+
+    it("returns plain source for a plain image", () => {
+        const source = mediaTileSource(
+            item({
+                eventId: "$1",
+                kind: "image",
+                url: "mxc://example.org/img",
+            }),
+        );
+        expect(source).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/img",
+        });
+    });
+
+    it("returns encrypted thumbnail source for an encrypted video with thumbnail_file", () => {
+        const source = mediaTileSource(
+            item({
+                eventId: "$1",
+                kind: "video",
+                url: "mxc://example.org/vid-enc",
+                encrypted: true,
+                encryptedThumbnailFile: {
+                    url: "mxc://example.org/thumb-enc",
+                    key: { k: "k" },
+                    iv: "iv",
+                    hashes: { sha256: "hash" },
+                },
+                thumbnailMimetype: "image/jpeg",
+            }),
+        );
+        expect(source).toEqual({
+            kind: "encrypted",
+            file: {
+                url: "mxc://example.org/thumb-enc",
+                key: { k: "k" },
+                iv: "iv",
+                hashes: { sha256: "hash" },
+            },
+            mimetype: "image/jpeg",
+        });
+    });
+
+    it("returns plain thumbnail source for a plain video", () => {
+        const source = mediaTileSource(
+            item({
+                eventId: "$1",
+                kind: "video",
+                thumbnailUrl: "mxc://example.org/thumb",
+            }),
+        );
+        expect(source).toEqual({
+            kind: "plain",
+            mxc: "mxc://example.org/thumb",
+        });
+    });
+
+    it("returns null for an encrypted video without thumbnail_file", () => {
+        expect(
+            mediaTileSource(
+                item({
+                    eventId: "$1",
+                    kind: "video",
+                    url: "mxc://example.org/vid-enc",
+                    encrypted: true,
+                    thumbnailUrl: null,
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it("returns null for a plain video without thumbnailUrl", () => {
+        expect(
+            mediaTileSource(
+                item({
+                    eventId: "$1",
+                    kind: "video",
+                    thumbnailUrl: null,
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it("returns null for file kind", () => {
+        expect(
+            mediaTileSource(
+                item({
+                    eventId: "$1",
+                    kind: "file",
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it("returns null for audio kind", () => {
+        expect(
+            mediaTileSource(
+                item({
+                    eventId: "$1",
+                    kind: "audio",
+                }),
+            ),
+        ).toBeNull();
+    });
+});
+
+describe("mediaItemFromEvent with encrypted thumbnail", () => {
+    it("carries encrypted thumbnail_file through", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.video",
+                    body: "clip.mp4",
+                    file: {
+                        url: "mxc://example.org/vid-enc",
+                        key: { k: "vid-k" },
+                        iv: "vid-iv",
+                        hashes: { sha256: "vid-hash" },
+                    },
+                    info: {
+                        mimetype: "video/mp4",
+                        thumbnail_file: {
+                            url: "mxc://example.org/thumb-enc",
+                            key: { k: "thumb-k" },
+                            iv: "thumb-iv",
+                            hashes: { sha256: "thumb-hash" },
+                        },
+                        thumbnail_info: { mimetype: "image/jpeg" },
+                    },
+                },
+            }),
+        );
+        expect(result?.encryptedThumbnailFile).toEqual({
+            url: "mxc://example.org/thumb-enc",
+            key: { k: "thumb-k" },
+            iv: "thumb-iv",
+            hashes: { sha256: "thumb-hash" },
+        });
+        expect(result?.thumbnailMimetype).toBe("image/jpeg");
+    });
+
+    it("rejects item when file is invalid and no url fallback", () => {
+        expect(
+            mediaItemFromEvent(
+                ev({
+                    content: {
+                        msgtype: "m.video",
+                        body: "broken.mp4",
+                        file: {
+                            url: "https://evil.example/vid",
+                            key: { k: "k" },
+                        },
+                    },
+                }),
+            ),
+        ).toBeNull();
+    });
+
+    it("falls back to url when file is invalid", () => {
+        const result = mediaItemFromEvent(
+            ev({
+                content: {
+                    msgtype: "m.video",
+                    body: "fallback.mp4",
+                    file: {
+                        url: "https://evil.example/vid",
+                    },
+                    url: "mxc://example.org/vid",
+                },
+            }),
+        );
+        expect(result?.encrypted).toBe(false);
+        expect(result?.url).toBe("mxc://example.org/vid");
+    });
+});

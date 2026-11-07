@@ -1,0 +1,109 @@
+// Pure helpers for reading a homeserver's advertised support from the
+// /versions (spec versions + unstable_features) and /capabilities responses.
+//
+// IMPORTANT: /capabilities only advertises a small, fixed set of operations.
+// Only those can be reliably feature-gated (see serverSupports). Everything
+// else — E2EE, calling, search, presence, directory, polls — is NOT advertised
+// and must be handled with an attempt + graceful fallback instead.
+import { t } from "$lib/i18n";
+
+export type Capabilities = Record<
+    string,
+    { enabled?: boolean } & Record<string, unknown>
+>;
+
+/** Features the /capabilities endpoint lets us gate reliably. */
+export type GatedFeature =
+    "changePassword" | "setDisplayName" | "setAvatarUrl" | "change3pid";
+
+const GATED_CAPABILITY: Record<GatedFeature, string> = {
+    changePassword: "m.change_password",
+    setDisplayName: "m.set_displayname",
+    setAvatarUrl: "m.set_avatar_url",
+    change3pid: "m.3pid_changes",
+};
+
+/**
+ * Whether the server permits an operation. An unlisted capability means
+ * "available" per the spec, so we only report false when it is explicitly
+ * disabled.
+ */
+export function serverSupports(
+    feature: GatedFeature,
+    capabilities: Capabilities | null | undefined,
+): boolean {
+    const cap = capabilities?.[GATED_CAPABILITY[feature]];
+    return cap?.enabled !== false;
+}
+
+/**
+ * Whether the server lets this user set the extended profile field `key`
+ * (MSC4133 `m.profile_fields`). An absent capability means unrestricted; a
+ * present `allowed` list is exclusive, and `disallowed` always wins.
+ */
+export function profileFieldAllowed(
+    key: string,
+    capabilities: Capabilities | null | undefined,
+): boolean {
+    const cap = capabilities?.["m.profile_fields"];
+    if (!cap) return true;
+    if (cap.enabled === false) return false;
+    if (Array.isArray(cap.disallowed) && cap.disallowed.includes(key)) {
+        return false;
+    }
+    if (Array.isArray(cap.allowed)) return cap.allowed.includes(key);
+    return true;
+}
+
+/** Parse a "v1.11" spec version into [major, minor]. */
+function parseVersion(v: string): [number, number] {
+    const m = /^v?(\d+)\.(\d+)/.exec(v);
+    return m ? [Number(m[1]), Number(m[2])] : [0, 0];
+}
+
+/** Whether the server advertises spec `target` (e.g. "v1.4") or newer. */
+export function specAtLeast(versions: string[], target: string): boolean {
+    const [tMaj, tMin] = parseVersion(target);
+    return versions.some((v) => {
+        const [maj, min] = parseVersion(v);
+        return maj > tMaj || (maj === tMaj && min >= tMin);
+    });
+}
+
+const UNSTABLE_LABELS: Record<string, string> = {
+    "org.matrix.e2e_cross_signing": t("serverCapabilities.crossSigningE2ee"),
+    "org.matrix.msc2285.stable": t("serverCapabilities.privateReadReceipts"),
+    "org.matrix.msc2836": t("serverCapabilities.threadedRelations"),
+    "org.matrix.msc2946": t("serverCapabilities.spaceSummaries"),
+    "org.matrix.msc3026.busy_presence": t("serverCapabilities.busyPresence"),
+    "org.matrix.msc3814": t("serverCapabilities.dehydratedDevices"),
+    "org.matrix.msc3827": t("serverCapabilities.filterPublicRoomsByType"),
+    "org.matrix.msc3916.stable": t("serverCapabilities.authenticatedMedia"),
+    "org.matrix.msc3952_intentional_mentions": t(
+        "serverCapabilities.intentionalMentions",
+    ),
+    "org.matrix.simplified_msc3575": t(
+        "serverCapabilities.slidingSyncSimplified",
+    ),
+    "uk.half-shot.msc2666.query_mutual_rooms": t(
+        "serverCapabilities.sharedRoomsWithAUser",
+    ),
+};
+
+/** A human-friendly label for an unstable-feature flag, or the raw key. */
+export function labelUnstableFeature(key: string): string {
+    return UNSTABLE_LABELS[key] ?? key;
+}
+
+/**
+ * Whether the server advertises an unstable-feature flag as enabled. A flag
+ * that is absent or explicitly `false` counts as unsupported — used to probe
+ * for MSC-gated behaviours (e.g. `org.matrix.msc4140` delayed events) that
+ * `/versions` exposes but `/capabilities` does not.
+ */
+export function hasUnstableFeature(
+    features: Record<string, boolean> | null | undefined,
+    key: string,
+): boolean {
+    return features?.[key] === true;
+}

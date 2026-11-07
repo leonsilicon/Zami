@@ -1,0 +1,129 @@
+# Flatpak manifest for the Zam desktop app, published to our own Flatpak repo
+# (GitHub Pages, see .github/workflows/release.yml), not Flathub.
+#
+# It repackages the electron-builder `linux-unpacked` output rather than
+# building from source inside flatpak-builder, so CI must run
+# `npx electron-builder --linux dir` first. The runtime and the Electron base
+# app still come from Flathub (pulled automatically via RuntimeRepo).
+id: moe.crafty.matrix
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "25.08"
+command: zam
+separate-locales: false
+finish-args:
+    - --share=ipc
+    - --share=network
+    - --socket=wayland
+    - --socket=fallback-x11
+    - --socket=pulseaudio
+    # Per-application screen-share audio: @vencord/venmic talks to PipeWire
+    # directly to link the chosen apps into a virtual microphone
+    # (electron/appAudio.cjs).
+    - --filesystem=xdg-run/pipewire-0
+    # GPU and camera (for video calls); there is no narrower webcam
+    # permission that Chromium's V4L2 capture works with.
+    - --device=all
+    - --filesystem=xdg-download
+    # Rich presence: apps that report what they are doing to Discord find
+    # discord-ipc-N here (electron/discordRpc.cjs). Creating the folder
+    # shares it with the host.
+    - --filesystem=xdg-run/app/com.discordapp.Discord:create
+    # Host process list and Discord restart. The sandbox has its own PID
+    # namespace, so it cannot see or end host programs; there is no narrower
+    # permission for that. Zam runs `ps`, `flatpak ps` and `flatpak kill` on
+    # the host through flatpak-spawn (electron/gameScanner.cjs,
+    # electron/discordRestart.cjs, electron/fakeDiscord.cjs). Same permission
+    # Mission Center uses to list host processes. Only used for rich presence
+    # (Settings > Account): the game scan, the stand-in Discord process, and
+    # Restart Discord after the user confirms.
+    - --talk-name=org.freedesktop.Flatpak
+    - --talk-name=org.freedesktop.Notifications
+    # Tray icon (StatusNotifierItem).
+    - --talk-name=org.kde.StatusNotifierWatcher
+    - --env=ELECTRON_TRASH=gio
+modules:
+    # Vulkan layer that lets Chromium import hardware-decoded video on NVIDIA
+    # (vk-layer/zam_video_import.c). Loaded only with ZAM_VK_LAYER=1, which
+    # zam.sh sets when it picks Chromium's Vulkan path for NVIDIA.
+    - name: vk-layer
+      buildsystem: simple
+      sources:
+          - type: dir
+            path: vk-layer
+      build-commands:
+          - cc -std=c11 -D_GNU_SOURCE -O2 -Wall -fPIC -shared -fvisibility=hidden
+            -o libVkLayer_zam_video_import.so zam_video_import.c -lpthread
+          - install -Dm755 libVkLayer_zam_video_import.so /app/lib/libVkLayer_zam_video_import.so
+          - install -Dm644 zam_video_import.json /app/share/vulkan/implicit_layer.d/zam_video_import.json
+    # NVIDIA hardware video decode: nvidia-vaapi-driver, the same release the
+    # runtime's org.freedesktop.Platform.VAAPI.nvidia extension ships, plus
+    # NVD_LINEAR (nvidia-vaapi-driver/linear-surfaces.patch) for Chromium's
+    # Vulkan video path. zam.sh points libva here on NVIDIA systems, so
+    # the extension no longer has to be installed by hand.
+    - name: nv-codec-headers
+      buildsystem: simple
+      cleanup: ["/include", "/lib/pkgconfig"]
+      sources:
+          - type: archive
+            url: https://github.com/FFmpeg/nv-codec-headers/archive/refs/tags/n12.2.72.0.tar.gz
+            sha256: dbeaec433d93b850714760282f1d0992b1254fc3b5a6cb7d76fc1340a1e47563
+      build-commands:
+          - make PREFIX=/app install
+    - name: nvidia-vaapi-driver
+      buildsystem: simple
+      sources:
+          - type: archive
+            url: https://github.com/elFarto/nvidia-vaapi-driver/archive/refs/tags/v0.0.18.tar.gz
+            sha256: 7459205cd1719a5865ab9c8969723c27e9863add5e7229e8e56c5f8816017b2a
+          - type: patch
+            path: nvidia-vaapi-driver/linear-surfaces.patch
+      build-commands:
+          # meson would install into libva's driver dir under /usr; build and
+          # install the module by hand instead.
+          - meson setup build --prefix=/app --buildtype=release
+          - ninja -C build
+          # Fail the build rather than ship a driver without VP9 (it needs
+          # gstreamer-codecparsers, which meson treats as optional).
+          - grep -q 'src/vp9.c' build/compile_commands.json
+          - install -Dm755 build/nvidia_drv_video.so /app/lib/dri/nvidia_drv_video.so
+          - install -Dm644 COPYING /app/share/licenses/nvidia-vaapi-driver/COPYING
+    # NVIDIA hardware video encode (va-nvenc/zam_va_nvenc.c): a VA-API driver
+    # named like nvidia-vaapi-driver that encodes H.264 with NVENC and passes
+    # everything else to the one above. In its own directory, which zam.sh
+    # puts first only when Settings > Debug turns it on. Needs the
+    # nv-codec-headers module above.
+    - name: va-nvenc
+      buildsystem: simple
+      sources:
+          - type: dir
+            path: va-nvenc
+      build-commands:
+          - cc -std=c11 -D_GNU_SOURCE -O2 -Wall -fPIC -shared -fvisibility=hidden -I/app/include
+            -o nvidia_drv_video.so zam_va_nvenc.c -ldl -lpthread
+          - install -Dm755 nvidia_drv_video.so /app/lib/dri-nvenc/nvidia_drv_video.so
+    - name: zam
+      buildsystem: simple
+      sources:
+          - type: dir
+            path: ../dist-electron/linux-unpacked
+            dest: zam
+          - type: file
+            path: zam.sh
+          - type: file
+            path: moe.crafty.matrix.desktop
+          - type: file
+            path: moe.crafty.matrix.metainfo.xml
+          - type: file
+            path: ../electron/icons/icon.png
+      build-commands:
+          - cp -a zam /app/zam
+          # Chromium's setuid sandbox helper can't work in Flatpak; zypak
+          # (from the Electron base app) provides the sandbox instead.
+          - rm -f /app/zam/chrome-sandbox
+          - install -Dm755 zam.sh /app/bin/zam
+          - install -Dm644 moe.crafty.matrix.desktop /app/share/applications/moe.crafty.matrix.desktop
+          - install -Dm644 moe.crafty.matrix.metainfo.xml /app/share/metainfo/moe.crafty.matrix.metainfo.xml
+          - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/moe.crafty.matrix.png

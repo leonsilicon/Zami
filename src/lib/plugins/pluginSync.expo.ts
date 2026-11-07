@@ -1,0 +1,171 @@
+/**
+ * Pure serialize/deserialize of the plugin-sync account-data payload
+ * (moe.crafty.matrix.plugins). No SDK/DOM/localStorage imports — the boot glue
+ * feeds it a plain snapshot and hands the parsed result to the manager UI.
+ */
+
+import { isCommitSha } from "./repo";
+
+export interface PluginSyncEntry {
+    enabled: boolean;
+    source: "builtin" | "repo";
+    version?: string;
+    repoRef?: string;
+    autoUpdate?: boolean;
+    settings?: Record<string, unknown>;
+    sha?: string;
+}
+
+export interface PluginSyncPayload {
+    version: 1;
+    repos: string[];
+    plugins: Record<string, PluginSyncEntry>;
+    autoUpdate: boolean;
+}
+
+export interface LocalSyncSnapshot {
+    repos: string[];
+    autoUpdate: boolean;
+    plugins: Record<string, PluginSyncEntry>;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Whitelist an entry's fields so nothing extraneous is written to the wire. */
+function cleanEntry(e: PluginSyncEntry): PluginSyncEntry {
+    const out: PluginSyncEntry = { enabled: e.enabled, source: e.source };
+    if (typeof e.version === "string") out.version = e.version;
+    if (typeof e.repoRef === "string") out.repoRef = e.repoRef;
+    if (typeof e.autoUpdate === "boolean") out.autoUpdate = e.autoUpdate;
+    if (isPlainObject(e.settings)) out.settings = { ...e.settings };
+    if (typeof e.sha === "string" && isCommitSha(e.sha)) out.sha = e.sha;
+    return out;
+}
+
+export function buildSyncPayload(local: LocalSyncSnapshot): PluginSyncPayload {
+    const plugins: Record<string, PluginSyncEntry> = {};
+    for (const [id, e] of Object.entries(local.plugins)) {
+        plugins[id] = cleanEntry(e);
+    }
+    return {
+        version: 1,
+        repos: [...local.repos],
+        plugins,
+        autoUpdate: !!local.autoUpdate,
+    };
+}
+
+export function parseSyncPayload(raw: unknown): PluginSyncPayload | null {
+    if (!isPlainObject(raw) || raw.version !== 1) return null;
+    const out: PluginSyncPayload = {
+        version: 1,
+        repos: [],
+        plugins: {},
+        autoUpdate: false,
+    };
+    if (typeof raw.autoUpdate === "boolean") out.autoUpdate = raw.autoUpdate;
+    if (Array.isArray(raw.repos)) {
+        out.repos = raw.repos.filter((r): r is string => typeof r === "string");
+    }
+    if (isPlainObject(raw.plugins)) {
+        for (const [id, rawEntry] of Object.entries(raw.plugins)) {
+            if (!isPlainObject(rawEntry)) continue;
+            if (typeof rawEntry.enabled !== "boolean") continue;
+            if (rawEntry.source !== "builtin" && rawEntry.source !== "repo")
+                continue;
+            const entry: PluginSyncEntry = {
+                enabled: rawEntry.enabled,
+                source: rawEntry.source,
+            };
+            if (typeof rawEntry.version === "string")
+                entry.version = rawEntry.version;
+            if (typeof rawEntry.repoRef === "string")
+                entry.repoRef = rawEntry.repoRef;
+            if (typeof rawEntry.autoUpdate === "boolean")
+                entry.autoUpdate = rawEntry.autoUpdate;
+            if (isPlainObject(rawEntry.settings))
+                entry.settings = { ...rawEntry.settings };
+            // Keep sha only if it's a valid 40-hex commit sha
+            if (typeof rawEntry.sha === "string" && isCommitSha(rawEntry.sha))
+                entry.sha = rawEntry.sha;
+            out.plugins[id] = entry;
+        }
+    }
+    return out;
+}
+
+export interface PullSummary {
+    reposToAdd: string[];
+    toEnable: string[];
+    toDisable: string[];
+    settingsChanges: string[];
+    /** Repo plugins installed on the other device but not here; applying the
+     *  pull installs them from their repo (at the synced commit). */
+    toInstall: { id: string; repoRef: string }[];
+    /** Plugins the pull can't bring here (no repo to install from). */
+    notInstalledHere: {
+        id: string;
+        source: "builtin" | "repo";
+        repoRef?: string;
+    }[];
+    autoUpdateChange: boolean | null;
+    autoUpdateOverrides: { id: string; value: boolean }[];
+}
+
+function settingsEqual(
+    a?: Record<string, unknown>,
+    b?: Record<string, unknown>,
+): boolean {
+    return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
+
+export function summarizePull(
+    remote: PluginSyncPayload,
+    local: LocalSyncSnapshot,
+): PullSummary {
+    const reposToAdd = remote.repos.filter((r) => !local.repos.includes(r));
+    const toEnable: string[] = [];
+    const toDisable: string[] = [];
+    const settingsChanges: string[] = [];
+    const toInstall: PullSummary["toInstall"] = [];
+    const notInstalledHere: PullSummary["notInstalledHere"] = [];
+    const autoUpdateOverrides: { id: string; value: boolean }[] = [];
+
+    for (const [id, r] of Object.entries(remote.plugins)) {
+        const l = local.plugins[id];
+        if (!l) {
+            if (r.source === "repo" && r.repoRef)
+                toInstall.push({ id, repoRef: r.repoRef });
+            else
+                notInstalledHere.push({
+                    id,
+                    source: r.source,
+                    repoRef: r.repoRef,
+                });
+            continue;
+        }
+        if (r.enabled && !l.enabled) toEnable.push(id);
+        if (!r.enabled && l.enabled) toDisable.push(id);
+        if (!settingsEqual(r.settings, l.settings)) settingsChanges.push(id);
+        if (
+            typeof r.autoUpdate === "boolean" &&
+            r.autoUpdate !== l.autoUpdate
+        ) {
+            autoUpdateOverrides.push({ id, value: r.autoUpdate });
+        }
+    }
+
+    return {
+        reposToAdd,
+        toEnable,
+        toDisable,
+        settingsChanges,
+        toInstall,
+        notInstalledHere,
+        autoUpdateChange:
+            remote.autoUpdate !== local.autoUpdate ? remote.autoUpdate : null,
+        autoUpdateOverrides,
+    };
+}

@@ -1,0 +1,492 @@
+/**
+ * Zam's processing for the user's own microphone, used by the call (as a
+ * LiveKit audio processor, $lib/audio/micProcessor) and by the settings mic
+ * test, so what you hear in the test is what the call sends. With
+ * FastEnhancer, the default (RNNoise is the same shape):
+ *
+ *   input -> [FastEnhancer] -> [AGC2] -> soft clipper -> output
+ *
+ * With DeepFilterNet3:
+ *
+ *   input -> [drive -> DeepFilterNet3 -> undo drive -> pause gate]
+ *         -> [AGC2] -> soft clipper -> output
+ *
+ * or with a plugin's noise filter ($lib/audio/micFilters):
+ *
+ *   input -> [plugin filter -> pause gate] -> [AGC2] -> soft clipper -> output
+ *
+ * DeepFilterNet3 mangles speech it hears as quiet ($lib/audio/deepFilterDrive),
+ * so the drive lifts a quiet mic into the model's range and the same gain
+ * comes off after it: the chain's output level is what it was, the model just
+ * gets a signal it can work with. A plugin filter gets the mic as it is
+ * (it handles level itself). The pause gate ($lib/audio/pauseGate) then
+ * quietens what the model leaves of clicks, keys and room noise between
+ * words; a plugin filter gets it only if it outputs its dry input lined up
+ * with its output (MicFilterInstance.dryOutput).
+ *
+ * The level stage is either the same normalization incoming voices get
+ * ($lib/audio/voiceNormalization: a slow gain towards a common speech level,
+ * moved only by windows that are speech) or AGC2. AGC2 ($lib/audio/agc2)
+ * evens out your voice: WebRTC's adaptive digital
+ * gain controller and limiter, the same code the browser's AGC runs after
+ * noise suppression, minus the part that moves the OS microphone volume. It
+ * replaced Zam's own leveller, which ducked every loud word by several dB
+ * and crept back up over seconds.
+ *
+ * The models load asynchronously: until one is ready, and if all fail, audio
+ * passes through unfiltered. A plugin filter that isn't loaded, can't
+ * start on this device, or stops coping mid-stream is swapped for
+ * FastEnhancer (RNNoise where that can't run) in place. Neither needs the
+ * drive or the pause gate: they hold a voice at one level, and silence
+ * pauses themselves.
+ */
+import {
+    rmsDb,
+    createNormalizer,
+    normalizationGain,
+    normalizerStep,
+    type NormalizerState,
+} from "./voiceNormalization";
+import { rememberLevel, rememberedLevel } from "./normalizerMemory";
+import { createAgc2Node } from "./agc2";
+import { createSoftClipper } from "./softClip";
+import { createDeepFilterNode } from "./deepFilter";
+import { createRnnoiseNode } from "./rnnoise";
+import {
+    createFastEnhancerNode,
+    fastEnhancerSupported,
+    type FastEnhancerModel,
+} from "./fastenhancer";
+import {
+    createFastEnhancerGpuNode,
+    type FastEnhancerGpuNode,
+} from "./fastenhancerGpu";
+import {
+    findMicFilter,
+    micFilterUsable,
+    type PluginFilterKey,
+} from "./micFilters";
+import type { MicFilterInstance } from "$lib/plugins/types";
+import { createPauseGateNode } from "./pauseGate";
+import {
+    createDriveState,
+    DEEP_FILTER_DELAY_S,
+    DRIVE_GLIDE_S,
+    driveTick,
+    undriveCurve,
+} from "./deepFilterDrive";
+
+const DRIVE_TICK_MS = 50;
+
+/** Which noise model the chain runs: FastEnhancer, RNNoise, DeepFilterNet3,
+ *  or a plugin's filter (falling back to FastEnhancer wherever it can't
+ *  run). */
+export type DenoiseEngine =
+    | "fastenhancer"
+    | "fastenhancer-tiny"
+    | "rnnoise"
+    | "deepfilter"
+    | PluginFilterKey;
+
+/** What evens out the user's voice: WebRTC's AGC2, or the same speaker
+ *  normalization incoming voices get (null: nothing). */
+export type MicLevelStage = "agc2" | "normalize" | null;
+
+export interface MicChainOptions {
+    denoise: DenoiseEngine | null;
+    level: MicLevelStage;
+    /** Run the pause gate after the noise model. */
+    pauseGate: boolean;
+    /** DeepFilterNet3's cap on how much it may take off, in dB. */
+    attenuationDb: number;
+    /** Run FastEnhancer on the GPU ($lib/audio/fastenhancerGpu), falling
+     *  back to its CPU worklet where that can't run or keep up. */
+    feGpu?: boolean;
+}
+
+const NORMALIZE_TICK_MS = 100;
+/** normalizerMemory key for your own voice. */
+const SELF_LEVEL_KEY = "self";
+
+export interface MicChain {
+    /** Connect the mic source here. */
+    input: AudioNode;
+    /** Processed audio comes out here. */
+    output: AudioNode;
+    /** Resolves once a noise model is in the path (to the one that is), or
+     *  to null when none could start or none was asked for. */
+    denoiseReady: Promise<DenoiseEngine | null>;
+    /** The noise model in the path right now (null: none, or not yet). */
+    readonly engine: DenoiseEngine | null;
+    destroy(): void;
+}
+
+export function createMicChain(
+    ctx: AudioContext,
+    opts: MicChainOptions,
+): MicChain {
+    const input = ctx.createGain();
+    // Where the noise model's output meets AGC2 (or the clipper, until AGC2
+    // has loaded or when it's off).
+    const gain = ctx.createGain();
+    const clipper = createSoftClipper(ctx);
+    input.connect(gain);
+    gain.connect(clipper.input);
+
+    let destroyed = false;
+    let agcNode: AudioWorkletNode | null = null;
+    let normTimer: ReturnType<typeof setInterval> | null = null;
+    let state: NormalizerState | null = null;
+    if (opts.level === "normalize") {
+        // The inbound normalization, on the processed voice: a slow gain
+        // towards a common speech level, fed only by windows that are speech.
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        const norm = ctx.createGain();
+        gain.disconnect();
+        gain.connect(analyser);
+        gain.connect(norm);
+        norm.connect(clipper.input);
+        const buf = new Float32Array(analyser.fftSize);
+        // Resume your mic's last level, so a call doesn't open with a few
+        // seconds of you at the wrong volume while it learns your voice.
+        const st = createNormalizer(
+            rememberedLevel(SELF_LEVEL_KEY) ?? undefined,
+        );
+        state = st;
+        const startGain = normalizationGain(st.level);
+        if (startGain !== null) norm.gain.value = startGain;
+        normTimer = setInterval(() => {
+            analyser.getFloatTimeDomainData(buf);
+            const step = normalizerStep(
+                st,
+                rmsDb(buf),
+                NORMALIZE_TICK_MS / 1000,
+                norm.gain.value,
+            );
+            if (step === null) return;
+            norm.gain.setTargetAtTime(
+                step.gain,
+                ctx.currentTime,
+                step.timeConstant,
+            );
+            rememberLevel(SELF_LEVEL_KEY, st);
+        }, NORMALIZE_TICK_MS);
+    } else if (opts.level === "agc2") {
+        createAgc2Node(ctx).then(
+            (node) => {
+                if (destroyed) return;
+                agcNode = node;
+                gain.disconnect();
+                gain.connect(node);
+                node.connect(clipper.input);
+            },
+            (err) => console.warn("AGC2 unavailable:", err),
+        );
+    }
+
+    let dfNode: AudioWorkletNode | null = null;
+    let rnnNode: AudioWorkletNode | null = null;
+    let feNode: AudioWorkletNode | null = null;
+    let gateNode: AudioWorkletNode | null = null;
+    let plug: MicFilterInstance | null = null;
+    let engine: DenoiseEngine | null = null;
+    // The model's input, lined up with its output for the gate's decisions.
+    const gateRef = ctx.createDelay(0.2);
+    gateRef.delayTime.value = DEEP_FILTER_DELAY_S;
+    const drive = ctx.createGain();
+    const undrive = ctx.createGain();
+    let driveTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Drive follows the speech level (driveTick) in steps. Each step is a linear ramp,
+    // and the cut after the model is its exact inverse, landing after the
+    // model's delay, so the chain's output level never moves with it.
+    const startDrive = () => {
+        const driveAnalyser = ctx.createAnalyser();
+        driveAnalyser.fftSize = 2048;
+        input.connect(driveAnalyser);
+        const buf = new Float32Array(driveAnalyser.fftSize);
+        const state = createDriveState();
+        let current = 1;
+        let busyUntil = 0;
+        driveTimer = setInterval(() => {
+            driveAnalyser.getFloatTimeDomainData(buf);
+            const next = driveTick(state, rmsDb(buf), current);
+            const now = ctx.currentTime;
+            // One step at a time: a value curve can't overlap other events.
+            if (now < busyUntil) return;
+            if (next === null) return;
+            drive.gain.setValueAtTime(current, now);
+            drive.gain.linearRampToValueAtTime(next, now + DRIVE_GLIDE_S);
+            undrive.gain.setValueCurveAtTime(
+                undriveCurve(current, next),
+                now + DEEP_FILTER_DELAY_S,
+                DRIVE_GLIDE_S,
+            );
+            current = next;
+            busyUntil = now + DEEP_FILTER_DELAY_S + DRIVE_GLIDE_S;
+        }, DRIVE_TICK_MS);
+    };
+
+    // Without the gate the model still runs, just ungated.
+    const makeGate = () =>
+        (opts.pauseGate
+            ? createPauseGateNode(ctx)
+            : Promise.resolve(null)
+        ).catch((err) => {
+            console.warn("Pause gate unavailable:", err);
+            return null;
+        });
+
+    /** Take the plugin filter out of the path (once something else is in
+     *  it). */
+    const dropPlugin = () => {
+        if (!plug) return;
+        const p = plug;
+        plug = null;
+        p.onFailure = null;
+        p.node.disconnect();
+        try {
+            p.close();
+        } catch (err) {
+            console.warn("Noise filter plugin close failed:", err);
+        }
+    };
+
+    const spliceDeepFilter = (): Promise<DenoiseEngine | null> =>
+        Promise.all([
+            createDeepFilterNode(ctx, opts.attenuationDb),
+            makeGate(),
+        ]).then(
+            ([node, gate]) => {
+                if (destroyed) {
+                    node.disconnect();
+                    gate?.disconnect();
+                    return null;
+                }
+                // Splice it in: input -> drive -> df -> undrive ->
+                // [gate, with input -> delay as its reference] -> gain.
+                const oldGate = gateNode;
+                dfNode = node;
+                gateNode = gate;
+                input.disconnect();
+                input.connect(drive);
+                drive.connect(node);
+                node.connect(undrive);
+                const out: AudioNode = gate ?? undrive;
+                if (gate) {
+                    undrive.connect(gate, 0, 0);
+                    input.connect(gateRef);
+                    gateRef.connect(gate, 0, 1);
+                }
+                out.connect(gain);
+                oldGate?.disconnect();
+                dropPlugin();
+                startDrive();
+                engine = "deepfilter";
+                return engine;
+            },
+            (err) => {
+                console.warn("DeepFilterNet3 unavailable:", err);
+                return null;
+            },
+        );
+
+    // A model that is one worklet between the input and the gain (RNNoise,
+    // FastEnhancer). Anything else in the path (DeepFilterNet3's drive and
+    // gate, a plugin's filter, the other of the two) is replaced.
+    const spliceSimple = (
+        kind: "rnnoise" | "fastenhancer" | "fastenhancer-tiny",
+        node: AudioWorkletNode,
+    ): DenoiseEngine | null => {
+        if (destroyed) {
+            node.disconnect();
+            return null;
+        }
+        const old = [rnnNode, feNode];
+        if (kind === "rnnoise") rnnNode = node;
+        else feNode = node;
+        input.disconnect();
+        input.connect(node);
+        node.connect(gain);
+        for (const o of old) if (o !== node) o?.disconnect();
+        if (kind === "rnnoise") feNode = null;
+        else rnnNode = null;
+        stopGpu();
+        dropPlugin();
+        engine = kind;
+        return engine;
+    };
+
+    // FastEnhancer's GPU node, while it is in the path.
+    let gpu: FastEnhancerGpuNode | null = null;
+    const stopGpu = () => {
+        if (!gpu || gpu.node === feNode) return;
+        gpu.close();
+        gpu = null;
+    };
+
+    const spliceRnnoise = (): Promise<DenoiseEngine | null> =>
+        createRnnoiseNode(ctx).then(
+            (node) => spliceSimple("rnnoise", node),
+            (err) => {
+                console.warn("RNNoise unavailable:", err);
+                return null;
+            },
+        );
+
+    // FastEnhancer on its CPU worklet, else RNNoise where it can't run (no
+    // WASM SIMD, say).
+    const spliceFastEnhancerCpu = (
+        model: FastEnhancerModel,
+    ): Promise<DenoiseEngine | null> =>
+        (fastEnhancerSupported()
+            ? createFastEnhancerNode(ctx, model)
+            : Promise.reject(new Error("no WebAssembly SIMD here"))
+        ).then(
+            (node) =>
+                spliceSimple(
+                    model === "tiny" ? "fastenhancer-tiny" : "fastenhancer",
+                    node,
+                ),
+            (err) => {
+                console.warn("FastEnhancer unavailable, using RNNoise:", err);
+                return destroyed ? null : spliceRnnoise();
+            },
+        );
+
+    // FastEnhancer, on the GPU when asked for and it runs there.
+    const spliceFastEnhancer = (
+        model: FastEnhancerModel = "base",
+    ): Promise<DenoiseEngine | null> => {
+        if (!opts.feGpu) return spliceFastEnhancerCpu(model);
+        return createFastEnhancerGpuNode(ctx, model).then(
+            (g) => {
+                if (destroyed) {
+                    g.close();
+                    return null;
+                }
+                // Can't keep up, or the GPU went away: the CPU worklet
+                // takes over; the GPU node carries on until it is in.
+                g.onFailure = (reason) => {
+                    console.warn(
+                        `FastEnhancer on the GPU failed (${reason}): CPU`,
+                    );
+                    if (!destroyed && gpu === g)
+                        void spliceFastEnhancerCpu(model);
+                };
+                const prev = gpu;
+                gpu = g;
+                const e = spliceSimple(
+                    model === "tiny" ? "fastenhancer-tiny" : "fastenhancer",
+                    g.node,
+                );
+                prev?.close();
+                return e;
+            },
+            (err) => {
+                console.info("FastEnhancer can't run on the GPU here:", err);
+                return destroyed ? null : spliceFastEnhancerCpu(model);
+            },
+        );
+    };
+
+    const splicePlugin = (
+        key: PluginFilterKey,
+    ): Promise<DenoiseEngine | null> => {
+        const filter = findMicFilter(key);
+        if (!filter || !micFilterUsable(filter)) {
+            if (!filter)
+                console.info(`Noise filter ${key} isn't loaded: FastEnhancer`);
+            return spliceFastEnhancer();
+        }
+        return Promise.all([
+            filter.create(ctx, { attenuationDb: opts.attenuationDb }),
+            makeGate(),
+        ]).then(
+            ([inst, gate]) => {
+                if (destroyed) {
+                    inst.node.disconnect();
+                    inst.close();
+                    gate?.disconnect();
+                    return null;
+                }
+                // input -> filter -> [gate, with the filter's lined-up dry
+                // output as its reference] -> gain.
+                plug = inst;
+                const dry = inst.dryOutput;
+                const gated = gate && dry !== undefined ? gate : null;
+                gateNode = gated;
+                if (gate && !gated) gate.disconnect();
+                input.disconnect();
+                input.connect(inst.node);
+                if (gated) {
+                    inst.node.connect(gated, 0, 0);
+                    inst.node.connect(gated, dry!, 1);
+                    gated.connect(gain);
+                } else {
+                    inst.node.connect(gain, 0);
+                }
+                engine = key;
+                // Stopped coping: DeepFilterNet3 takes over; the filter
+                // carries on until it is in.
+                inst.onFailure = (reason) => {
+                    console.warn(
+                        `Noise filter ${key} failed (${reason}): FastEnhancer`,
+                    );
+                    if (!destroyed && plug === inst) void spliceFastEnhancer();
+                };
+                return engine;
+            },
+            (err) => {
+                console.info(`Noise filter ${key} can't run here:`, err);
+                return destroyed ? null : spliceRnnoise();
+            },
+        );
+    };
+
+    const denoiseReady: Promise<DenoiseEngine | null> =
+        opts.denoise === "fastenhancer"
+            ? spliceFastEnhancer("base")
+            : opts.denoise === "fastenhancer-tiny"
+              ? spliceFastEnhancer("tiny")
+              : opts.denoise === "rnnoise"
+                ? spliceRnnoise()
+                : opts.denoise === "deepfilter"
+                  ? spliceDeepFilter()
+                  : opts.denoise
+                    ? splicePlugin(opts.denoise)
+                    : Promise.resolve(null);
+
+    return {
+        input,
+        output: clipper.output,
+        denoiseReady,
+        get engine() {
+            return engine;
+        },
+        destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            if (driveTimer !== null) clearInterval(driveTimer);
+            if (normTimer !== null) clearInterval(normTimer);
+            if (state) rememberLevel(SELF_LEVEL_KEY, state, true);
+            input.disconnect();
+            drive.disconnect();
+            dfNode?.disconnect();
+            rnnNode?.disconnect();
+            feNode?.disconnect();
+            gpu?.close();
+            undrive.disconnect();
+            gateRef.disconnect();
+            gateNode?.disconnect();
+            dropPlugin();
+            // The worklet keeps its wasm state until the processor is
+            // collected; tell it to stop work in the meantime.
+            dfNode?.port.postMessage({ type: "setEnabled", value: false });
+            gain.disconnect();
+            agcNode?.disconnect();
+            clipper.output.disconnect();
+        },
+    };
+}

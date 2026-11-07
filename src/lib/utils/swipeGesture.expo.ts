@@ -1,0 +1,97 @@
+// Pure swipe-to-reply gesture math (item 6). Zero DOM/SDK imports so it is
+// fully unit-testable. The message row is dragged LEFT to reveal one morphing
+// action button; these helpers decide when a drag counts as a swipe, which
+// threshold it has crossed, what release does, and how far the row translates.
+
+export const SWIPE_ENGAGE_PX = 12;
+export const SWIPE_SHORT_PX = 64;
+export const SWIPE_FAR_PX = 128;
+export const SWIPE_MAX_PX = 152;
+
+// Lower than SWIPE_ENGAGE_PX on purpose: the ancestor members/pinned drawers
+// decide direction at their own 6px deadzone (MessageArea drag handlers), so
+// swipePan must claim a leftward gesture's propagation AT that 6px point — well
+// before its own 12px visual engage — or the members drawer wins the same move.
+export const SWIPE_CLAIM_PX = 6;
+
+export type SwipeStage = "none" | "short" | "far";
+export type SwipeAction = "none" | "reply" | "edit";
+
+/** True when a drag is a clear leftward, horizontal-dominant swipe past the
+ *  engage threshold — i.e. a deliberate swipe, not a scroll or a rightward drag. */
+export function shouldEngageSwipe(
+    dx: number,
+    dy: number,
+    engagePx: number = SWIPE_ENGAGE_PX,
+): boolean {
+    return dx < 0 && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) >= engagePx;
+}
+
+/** True when a move is a clear leftward, horizontal-dominant drag past the small
+ *  claim deadzone. Used to stop propagation so the leftward members/pinned drawer
+ *  handlers never engage, while rightward (channel drawer) and vertical (scroll)
+ *  moves pass through. Distinct from shouldEngageSwipe (visual reply engage). */
+export function shouldClaimLeftward(
+    dx: number,
+    dy: number,
+    claimPx: number = SWIPE_CLAIM_PX,
+): boolean {
+    return dx < 0 && Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) >= claimPx;
+}
+
+/** The threshold a leftward drag has crossed. Rightward/small → "none". */
+export function swipeStage(
+    dx: number,
+    shortPx: number = SWIPE_SHORT_PX,
+    farPx: number = SWIPE_FAR_PX,
+): SwipeStage {
+    const mag = dx < 0 ? -dx : 0;
+    if (mag >= farPx) return "far";
+    if (mag >= shortPx) return "short";
+    return "none";
+}
+
+/** What a release at this stage does. Edit is offered only when the message
+ *  is editable (your own text message); every other reachable stage is reply. */
+export function resolveSwipeAction(
+    stage: SwipeStage,
+    canEdit: boolean,
+): SwipeAction {
+    if (stage === "none") return "none";
+    if (stage === "far" && canEdit) return "edit";
+    return "reply";
+}
+
+/** Signed translateX (<= 0) to apply to the row. Tracks the finger 1:1 up to the
+ *  reply threshold, then diminishing returns (0.6x to the far threshold, 0.3x
+ *  beyond), hard-clamped at -maxPx. */
+export function clampSwipeTranslate(
+    dx: number,
+    maxPx: number = SWIPE_MAX_PX,
+): number {
+    if (dx >= 0) return 0;
+    const mag = -dx;
+    const mid = (SWIPE_FAR_PX - SWIPE_SHORT_PX) * 0.6;
+    let out: number;
+    if (mag <= SWIPE_SHORT_PX) out = mag;
+    else if (mag <= SWIPE_FAR_PX)
+        out = SWIPE_SHORT_PX + (mag - SWIPE_SHORT_PX) * 0.6;
+    else out = SWIPE_SHORT_PX + mid + (mag - SWIPE_FAR_PX) * 0.3;
+    return -Math.min(out, maxPx);
+}
+
+export function easeOutCubic(t: number): number {
+    const c = t < 0 ? 0 : t > 1 ? 1 : t;
+    return 1 - Math.pow(1 - c, 3);
+}
+
+/** Opacity/scale of the reveal icon for a leftward drag of `dx`: eased from 0 at
+ *  the start to 1 at the reply threshold, so it grows with the finger instead of
+ *  popping in. Rightward/zero drag gives fully hidden. */
+export function swipeRevealStyle(
+    dx: number,
+    shortPx: number = SWIPE_SHORT_PX,
+): { opacity: number; scale: number } {
+    const p = easeOutCubic(dx < 0 ? -dx / shortPx : 0);
+    return { opacity: p, scale: 0.4 + 0.6 * p };
+}

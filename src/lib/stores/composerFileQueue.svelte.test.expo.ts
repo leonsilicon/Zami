@@ -1,0 +1,219 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+    getFileQueue,
+    addQueuedFile,
+    removeQueuedFile,
+    renameQueuedFile,
+    markQueuedFilesDirect,
+    setQueuedFileDirect,
+    dropQueuedFilePreview,
+    previewUrlFor,
+    clearFileQueue,
+} from "./composerFileQueue.svelte";
+
+const A = "!a:server";
+const B = "!b:server";
+
+const revoke = vi.fn();
+
+function makeFile(name = "photo.png"): File {
+    return new File(["x"], name, { type: "image/png" });
+}
+
+// jsdom does not implement the object-URL API, and the module-level store
+// persists across tests — install a spy and reset the ids we touch.
+beforeEach(() => {
+    URL.revokeObjectURL = revoke;
+    revoke.mockClear();
+    clearFileQueue(A);
+    clearFileQueue(B);
+    revoke.mockClear();
+});
+
+describe("direct files", () => {
+    it("are uploads unless asked otherwise", () => {
+        expect(addQueuedFile(A, makeFile(), "a", null).direct).toBe(false);
+        expect(addQueuedFile(A, makeFile(), "b", null, true).direct).toBe(true);
+    });
+
+    it("stay direct when renamed", () => {
+        const item = addQueuedFile(A, makeFile(), "a", null, true);
+        renameQueuedFile(A, item.id, "b.png");
+        expect(getFileQueue(A)[0]).toMatchObject({
+            name: "b.png",
+            direct: true,
+        });
+    });
+
+    it("can be marked after queueing, only where they match", () => {
+        addQueuedFile(A, makeFile("small.png"), "small", null);
+        addQueuedFile(A, makeFile("big.png"), "big", null);
+        markQueuedFilesDirect(A, (q) => q.name === "big");
+        expect(getFileQueue(A).map((q) => q.direct)).toEqual([false, true]);
+    });
+
+    it("can be switched either way, one file at a time", () => {
+        const a = addQueuedFile(A, makeFile(), "a", null);
+        const b = addQueuedFile(A, makeFile(), "b", null, true);
+        setQueuedFileDirect(A, a.id, true);
+        setQueuedFileDirect(A, b.id, false);
+        expect(getFileQueue(A).map((q) => q.direct)).toEqual([true, false]);
+    });
+
+    it("leaves other rooms alone", () => {
+        addQueuedFile(A, makeFile(), "a", null);
+        addQueuedFile(B, makeFile(), "b", null);
+        markQueuedFilesDirect(A, () => true);
+        expect(getFileQueue(B)[0].direct).toBe(false);
+    });
+});
+
+describe("previews", () => {
+    it("exist for images and videos only", () => {
+        URL.createObjectURL = vi.fn(() => "blob:preview");
+        const of = (type: string) =>
+            previewUrlFor(new File(["x"], "f", { type }));
+        expect(of("image/png")).toBe("blob:preview");
+        expect(of("video/mp4")).toBe("blob:preview");
+        expect(of("application/pdf")).toBeNull();
+        expect(of("")).toBeNull();
+    });
+
+    it("can be dropped once, revoking the URL", () => {
+        const item = addQueuedFile(A, makeFile(), "a", "blob:a");
+        dropQueuedFilePreview(A, item.id);
+        dropQueuedFilePreview(A, item.id);
+        expect(getFileQueue(A)[0].previewUrl).toBeNull();
+        expect(revoke).toHaveBeenCalledTimes(1);
+        expect(revoke).toHaveBeenCalledWith("blob:a");
+    });
+});
+
+describe("composerFileQueue", () => {
+    it("returns an empty queue for a room with nothing queued", () => {
+        expect(getFileQueue(A)).toEqual([]);
+    });
+
+    it("appends files in the order they were added", () => {
+        addQueuedFile(A, makeFile("one.png"), "one.png", null);
+        addQueuedFile(A, makeFile("two.png"), "two.png", null);
+        expect(getFileQueue(A).map((q) => q.name)).toEqual([
+            "one.png",
+            "two.png",
+        ]);
+    });
+
+    it("returns the stored item, including a unique id", () => {
+        const first = addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        const second = addQueuedFile(A, makeFile(), "two.png", "blob:two");
+        expect(first.id).not.toBe(second.id);
+        expect(first.previewUrl).toBe("blob:one");
+        expect(getFileQueue(A)[0]).toEqual(first);
+    });
+
+    it("keeps each room's queue separate", () => {
+        addQueuedFile(A, makeFile(), "for-a.png", null);
+        expect(getFileQueue(B)).toEqual([]);
+        addQueuedFile(B, makeFile(), "for-b.png", null);
+        expect(getFileQueue(A).map((q) => q.name)).toEqual(["for-a.png"]);
+        expect(getFileQueue(B).map((q) => q.name)).toEqual(["for-b.png"]);
+    });
+
+    it("replaces the queues record on every add so a derived read re-runs", () => {
+        addQueuedFile(A, makeFile(), "one.png", null);
+        const before = getFileQueue(A);
+        addQueuedFile(A, makeFile(), "two.png", null);
+        expect(getFileQueue(A)).not.toBe(before);
+    });
+
+    it("replaces the queues record on removal so a derived read re-runs", () => {
+        const first = addQueuedFile(A, makeFile(), "one.png", null);
+        addQueuedFile(A, makeFile(), "two.png", null);
+        const before = getFileQueue(A);
+        removeQueuedFile(A, first.id);
+        expect(getFileQueue(A)).not.toBe(before);
+    });
+
+    it("replaces the queues record on clear so a derived read re-runs", () => {
+        addQueuedFile(A, makeFile(), "one.png", null);
+        const before = getFileQueue(A);
+        clearFileQueue(A);
+        expect(getFileQueue(A)).not.toBe(before);
+    });
+
+    it("removes a single item by id and leaves the rest", () => {
+        const first = addQueuedFile(A, makeFile(), "one.png", null);
+        addQueuedFile(A, makeFile(), "two.png", null);
+        removeQueuedFile(A, first.id);
+        expect(getFileQueue(A).map((q) => q.name)).toEqual(["two.png"]);
+    });
+
+    it("removes a middle item by id, not by position", () => {
+        addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        const second = addQueuedFile(A, makeFile(), "two.png", "blob:two");
+        addQueuedFile(A, makeFile(), "three.png", "blob:three");
+        removeQueuedFile(A, second.id);
+        expect(getFileQueue(A).map((q) => q.name)).toEqual([
+            "one.png",
+            "three.png",
+        ]);
+        expect(revoke).toHaveBeenCalledTimes(1);
+        expect(revoke).toHaveBeenCalledWith("blob:two");
+    });
+
+    it("revokes the removed item's object URL exactly once", () => {
+        const item = addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        removeQueuedFile(A, item.id);
+        expect(revoke).toHaveBeenCalledTimes(1);
+        expect(revoke).toHaveBeenCalledWith("blob:one");
+    });
+
+    it("does not revoke for an item with no preview URL", () => {
+        const item = addQueuedFile(A, makeFile("doc.pdf"), "doc.pdf", null);
+        removeQueuedFile(A, item.id);
+        expect(revoke).not.toHaveBeenCalled();
+    });
+
+    it("ignores a remove for an unknown id without revoking anything", () => {
+        addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        removeQueuedFile(A, "nope");
+        expect(getFileQueue(A)).toHaveLength(1);
+        expect(revoke).not.toHaveBeenCalled();
+    });
+
+    it("ignores a remove for a room with no queue", () => {
+        expect(() => removeQueuedFile(B, "nope")).not.toThrow();
+    });
+
+    it("does not remove an id that belongs to another room", () => {
+        const item = addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        addQueuedFile(B, makeFile(), "other.png", null);
+        removeQueuedFile(B, item.id);
+        expect(getFileQueue(A)).toHaveLength(1);
+        expect(revoke).not.toHaveBeenCalled();
+    });
+
+    it("clears a room's queue and revokes every preview URL", () => {
+        addQueuedFile(A, makeFile(), "one.png", "blob:one");
+        addQueuedFile(A, makeFile(), "two.png", "blob:two");
+        addQueuedFile(A, makeFile("doc.pdf"), "doc.pdf", null);
+        clearFileQueue(A);
+        expect(getFileQueue(A)).toEqual([]);
+        expect(revoke).toHaveBeenCalledTimes(2);
+        expect(revoke).toHaveBeenCalledWith("blob:one");
+        expect(revoke).toHaveBeenCalledWith("blob:two");
+    });
+
+    it("clearing one room leaves another room's queue intact", () => {
+        addQueuedFile(A, makeFile(), "one.png", null);
+        addQueuedFile(B, makeFile(), "two.png", null);
+        clearFileQueue(A);
+        expect(getFileQueue(B)).toHaveLength(1);
+    });
+
+    it("emptying a room by removal leaves an empty queue, not a stale entry", () => {
+        const item = addQueuedFile(A, makeFile(), "one.png", null);
+        removeQueuedFile(A, item.id);
+        expect(getFileQueue(A)).toEqual([]);
+    });
+});

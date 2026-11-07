@@ -1,0 +1,369 @@
+/**
+ * Recognize Matrix permalinks and mentions so the client can navigate them
+ * in-app instead of bouncing through matrix.to.
+ *
+ * Handled forms:
+ * - `https://matrix.to/#/<id>[/<eventId>][?via=…]` for users, room ids and
+ *   aliases (segments may be percent-encoded — matrix.to itself encodes them)
+ * - `matrix:u/…`, `matrix:r/…`, `matrix:roomid/…[/e/<eventId>]` URIs (MSC2312)
+ * - bare `@user:server` / `#alias:server` mention text
+ *
+ * Anything unrecognized returns null; callers fall back to the default link
+ * behavior.
+ */
+
+export type MatrixLinkTarget =
+    | { kind: "user"; userId: string }
+    | { kind: "room"; roomId: string; eventId?: string; via: string[] }
+    | { kind: "alias"; alias: string; eventId?: string; via: string[] };
+
+// Loose shapes for identifiers arriving through explicit links: a sigil, a
+// non-empty colon-free localpart, a server name with optional port. Room ids
+// only need the sigil — v12 room ids have no server part.
+export const USER_ID_RE = /^@[^\s:]+:[^\s:]+(?::\d+)?$/;
+const ALIAS_RE = /^#[^\s:]+:[^\s:]+(?::\d+)?$/;
+const ROOM_ID_RE = /^!\S+$/;
+const EVENT_ID_RE = /^\$\S+$/;
+
+function safeDecode(segment: string): string | null {
+    try {
+        return decodeURIComponent(segment);
+    } catch {
+        return null;
+    }
+}
+
+/** Split `rest?query#fragment` into path and query (fragment discarded). */
+function splitQuery(rest: string): [string, string] {
+    const qIdx = rest.indexOf("?");
+    if (qIdx === -1) return [rest, ""];
+    return [rest.slice(0, qIdx), rest.slice(qIdx + 1).split("#")[0]];
+}
+
+function parseVia(query: string): string[] {
+    return new URLSearchParams(query)
+        .getAll("via")
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
+function targetFromIdentifier(
+    id: string,
+    eventId: string | undefined,
+    via: string[],
+): MatrixLinkTarget | null {
+    if (id.startsWith("@")) {
+        // An event id on a user link is meaningless — treat as malformed.
+        if (eventId || !USER_ID_RE.test(id)) return null;
+        return { kind: "user", userId: id };
+    }
+    if (id.startsWith("#")) {
+        if (!ALIAS_RE.test(id)) return null;
+        return eventId
+            ? { kind: "alias", alias: id, eventId, via }
+            : { kind: "alias", alias: id, via };
+    }
+    if (id.startsWith("!")) {
+        if (!ROOM_ID_RE.test(id)) return null;
+        return eventId
+            ? { kind: "room", roomId: id, eventId, via }
+            : { kind: "room", roomId: id, via };
+    }
+    return null;
+}
+
+function parseMatrixToPath(rest: string): MatrixLinkTarget | null {
+    const [pathPart, query] = splitQuery(rest);
+    const segments = pathPart.split("/");
+    if (segments.length > 2) return null;
+    const id = safeDecode(segments[0]);
+    if (!id) return null;
+    let eventId: string | undefined;
+    if (segments.length === 2) {
+        const ev = safeDecode(segments[1]);
+        if (!ev || !EVENT_ID_RE.test(ev)) return null;
+        eventId = ev;
+    }
+    return targetFromIdentifier(id, eventId, parseVia(query));
+}
+
+const MATRIX_URI_SIGILS: Record<string, string> = {
+    u: "@",
+    r: "#",
+    roomid: "!",
+};
+
+function parseMatrixUri(rest: string): MatrixLinkTarget | null {
+    const [pathPart, query] = splitQuery(rest);
+    const rawSegments = pathPart.split("/").map(safeDecode);
+    if (rawSegments.some((s) => s === null)) return null;
+    const segments = rawSegments as string[];
+    if (segments.length !== 2 && segments.length !== 4) return null;
+    const sigil = MATRIX_URI_SIGILS[segments[0]];
+    if (!sigil || !segments[1]) return null;
+    let eventId: string | undefined;
+    if (segments.length === 4) {
+        if (segments[2] !== "e" || !segments[3]) return null;
+        // matrix: URIs carry event ids without the $ sigil.
+        eventId = segments[3].startsWith("$") ? segments[3] : `$${segments[3]}`;
+    }
+    return targetFromIdentifier(sigil + segments[1], eventId, parseVia(query));
+}
+
+/**
+ * Parse an href or bare mention text into a Matrix navigation target, or null
+ * when it isn't a recognizable Matrix link.
+ */
+export function parseMatrixLink(input: string): MatrixLinkTarget | null {
+    const raw = input?.trim();
+    if (!raw) return null;
+
+    if (raw.startsWith("@")) {
+        return USER_ID_RE.test(raw) ? { kind: "user", userId: raw } : null;
+    }
+    if (raw.startsWith("#")) {
+        return ALIAS_RE.test(raw)
+            ? { kind: "alias", alias: raw, via: [] }
+            : null;
+    }
+
+    const matrixTo = raw.match(/^https?:\/\/matrix\.to\/#\/(.*)$/i);
+    if (matrixTo) return parseMatrixToPath(matrixTo[1]);
+    if (/^matrix:/i.test(raw))
+        return parseMatrixUri(raw.slice("matrix:".length));
+    return null;
+}
+
+/**
+ * Merge a link's explicit `via` servers with the servers returned by alias
+ * resolution into a bounded candidate list for `/join?server_name=…`.
+ *
+ * The cap matters: servers can return the full member-server list (continuwuity
+ * sent 889 for one space), and putting them all in the query string produces a
+ * ~40 KB request URI that proxies kill — taking the connection, and the
+ * in-flight /sync on it, down with it. A handful of candidates is all the
+ * homeserver needs. Explicit link vias come first: the sharer curated them.
+ */
+export function mergeViaServers(
+    linkVia: string[],
+    resolvedServers: string[],
+    max = 5,
+): string[] {
+    return [...new Set([...linkVia, ...resolvedServers])].slice(0, max);
+}
+
+/**
+ * Build a matrix.to permalink for a user, alias, or room id. Users and aliases
+ * are self-routing; a room id (`!…`) isn't joinable on its own, so up to 5 `via`
+ * servers are appended as `?via=` params. When an `eventId` is given, an event
+ * permalink is built (`/roomIdOrAlias/eventId`), and `via` is appended regardless
+ * of sigil (event links need a server that holds the event). Segments are
+ * percent-encoded similarly to `linkifyMatrixIdentifiers` above, so the result
+ * round-trips through `parseMatrixLink`.
+ */
+export function matrixToUrl(
+    idOrAlias: string,
+    via: string[] = [],
+    eventId?: string,
+): string {
+    const encode = (s: string) => encodeURIComponent(s).replace(/!/g, "%21");
+    let path = encode(idOrAlias);
+    if (eventId) path += `/${encode(eventId)}`;
+    const base = `https://matrix.to/#/${path}`;
+    // A room id isn't joinable on its own; an event link needs a server that
+    // holds the event. Append via for either of those, not for a plain alias.
+    const wantsVia = idOrAlias.startsWith("!") || Boolean(eventId);
+    if (wantsVia && via.length) {
+        const qs = via
+            .slice(0, 5)
+            .map((s) => `via=${encodeURIComponent(s)}`)
+            .join("&");
+        return `${base}?${qs}`;
+    }
+    return base;
+}
+
+// Bare mentions in message text: a sigil after a word boundary, a localpart,
+// and a dotted server name (optional port). Requiring the dot keeps things
+// like "#1:30pm" from linkifying; explicit links stay loose (see above).
+const MENTION_RE =
+    /(^|[\s(>[\]{}"'.,;!?~*_-])([@#][A-Za-z0-9._%=+/-]+:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+(?::\d+)?)/g;
+
+/**
+ * Wrap bare `@user:server` / `#alias:server` mentions in matrix.to anchors.
+ * Input must be HTML-escaped plain text (the `plainToHtml` path) — this must
+ * never run over untrusted formatted HTML.
+ */
+export function linkifyMatrixIdentifiers(html: string): string {
+    return html.replace(
+        MENTION_RE,
+        (_m, pre: string, id: string) =>
+            `${pre}<a href="https://matrix.to/#/${encodeURIComponent(id)}">${id}</a>`,
+    );
+}
+
+// Bare http(s) URLs in escaped plain text. `<` and `>` can't appear raw (they
+// are entities by this point) and a closing paren ends the match so
+// "(see https://x)" doesn't swallow the bracket. Mirrors the composer's
+// markdown linkifier so sent and received text behave the same.
+const URL_RE = /https?:\/\/[^\s<>)"']*/g;
+
+/**
+ * Linkify an HTML-ESCAPED plain-text body: http(s) URLs first, then bare
+ * `@user:server` / `#alias:server` mentions.
+ *
+ * Without the URL pass a pasted `https://matrix.to/#/!room:server` link stayed
+ * dead text — and since the in-app Matrix-link handler works by intercepting
+ * clicks on anchors, no anchor meant no way to open (or join) the target.
+ *
+ * URLs are stashed behind placeholders across the mention pass so a matrix.to
+ * link — which contains an alias-shaped `#dev:server` segment — can't grow a
+ * nested anchor inside itself.
+ *
+ * Input MUST already be HTML-escaped; this never runs over untrusted HTML.
+ * Escaped entities inside a URL (`&amp;` joining `?via=` params) are preserved
+ * verbatim in the href, which browsers decode back to `&` when it is read.
+ */
+export function linkifyPlainText(escapedHtml: string): string {
+    const anchors: string[] = [];
+    const stashed = escapedHtml.replace(URL_RE, (url) => {
+        anchors.push(`<a href="${url}">${url}</a>`);
+        return `\x02${anchors.length - 1}\x03`;
+    });
+    return linkifyMatrixIdentifiers(stashed).replace(
+        /\x02(\d+)\x03/g,
+        (_m, index: string) => anchors[Number(index)],
+    );
+}
+
+export type EventPermalink = Extract<
+    MatrixLinkTarget,
+    { kind: "room" | "alias" }
+> & { eventId: string; href: string };
+
+// `matrix:` URIs in plain text. The body's http(s) URLs come from URL_RE.
+const MATRIX_URI_RE = /matrix:[^\s<>)"']+/gi;
+const HREF_RE = /\shref\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+function decodeHtmlEntities(s: string): string {
+    return s
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+}
+
+/**
+ * Links to individual messages in a message body, in order of appearance and
+ * de-duplicated by room + event. Reads the plain body's URLs and, when given,
+ * the anchors of the formatted body — a link written as `[here](…)` keeps its
+ * URL only in the HTML. Pass the formatted body with any reply fallback
+ * already stripped: the legacy `<mx-reply>` block links to the parent event,
+ * which the reply quote already shows.
+ */
+export function extractEventPermalinks(
+    body: string,
+    formattedHtml?: string,
+    max = 3,
+): EventPermalink[] {
+    const hrefs = [
+        ...(body.match(URL_RE) ?? []),
+        ...(body.match(MATRIX_URI_RE) ?? []),
+    ];
+    if (formattedHtml) {
+        for (const m of formattedHtml.matchAll(HREF_RE))
+            hrefs.push(decodeHtmlEntities(m[1] ?? m[2] ?? ""));
+    }
+    const seen = new Set<string>();
+    const out: EventPermalink[] = [];
+    for (const href of hrefs) {
+        const target = parseMatrixLink(href);
+        if (!target || target.kind === "user" || !target.eventId) continue;
+        const key = `${target.kind === "room" ? target.roomId : target.alias}|${target.eventId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ ...target, eventId: target.eventId, href });
+        if (out.length >= max) break;
+    }
+    return out;
+}
+
+/**
+ * Wrap a standalone "@room" in rendered message HTML in a styled span, like a
+ * user mention. Only touches text between tags (never attributes), and skips
+ * text inside links and code so it can't nest in or break them.
+ */
+export function highlightRoomMention(html: string): string {
+    if (!html.includes("@room")) return html;
+    let skip = 0;
+    return html.replace(
+        /<(\/?)(a|code|pre)(?=[\s/>])[^>]*>|>?[^<]+/gi,
+        (m, close) => {
+            if (m.startsWith("<")) {
+                if (close) skip = Math.max(0, skip - 1);
+                else if (!m.endsWith("/>")) skip++;
+                return m;
+            }
+            if (skip) return m;
+            return m.replace(
+                /(^|[\s(>])@room(?![\w:.-])/g,
+                '$1<span class="room-mention">@room</span>',
+            );
+        },
+    );
+}
+
+// A string that is entirely 7-bit ASCII carries no homograph risk.
+// eslint-disable-next-line no-control-regex
+const ASCII_ONLY_RE = /^[\x00-\x7f]*$/;
+
+/**
+ * Render a Matrix server name in ASCII: an internationalized (IDN) host is
+ * converted to its punycode (`xn--…`) form so a homograph server name cannot
+ * masquerade as a trusted ASCII one in a link tooltip (audit SEC-L5). Plain
+ * ASCII names — the overwhelming common case, including ports and IP literals —
+ * pass through untouched. Anything that cannot be parsed as a host is returned
+ * unchanged, so an odd input is never mangled or dropped.
+ */
+export function asciiServerName(server: string): string {
+    if (!server || ASCII_ONLY_RE.test(server)) return server;
+    // Split off an optional trailing :port. IPv6 literals are ASCII, so they
+    // take the fast path above and never reach here.
+    const portMatch = server.match(/:(\d+)$/);
+    const host = portMatch ? server.slice(0, portMatch.index) : server;
+    const port = portMatch ? portMatch[0] : "";
+    try {
+        // The WHATWG URL parser applies IDNA ToASCII to the host, giving the
+        // punycode form for an internationalized name.
+        const ascii = new URL(`http://${host}`).hostname;
+        return ASCII_ONLY_RE.test(ascii) ? ascii + port : server;
+    } catch {
+        return server;
+    }
+}
+
+/**
+ * The tooltip an anchor should carry, or null for "leave it alone".
+ *
+ * Only user links get one: the anchor text is usually a nickname, so the full
+ * user id is the useful disambiguation. The server name is rendered as ASCII
+ * (see `asciiServerName`) so a homograph server can't spoof a trusted one in
+ * the tooltip. Extracted from MessageItem so the rule is testable — the
+ * component now applies it per-anchor on hover/focus instead of sweeping every
+ * anchor in the row from a MutationObserver.
+ */
+export function matrixLinkTitle(
+    href: string | null | undefined,
+): string | null {
+    if (!href) return null;
+    const target = parseMatrixLink(href);
+    if (target?.kind !== "user") return null;
+    // userId is `@localpart:server`; the localpart holds no colon, so the first
+    // colon splits it from the server we harden.
+    const colon = target.userId.indexOf(":");
+    if (colon === -1) return target.userId;
+    const local = target.userId.slice(0, colon);
+    const server = target.userId.slice(colon + 1);
+    return `${local}:${asciiServerName(server)}`;
+}

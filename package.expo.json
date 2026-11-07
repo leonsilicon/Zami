@@ -1,0 +1,153 @@
+{
+    "name": "zam",
+    "version": "1.54.13",
+    "private": true,
+    "main": "electron/main.cjs",
+    "scripts": {
+        "dev": "vite dev",
+        "build": "node scripts/check-no-emdash.mjs && node scripts/check-active-session-sync.mjs && vite build && node scripts/pack-twemoji.mjs && node scripts/build-push-decrypt.mjs && node scripts/sw-precache.mjs",
+        "preview": "vite preview",
+        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "check:active-session": "node scripts/check-active-session-sync.mjs",
+        "check:emdash": "node scripts/check-no-emdash.mjs",
+        "i18n:missing": "node scripts/i18n-missing.mjs",
+        "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+        "lint": "prettier --check .",
+        "format": "prettier --write .",
+        "electron": "electron .",
+        "electron:dev": "npm run build && electron .",
+        "electron:build": "npm run build && npm run build:app-audio && node scripts/gen-shell-hash.mjs && electron-builder",
+        "build:app-audio": "node scripts/build-app-audio.mjs",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "dev:https": "vite dev --mode https --port 5443 --strictPort"
+    },
+    "build": {
+        "appId": "moe.crafty.matrix",
+        "productName": "Zam",
+        "publish": [
+            {
+                "provider": "github",
+                "owner": "az4521",
+                "repo": "Zam"
+            }
+        ],
+        "directories": {
+            "output": "dist-electron"
+        },
+        "asarUnpack": [
+            "electron/icons/**",
+            "node_modules/@vencord/venmic/**"
+        ],
+        "npmRebuild": false,
+        "files": [
+            "electron/**/*",
+            "build/**/*",
+            "!build/twemoji/svg/**",
+            "package.json"
+        ],
+        "win": {
+            "target": [
+                "nsis",
+                "portable"
+            ],
+            "icon": "electron/icons/icon.ico",
+            "extraResources": [
+                {
+                    "from": "native/app-audio/build/zam-app-audio.exe",
+                    "to": "zam-app-audio.exe"
+                }
+            ]
+        },
+        "nsis": {
+            "artifactName": "${productName}-Setup-${version}.${ext}"
+        },
+        "portable": {
+            "artifactName": "${productName}-Portable-${version}.${ext}"
+        },
+        "linux": {
+            "target": [
+                "AppImage"
+            ],
+            "category": "Network",
+            "icon": "electron/icons/icon.png"
+        },
+        "mac": {
+            "target": [
+                "dmg"
+            ],
+            "icon": "static/favicon.png",
+            "extendInfo": {
+                "NSAppleEventsUsageDescription": "Zam reads the track playing in Spotify and Music to show it on your profile when you turn on Report media playback."
+            }
+        }
+    },
+    "devDependencies": {
+        "@capacitor/cli": "^8.3.0",
+        "@lofcz/deepfilternet-web": "0.1.0",
+        "@ruffle-rs/ruffle": "^0.7.1",
+        "@sveltejs/adapter-auto": "^5.0.0",
+        "@sveltejs/adapter-static": "^3.0.10",
+        "@sveltejs/kit": "^2.21.0",
+        "@sveltejs/vite-plugin-svelte": "^6.2.4",
+        "@twemoji/api": "^17.0.2",
+        "@types/leaflet": "^1.9.21",
+        "@types/qrcode": "^1.5.6",
+        "@vitejs/plugin-basic-ssl": "^2.3.0",
+        "@vitejs/plugin-legacy": "^7.2.1",
+        "@webgpu/types": "0.1.74",
+        "autoprefixer": "^10.4.21",
+        "chiptune3": "^0.8.9",
+        "core-js": "^3.50.0",
+        "date-fns": "^4.1.0",
+        "dompurify": "^3.4.11",
+        "electron": "^44.5.1",
+        "electron-builder": "^26.8.1",
+        "emojibase-data": "^17.0.0",
+        "highlight.js": "^11.11.1",
+        "jpeg-js": "^0.4.4",
+        "jsdom": "^29.1.1",
+        "jsqr": "^1.4.0",
+        "jxl-rs-polyfill": "^0.2.0",
+        "leaflet": "^1.9.4",
+        "livekit-client": "^2.20.1",
+        "lucide-svelte": "^0.509.0",
+        "marked": "^15.0.7",
+        "matrix-js-sdk": "^45.0.0",
+        "mp4box": "^2.4.1",
+        "postcss": "^8.5.3",
+        "prettier": "^3.5.3",
+        "prettier-plugin-svelte": "^3.3.3",
+        "qrcode": "^1.5.4",
+        "spessasynth_core": "4.3.22",
+        "svelte": "^5.33.2",
+        "svelte-check": "^4.2.1",
+        "tailwindcss": "^3.4.17",
+        "typescript": "^5.8.2",
+        "unicode-emoji-json": "^0.8.0",
+        "uuid": "^11.1.0",
+        "vite": "^7.3.7",
+        "vitest": "^4.1.12"
+    },
+    "type": "module",
+    "dependencies": {
+        "@capacitor/android": "^8.3.0",
+        "@capacitor/app": "^8.1.0",
+        "@capacitor/browser": "^8.0.5",
+        "@capacitor/core": "^8.3.0",
+        "@capacitor/preferences": "^8.0.1",
+        "@capacitor/push-notifications": "^8.0.3",
+        "@homebridge/dbus-native": "^0.7.9",
+        "electron-updater": "^6.3.9",
+        "uiohook-napi": "^1.5.5",
+        "ws": "8.22.1"
+    },
+    "optionalDependencies": {
+        "@vencord/venmic": "^7.2.3"
+    },
+    "overrides": {
+        "cmake-js": {
+            "tar": "^7.5.22"
+        }
+    }
+}

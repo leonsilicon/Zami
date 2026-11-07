@@ -1,0 +1,409 @@
+import type { Room } from "matrix-js-sdk";
+import {
+    findSpaceForRoom,
+    getCachedHierarchy,
+    getRoom,
+    getRoomsInSpace,
+    getRoomTags,
+    isRoomLandable,
+    isVideoRoom,
+    markRoomPendingArrival,
+    roomTypeIsKnown,
+} from "$lib/matrix/client";
+import type { SpaceChildInfo, SpaceLayout } from "$lib/matrix/client";
+import { sortRoomsByTag } from "$lib/utils/roomOrdering";
+import { resolveLandingTarget } from "$lib/utils/landingSurface";
+import { interfaceState } from "./interface.svelte";
+import { settingsState } from "./settings.svelte";
+import { auth } from "./auth.svelte";
+import {
+    readScoped,
+    writeScoped,
+    removeScoped,
+} from "$lib/utils/scopedStorage";
+
+const STORAGE_KEY = "matrix_last_room_by_space";
+const SPACE_KEY = "matrix_last_space";
+const HOME_KEY = "__home__";
+
+function loadLastRooms(): Record<string, string> {
+    try {
+        return JSON.parse(readScoped(STORAGE_KEY, auth.userId) ?? "{}");
+    } catch {
+        return {};
+    }
+}
+
+function saveLastRoom(spaceId: string | null, roomId: string): void {
+    const map = loadLastRooms();
+    map[spaceId ?? HOME_KEY] = roomId;
+    writeScoped(STORAGE_KEY, auth.userId, JSON.stringify(map));
+}
+
+function getLastRoom(spaceId: string | null): string | null {
+    return loadLastRooms()[spaceId ?? HOME_KEY] ?? null;
+}
+
+function loadLastSpace(): string | null {
+    return readScoped(SPACE_KEY, auth.userId);
+}
+
+function saveLastSpace(spaceId: string | null): void {
+    if (spaceId === null) {
+        removeScoped(SPACE_KEY, auth.userId);
+    } else {
+        writeScoped(SPACE_KEY, auth.userId, spaceId);
+    }
+}
+
+/**
+ * Re-read the active account's persisted last space and room. Module init
+ * runs before the account is known, so the app shell calls this on boot.
+ */
+export function reloadLastLocationFromStorage(): void {
+    roomsState.activeSpaceId = loadLastSpace();
+    roomsState.activeRoomId = getLastRoom(roomsState.activeSpaceId);
+    // The restored room is a destination like any other, so it gets the same
+    // surface decision. On boot that decision is almost always deferred (no
+    // rooms exist yet), which is precisely why this call matters: it arms the
+    // deferral that `resolvePendingSurface` later settles.
+    applyDefaultSurface(roomsState.activeRoomId);
+}
+
+export const roomsState = $state({
+    spaces: [] as Room[],
+    orphanRooms: [] as Room[],
+    directRooms: [] as Room[],
+    invitedRooms: [] as Room[],
+    knockedRooms: [] as Room[],
+    activeSpaceId: loadLastSpace() as string | null,
+    activeRoomId: getLastRoom(loadLastSpace()) as string | null,
+    showInbox: false,
+    /**
+     * The user asked for the active space's home page. Like the inbox it is a
+     * deliberate no-room surface, so the landing chain must not replace it with
+     * the space's first room. Cleared by any real navigation.
+     */
+    showSpaceHome: false,
+    roomsInSpace: [] as Room[],
+    spaceHierarchy: [] as SpaceChildInfo[],
+    /**
+     * Set while browsing a sub-space reached from inside another space: the
+     * nearest *joined* ancestor (for the hierarchy-via-parent fallback and
+     * the sidebar highlight) and the sub-space's display name (unjoined
+     * sub-spaces have no local Room to read a name from).
+     */
+    spaceDrillParentId: null as string | null,
+    spaceDrillName: null as string | null,
+    /** Levels below the joined ancestor (1 = direct child, 2 = nested, …). */
+    spaceDrillDepth: 0,
+    hierarchyLoading: false,
+    isLoading: false,
+    unreadTick: 0,
+    roomsTick: 0,
+    spaceLayout: { order: [], folders: {} } as SpaceLayout,
+    /**
+     * A message to scroll to as soon as its room's timeline is mounted — set by
+     * a notification tap or a cross-room permalink jump, and consumed + cleared
+     * by MessageArea once its active room matches. Null the rest of the time,
+     * so no steady-state reactivity depends on it.
+     */
+    pendingJump: null as { roomId: string; eventId: string } | null,
+    /**
+     * A DM that does not exist yet. Opening a DM with someone you have no room
+     * with shows a draft instead of creating the room (and sending the invite)
+     * up front; the room is created when the first message is sent. While set,
+     * the main pane renders the draft over `activeRoomId`, which is left alone
+     * so dropping the draft returns to wherever the user was. Every real
+     * navigation clears it.
+     */
+    draftDm: null as { userId: string; encrypt: boolean } | null,
+});
+
+export function bumpUnreadTick(): void {
+    roomsState.unreadTick++;
+}
+
+/**
+ * A surface choice we could not make yet because the room was not loaded.
+ * Deliberately a plain `let`, not part of `roomsState`: reading it must never
+ * make a tracked scope depend on it, or settling a boot choice would ripple
+ * through the whole app's reactivity for something no UI renders.
+ */
+let pendingSurfaceRoomId: string | null = null;
+
+/**
+ * Pick the surface a room opens on. A video room's purpose IS the call, so it
+ * lands on the call view — peeking, never auto-joining (`showCallView`'s own
+ * contract) — while everything else lands on its timeline. The ordinary
+ * navigation entry points route through here (sidebar click, space switch,
+ * inbox jump, boot restore) so a video room behaves the same however you reach
+ * it; deliberate call-surface entry (`showCallView`) and the few places that
+ * clear `activeRoomId` outright to show something other than a room bypass it.
+ *
+ * The decision is only made when the room's type can actually be read, which on
+ * boot is never and over federation is not immediately. Two ways it is unknown:
+ * the app shell mounts as soon as the session is authenticated, and at that
+ * moment the SDK has no `Room` objects at all (the persisted sync only becomes
+ * rooms once `startClient` runs its first pass); and continuwuity omits
+ * federated rooms from /sync, leaving a state-less stub whose `getType()` reads
+ * `undefined` — identical to an ordinary room — until `seedRoomStateIfMissing`
+ * heals it. Committing on either would silently strand a video room on its
+ * timeline for the whole visit, so an undecidable room is *remembered* rather
+ * than decided, the timeline stands in meanwhile (the pre-existing behaviour,
+ * never worse), and `resolvePendingSurface` settles it once the type is real.
+ */
+function applyDefaultSurface(roomId: string | null): void {
+    const room = roomId ? getRoom(roomId) : null;
+    if (roomId && (!room || !roomTypeIsKnown(room))) {
+        pendingSurfaceRoomId = roomId;
+        interfaceState.callViewRoomId = null;
+        return;
+    }
+    pendingSurfaceRoomId = null;
+    interfaceState.callViewRoomId =
+        room && isVideoRoom(room) ? room.roomId : null;
+}
+
+/**
+ * Settle a surface choice that could not be made when the room was opened.
+ * Cheap enough to call on every room-list rebuild, and guarded so it can only
+ * ever help: it does nothing unless the user is still sitting on the very room
+ * whose surface was deferred, so someone who has navigated away is never yanked
+ * into a call view after the fact. (Someone who stayed put and pressed "Show
+ * chat" is not protected by that guard — `showChatView` cannot clear the
+ * deferral without an import cycle — but that only costs one late flip back to
+ * the call, on the room whose purpose is the call.) Resolving once clears the
+ * deferral; a room whose type is still unreadable stays pending for the next
+ * rebuild.
+ */
+export function resolvePendingSurface(): void {
+    if (pendingSurfaceRoomId === null) return;
+    if (pendingSurfaceRoomId !== roomsState.activeRoomId) {
+        pendingSurfaceRoomId = null;
+        return;
+    }
+    const room = getRoom(pendingSurfaceRoomId);
+    if (!room || !roomTypeIsKnown(room)) return;
+    applyDefaultSurface(pendingSurfaceRoomId);
+}
+
+/**
+ * Land on a room chosen by the fallback chain rather than by the user.
+ *
+ * Deliberately not `setActiveRoom`: that closes the mobile drawer
+ * unconditionally, which would un-pin someone who turned on
+ * `keepSidebarOpen`. Everything else about opening a room — the call-vs-
+ * timeline surface choice and remembering it for next boot — must still
+ * happen, or an auto-landed video room shows a stale timeline and the next
+ * boot forgets where we put them.
+ */
+function landOnRoom(roomId: string): void {
+    roomsState.activeRoomId = roomId;
+    roomsState.showInbox = false;
+    roomsState.showSpaceHome = false;
+    applyDefaultSurface(roomId);
+    saveLastRoom(roomsState.activeSpaceId, roomId);
+}
+
+/**
+ * Show the active space's home page instead of a room. Without this a space's
+ * landing panel is only reachable when it has no room to open, so once a room
+ * is selected there is no way back to it.
+ */
+export function showSpaceHome(): void {
+    if (roomsState.activeSpaceId === null) return;
+    roomsState.draftDm = null;
+    roomsState.showInbox = false;
+    roomsState.showSpaceHome = true;
+    roomsState.activeRoomId = null;
+    applyDefaultSurface(null);
+    if (interfaceState.isMobile && !settingsState.keepSidebarOpen)
+        interfaceState.leftOpen = false;
+}
+
+/** Room ids of the current context, in the order the sidebar renders them. */
+function sidebarOrderedIds(rooms: readonly Room[]): string[] {
+    return sortRoomsByTag(rooms, (r) => getRoomTags(r.roomId)).map(
+        (r) => r.roomId,
+    );
+}
+
+/**
+ * Replace an empty or stale main pane with something real.
+ *
+ * Called at the two moments the answer can change: a space switch, and every
+ * rebuild of the room list (where `resolvePendingSurface` already runs, for
+ * the same reason — it is the earliest honest moment). Idempotent: the
+ * overwhelmingly common answer is "keep", which writes nothing at all. Not
+ * free, though — the input snapshot is built eagerly, so every call re-sorts
+ * Home's rooms and DMs even when the answer turns out to be "keep".
+ *
+ * Gated on a *live* sync (`auth.syncState === "SYNCING"`), never on
+ * `PREPARED`, which the SDK also emits for a purely cached start-up. Until
+ * then every call answers "keep" and nothing moves.
+ */
+export function resolveLandingSurface(): void {
+    const spaceId = roomsState.activeSpaceId;
+    const target = resolveLandingTarget({
+        // `SYNCING` alone, deliberately NOT `PREPARED`. `PREPARED` is emitted
+        // straight from the IndexedDB cache with no HTTP request at all
+        // (sync.js `syncFromCache`), and that cache only persists its
+        // accumulator every 5 minutes — so a warm boot can reach `PREPARED`
+        // with the last few minutes of joins missing, and every one of those
+        // rooms looks stale. `SYNCING` is only reached after a live /sync
+        // response has been processed, which is the first honest moment.
+        // Conservative on purpose: an offline or erroring boot simply never
+        // runs the chain, and the user keeps whatever the cache gave them —
+        // never worse than the behaviour before this feature.
+        roomsReady: auth.syncState === "SYNCING",
+        showInbox: roomsState.showInbox || roomsState.showSpaceHome,
+        activeSpaceId: spaceId,
+        activeRoomId: roomsState.activeRoomId,
+        activeRoomIsLandable: roomsState.activeRoomId
+            ? isRoomLandable(roomsState.activeRoomId)
+            : false,
+        spaceRoomIds: spaceId
+            ? sidebarOrderedIds(getRoomsInSpace(spaceId))
+            : [],
+        // The sidebar renders the DM section after the room groups, so Home's
+        // order is the two lists sorted separately and concatenated — never one
+        // sort over both, which would interleave a favourited DM into the rooms.
+        homeRoomIds: [
+            ...sidebarOrderedIds(roomsState.orphanRooms),
+            ...sidebarOrderedIds(roomsState.directRooms),
+        ],
+    });
+
+    switch (target.kind) {
+        case "keep":
+            return;
+        case "room":
+            landOnRoom(target.roomId);
+            return;
+        case "none":
+            roomsState.activeRoomId = null;
+            applyDefaultSurface(null);
+            return;
+    }
+}
+
+export function setActiveSpace(
+    spaceId: string | null,
+    drill?: { parentId: string; name?: string; depth?: number },
+): void {
+    if (spaceId === roomsState.activeSpaceId) return;
+    roomsState.draftDm = null;
+    roomsState.showSpaceHome = false;
+    roomsState.activeSpaceId = spaceId;
+    roomsState.activeRoomId = getLastRoom(spaceId);
+    // Restoring a space's last room is a navigation too: if that room is a
+    // video room it must land on the call surface, not a stale timeline.
+    applyDefaultSurface(roomsState.activeRoomId);
+    // Last known children while the fresh /hierarchy loads, not a blank list.
+    roomsState.spaceHierarchy = spaceId
+        ? (getCachedHierarchy(spaceId) ?? [])
+        : [];
+    roomsState.spaceDrillParentId = drill?.parentId ?? null;
+    roomsState.spaceDrillName = drill?.name ?? null;
+    roomsState.spaceDrillDepth = drill ? (drill.depth ?? 1) : 0;
+    // When drilling into a sub-space, persist the ancestor: booting into a
+    // possibly-unjoined sub-space would strand the user in an empty view
+    // (no parent context for the hierarchy fallback).
+    saveLastSpace(drill ? drill.parentId : spaceId);
+    // Switching space/Home only swaps the room list — keep the mobile drawer
+    // open for browsing when pinned in Settings > Customization.
+    if (interfaceState.isMobile && !settingsState.keepSidebarOpen)
+        interfaceState.leftOpen = false;
+    // The space's remembered room was assigned above without validation, and a
+    // space with no remembered room leaves us on nothing at all. Settle it now
+    // rather than rendering an empty pane. Runs last so it sees every field
+    // this function assigns.
+    resolveLandingSurface();
+}
+
+export function setActiveRoom(roomId: string): void {
+    // Every deliberate arrival funnels through here — sidebar click, inbox
+    // jump, and crucially `createRoom`/`createSpace`/`createDirectMessage`/
+    // `joinRoomByAlias`, each of which resolves BEFORE the room reaches the
+    // client store. Claiming the id here means the per-sync rebuild's landing
+    // chain cannot classify a brand-new room as gone and bounce the user off
+    // it, and no future create/join wrapper has to remember to opt in.
+    // Deliberately not done in `landOnRoom`: see markRoomPendingArrival.
+    markRoomPendingArrival(roomId);
+    roomsState.draftDm = null;
+    roomsState.activeRoomId = roomId;
+    roomsState.showInbox = false;
+    roomsState.showSpaceHome = false;
+    // Ordinary rooms show their timeline; video rooms show their call. The
+    // three call-view entry points re-set this immediately after their own
+    // setActiveRoom/navigateToRoom call, which still works either way.
+    applyDefaultSurface(roomId);
+    saveLastRoom(roomsState.activeSpaceId, roomId);
+    // Picking a room/DM is a destination: always dismiss the mobile drawer,
+    // regardless of the keep-open setting.
+    if (interfaceState.isMobile) interfaceState.leftOpen = false;
+}
+
+/**
+ * Navigate to a room, also switching to the space that contains it (or Home if
+ * it's a DM/orphan). Use this when jumping to a room that may not be in the
+ * currently-selected space — e.g. from the notifications inbox.
+ *
+ * Pass `eventId` to also scroll the timeline to that exact message once its room
+ * is open (a notification tap or a cross-room permalink). The jump is queued on
+ * `roomsState.pendingJump`; MessageArea consumes it when its room prop catches
+ * up and, via `scrollToMessage`, fetches a context window if the event is not in
+ * the loaded timeline — so an old message still lands.
+ */
+export function navigateToRoom(roomId: string, eventId?: string): void {
+    const targetSpace = findSpaceForRoom(roomId);
+    if (targetSpace !== roomsState.activeSpaceId) {
+        roomsState.activeSpaceId = targetSpace;
+        roomsState.spaceHierarchy = targetSpace
+            ? (getCachedHierarchy(targetSpace) ?? [])
+            : [];
+        roomsState.spaceDrillParentId = null;
+        roomsState.spaceDrillName = null;
+        roomsState.spaceDrillDepth = 0;
+        saveLastSpace(targetSpace);
+    }
+    setActiveRoom(roomId);
+    roomsState.pendingJump = eventId ? { roomId, eventId } : null;
+}
+
+/**
+ * Show a draft DM with `userId` — see `roomsState.draftDm`. Callers check
+ * `hasExistingDirectMessage` first; an existing DM opens as a room instead.
+ */
+export function openDraftDm(userId: string, encrypt: boolean): void {
+    roomsState.draftDm = { userId, encrypt };
+    roomsState.showInbox = false;
+    roomsState.showSpaceHome = false;
+    // A DM is a Home destination, so leave whatever space was being browsed.
+    if (roomsState.activeSpaceId !== null) {
+        roomsState.activeSpaceId = null;
+        roomsState.spaceHierarchy = [];
+        roomsState.spaceDrillParentId = null;
+        roomsState.spaceDrillName = null;
+        roomsState.spaceDrillDepth = 0;
+        saveLastSpace(null);
+        roomsState.activeRoomId = getLastRoom(null);
+        applyDefaultSurface(roomsState.activeRoomId);
+    }
+    if (interfaceState.isMobile) interfaceState.leftOpen = false;
+}
+
+/** Drop the draft DM, if any, returning the main pane to `activeRoomId`. */
+export function closeDraftDm(): void {
+    roomsState.draftDm = null;
+}
+
+export function getActiveRoom(): Room | undefined {
+    const allRooms = [
+        ...roomsState.roomsInSpace,
+        ...roomsState.orphanRooms,
+        ...roomsState.directRooms,
+    ];
+    return allRooms.find((r) => r.roomId === roomsState.activeRoomId);
+}

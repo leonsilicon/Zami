@@ -1,0 +1,429 @@
+name: Build & Release
+
+on:
+    push:
+        branches: [master]
+        tags: ["v*"]
+    workflow_dispatch:
+
+permissions:
+    contents: write
+
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    # Only proceed to a release when package.json "version" has no GitHub
+    # release yet and is newer than every release that exists. Compared with
+    # the published releases rather than the previous commit, so a release
+    # that failed (red gate, failed build) is retried by the next push at the
+    # same version; no bump needed. The build jobs below run on every master
+    # push regardless.
+    check:
+        runs-on: ubuntu-latest
+        outputs:
+            release: ${{ steps.v.outputs.release }}
+            version: ${{ steps.v.outputs.version }}
+        steps:
+            - uses: actions/checkout@v4
+            - id: v
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  set -euo pipefail
+                  CURR=$(jq -r .version package.json)
+                  echo "version=$CURR" >> "$GITHUB_OUTPUT"
+                  # Fails the job (rather than guessing) if the API can't be read.
+                  RELEASED=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
+                    --json tagName --jq '.[].tagName' | sed 's/^v//')
+                  LATEST=$(printf '%s\n' "$RELEASED" | sed '/^$/d' | sort -V | tail -n1)
+                  if printf '%s\n' "$RELEASED" | grep -qxF "$CURR"; then
+                    echo "release=false" >> "$GITHUB_OUTPUT"
+                    echo "v$CURR is already released, skipping release."
+                  elif [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "$LATEST" "$CURR" | sort -V | tail -n1)" != "$CURR" ]; then
+                    echo "release=false" >> "$GITHUB_OUTPUT"
+                    echo "v$CURR is older than the latest release v$LATEST, skipping release."
+                  else
+                    echo "release=true" >> "$GITHUB_OUTPUT"
+                    echo "v$CURR is not released yet (latest: v${LATEST:-none}), will release."
+                  fi
+
+    # The web UI as a signed bundle, so desktop apps update it without a
+    # reinstall (electron/bundleUpdater.cjs). Repository secret
+    # ZAM_BUNDLE_SIGNING_KEY = the private key from scripts/gen-bundle-key.mjs
+    # (its public half is electron/bundleKey.cjs). Without the secret no bundle
+    # is made and the release is installers only, which every app still takes.
+    bundle:
+        needs: [check, verify]
+        runs-on: ubuntu-latest
+        env:
+            ZAM_BUNDLE_SIGNING_KEY: ${{ secrets.ZAM_BUNDLE_SIGNING_KEY }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+              env:
+                  VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
+                  VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+            - run: node scripts/build-bundle.mjs
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: web-bundle
+                  path: dist-bundle/*
+                  if-no-files-found: ignore
+
+    # Code gate: types, tests and formatting. The build jobs wait on it, so a
+    # red gate never produces installers or a release.
+    verify:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run check
+            - run: npm run test
+            - run: npm run lint
+
+    # Dev builds — run on every master push. Attached to a release only when
+    # the version is unreleased (gated `release` job below).
+    android:
+        needs: [check, verify]
+        runs-on: ubuntu-latest
+        # Signing key + passwords. Add these as repository secrets:
+        #   ANDROID_KEYSTORE_BASE64  = base64 of your .jks/.keystore file
+        #   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+        # When ANDROID_KEYSTORE_BASE64 is unset the APK is built unsigned.
+        env:
+            ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+            ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+            ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+            ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+              env:
+                  VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
+                  VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+            - uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: 21
+            - uses: android-actions/setup-android@v3
+              with:
+                  # The action's default also installs the legacy "tools" package,
+                  # which current cmdline-tools no longer ship (sdkmanager exits 1).
+                  # Gradle fetches the platform / build-tools it needs on its own.
+                  packages: platform-tools
+            - name: Add google-services.json
+              if: env.GOOGLE_SERVICES_JSON_BASE64 != ''
+              env:
+                  GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+              run: |
+                  echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+            # The shell's fingerprint, packed into the APK so it only accepts web
+            # bundles built for it (scripts/shell-hash-lib.mjs). From committed
+            # sources, before cap sync rewrites anything.
+            - name: Fingerprint the Android shell
+              run: node scripts/gen-android-shell-hash.mjs
+            - run: npx cap sync android
+            - name: Decode signing keystore
+              if: env.ANDROID_KEYSTORE_BASE64 != ''
+              run: |
+                  echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+                  echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            - name: Build release APK
+              working-directory: android
+              run: |
+                  chmod +x ./gradlew
+                  ./gradlew assembleRelease --no-daemon --stacktrace
+            - name: Verify APK signature
+              run: |
+                  set -euo pipefail
+                  # Both lookups are written so the friendly "not found" branches below
+                  # stay REACHABLE under `set -euo pipefail`:
+                  #   * the directory guards keep a missing directory from making find
+                  #     exit non-zero, which would kill the step before the branch runs;
+                  #   * `-print -quit` lets find itself stop at the first APK, so there
+                  #     is no `| head` to close the pipe early and abort with SIGPIPE
+                  #     (141) on a build that ever produces more than one APK.
+                  # `tail -n1` reads its whole input, so that pipeline has no early-exit
+                  # stage and is safe to keep as-is.
+                  APK_DIR=android/app/build/outputs/apk/release
+                  APK=""
+                  if [ -d "$APK_DIR" ]; then
+                    APK=$(find "$APK_DIR" -name '*.apk' -print -quit)
+                  fi
+                  if [ -z "$APK" ]; then
+                    echo "::error::No release APK was produced."
+                    exit 1
+                  fi
+                  BUILD_TOOLS="${ANDROID_SDK_ROOT:-}/build-tools"
+                  APKSIGNER=""
+                  if [ -d "$BUILD_TOOLS" ]; then
+                    APKSIGNER=$(find "$BUILD_TOOLS" -name apksigner | sort | tail -n1)
+                  fi
+                  if [ -z "$APKSIGNER" ]; then
+                    echo "::error::apksigner not found in $BUILD_TOOLS."
+                    exit 1
+                  fi
+                  # Hard failure by design: in-app updates pin the signer certificate,
+                  # so an unsigned or unverifiable APK must never reach a release.
+                  # Set the ANDROID_KEYSTORE_* repository secrets to sign the build.
+                  "$APKSIGNER" verify --print-certs "$APK"
+            - name: Stage APK with version
+              run: |
+                  mkdir -p release-files
+                  APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -n1)
+                  cp "$APK" "release-files/zam-${{ needs.check.outputs.version }}.apk"
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: android
+                  path: release-files/*.apk
+                  if-no-files-found: error
+
+    desktop:
+        needs: [check, verify]
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, windows-latest, macos-latest]
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+              env:
+                  VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
+                  VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+            # Windows: the per-application screen-share audio helper
+            # (native/app-audio), packed by build.win.extraResources. A no-op
+            # on the other runners.
+            - name: Build app audio helper
+              run: npm run build:app-audio
+            # The shell's fingerprint, packed into the app so it only accepts
+            # web bundles built for it (scripts/shell-hash-lib.mjs).
+            - name: Fingerprint the desktop shell
+              run: node scripts/gen-shell-hash.mjs
+            - name: Build desktop app
+              run: npx electron-builder --publish never
+              env:
+                  CSC_IDENTITY_AUTO_DISCOVERY: false
+            - name: Upload installers
+              uses: actions/upload-artifact@v4
+              with:
+                  name: desktop-${{ matrix.os }}
+                  if-no-files-found: ignore
+                  path: |
+                      dist-electron/*.exe
+                      dist-electron/*.dmg
+                      dist-electron/*.zip
+                      dist-electron/*.AppImage
+                      dist-electron/*.deb
+                      dist-electron/latest*.yml
+                      dist-electron/*.blockmap
+
+    # Flatpak: our own signed repo (served from GitHub Pages by the `pages` job
+    # below), not Flathub. Built on every master push like the other desktop
+    # builds; the repo is only published when the version is unreleased.
+    #
+    # Repository secret FLATPAK_GPG_PRIVATE_KEY = base64 of the armour-less
+    # secret key whose public half is flatpak/zam-repo.gpg. Unsigned builds are
+    # fine for a dev artifact, but a release refuses to publish without it.
+    flatpak:
+        needs: [check, verify]
+        runs-on: ubuntu-latest
+        env:
+            FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+            VERSION: ${{ needs.check.outputs.version }}
+            RELEASE: ${{ needs.check.outputs.release }}
+            APP_ID: moe.crafty.matrix
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - run: npm run build
+              env:
+                  VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
+                  VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+            - name: Fingerprint the desktop shell
+              run: node scripts/gen-shell-hash.mjs
+            - name: Build unpacked Linux app
+              run: npx electron-builder --linux dir --publish never
+            - name: Install Flatpak tooling
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y flatpak flatpak-builder
+                  flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            - name: Import signing key
+              if: env.FLATPAK_GPG_PRIVATE_KEY != ''
+              run: |
+                  set -euo pipefail
+                  export GNUPGHOME="$RUNNER_TEMP/gnupg"
+                  mkdir -m 700 "$GNUPGHOME"
+                  echo "$FLATPAK_GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
+                  KEY=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+                  # The committed public key must match, or clients would reject
+                  # every update signed with this one.
+                  gpg --show-keys --with-colons flatpak/zam-repo.gpg | grep -q "$KEY" \
+                    || { echo "::error::FLATPAK_GPG_PRIVATE_KEY does not match flatpak/zam-repo.gpg"; exit 1; }
+                  echo "GPG_ARGS=--gpg-sign=$KEY --gpg-homedir=$GNUPGHOME" >> "$GITHUB_ENV"
+            - name: Require signing for releases
+              if: env.RELEASE == 'true' && env.FLATPAK_GPG_PRIVATE_KEY == ''
+              run: |
+                  echo "::error::Set the FLATPAK_GPG_PRIVATE_KEY secret to publish the Flatpak repo."
+                  exit 1
+            - name: Stamp version into metainfo
+              run: |
+                  sed -i "s/@VERSION@/$VERSION/g; s/@DATE@/$(date -u +%F)/g" \
+                    flatpak/$APP_ID.metainfo.xml
+            - name: Fetch the published repo's history
+              if: env.RELEASE == 'true'
+              run: |
+                  set -euo pipefail
+                  # Each release is a new commit on top of the ones already
+                  # published, so `flatpak update --commit=<hash>` can roll
+                  # back to any earlier release. Starting from an empty repo
+                  # would publish only this version and drop every other one.
+                  BASE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}"
+                  sudo apt-get install -y ostree
+                  ostree --repo=repo init --mode=archive
+                  ostree --repo=repo remote add --no-gpg-verify previous "$BASE/repo/"
+                  # The first release has nothing to fetch.
+                  ostree --repo=repo pull --mirror --depth=-1 previous                     || echo "::warning::No published repo to carry history from"
+                  ostree --repo=repo remote delete previous
+            - name: Build Flatpak repo
+              run: |
+                  set -euo pipefail
+                  flatpak-builder --user --install-deps-from=flathub \
+                    --disable-rofiles-fuse --force-clean \
+                    --default-branch=stable --repo=repo ${GPG_ARGS:-} \
+                    build-dir flatpak/$APP_ID.yml
+                  flatpak build-update-repo --title=Zam --default-branch=stable \
+                    --generate-static-deltas --prune --prune-depth=-1 ${GPG_ARGS:-} repo
+            - name: Build Flatpak bundle
+              run: |
+                  set -euo pipefail
+                  # Owner/repo of the Pages site that hosts the repo; a bundle
+                  # carrying this URL + key keeps updating from it after install.
+                  BASE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}"
+                  echo "PAGES_BASE=$BASE" >> "$GITHUB_ENV"
+                  REMOTE_ARGS=""
+                  if [ -n "${GPG_ARGS:-}" ]; then
+                    REMOTE_ARGS="--repo-url=$BASE/repo/ --gpg-keys=flatpak/zam-repo.gpg"
+                  fi
+                  mkdir -p release-files
+                  flatpak build-bundle $REMOTE_ARGS \
+                    --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+                    repo "release-files/zam-$VERSION.flatpak" $APP_ID stable
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: flatpak
+                  path: release-files/*.flatpak
+                  if-no-files-found: error
+            - name: Assemble Pages site
+              if: env.RELEASE == 'true'
+              run: |
+                  set -euo pipefail
+                  KEY_B64=$(base64 -w0 flatpak/zam-repo.gpg)
+                  mkdir site
+                  mv repo site/repo
+                  cp electron/icons/icon.png site/icon.png
+                  cat > site/zam.flatpakrepo <<EOF
+                  [Flatpak Repo]
+                  Title=Zam
+                  Url=$PAGES_BASE/repo/
+                  Homepage=https://github.com/$GITHUB_REPOSITORY
+                  Comment=Zam Matrix client
+                  Icon=$PAGES_BASE/icon.png
+                  GPGKey=$KEY_B64
+                  EOF
+                  cat > site/zam.flatpakref <<EOF
+                  [Flatpak Ref]
+                  Name=$APP_ID
+                  Branch=stable
+                  Title=Zam
+                  Url=$PAGES_BASE/repo/
+                  SuggestRemoteName=zam
+                  RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+                  IsRuntime=false
+                  Homepage=https://github.com/$GITHUB_REPOSITORY
+                  Icon=$PAGES_BASE/icon.png
+                  GPGKey=$KEY_B64
+                  EOF
+                  sed "s|@BASE@|$PAGES_BASE|g; s|@VERSION@|$VERSION|g" \
+                    flatpak/index.html > site/index.html
+            - uses: actions/upload-pages-artifact@v3
+              if: env.RELEASE == 'true'
+              with:
+                  path: site
+
+    release:
+        needs: [check, android, desktop, flatpak, bundle]
+        if: needs.check.outputs.release == 'true'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Extract the changelog section for this version
+              shell: bash
+              run: |
+                  VER="${{ needs.check.outputs.version }}"
+                  # Pull the "## v<version>" section out of CHANGELOG.md into the release
+                  # body (stops at the next "## " heading). Empty if there is no matching
+                  # entry — the auto-generated commit notes below still fill the release.
+                  awk -v h="## v$VER" \
+                    'index($0,h)==1 && substr($0,length(h)+1,1) !~ /[0-9]/ {f=1;next} /^## /{f=0} f{print}' \
+                    CHANGELOG.md > "$RUNNER_TEMP/release-body.md" || true
+                  echo "----- release body for v$VER -----"
+                  cat "$RUNNER_TEMP/release-body.md"
+            - name: Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+                  # Not the github-pages artifact (the Flatpak repo tarball).
+                  pattern: "{android,desktop-*,flatpak,web-bundle}"
+            - name: Create GitHub release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: v${{ needs.check.outputs.version }}
+                  name: v${{ needs.check.outputs.version }}
+                  body_path: ${{ runner.temp }}/release-body.md
+                  generate_release_notes: true
+                  fail_on_unmatched_files: false
+                  files: artifacts/**/*
+
+    # Publish the Flatpak repo to GitHub Pages, only once the release exists.
+    # Needs Settings -> Pages -> Source: "GitHub Actions".
+    pages:
+        needs: [check, flatpak, release]
+        if: needs.check.outputs.release == 'true'
+        runs-on: ubuntu-latest
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deploy.outputs.page_url }}
+        steps:
+            - id: deploy
+              uses: actions/deploy-pages@v4

@@ -1,0 +1,65 @@
+{
+    "name": "Zam",
+    "short_name": "Zam",
+    "description": "Zam is a Matrix chat client",
+    "id": "moe.crafty.matrix",
+    "start_url": "/",
+    "scope": "/",
+    "share_target": {
+        "action": "/share-target",
+        "method": "POST",
+        "enctype": "multipart/form-data",
+        "params": {
+            "title": "title",
+            "text": "text",
+            "url": "url",
+            "files": [
+                {
+                    "name": "files",
+                    "accept": ["image/*", "video/*", "audio/*", "*/*"]
+                }
+            ]
+        }
+    },
+    "display": "standalone",
+    "background_color": "#313338",
+    "theme_color": "#313338",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "/favicon_maskable.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/favicon_foreground.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "monochrome"
+        },
+        {
+            "src": "/favicon.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/favicon_maskable.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/favicon_foreground.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "monochrome"
+        }
+    ]
+}

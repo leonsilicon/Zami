@@ -1,0 +1,672 @@
+# Architecture & Design
+
+## What this is
+
+**Zam**, a Discord-styled Matrix chat client. It's **SvelteKit + Svelte 5**, builds to static
+files, and ships from that one build to four targets: the web, an installable PWA, an **Electron**
+desktop app, and an **Android** app via Capacitor.
+
+> This document describes responsibilities and data flows. It deliberately does **not** inventory
+> exports, file sizes or line counts — those drift within days and the previous version of this
+> file was wrong about most of them. When you need the current surface of a module, read the
+> module.
+
+## Tech stack
+
+- **SvelteKit** with `adapter-static` — no SSR, single static build, SPA fallback `index.html`
+- **Svelte 5** runes throughout (`$state`, `$derived`, `$effect`, `$props`, `{#snippet}`) — no
+  `svelte/store`
+- **TypeScript**, **Tailwind CSS** (Discord-inspired palette), **Vitest** (jsdom)
+- **matrix-js-sdk v41** (`^41.9.0`) with the **rust-crypto** E2EE stack
+- **livekit-client** for MatrixRTC voice/video
+- **marked** + a hand-rolled Discord-flavoured markdown layer, **DOMPurify** for sanitization,
+  **@twemoji/api**, **leaflet** (location), **@ruffle-rs/ruffle** (legacy Flash embeds)
+- **Capacitor** (Android) + **electron-builder** (desktop)
+
+## Top-level layout
+
+```
+src/
+  app.html, app.css                  -- app.css also holds the light-theme token block
+  routes/
+    +layout.svelte, +layout.ts       -- ssr=false, prerender=true; global external-link
+                                        interception + Android long-press-to-copy
+    +page.svelte                     -- THE route: splash / login / shell switch, session
+                                        restore, session-expiry handling
+    app/+page.svelte                 -- legacy redirect stub -> "/" (stale bookmarks, cached
+                                        PWA start_url)
+  lib/
+    config.ts                        -- default homeserver per runtime
+    push.ts / webPush.ts             -- Android FCM push / browser+PWA VAPID web push
+    nativeSession.ts                 -- mirrors session creds into Android SharedPreferences
+    update.ts, desktopUpdater.ts, androidUpdater.ts   -- the three update runtimes
+    desktopScreenShare.ts            -- Electron desktopCapturer bridge
+    matrix/
+      client.ts                      -- THE SDK boundary
+      runtime.ts                     -- the client slot + generation counter
+      media.ts                       -- upload/send/fetch/decrypt media
+      livekitCall.ts                 -- the LiveKit call engine (join/leave, tracks, devices)
+      slidingSync.ts                 -- sliding sync connection, lists, room subscriptions
+      roomHealing.ts                 -- stub-room state seeding, joined-rooms reconcile
+      pluginHost.ts                  -- the plugin host bridge + core composer send
+      crypto.ts                      -- the E2EE subsystem (deliberate exception)
+      pushRules.ts, notifications.ts -- push-rule helpers, /notifications wrapper
+    stores/                          -- the rune stores (see "Stores")
+    components/
+      layout/                        -- AppShell, LoginView, Splash, sidebars, panels, call UI
+      messages/                      -- timeline item, composer, polls, location, voice
+      settings/                      -- the settings panels
+      ui/                            -- atoms: Avatar, Portal, pickers, Lightbox, toasts, maps
+      debug/                         -- DebugPanel (Ctrl+Shift+D)
+    utils/                           -- the pure-logic layer, each module with a colocated test
+    actions/                         -- focusTrap, longPress, resizeHandle, videoTrack
+    audio/                           -- device enumeration, mic/output meters, speaker test
+    data/emojis.ts                   -- unicode emoji catalog
+    plugins/                         -- the plugin subsystem: zam host API, loader, registry,
+                                        built-in plugins (see "Plugin system")
+static/                              -- sw.js, manifest.webmanifest, icons, ruffle/, sounds/,
+                                        twemoji/
+electron/                            -- main.cjs, preload.cjs
+android/                             -- Capacitor shell + 3 custom Java classes
+scripts/                             -- gen-vapid.mjs (VAPID private key -> PKCS#8 PEM for Sygnal)
+svelte.config.js                     -- adapter-static, fallback index.html, prod-only CSP
+capacitor.config.ts                  -- appId moe.crafty.matrix, appName Zam, webDir build
+```
+
+## Routing
+
+There is **one** auth-gated route.
+
+- **`/`** (`src/routes/+page.svelte`) decides what to render: `Splash` while a stored session is
+  being restored, `LoginView` when there is none, `AppShell` once sync is up. It owns session
+  restore, the add-account mode (`?add`), and `handleSessionExpired`, which returns to login **in
+  place** — no navigation.
+- **`/app`** is a redirect stub that `goto("/")`. It exists only for stale bookmarks and cached
+  PWA `start_url`s. Nothing new should point at it.
+
+The 3-pane application itself is a component: `src/lib/components/layout/AppShell.svelte`. It
+registers every subscriber, owns global keyboard and back-button handling, the mobile drawer, and
+all the `init*()` wiring.
+
+## Data flow
+
+```
+matrix-js-sdk client (single module-level slot in runtime.ts, re-exported by client.ts)
+        |  emits sync / timeline / account-data / receipt / typing / crypto events
+        v
+client.ts subscriber helpers (onTimelineEvent, onAccountData, onRoomUpdate, onAnyReceiptEvent, ...)
+        |  registered in AppShell.svelte onMount, torn down by the returned disposers
+        v
+$state stores (rooms, messages, notifications, voiceCall, interface, ...)
+        |  Svelte 5 reactivity
+        v
+components re-render
+```
+
+**Tick pattern.** SDK objects mutate in place, which Svelte can't observe: the same `Room` object
+comes back from `getRoom()` with different contents, so a `$derived` that reads it never re-runs.
+Stores therefore expose monotonic counters. An event handler bumps a tick; a component reads it
+inside a `$derived` (`const members = $derived((void roomsState.roomsTick, getRoomMembers(room)))`)
+so the derived re-runs even though the underlying object identity didn't change. This is the bridge
+between the SDK's event-driven model and Svelte's pull-based reactivity, and it is load-bearing —
+kick/ban/rename/reaction/decryption refreshes all ride on it.
+
+The counters live next to the state they invalidate: `roomsState.unreadTick`/`roomsTick`,
+`messagesState.reactionTick`/`timelineTick` (the latter also swaps a decryption placeholder for
+real content when a UTD event decrypts late), `notificationsState.tick`,
+`voiceCallState.voiceTick`, `verificationState.verificationTick`, `securityState.securityTick`,
+`presenceState.presenceTick`, `liveLocationState.beaconTick`, and `pushRulesState.revision` (same
+idea, different name).
+
+**Cost note:** a tick is a global invalidation. Every rendered row re-derives on every sync. Keep
+the tick _read_ — that's the correctness part — but make the resulting _write_ conditional when
+the derived is expensive.
+
+## The SDK boundary
+
+**`src/lib/matrix/client.ts` is the SDK boundary.** Components and stores call its exported
+wrappers; they import matrix-js-sdk _types_ only. It is also the **LiveKit** boundary: the call
+engine lives in `livekitCall.ts`, and `client.ts` re-exports its API.
+
+Sanctioned exceptions, all deliberate:
+
+- **`src/lib/matrix/runtime.ts`** — the single client slot and generation counter. Exports,
+  among others, `matrixClient`, `getClient()`, `captureClient()`, `ownedClient()`,
+  `ownedClientOrThrow()`, and the install/release writers that only `client.ts` calls.
+  No Svelte or store imports. `client.ts` re-exports `getClient()` for callers.
+- **`src/lib/matrix/crypto.ts`** — the entire E2EE subsystem, sharing the client via `getClient()`.
+  Crypto work goes here, not in `client.ts`.
+- **`src/lib/matrix/media.ts`** — media upload (including encrypt-on-upload), `sendFile` and
+  `sendVoiceMessage`, `mxcToHttp`, authenticated and decrypting media fetch, and room media gallery
+  paging. `client.ts` re-exports these names so most callers import from `client.ts` unchanged.
+- **`src/lib/matrix/livekitCall.ts`** — the LiveKit side of calls: joining and leaving, SFU
+  connections, local mic/camera/screen-share tracks, remote audio and per-participant volume,
+  device switching, and the `on*` hooks the call UI binds to. The MatrixRTC membership side (who
+  is in which call, call summaries) stays in `client.ts`, which re-exports this module's API.
+- **`src/lib/matrix/slidingSync.ts`** — sliding sync: building the connection and its lists,
+  growing the room-list window, subscriptions for the viewed and held rooms, and the room-data
+  fixes applied before the SDK sees an update. `startSync` in `client.ts` calls
+  `buildSlidingSync`; the watchdog and pagination reach the connection through its accessors.
+- **`src/lib/matrix/roomHealing.ts`** — rooms sync left broken: state-less stubs get their state
+  seeded from `/rooms/{id}/state` and backfilled, and rooms the server lists as joined but the
+  store lacks are materialized in place after the first live sync (a cache-wipe reload is the
+  last resort, at most once per room). It pings room lists through `notifyRoomUpdate()`.
+- **`src/lib/matrix/pluginHost.ts`** — the plugin host bridge. Exports `sendEventContent`
+  (also the core composer's send path), `getPlugin*`, `uploadPluginMedia`, `sendPluginMedia` and `sendPluginSticker`, `redactOwnEvent`,
+  plugin sync persistence, and the upload-to-send owner guard. Plugins never touch these modules themselves; they call the `zam` host API,
+  and only `plugins/hostApi.ts` (per plugin) and `plugins/pluginBoot.ts` (host-level account-data
+  sync) translate it into `pluginHost.ts` and `client.ts` wrappers. `client.ts` imports nothing
+  from `plugins/`, so the dependency runs one way. See "Plugin system".
+- **`src/lib/matrix/pushRules.ts`** and **`notifications.ts`** — small push-adjacent modules that
+  import a few SDK enums.
+- Two components pull exactly one runtime enum each (`DebugPanel.svelte` → `EventType`,
+  `MessageItem.svelte` → `EventStatus`). Tolerated, not a pattern to copy.
+
+Everything else in `src/` imports SDK types only. When adding an SDK capability, add a thin wrapper
+in `client.ts` first.
+
+`client.ts` is large and grouped by concern: lifecycle (owns the slot install/uninstall loop),
+rooms/spaces, creation/join, display helpers, messages, threads, reactions/receipts/typing, unread
+and loud, notifications, push rules, power levels/moderation, room admin, custom emoji/sticker
+packs, space layout, MatrixRTC call memberships, live location, and the `on*` subscription helpers (each
+returning an unsubscribe function).
+
+**Async ownership.** Anything in `client.ts` that awaits more than once must re-check that it still
+owns the client it started with — a stopped client's late callback must not act on its successor's
+state. The guard lives in `runtime.ts`: take `const owner = captureClient()` on entry (client plus
+generation), then after each await use `ownedClient(owner)` (null once a successor holds the slot) or
+`ownedClientOrThrow(owner)`. Lifecycle code in `client.ts` uses the lower-level form of the same
+check: `captureOwnership(client, clientGeneration)` then `ownsRuntime(owner, matrixClient,
+clientGeneration)` (see `logout`). Many multi-await functions still do neither.
+
+## Stores
+
+All Svelte 5 `$state`, living outside components in `src/lib/stores/`. The ones you'll meet first:
+
+- **`accounts.svelte.ts`** — the multi-account registry, persisted to
+  `localStorage["matrix_accounts"]` as `{version, activeUserId, accounts:[{userId, accessToken,
+deviceId, homeserverUrl, displayName?, avatarUrl?}]}`. Defensively parsed: a bad version or a
+  non-array resets to empty; a dangling `activeUserId` is nulled without dropping the accounts.
+- **`auth.svelte.ts`** — an in-memory mirror (`isAuthenticated`, `userId`, `syncState`, `error`, …).
+  It persists **nothing** session-shaped; every write delegates to the registry
+  (`saveSession`→`upsertAndActivate`, `clearSession`/`expireActiveSession`→`removeAccountById`).
+  It owns only `matrix_last_homeserver`.
+- **`interface.svelte.ts`** — the central UI slot store. See below.
+- **`rooms.svelte.ts`** — spaces, orphan/direct/invited/knocked rooms, active space and room, space
+  drill state, space layout, and the two room ticks.
+- **`messages.svelte.ts`** — the per-room timeline cache (`byRoom`, a plain object for deep
+  reactivity) plus the timeline/reaction ticks.
+- **`notifications.svelte.ts`** — the notification inbox, each entry flagged loud (sound-triggering)
+  or silent, persisted per account.
+- **`settings.svelte.ts`** — the client preference layer: device-global settings and
+  account-scoped ones, backed by the `settings:*` localStorage namespace.
+- **`toasts.svelte.ts`** — the app's only generic failure surface. New user-visible error paths go
+  here rather than inventing another.
+
+Plus focused stores for verification, security status, voice calls, incoming calls, live location
+and its map, composer drafts, GIF search, ignored users, presence, push-rule revisions, the update
+banner, the profile card, and the dialog-target stores (invite/location/poll).
+
+**Never persist a session key by hand.** `matrix_session` (the pre-multi-account key) is read once
+at boot, migrated into the registry, and deleted. Per-account keys are namespaced `${base}:${userId}`
+by `src/lib/utils/scopedStorage.ts`, which also adopts and removes the pre-multi-account bare key on
+first scoped read.
+
+## The UI slot system
+
+`interfaceState` coordinates **three dismissal slots**, plus `callViewRoomId` (which flips a room
+between its timeline and the call UI):
+
+- **`subPage`** — a page layered _inside_ an open modal (the mobile settings drill-down).
+- **`modal`** — one `ModalId` at a time (app settings, room settings, quick actions, the various
+  context menus, pickers, lightbox, live map, …).
+- **`sidebar`** — one `SidebarId` at a time: `members`, `pinned`, `notifications`, `search`,
+  `threads`, `media`, and `plugin` (a plugin room-panel; see "Plugin system").
+
+Each slot holds at most one owner, but **the slots are not exclusive of one another** — a sub-page
+exists precisely while its modal is also open. `dismissTopmost()` (and therefore Escape, and the
+mobile back button) walks them in order: sub-page → modal → sidebar.
+
+**Ownership tokens.** `openModal(id, close)` / `openSidebar(id, close)` return an opaque
+`SlotToken`. Two properties make this safe:
+
+1. The slot is released **before** the outgoing owner's `close()` runs, so a close handler executes
+   against an empty slot and cannot clobber the incoming owner. Re-entrant closes are no-ops.
+2. Holders release with `clearModalIfOwner(token)`, which does nothing if a newer owner has taken
+   the slot. A late unmount can therefore never null a slot someone else now owns.
+
+The tokens are module-scope `let`s rather than `$state` fields **on purpose** — teardown paths read
+them, and a `$state` read from a tracked scope would register a reactive dependency.
+
+Components **render from the slot** (`{#if interfaceState.modal === "space-menu"}`) and keep only
+their associated data (coordinates, target room) local, set just before calling the helper. The
+`close` function you pass is what resets that local data, so dismissal works no matter who
+triggered it.
+
+## Keyboard and back-button handling
+
+Centralised in **`AppShell.svelte`**: `onWindowKeydown` behind the app's primary
+`<svelte:window onkeydown>`. Components do not register global key handlers; only element-scoped,
+focus-dependent editor bindings stay local (composer Enter-to-send and autocomplete arrows, modal
+Enter-to-submit, picker selection). Two components take a global listener of their own — `CallView`
+(its own `<svelte:window onkeydown>`) and `Lightbox` (a `window.addEventListener`, deliberately
+arranged not to swallow the back-button `popstate`).
+
+- **Escape** → `dismissTopmost()` (sub-page → modal → sidebar).
+- **Ctrl+Shift+D** → toggle the debug panel.
+- **Ctrl+E / Ctrl+S / Ctrl+G** → open the emoji/sticker/gif composer picker, when a room with a
+  composer is visible.
+- **Type-to-focus** — a plain alphanumeric key focuses the composer. Skipped when a modal is open,
+  when a sidebar or drawer is open on mobile, or when focus is already in an editable element. It
+  does **not** `preventDefault`, so the triggering character lands in the now-focused composer.
+
+Mobile **back button** (`popstate` plus a pushed history "guard" entry, or Capacitor's
+`App.backButton` on Android): dismiss the topmost slot → open the left drawer → real back
+navigation. A reactive `$effect` keeps the guard entry present whenever there is something to
+intercept.
+
+## Subsystems
+
+### E2EE (`src/lib/matrix/crypto.ts`)
+
+The whole encryption stack: rust-crypto init with a per-account IndexedDB prefix, device
+verification (SAS emoji and QR) behind a verification controller, cross-signing, secret storage
+(4S), and key backup/recovery. Booted from `client.ts` during client creation.
+
+Supporting cast: `stores/verification.svelte.ts` and `stores/security.svelte.ts`,
+`utils/{keyBackup,recoveryKey,cryptoStore,encryptionState,eventShield}.ts`,
+`settings/SecuritySettings.svelte`, `layout/VerificationModal.svelte`, `messages/EventShield.svelte`.
+
+**Landmine:** the SDK configures room encryption **only from the sync loop**. Any room state we
+inject out of band bypasses that, leaving a room the UI calls encrypted that crypto refuses to
+encrypt for. `ensureRoomCryptoConfigured(room)` replays the event through the same hook — call it
+after any out-of-band state injection, and gate on the encryptor map rather than
+`isEncryptionEnabledInRoom()` (the algorithm is persisted, so that call lies).
+
+**Attachments are encrypted in encrypted rooms.** `media.ts` `uploadAttachment` and `sendFile`
+encrypt the file on upload (`utils/encryptAttachment.ts`, AES-CTR `v2`, WebCrypto only), upload the
+ciphertext without a filename, and send `file` instead of `url`; thumbnails go out as
+`info.thumbnail_file`. The room counts as encrypted when its state event or the crypto store says
+so (`isRoomEncryptedForSend`, `crypto.ts`), so an attachment is encrypted exactly when its event is.
+Incoming and own encrypted media decrypt through `fetchDecryptedAttachmentBlob` (`media.ts`), which
+checks the ciphertext hash before anything is shown; encrypted videos play from an object URL.
+
+### Voice/video calls (MatrixRTC + LiveKit)
+
+Real MSC4143 MatrixRTC, not legacy 1:1 WebRTC and not an Element Call widget. Membership is
+published as room state through the SDK's `matrixRTC` room session; media rides a
+**LiveKit SFU** discovered from an existing member's advertised service URL or the homeserver's
+`.well-known` (`org.matrix.msc4143.rtc_foci`), with a JWT obtained from an **lk-jwt-service** via
+an OpenID exchange. With no focus configured, joining throws — there is no fallback path.
+
+UI: `CallView`, `VoiceCallPanel`, `VideoTile`, `ActiveCallBanner`, `IncomingCallCard`,
+`CallParticipantMenu`, `ScreenSharePicker`. State: `stores/voiceCall.svelte.ts` and
+`stores/incomingCalls.svelte.ts`. Device handling lives in `lib/audio/`, track attachment in
+`actions/videoTrack.ts`.
+
+### Threads
+
+Real SDK threads. **`threadSupport: true` belongs in `startClient()`, not `createClient()`** — the
+latter silently ignores it and threads then look completely dead. The rules live in pure modules:
+`utils/threadModel.ts` (including the `belongsToMainTimeline` classification), `threadList.ts`,
+`threadUnread.ts`, `threadNotify.ts`, `threadContent.ts`. UI is `ThreadPanel.svelte` plus the
+`threads` sidebar slot (`ThreadsListPanel.svelte`).
+
+Thread names are MSC4558 under its unstable identifier (`utils/threadName.ts`): type
+`moe.crafty.matrix.thread_name`, content `{ name }` with an `m.relates_to` of the same rel_type
+pointing at the root. The most recent one in event-graph order wins, but only from the root's sender
+or a user at the room's `moe.crafty.matrix.thread_name` power level (50 if absent); an empty name
+clears it. Validity reads only the sender and the
+relation, which stays in the clear on the wire. `client.ts` caches the current naming event and name
+per root, filled from the bundle on the root or `/relations` on first read and kept current from
+live sync, with a newer bundle on the root outranking both. **Naming events are encrypted in encrypted rooms**, so `/relations` is fetched without an
+event type filter and `isRenderableTimelineEvent` hides them by relation. An encrypted one would
+match `.m.rule.encrypted` and notify everyone, so `ensureThreadNamePushRule` adds MSC4558's rule
+(matching the relation) to the user's own rules until servers ship it. Names sent before this are
+still cleartext and read the same way. Other clients ignore them.
+
+### Notifications
+
+A message whose push actions carry the `sound` tweak is "loud".
+
+1. The timeline subscriber in `AppShell` plays the ping and records every notifying event.
+2. The room — and every space/folder containing it — shows a red unread indicator.
+3. If the actions **also** carry the `highlight` tweak, the message renders highlighted in the
+   timeline. That is a distinct predicate on purpose — the default DM rule sets `sound` with no
+   `highlight`, so treating them as one painted every message in a DM as a mention.
+4. The inbox panel lists them, server-backed via `/notifications` once a probe succeeds; an
+   unknown, unsupported or errored probe all render the local store.
+5. Receipt events clear entries the user has now read.
+
+Page notifications, service-worker notifications and Android notifications are **three separate
+domains**. Anything that clears or routes a notification has to address all three, and a routing
+decision must check which account the notification belongs to.
+
+### Push
+
+Three paths — foreground (in-app Notification API), background web/PWA (VAPID web push →
+`static/sw.js`), and background Android (FCM → `MatrixMessagingService.java`). The two background
+paths need a Sygnal gateway, and **both have live fallbacks compiled in**. See
+`ANDROID_PUSH_SETUP.md`, which carries the wire shapes and the effective defaults.
+
+Decrypting an Android push: the running page is asked first (`PushDecryptPlugin` →
+`pushDecrypt.ts`), else a hidden WebView opens the crypto store itself
+(`HeadlessDecryptor.java` → `pushDecryptHeadless.ts`), but only while no page holds the store's
+Web Lock. **The page's JavaScript does not run while the app is in the background**: the WebView
+holds a push's request until the activity resumes, even when Android thaws the renderer for the
+push. So `backgroundRelease.ts` has the page let go after 10s hidden (unless a call, upload, outbox
+send, live location share or voice recording is running): it stops the client and, once every
+call already running inside the crypto engine has finished (`waitForCryptoEngineIdle`, which counts
+them by wrapping `OlmMachine`'s methods), releases the lock, and the hidden decryptor handles every
+push. Coming back restarts crypto in place
+(`restartCrypto` clears the SDK's stopped engine and the client handlers bound to it, then
+`initCrypto` again, waiting for the lock) and sync through the root page's `restartSync`. If that
+fails the app reloads, with drafts carried across in sessionStorage. Logcat tag `PushDecrypt`
+shows each push's path and the page's stage timings.
+
+### Service worker (`static/sw.js`)
+
+`initServiceWorker()` lives in `client.ts` but is called from the route on login/restore. The
+worker has four jobs:
+
+1. **Auth store** — holds the access token in an IndexedDB `matrix-sw/auth` store, fed by
+   `postMessage` (`SET_AUTH` / `CLEAR_AUTH` / `SET_NOTIF_PRIVACY`). Writes are serialized through a
+   promise chain so concurrent handlers can't persist out of order.
+2. **Media auth** — Matrix media needs an `Authorization: Bearer` header that `<img src>` can't
+   send, so the worker injects it. Deliberately narrow: only pathnames under
+   `/_matrix/client/v1/media/`, only element-initiated requests, and only when no `Authorization`
+   header is already present, so the token can't leak onto other homeserver APIs.
+3. **A no-referrer proxy** for `video.twimg.com`.
+4. **Web push** — receives Sygnal's `event_id_only` payloads, re-fetches the event to build a real
+   notification, honours the mirrored "hide message text" privacy flag, and clears a room's
+   notification when the unread count reaches zero.
+
+It also mirrors, **by hand**, `src/lib/utils/activeSession.ts` (the account-data heartbeat that
+suppresses notifications on idle devices) — as does the Java service. Those three copies must move
+together, and **nothing enforces it**: `activeSession.test.ts` pins the TypeScript constants so a
+change _there_ is loud, but no test reads `static/sw.js` or the Java service, and no gate compiles
+either of them.
+
+### Sign-in (`matrix/oauth.ts`, `matrix/sso.ts`, `LoginView.svelte`)
+
+Three ways in, chosen by what the typed homeserver offers (`getLoginOptions` in `client.ts`):
+
+- **Native OAuth 2.0 / OIDC** (MSC3861, the spec's OAuth API), when `/_matrix/client/v1/auth_metadata`
+  validates. `oauth.ts` discovers the provider, registers Zam once per (homeserver, redirect URI)
+  and caches the client id, then runs authorization-code + PKCE through the SDK's `OAuth2` class.
+  `loginWithOAuthCode` exchanges the code, asks `/whoami` who it is, and builds the client with
+  `oauthClientId` + `refreshToken` + `onTokenRefresh`, so **the SDK refreshes on M_UNKNOWN_TOKEN
+  and revokes both tokens on `logout`** — the app does not implement either. A refresh the provider
+  rejects surfaces as the ordinary `SessionLoggedOut` → `handleSessionExpired` path.
+- **Legacy SSO** (`sso.ts`): `m.login.sso` redirect, then `m.login.token`. The fallback for servers
+  without the OAuth API, and for one whose provider refuses client registration.
+- **Password** (`m.login.password`).
+
+Both browser flows share the callback channels in `loginRedirect.ts` (web: same origin; Electron:
+local server `/sso-callback` over IPC; Android: the `moe.crafty.matrix:` deep link) and the same
+guard: a random `state` nonce must match the pending attempt (kept in localStorage) before anything
+is redeemed; a mismatch leaves the attempt pending, a read URL is never processed twice, and attempts
+expire after 30 minutes. OAuth adds the response's `iss` check. There is no OIDC `nonce` because
+the Matrix scopes do not request an ID token.
+
+Refresh tokens **rotate**, so every refresh must be persisted or the next restart is signed out:
+`createAuthenticatedClient` routes the SDK's `onTokenRefresh` to a single listener
+(`setTokenRefreshListener`, registered in `routes/+page.svelte`) that writes the pair onto the
+account (`stores/auth.svelte.ts` → `updateAccountTokens`), the service worker and the native mirror.
+`getLatestTokens` covers a refresh that lands before a new login has been saved. The account record
+carries `oauth: { clientId, issuer }`, `refreshToken` and `accessTokenExpiresAt`; the native session
+record (`nativeSessionRecord.ts`) mirrors the client id, issuer and expiry but deliberately **not**
+the refresh token, since only the web layer refreshes.
+
+Under OAuth the homeserver no longer owns passwords, devices or deactivation:
+`isOAuthSession()` swaps those Settings forms for links to the provider's account management URL
+(`getAccountManagementUrl`, https only).
+
+### Multi-account
+
+`stores/accounts.svelte.ts` holds the registry; `utils/scopedStorage.ts` namespaces per-account
+keys; each account gets its own rust-crypto database. Switching accounts leaves any active call and
+then navigates to `/` with `location.assign`, tearing down the whole module graph — so no
+cross-account store state can survive. One account syncs at a time.
+
+### Settings
+
+`AppSettings.svelte` is a thin router over the panels in `components/settings/`. The pure
+`settingsNavView()` decides between three shapes — desktop (sidebar + panel), mobile list, and
+mobile detail (which owns the `subPage` slot). `utils/roomSettingsNav.ts` is the same pattern with a
+permission-dependent tab list.
+
+### Updates
+
+Three runtimes collapse into one `UpdatePhase` union (`utils/updateStatus.ts`): the web build checks
+GitHub Releases **on demand** against a build-time-injected version (`initUpdateWatch` is a no-op on
+web — there is no background poll), desktop streams `electron-updater` events over IPC, and Android
+drives the custom APK plugin. `UpdateBanner.svelte` renders only the actionable phases.
+
+**Desktop web bundles (no reinstall).** The desktop shell serves `build/` from a folder, so a release
+that only changes the web UI ships it as a signed bundle (`scripts/build-bundle.mjs` → `zam-bundle.json`
+
+- `.zbundle` on the release). `electron/bundleUpdater.cjs` verifies the ECDSA P-256 manifest
+  (`bundleKey.cjs`), checks the SHA-512, unpacks into `userData/web-bundles/<version>`, and the server
+  root (`webRoot` in `main.cjs`) switches to it. A bundle only applies to a shell with the same
+  fingerprint (`scripts/shell-hash-lib.mjs`: `electron/**`, native sources, Electron version, deps and
+  build config, written to `electron/shell-hash.json` by `gen-shell-hash.mjs` before packaging); any
+  other release takes the `electron-updater` installer path. Status events carry `kind: "bundle" | "shell"`.
+  The renderer applies a downloaded update (reload for a bundle, restart for an installer) through
+  `applyDownloadedUpdateWhenIdle` in `stores/updateBanner.svelte.ts`, only when "Automatic updates" is on and
+  `canApplyUpdateNow` allows it: never in or ringing for a call, and only with the window out of sight
+  or the user idle for `AUTO_AWAY_MS`. A staged bundle is also taken at launch, before any page exists.
+  The page confirms each applied bundle with `updates:bundle-ready`; one that never does is banned at the
+  next launch. Debug > "Hide update prompts" hides the banner and toast only; checking and auto-apply
+  carry on. Flatpak gets bundles too, but its shell still updates through `flatpak update`.
+
+**Android web bundles.** Same bundle and rules, in Java: `WebBundlePlugin` (check, download, apply, ready,
+setAuto), `WebBundleStore` (staging, rollback, the same state files as desktop) and `WebBundleFormat` (the
+archive and ECDSA P-256 check; the key is `WebBundleKey.java`, kept equal to `bundleKey.cjs` by a test).
+The shell fingerprint covers the Java, resources, manifest, Gradle files and the dependencies that become
+Capacitor plugins (`gen-android-shell-hash.mjs` writes `assets/shell-hash.json` before the build). The
+served folder is Capacitor's own: native writes `serverBasePath` and `setServerBasePath` reloads onto it
+(Capacitor ignores it after an APK update). A backgrounded app is frozen after about 30 seconds, so nothing
+waits for idleness: the check and download run while the app is open, and native applies a staged bundle at
+launch (`WebBundleHost.prepareLaunch`, before the WebView exists) or in `handleOnStop`, the moment the app
+leaves the screen. It does not apply in or near a call (`CallService`, `TelecomCalls.hasCall`) or when the
+stop is the app opening a file picker, camera or browser (`MainActivity.leftForAnotherScreen`). The JVM
+tests (`./gradlew :app:testDebugUnitTest`) read a fixture the desktop tooling signed and packed.
+
+### Electron (`electron/main.cjs`)
+
+Serves the static `build/` over a small local HTTP server with SPA fallback, on a **persisted
+port** — localStorage is origin-keyed and the session lives there, so a changing port would log the
+user out. Single window plus tray with close-to-tray, a single-instance lock, `electron-updater`
+with `autoDownload` off behind `updates:*` IPC, and screen-share via `setDisplayMediaRequestHandler`
+round-tripped to an in-app picker. `preload.cjs` exposes exactly `window.desktop = { showWindow,
+updates, screenShare }`.
+
+### Android native
+
+`MatrixMessagingService.java` is a `FirebaseMessagingService` that enriches data-only Sygnal pushes
+by calling the homeserver with the credentials `src/lib/nativeSession.ts` mirrors into
+SharedPreferences. `ApkUpdaterPlugin.java` is a custom Capacitor plugin that downloads an APK and
+hands it to the system installer. `MainActivity.java` registers the plugin and routes notification
+taps into the web layer.
+
+### Live location and polls
+
+Live location is MSC3672 beacons with throttled publishes and expiry timers
+(`stores/liveLocation.svelte.ts`, `utils/liveLocation.ts`), rendered on real Leaflet maps
+(`LocationMap.svelte`, `LiveLocationMapView.svelte`). Polls are MSC3381, parsed and tallied by the
+pure `utils/pollContent.ts`, which accepts both stable and unstable poll event names on read.
+
+### Plugin system
+
+A first-party plugin subsystem (`src/lib/plugins/`). Plugins are **full-trust JavaScript** — they
+run with the same privileges as app code, an Obsidian-style trust model where the safety story is
+**consent before code**, not a sandbox. A plugin is a module exporting `onload(zam)` and an optional
+`onunload()`; it is written against the **`zam` host API** and never imports `client.ts`,
+`localStorage`, or `matrix-js-sdk` directly.
+
+**The interop rule is absolute.** Zam must render everything any Matrix client can send with **zero
+plugins installed**. Nothing that _displays_ an inbound event or msgtype (`m.room.message` of any
+kind, `m.sticker`, `m.poll`, `m.location`, voice, reactions) may be gated behind a plugin. Only
+sender-side / compose UI, local enhancements that degrade gracefully, and non-message tools are
+pluginable. The emoji, GIF, and sticker pickers are **core composer UI** that mount app-internal
+Svelte components, not plugins. The plugin system's extension points — `zam.composer.addButton`,
+`zam.ui.openPopover`, `zam.composer.insertText`, `zam.matrix.sendImage` and `sendSticker` — remain
+available for third-party plugins to use; the app's own pickers just don't route through them.
+
+**The `zam` host API.** `types.ts` is the full contract; `hostApi.ts` builds a per-plugin instance.
+It is grouped into namespaces: `commands` (slash commands), `composer` (buttons, "+" actions,
+`startReply` / `startEdit` / `insertText`), `messages` (outgoing text and content transforms,
+double-tap handlers, action-menu items, decorators, custom embeds), `room` (header buttons and
+panels), `shortcuts` (global hotkeys, conflict-checked against core), `ui` (`openPopover` with an
+optional accessible `label`, `registerPanel`, `notify`), `events` (a read-only event bus), `matrix` (a curated,
+boundary-preserving slice of `client.ts` — `sendMessage` [2-arg], `sendMedia` (encrypts in encrypted
+rooms), `sendImage` (plaintext only), `sendSticker`, `react`, and plain room/member summaries, never
+live SDK objects), `storage` (per-plugin namespaced key/value), `settings` (schema-driven — see
+below), and `unsafe` (`getClient()` — the escape hatch). The curated `matrix` API is a
+stability/ergonomics layer and a seam for a future sandbox, not a security cage.
+**`zam.unsafe.getClient()`** hands a plugin the live matrix-js-sdk client instance for anything the
+curated API doesn't cover, with the plugin owning the stability and safety risk.
+**`zam.frames.inject({ urlPrefixes, script, referrer })`** (desktop, "frames" capability) is for
+the window's iframes whose URL matches, such as the YouTube player: the renderer hands the rule
+to main (`electron/pluginFrames.cjs`), which sends `referrer` as the frame's Referer
+(`webRequest.onBeforeSendHeaders`, subframe loads of the main window only) and runs `script` on
+each frame's `dom-ready` through `WebFrameMain.executeJavaScript`, as Vencord's native hooks do.
+The same listener gives YouTube players the Referer `https://localhost/` when no plugin set one,
+because YouTube refuses label videos embedded on a bare address like `http://127.0.0.1:<port>/`. Every `register` /
+`add` / `on` returns a **`Disposable`**, and the host tracks all of a plugin's disposables so
+disabling it removes exactly its contributions.
+
+**The registry** (`registry.ts` plus `stores/plugins.svelte.ts`) is a reactive `$state` store keyed
+per plugin, with one array per extension point — commands, composer buttons and actions, message
+actions, decorators, embeds, header buttons, shortcuts, panels, outgoing text and content
+transforms, double-tap handlers, event subscriptions — plus a mutation tick. Core UI reads
+`[...core, ...pluginRegistry.x]` and re-derives on the tick. **Core always wins on a conflict**: a
+full-trust plugin can never shadow `/ban` or a reserved hotkey, because the merge drops the colliding
+plugin entry.
+
+**Two load paths** (`loader.ts` plus `pluginBoot.ts`). Built-in plugins live in
+`src/lib/plugins/builtins/` and register directly — the loader just calls the in-app module's
+`onload`. Repo plugins are fetched from GitHub (`fetch` the bundle text from `raw.githubusercontent
+.com` → wrap it in a `Blob` → `import(blobUrl)` → `onload`), which needs **no CSP change** because
+`blob:` is already in `script-src`.
+
+**Repo plugins are pinned to a commit.** Install and update resolve the repo branch to a commit SHA
+through the unauthenticated GitHub commits API (`repo.ts` `commitShaApiUrl`). Install then fetches
+the manifest and bundle at that SHA; update also fetches the index at it. (Install still reads the
+entry path from the Browse index at the branch head, so a moved path fails closed with a 404.) If the SHA can't be resolved, the install or update fails with a
+visible error; it never falls back to the branch head. The SHA is stored with the installed record
+and synced with it (`pluginSync.ts`), so another device installs the same commit. `pinnedFileUrl` is
+the only URL builder for plugin files and rejects unsafe paths (`..`, absolute, scheme). Fetched
+bundles are cached in IndexedDB (`bundleCache.ts`, one row per plugin id); a row is reused only when
+its version matches and it was cached at the pinned SHA (or is a legacy row with no SHA). When a fetch at the pin fails
+(offline, 404), only a row cached at that SHA, or a legacy row, may stand in (`isCacheFallbackAllowed`;
+version not checked). A cache miss refetches the same SHA, so with auto-update off the code is frozen. Only an
+update moves the SHA. A record installed before pinning resolves the branch once on the next boot and
+is frozen from then on (`pluginPin.ts` `decideRepoLoad`); if that resolve fails it keeps using its
+cached bundle, and with no cache it loads nothing and shows "needs update". A repo plugin whose
+`manifest.id` doesn't match its index entry, or collides with a built-in or another repo's plugin, is
+refused (`checkInstallId`). Every load, `onload` and `onunload` is
+wrapped in try/catch: a throwing plugin is auto-disabled and flagged, never fatal to boot. Boot runs
+after login/sync (`initPlugins`), built-ins first, loading only the enabled set.
+
+**State and sync.** Per-device state lives in `localStorage["zam_plugins"]` (`pluginPersist.ts` —
+which plugins are installed and enabled, their source and repo ref, cached manifest, auto-update
+flag); per-plugin settings live under their own namespaced key (`pluginSettingsStore.ts`). There is
+**no background sync**. A manual "Sync plugins" button pushes and pulls the enabled list and settings
+through Matrix account data (`moe.crafty.matrix.plugins`, `pluginSync.ts`). A pull is **two-step
+consent**: it shows a summary of what would be enabled, disabled or changed, and never fetches or runs
+a repo plugin that isn't already installed on this device.
+
+**Settings are schema-driven** (`settingsSchema.ts`, `settingsForm.ts`). A plugin declares fields —
+`toggle`, `text`, `number`, `select`, and a **`list`** of records — and the Manager renders a
+consistent form (`PluginSettingsForm.svelte`, reached from the gear button). Labels and values render
+as escaped text.
+
+**Host-rendered plugin HTML is sanitized.** A plugin builds its own DOM inside `ui`, panel and
+popover mounts — that is the plugin's own responsibility under the full-trust model — but anywhere
+Zam renders HTML _on a plugin's behalf_ it passes through `sanitizeMatrixHtml`: custom-embed markup
+via `embeds.ts` `mountEmbed` (`el.innerHTML = sanitizeMatrixHtml(markup)`), and message decorators
+render as escaped text, never `{@html}`. Plugin popovers claim a `plugin-popover` modal slot and
+plugin room-panels a `plugin` sidebar slot, sharing the UI slot system like core UI.
+
+**The Manager UI** is the "Plugins" settings tab (`PluginsSettings.svelte`): Installed (enable
+toggle, gear, update badge, remove), Browse (per-repo `index.json` listings plus Install), Repos (the
+official repo, non-removable, plus user-added repos behind a third-party consent warning), and
+Actions (Sync, a Disable-all kill switch, and the auto-update toggle).
+
+**Built-in plugins** (`builtins/`, all default-enabled): `zam.slash-fun` (the novelty text-transform
+commands `/me`, `/shrug`, `/spoiler`, …), `zam.double-tap-reply` (double-tap a message to reply, edit
+or react per its settings; it registers its gesture handler only while an action is configured, so
+default word-selection is preserved), and `zam.text-replacer` (user-configured outgoing text
+substitutions).
+
+## Security
+
+- **Untrusted HTML must be sanitized.** Other users' `formatted_body` and reaction keys are
+  rendered with `{@html}`; route everything through `sanitizeMatrixHtml()` (DOMPurify with a Matrix
+  allowlist) and never `{@html}` a raw reaction key. The plain-text path is safe only because it
+  escapes before converting — keep that invariant.
+- **A production-only CSP** (`svelte.config.js`) is the backstop. The load-bearing directive is
+  `script-src` without `unsafe-inline`. It is applied at build time only, so a dev-server test
+  proves nothing about it.
+- Never interpolate remote event content into a style string.
+
+## Testing
+
+Vitest under jsdom, with the Svelte plugin loaded so `.svelte.ts` rune stores compile — which means
+**stores are unit-testable**, not just plain utils. Tests are colocated as `<name>.test.ts` next to
+the module.
+
+The house rule is visible in the ratio: `src/lib/utils/` is overwhelmingly pure modules each with
+its own test file, and there are **no component tests at all**. **Extract the logic out of
+components and `client.ts` into a pure util, TDD it there, and verify the SDK/UI wiring live.** A
+consequence worth naming: component _wiring_ is unproven by the suite, so a mutation to a `.svelte`
+file can leave every test green.
+
+## Build & deploy
+
+- `npm run dev` — Vite dev server. `npm run dev:https` serves over HTTPS on 5443, which is what
+  service-worker and web-push work needs.
+- `npm run build` — static output in `build/`. Deploy anywhere; SPA fallback is **`index.html`**
+  (e.g. nginx `try_files $uri $uri/ /index.html;`). This is also the only place the CSP is applied.
+- `npm run check` — svelte-check. `npm run test` — Vitest, run-once. `npm run format` — Prettier.
+- `npm run lint` — `prettier --check .` (no ESLint). It must pass. `.prettierignore` excludes the
+  local, untracked dirs.
+- CI (`.github/workflows/release.yml`): a `verify` job runs `check`, `test` and `lint`; the Android
+  and desktop build jobs need it to pass.
+- Android: `npx cap sync android`, then build in Android Studio (`webDir` → `build/`).
+- Desktop: `npm run electron:build` (electron-builder).
+
+## Conventions for continuing development
+
+1. **Add SDK capabilities as thin wrappers in `client.ts`.** Components import SDK _types_ only.
+   Crypto goes in `crypto.ts`.
+2. **Subscribe via the `on*` helpers** and always call the returned unsubscribe in teardown.
+3. **When an SDK object mutates in place, bump a tick** and read it inside the relevant `$derived`.
+4. **Re-check ownership after every await** in long-lived async work — the captured client
+   reference for SDK work, a destroyed flag or a generation counter for component-scoped work
+   (media capture especially).
+5. **New popups/panels go through the slot system** and render from the slot — no ad-hoc `showX`
+   booleans. Pass a `close` that resets your local data, and release with the `*IfOwner` helpers.
+6. **New global keyboard shortcuts go in `onWindowKeydown`** in `AppShell.svelte`, not in
+   components.
+7. **Overlays that could be clipped use `<Portal>`**; desktop popovers use the local `positionMenu`
+   action (currently duplicated in the three context-menu components); touch context menus render
+   as bottom sheets.
+8. **Never call an SDK send/receipt function unguarded inside a tracked `$effect`.** They
+   synchronously synthesize local echo and fire app-level listeners, so listener reads become the
+   effect's dependencies while listener writes retrigger it — `effect_update_depth_exceeded`, which
+   freezes the whole component. Wrap in `untrack()` _and_ make the call idempotent.
+9. **Failures must surface.** Optimistic UI updates roll back on rejection, and the error goes to
+   the toast store. Never let a rejected write leave the UI claiming success.
+10. **Extract pure logic to `utils/` with a test**; keep components about rendering.
+11. **Svelte 5 only** — `$state`/`$derived`/`$effect`, no `svelte/store`. `{@const}` must be an
+    immediate child of a block, not of a plain element.
+12. **The timeline is a plain chronological flex column** — DOM order is visual order. Do not
+    reintroduce `flex-col-reverse`; it breaks cross-message text selection.
+13. **Plugins extend, never gate.** New optional or compose-side behaviour can be a plugin, but
+    never gate the _rendering_ of any inbound event or msgtype behind one — Zam displays everything
+    with zero plugins installed. Plugins call the `zam` host API only; only `hostApi.ts` and
+    `pluginBoot.ts` reach `client.ts`, and any plugin HTML the host renders goes through
+    `sanitizeMatrixHtml`. See "Plugin system".

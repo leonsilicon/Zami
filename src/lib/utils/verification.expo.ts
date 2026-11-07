@@ -1,0 +1,188 @@
+/**
+ * Pure helpers for the SAS (emoji) verification UI: mapping a verification
+ * request's phase to human wording, deriving trust badges from device/user
+ * verification status, and laying out the 7-emoji SAS grid. SDK-free (takes
+ * plain shapes, never a live `matrix-js-sdk` object) so it unit-tests without
+ * the rust-crypto WASM.
+ */
+
+/**
+ * Mirror of matrix-js-sdk's `VerificationPhase` enum (crypto-api) as plain
+ * numbers. Duplicated here on purpose: importing the enum would pull the crypto
+ * subpath into a module we want SDK-free and testable. crypto.ts passes the
+ * real `request.phase` (same numeric values) straight into these helpers.
+ */
+import { t } from "$lib/i18n";
+export const VerificationPhaseValue = {
+    Unsent: 1,
+    Requested: 2,
+    Ready: 3,
+    Started: 4,
+    Cancelled: 5,
+    Done: 6,
+} as const;
+
+export type VerificationPhaseKind =
+    "pending" | "active" | "success" | "cancelled";
+
+/**
+ * Coarse state for styling and control logic: whether we're still setting up
+ * (pending), actively comparing emoji (active), finished (success), or aborted
+ * (cancelled). Unknown phases degrade to "pending" (safe: keeps the modal open
+ * with a cancel affordance rather than falsely claiming success).
+ */
+export function verificationPhaseKind(phase: number): VerificationPhaseKind {
+    switch (phase) {
+        case VerificationPhaseValue.Started:
+            return "active";
+        case VerificationPhaseValue.Done:
+            return "success";
+        case VerificationPhaseValue.Cancelled:
+            return "cancelled";
+        default:
+            return "pending";
+    }
+}
+
+/**
+ * Human-readable status line for the current phase. `isSelf` picks wording for
+ * verifying one of your own sessions vs another user.
+ */
+export function verificationPhaseLabel(
+    phase: number,
+    opts: { isSelf?: boolean } = {},
+): string {
+    switch (phase) {
+        case VerificationPhaseValue.Unsent:
+        case VerificationPhaseValue.Requested:
+            return t("verification.waitingForTheOtherSideTo");
+        case VerificationPhaseValue.Ready:
+            // Method-neutral on purpose, and true where it is actually SHOWN:
+            // the modal prints its own copy while the user picks a method, so
+            // this only reaches the screen when there is nothing to pick (no QR
+            // on either side, and the caller starts the emoji check itself).
+            return t("verification.acceptedSettingUpTheCheck");
+        case VerificationPhaseValue.Started:
+            // NOT "compare the emoji": a QR flow spends this entire phase
+            // waiting for the other side to confirm, with no emoji in
+            // existence. The compare instruction belongs next to the emoji.
+            return t("verification.verifying");
+        case VerificationPhaseValue.Done:
+            return opts.isSelf
+                ? t("verification.sessionVerified")
+                : t("verification.userVerified");
+        case VerificationPhaseValue.Cancelled:
+            return t("verification.verificationCancelled");
+        default:
+            return t("verification.verifying");
+    }
+}
+
+export type TrustTone = "verified" | "unverified" | "warning";
+
+export interface TrustBadge {
+    label: string;
+    tone: TrustTone;
+}
+
+/**
+ * Badge for a single device from its `DeviceVerificationStatus` (reduced to the
+ * one field that decides trust). A device counts as verified only when the SDK
+ * says `isVerified()`; being merely signed by its owner is not enough on its own.
+ *
+ * `ownDevice`: the device is one of OUR sessions. Then "signed by owner but not
+ * verified" can only mean THIS session doesn't trust our master key yet, so the
+ * device is labelled "Signed by you" — still unverified-toned, but it tells an
+ * unverified session which of its siblings are the real, cross-signed ones.
+ */
+export function deviceTrustBadge(
+    status: { isVerified: boolean; signedByOwner?: boolean | null } | null,
+    {
+        ownDevice = false,
+        flagUnsigned = false,
+    }: { ownDevice?: boolean; flagUnsigned?: boolean } = {},
+): TrustBadge {
+    if (status?.isVerified)
+        return { label: t("verification.verified"), tone: "verified" };
+    if (ownDevice && status?.signedByOwner)
+        return { label: t("verification.signedByYou"), tone: "unverified" };
+    // `flagUnsigned`: another user's session that its owner never
+    // cross-signed. Verifying the user won't vouch for it.
+    if (flagUnsigned && status?.signedByOwner === false)
+        return { label: t("verification.notSignedByOwner"), tone: "warning" };
+    return { label: t("verification.unverified"), tone: "unverified" };
+}
+
+/**
+ * Badge for a user from their `UserVerificationStatus`. An identity that
+ * changed and needs re-approval wins over everything else (it's a security
+ * signal); otherwise verified beats unverified.
+ */
+export function userTrustBadge(
+    status: {
+        isVerified: boolean;
+        needsApproval?: boolean;
+        known?: boolean;
+    } | null,
+): TrustBadge {
+    if (status?.needsApproval)
+        return { label: t("verification.identityChanged"), tone: "warning" };
+    if (status?.isVerified)
+        return { label: t("verification.verified"), tone: "verified" };
+    return { label: t("verification.unverified"), tone: "unverified" };
+}
+
+/**
+ * Copy for a verification request whose `accept()` rejected — and the console
+ * breadcrumb for it. Same deal as crypto.ts's `verificationFailureText`: the
+ * SDK's throws on this path are developer prose ("Cannot accept a verification
+ * request in state …", "[400] … (https://homeserver/_matrix/…)"), so the raw
+ * error goes to the log and the user gets plain language. The request is still
+ * queued when this shows, so the wording invites a retry rather than reading
+ * like the request is gone (audit CRYPTO-03).
+ *
+ * Call it for every rejection, even when there is no surface left to show the
+ * text: the log is then the only record that the accept failed at all.
+ */
+export function acceptFailureText(error: unknown): string {
+    console.warn("[matrix] verification accept failed", error);
+    return t("verification.couldnTAcceptThisRequestTry");
+}
+
+export interface SasEmoji {
+    symbol: string;
+    name: string;
+}
+
+/**
+ * Normalize the SDK's `[emoji, name]` tuples into `{ symbol, name }` objects,
+ * defensively dropping any malformed tuple (missing symbol or name) so a bad
+ * payload can't render an empty cell or crash the grid.
+ */
+export function formatSasEmojis(
+    emoji: ReadonlyArray<readonly [string, string]> | undefined,
+): SasEmoji[] {
+    if (!emoji) return [];
+    const out: SasEmoji[] = [];
+    for (const pair of emoji) {
+        const symbol = pair?.[0];
+        const name = pair?.[1];
+        if (typeof symbol === "string" && symbol && typeof name === "string") {
+            out.push({ symbol, name });
+        }
+    }
+    return out;
+}
+
+/**
+ * Split the emoji list into fixed-width rows for the grid (default 4 per row,
+ * giving the canonical 4 + 3 layout for 7 emojis).
+ */
+export function sasEmojiRows(emojis: SasEmoji[], perRow = 4): SasEmoji[][] {
+    const size = perRow > 0 ? perRow : emojis.length || 1;
+    const rows: SasEmoji[][] = [];
+    for (let i = 0; i < emojis.length; i += size) {
+        rows.push(emojis.slice(i, i + size));
+    }
+    return rows;
+}
