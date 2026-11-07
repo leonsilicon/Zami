@@ -19,6 +19,7 @@
       "name": "@-apps/zami",
       "version": "0.1.0",
       "dependencies": {
+        "@-/com.leonsilicon.zami.blob": "workspace:*",
         "@-/com.leonsilicon.zami.browser": "workspace:*",
         "@-/com.leonsilicon.zami.icons": "workspace:*",
         "@-/com.leonsilicon.zami.metro": "workspace:*",
@@ -91,6 +92,16 @@
         "@types/react": "catalog:",
         "@webgpu/types": "catalog:",
         "typescript": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/blob": {
+      "name": "@-/com.leonsilicon.zami.blob",
+      "version": "0.0.0",
+      "dependencies": {
+        "expo-file-system": "catalog:",
+      },
+      "devDependencies": {
+        "vite-plus": "catalog:",
       },
     },
     "packages/com/leonsilicon/zami/browser": {
@@ -172,6 +183,7 @@
         "htmlparser2": "catalog:",
         "lucide-react-native": "catalog:",
         "react-native-gesture-handler": "catalog:",
+        "react-native-reanimated": "catalog:",
         "react-native-svg": "catalog:",
         "uniwind": "catalog:",
       },
@@ -319,6 +331,8 @@
   },
   "packages": {
     "2g": ["2g@1.0.1", "", { "peerDependencies": { "typescript": ">=5.8.0" }, "optionalPeers": ["typescript"], "bin": { "2g": "bin/cli.js" } }, "sha512-+uViadKOS/wwR4pFu5g8TPn3QHpKqoX19JHCnp8k/3cLpImdcXozwvZA6Q/5PeW3AcU8neL8faaMidBcv7o8CA=="],
+
+    "@-/com.leonsilicon.zami.blob": ["@-/com.leonsilicon.zami.blob@workspace:packages/com/leonsilicon/zami/blob"],
 
     "@-/com.leonsilicon.zami.browser": ["@-/com.leonsilicon.zami.browser@workspace:packages/com/leonsilicon/zami/browser"],
 

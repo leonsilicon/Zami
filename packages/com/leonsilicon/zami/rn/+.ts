@@ -1,3 +1,5 @@
+export { anchorElement } from "#anchor";
+export { Pulse, Spin } from "#animation";
 export { Checkbox, type CheckboxProps } from "#checkbox";
 export { confirmAlert, type ConfirmAlertOptions } from "#confirm-alert";
 export { Html, openLink, type HtmlProps } from "#html";

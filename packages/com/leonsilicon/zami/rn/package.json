@@ -5,6 +5,8 @@
   "description": "React Native building blocks that Zami's translated components share in place of web features: portals, HTML rendering, authenticated images, form controls, inline SVG icons, picked files and confirm().",
   "type": "module",
   "imports": {
+    "#anchor": "./anchor.ts",
+    "#animation": "./animation.tsx",
     "#checkbox": "./checkbox.tsx",
     "#confirm-alert": "./confirm-alert.ts",
     "#html": "./html.tsx",
@@ -28,6 +30,7 @@
     "htmlparser2": "catalog:",
     "lucide-react-native": "catalog:",
     "react-native-gesture-handler": "catalog:",
+    "react-native-reanimated": "catalog:",
     "react-native-svg": "catalog:",
     "uniwind": "catalog:"
   },

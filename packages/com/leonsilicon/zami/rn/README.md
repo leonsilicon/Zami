@@ -52,3 +52,8 @@ these, which keep the element's props as close as React Native allows:
   asset's `uri`.
 - `confirmAlert(message, { confirmText, cancelText, destructive })`: `confirm()` as a
   native alert, resolving true when confirmed. Pass the button texts translated.
+- `Spin` / `Pulse`: Tailwind's `animate-spin` and `animate-pulse`, which Uniwind doesn't
+  support. Give them the element's other classes (`<Spin className="w-4 h-4 border-2 …
+  rounded-full" />`) or wrap what animates (`<Spin><Loader2 size={16} /></Spin>`).
+- `anchorElement(view)`: a view's on-screen box as the `HTMLElement` Zam's anchoring helpers
+  read (`openProfileCard(userId, el)` only calls `getBoundingClientRect()`).

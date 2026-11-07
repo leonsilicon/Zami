@@ -8,6 +8,7 @@
   "imports": {
     "#root": "./root.tsx",
     "#polyfills": "./polyfills.ts",
+    "#blob": "./blob.ts",
     "#media": "./media.ts",
     "#globals": "./globals.ts",
     "#storage": "./storage.ts"
@@ -18,6 +19,7 @@
     "android": "expo run:android"
   },
   "dependencies": {
+    "@-/com.leonsilicon.zami.blob": "workspace:*",
     "@-/com.leonsilicon.zami.browser": "workspace:*",
     "@-/com.leonsilicon.zami.icons": "workspace:*",
     "@-/com.leonsilicon.zami.metro": "workspace:*",

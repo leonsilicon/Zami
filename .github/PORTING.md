@@ -117,6 +117,11 @@ same order, same names, same branches.
     `useDeepRune`, which also tracks everything inside the plain objects and arrays it
     returns. Pass the getter's props and state as `deps`.
   - Store functions (`showToast(...)`) are called directly.
+- **Bindings.** A child's `$bindable` prop bound by its parent (`bind:open={x}`) becomes
+  `open` plus `onOpenChange`; the parent passes both. `bind:this` used to call a child's
+  methods becomes a `ref` typed with the child's exported `…Handle` (the child uses
+  `useImperativeHandle`). An element a dialog names with `labelledBy` gets that id as
+  its `nativeID`.
 - **Control flow.**
   - `{#if}` → a conditional.
   - `{#each}` → `.map` with a `key`.
@@ -131,6 +136,9 @@ same order, same names, same branches.
 - **Overlays.** `Portal` → `Portal` from `@-/com.leonsilicon.zami.rn` (the app root
   renders its `PortalHost`). Use the translated `ModalDialog` and `BottomSheet` as
   upstream does. A backdrop that closes on click → a `Pressable` filling the layer.
+- **Animations.** `animate-spin` and `animate-pulse` → `Spin` and `Pulse` from
+  `@-/com.leonsilicon.zami.rn` (Uniwind has no keyframe animations): the element's other
+  classes go on them, or they wrap the icon that spins.
 - **Transitions.** `transition:`/`in:`/`out:` → react-native-reanimated's
   `Animated.View` with `entering`/`exiting` (`fade` → `FadeIn`/`FadeOut`, `scale` →
   `ZoomIn`/`ZoomOut`, `fly` → `SlideInDown`/`SlideOutDown` and the like), keeping

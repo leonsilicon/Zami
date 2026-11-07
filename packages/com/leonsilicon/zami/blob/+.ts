@@ -1,0 +1,1 @@
+export { installBlobPolyfill } from "#install";

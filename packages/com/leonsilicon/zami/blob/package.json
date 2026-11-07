@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.blob",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Blobs for Zam's code in React Native: built from bytes and held in memory, readable (arrayBuffer, bytes, text) along with React Native's own, uploadable through XMLHttpRequest and fetch, and loadable through URL.createObjectURL as cache files.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "expo-file-system": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}
