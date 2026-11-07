@@ -1,0 +1,23 @@
+{
+  "name": "@-/com.leonsilicon.zami.dev",
+  "version": "0.0.0",
+  "private": true,
+  "description": "`vpx _dev`: build, install and run the Zami app with its dev server.",
+  "bin": {
+    "_dev": "./_dev.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.ports": "workspace:*",
+    "expo": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

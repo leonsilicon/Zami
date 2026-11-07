@@ -15,6 +15,9 @@ people and for the Claude migration bot alike.
   Zam's tree, and fails with an error naming the missing Expo file.
 - **Zami's tooling only touches Expo files** (and the `expo/` workspace). Zam's own files
   are never formatted, linted or edited.
+- **New code that isn't an Expo version of a Zam file** (helpers shared by translations,
+  native glue, scripts) goes in a Flatcap package under
+  `expo/packages/com/leonsilicon/zami/`, never as a loose file in Zam's tree.
 
 | Upstream file                     | Expo version                                | Kind        |
 | --------------------------------- | ------------------------------------------- | ----------- |

@@ -46,6 +46,7 @@
     "postinstall": "node packages/com/leonsilicon/zami/ports/__postinstall.ts"
   },
   "devDependencies": {
+    "@-/com.leonsilicon.zami.dev": "workspace:*",
     "@-/com.leonsilicon.zami.ports": "workspace:*",
     "@types/node": "catalog:",
     "eslint-plugin-flatcap": "catalog:",

@@ -26,6 +26,10 @@ does the rest:
    resolves conflicts.
 4. It opens a pull request for review.
 
+Run the app with `vpx _dev` (after `cd expo && vp install` once). Code Zami writes that
+isn't an Expo version of a Zam file lives in Flatcap packages under
+[`expo/packages/com/leonsilicon/zami/`](../expo/packages/com/leonsilicon/zami).
+
 - [`expo/README.md`](../expo/README.md): the Expo workspace, and how to run the app.
 - [`expo/PORTING.md`](../expo/PORTING.md): the conventions for Expo files, and how
   syncing works.

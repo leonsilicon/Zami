@@ -33,6 +33,9 @@ jobs:
         run: vp run typecheck
       - working-directory: expo
         run: vp run test
+      - name: Bundle the app (iOS and Android)
+        working-directory: expo
+        run: vp run bundle
       - name: Expo files in Zam's tree (format, lint, porting invariants)
         working-directory: expo
         run: vp run check:zam
