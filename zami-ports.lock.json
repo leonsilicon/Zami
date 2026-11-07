@@ -159,6 +159,7 @@
   "src/lib/components/layout/RenameThreadDialog.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/RoomDirectory.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/RoomHeaderOverflowMenu.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
+  "src/lib/components/layout/RoomList.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/RoomMediaPanel.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/RoomSettings.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/RoomSettings.threadName.test.zami.ts": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
