@@ -6,6 +6,7 @@ import { AccessibilityInfo, AppState, Appearance, Dimensions, Linking } from "re
 import { audioGlobals } from "#audio";
 import { DOM_CLASSES } from "#dom";
 import { createEventHub } from "#events";
+import { zamiFetch } from "#fetch";
 import { notificationGlobals } from "#notification";
 
 export const windowEvents = createEventHub();
@@ -82,6 +83,7 @@ const extras: Record<PropertyKey, unknown> = {
   ...DOM_CLASSES,
   ...audioGlobals,
   ...notificationGlobals,
+  fetch: zamiFetch,
   addEventListener: windowEvents.addEventListener,
   removeEventListener: windowEvents.removeEventListener,
   dispatchEvent: (event: Event): boolean => {
