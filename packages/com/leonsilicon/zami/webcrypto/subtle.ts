@@ -1,6 +1,7 @@
 // WebCrypto's SubtleCrypto, for what Zam and matrix-js-sdk use (see README.md). Every
 // method is async, so a bad argument rejects rather than throws, and copies its byte
-// inputs before it returns. Results are ArrayBuffers.
+// inputs before it returns. Results are ArrayBuffers. Digests, HMAC, AES-CTR and PBKDF2
+// run natively when the app has the native module (#native), on @noble otherwise.
 import { ctr, gcm } from "@noble/ciphers/aes.js";
 import { equalBytes } from "@noble/ciphers/utils.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
@@ -33,6 +34,7 @@ import {
   type KeyAlgorithm,
   type KeyUsage,
 } from "#key";
+import { nativeCrypto } from "#native";
 
 const KEY_FORMATS: readonly string[] = ["raw", "spki", "pkcs8", "jwk"];
 
@@ -77,11 +79,21 @@ function fromBigInt(value: bigint, length: number): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-function aesCtr(
+/** AES-CTR over the whole counter block, as noble's `ctr`: natively when it can. */
+async function ctrRun(
+  secret: Uint8Array,
+  counter: Uint8Array,
+  data: Uint8Array,
+): Promise<Uint8Array> {
+  const native = nativeCrypto();
+  return native ? native.aesCtr(secret, counter, data) : ctr(secret, counter).encrypt(data);
+}
+
+async function aesCtr(
   secret: Uint8Array,
   { counter, length }: Extract<CipherAlgorithm, { name: "AES-CTR" }>,
   data: Uint8Array,
-): Uint8Array {
+): Promise<Uint8Array> {
   if (counter.length !== AES_BLOCK) {
     throw cryptoError("OperationError", "AesCtrParams.counter must be 16 bytes");
   }
@@ -101,11 +113,11 @@ function aesCtr(
     );
   }
   const beforeWrap = mask - (start & mask) + 1n;
-  if (blocks <= beforeWrap) return ctr(secret, counter).encrypt(data);
+  if (blocks <= beforeWrap) return ctrRun(secret, counter, data);
   const split = Number(beforeWrap) * AES_BLOCK;
   const out = new Uint8Array(data.length);
-  out.set(ctr(secret, counter).encrypt(data.subarray(0, split)));
-  out.set(ctr(secret, fromBigInt(start & ~mask, AES_BLOCK)).encrypt(data.subarray(split)), split);
+  out.set(await ctrRun(secret, counter, data.subarray(0, split)));
+  out.set(await ctrRun(secret, fromBigInt(start & ~mask, AES_BLOCK), data.subarray(split)), split);
   return out;
 }
 
@@ -137,34 +149,43 @@ function aesGcm(
   }
 }
 
-function crypt(
+async function crypt(
   operation: "encrypt" | "decrypt",
   algorithm: unknown,
   key: unknown,
   data: unknown,
-): ArrayBuffer {
+): Promise<ArrayBuffer> {
   const slots = keySlots(key, "key");
   const bytes = copyBytes(data, "data");
   const normalized = normalizeCipher(algorithm, operation);
   const { secret } = useKey(slots, normalized.name, operation);
   return toArrayBuffer(
     normalized.name === "AES-CTR"
-      ? aesCtr(secret, normalized, bytes)
+      ? await aesCtr(secret, normalized, bytes)
       : aesGcm(operation, secret, normalized, bytes),
   );
 }
 
-function mac(key: CryptoKey, usage: "sign" | "verify", algorithm: unknown, data: unknown) {
+async function mac(
+  key: CryptoKey,
+  usage: "sign" | "verify",
+  algorithm: unknown,
+  data: unknown,
+): Promise<Uint8Array> {
   const slots = keySlots(key, "key");
   const bytes = copyBytes(data, "data");
   const name = normalizeSign(algorithm, usage);
   const { algorithm: keyAlgorithm, secret } = useKey(slots, name, usage);
-  return hmac(HASHES[keyAlgorithm.hash.name], secret, bytes);
+  const hash = keyAlgorithm.hash.name;
+  const native = nativeCrypto();
+  return native ? native.hmac(hash, secret, bytes) : hmac(HASHES[hash], secret, bytes);
 }
 
 async function digest(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer> {
   const bytes = copyBytes(data, "data");
-  return toArrayBuffer(HASHES[normalizeHash(algorithm)](bytes));
+  const hash = normalizeHash(algorithm);
+  const native = nativeCrypto();
+  return toArrayBuffer(native ? await native.digest(hash, bytes) : HASHES[hash](bytes));
 }
 
 /** Imports raw secret keys: the only format Zam and matrix-js-sdk import. */
@@ -247,7 +268,7 @@ async function sign(
   key: CryptoKey,
   data: BufferSource,
 ): Promise<ArrayBuffer> {
-  return toArrayBuffer(mac(key, "sign", algorithm, data));
+  return toArrayBuffer(await mac(key, "sign", algorithm, data));
 }
 
 async function verify(
@@ -258,7 +279,7 @@ async function verify(
 ): Promise<boolean> {
   keySlots(key, "key");
   const expected = copyBytes(signature, "signature");
-  return equalBytes(mac(key, "verify", algorithm, data), expected);
+  return equalBytes(await mac(key, "verify", algorithm, data), expected);
 }
 
 async function deriveBits(
@@ -284,6 +305,11 @@ async function deriveBits(
     throw cryptoError("OperationError", "Pbkdf2Params.iterations can't be 0");
   }
   if (bytes === 0) return new ArrayBuffer(0);
+  const native = nativeCrypto();
+  if (native) {
+    const { hash: name, salt, iterations } = normalized;
+    return toArrayBuffer(await native.pbkdf2(name, secret, salt, iterations, bytes));
+  }
   // The async version yields to the event loop as it goes: Matrix's passphrases take
   // hundreds of thousands of iterations.
   const options = { c: normalized.iterations, dkLen: bytes };

@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.webcrypto",
   "version": "0.0.0",
   "private": true,
-  "description": "The part of WebCrypto's crypto.subtle that Zam and matrix-js-sdk use, in pure JS (on @noble) for Hermes, which has none.",
+  "description": "The part of WebCrypto's crypto.subtle that Zam and matrix-js-sdk use, for Hermes, which has none: on @noble, with the costly operations in CommonCrypto on iOS.",
   "type": "module",
   "imports": {
     "#*": "./*.ts"

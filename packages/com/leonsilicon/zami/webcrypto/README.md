@@ -33,6 +33,10 @@ other than `raw` (Zam builds an attachment's JWK itself), `exportKey`, `generate
 `deriveKey`, `wrapKey`, AES-GCM tags shorter than 128 bits or ivs shorter than 8 bytes,
 and HMAC key lengths that aren't whole bytes.
 
-It runs on the JS thread, so large inputs block it while they're processed. PBKDF2 yields
-to the event loop as it goes, but a passphrase's hundreds of thousands of iterations still
-take a while in Hermes.
+In pure JS on Hermes, which has no JIT, the expensive operations are slow: a megabyte
+takes most of a second to encrypt or hash, and a key file's 500,000 PBKDF2 iterations take
+minutes. So it's also an Expo module (`ios/ZamiWebCryptoModule.swift`). When the app has
+it, digests, HMAC, AES-CTR and PBKDF2 run in CommonCrypto, off the JS thread, after the
+JS side has checked every argument as before. Without it (in Node, and on Android for now),
+everything runs on @noble, on the JS thread; PBKDF2 yields to the event loop as it goes.
+`__tests__/native.test.ts` runs the native path with a stand-in module on `node:crypto`.
