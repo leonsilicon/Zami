@@ -4,7 +4,14 @@ import flatcap from "eslint-plugin-flatcap";
 // `vp check` (lint, format, types) covers this workspace. The `.expo.` files in Zam's
 // tree are handled by `_zami fmt` and `_zami lint`, which use Zam's own Prettier options
 // so copied files stay byte-identical to upstream; Zam's own files are never touched.
-const generated = ["apps/zami/ios/**", "apps/zami/android/**", ".zami/**"];
+// Generated: native projects (Expo prebuild), scratch output, and the class-name types
+// Uniwind rewrites on every Metro start.
+const generated = [
+  "apps/zami/ios/**",
+  "apps/zami/android/**",
+  ".zami/**",
+  "apps/zami/uniwind-types.d.ts",
+];
 
 export default defineConfig({
   lint: {
