@@ -17,11 +17,13 @@ apps/zami/                                         Zami: the Expo app
 packages/com/leonsilicon/zami/                     Zami: its own code (Flatcap packages)
 ```
 
-**Zami never edits Zam's files, with two exceptions:** the root `package.json` and
-`vite.config.ts` are Zami's, so the repository root is a Flatcap workspace (Bun, Vite+).
-Zam's versions keep syncing as `package.expo.json` and `vite.config.expo.ts`, and
-`.gitattributes` keeps Zami's two files on every upstream merge. So merging upstream never
-conflicts, and a scheduled workflow does the rest:
+**Zami never edits Zam's files, with one exception:** the root `package.json` is Zami's
+workspace manifest, so the repository root is a Flatcap workspace (Bun, Vite+). Bun reads
+no other manifest name, so this one file is overridden; Zam's version keeps syncing as
+`package.expo.json`, and `.gitattributes` keeps Zami's on every upstream merge. Vite+
+needs no override: it reads `vite.config.js` before `vite.config.ts`, so Zami's
+`vite.config.js` takes precedence over Zam's untouched `vite.config.ts`. Merging upstream
+never conflicts, and a scheduled workflow does the rest:
 
 1. It merges upstream.
 2. It merges upstream's changes into the copied Expo files.
@@ -55,7 +57,7 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | `packages/com/leonsilicon/zami/sveltekit` | Stand-ins for `$app/environment`, `$app/navigation` and `$app/state` |
 | `packages/com/leonsilicon/zami/svelte-react` | `useRune`: React components re-render when Svelte runes change |
 | `packages/com/leonsilicon/zami/dev` | `_dev`: builds, installs and runs the app with its dev server |
-| `zami-ports.json` | Which upstream files must have an Expo version (all of them), and the two overrides |
+| `zami-ports.json` | Which upstream files must have an Expo version (all of them), and the override (`package.json`) |
 | `zami-ports.lock.json` | The upstream commit each Expo file was last synced with (written by `_zami`) |
 | `patches/` | Uniwind patch: Zam's `[data-theme]` themes and `rgb(var(--x-rgb) / a)` colors |
 | [`.github/PORTING.md`](./PORTING.md) | How to write and update Expo files |

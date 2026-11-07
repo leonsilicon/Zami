@@ -1,5 +1,5 @@
-# Zami replaces these upstream files with its own (Zam's versions keep syncing as
-# package.expo.json and vite.config.expo.ts), so merging upstream keeps Zami's. The `ours`
-# driver is registered per clone by the workspace postinstall (`git config merge.ours.driver true`).
+# Zami replaces Zam's root package.json with its own workspace manifest (Bun reads no other
+# name; Zam's version keeps syncing as package.expo.json), so merging upstream keeps Zami's.
+# The `ours` driver is registered per clone by the workspace postinstall
+# (`git config merge.ours.driver true`).
 package.json merge=ours
-vite.config.ts merge=ours

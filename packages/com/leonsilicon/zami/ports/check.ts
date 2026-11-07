@@ -8,7 +8,7 @@ export interface CheckResult {
 /**
  * The invariants CI enforces:
  *  - no upstream file is modified, deleted or renamed (Zami only adds files), except the
- *    ones zami-ports.json lists as overrides (Zami's root package.json and vite.config.ts);
+ *    ones zami-ports.json lists as overrides (Zami's root package.json);
  *  - every Expo file has a manifest entry and belongs to an in-scope upstream file;
  *  - no Expo file is stale or has unresolved conflict markers;
  *  - every upstream file that's copied (everything but Svelte components) has its Expo version.

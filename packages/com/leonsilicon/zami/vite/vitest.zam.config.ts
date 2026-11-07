@@ -1,6 +1,6 @@
 // Upstream Zam's tests, run from their `.test.expo.ts` copies against Zami's Expo files,
 // in the environment Zam uses (jsdom). Tests that render Svelte components are left out
-// until they're rewritten for React Native. Loaded as a project by vite.config.ts.
+// until they're rewritten for React Native. Run by the `test` and `test:zam` tasks in vite.config.js.
 import path from "node:path";
 import { componentTestFiles, zamiExpo } from "@-/com.leonsilicon.zami.vite";
 import { defineConfig } from "vite-plus";

@@ -6,9 +6,9 @@ people and for the Claude migration bot alike.
 ## The rules
 
 - **Never change an upstream file.** Zami is Zam's tree plus files Zami adds. The one
-  exception is the root `package.json` and `vite.config.ts`, which are Zami's (Zam's
-  versions keep syncing as `package.expo.json` and `vite.config.expo.ts`). `vpx _zami check`
-  fails CI if any other upstream file is modified, deleted or renamed.
+  exception is the root `package.json`, which is Zami's workspace manifest (Bun reads no
+  other name; Zam's version keeps syncing as `package.expo.json`). `vpx _zami check` fails
+  CI if any other upstream file is modified, deleted or renamed.
 - **Every upstream file has an Expo version next to it**: code, tests, styles, docs,
   configs and assets alike, even when it's identical or differs only in formatting.
   That's what lets Zami develop alongside upstream: change the Expo version, never the

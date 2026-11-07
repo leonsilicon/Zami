@@ -8,7 +8,7 @@ changing anything.
 - **Never edit, delete, rename or reformat an upstream file.** That's any file that isn't
   an Expo version and isn't under `apps/`, `packages/`, `patches/`, `.claude/`,
   `.github/workflows/zami-*` or `.github/{README,PORTING}.md`, nor one of Zami's root files
-  (`package.json` and `vite.config.ts`, which Zami overrides; `bun.lock`, `bunfig.toml`,
+  (`package.json`, which Zami overrides; `vite.config.js`, `bun.lock`, `bunfig.toml`,
   `.gitattributes`, `zami-ports.json`, `zami-ports.lock.json`). `vpx _zami check` fails if
   you do.
 - Change behavior in the Expo versions. Prefer handling Vite or SvelteKit features in

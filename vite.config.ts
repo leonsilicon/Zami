@@ -1,87 +1,95 @@
-// Zami's Vite+ config. This file replaces Zam's own vite.config.ts at the repository root
-// (Zam's keeps syncing as vite.config.expo.ts; .gitattributes keeps Zami's on merges).
-//
-// The root is Zam's tree plus Zami's own code. Vite+ (lint, format, types, tests) covers
-// only Zami's own code: apps/ and packages/. Every other top-level entry is Zam's, or its
-// `.expo.` versions, which `_zami fmt` and `_zami lint` handle with Zam's own options; it's
-// ignored here, whatever upstream adds later.
-import { readdirSync } from "node:fs";
-import flatcap from "eslint-plugin-flatcap";
-import { defineConfig } from "vite-plus";
+import { sveltekit } from "@sveltejs/kit/vite";
+import basicSsl from "@vitejs/plugin-basic-ssl";
+import legacy from "@vitejs/plugin-legacy";
+import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
 
-const ZAMI_OWNED = new Set([
-  ".git",
-  "apps",
-  "packages",
-  "patches",
-  "node_modules",
-  "package.json",
-  "vite.config.ts",
-  "bun.lock",
-  "bunfig.toml",
-  "zami-ports.json",
-  "zami-ports.lock.json",
-]);
-const zamTree = readdirSync(import.meta.dirname)
-  .filter((name) => !ZAMI_OWNED.has(name))
-  .flatMap((name) => [name, `${name}/**`]);
+const pkg = JSON.parse(
+    readFileSync(new URL("./package.json", import.meta.url), "utf-8"),
+);
 
-// Generated: native projects (Expo prebuild), Expo's cache, and the class-name types
-// Uniwind rewrites on every Metro start.
-const generated = [
-  "apps/zami/ios/**",
-  "apps/zami/android/**",
-  "apps/zami/.expo/**",
-  "apps/zami/uniwind-types.d.ts",
-];
-
-const ZAM_TESTS = "packages/com/leonsilicon/zami/vite/vitest.zam.config.ts";
-
-export default defineConfig({
-  lint: {
-    ...flatcap.configs.oxlint,
-    options: { typeAware: true, typeCheck: true },
-    // This file's nearest tsconfig.json is Zam's, which extends a file only `svelte-kit sync` makes.
-    ignorePatterns: [...zamTree, ...generated, "vite.config.ts"],
-    overrides: [
-      {
-        // node:test-style top-level tests register through promises the runner manages.
-        files: ["**/__tests__/**"],
-        rules: { "typescript/no-floating-promises": "off" },
-      },
+export default defineConfig(({ mode }) => ({
+    // `npm run dev:https` (--mode https) serves over TLS with a generated
+    // self-signed cert. Needed for phone/LAN testing of secure-context APIs
+    // (geolocation for live location, clipboard, …) — plain-http origins
+    // other than localhost block them. Accept the browser's cert warning
+    // once on the device.
+    plugins: [
+        ...(mode === "https" ? [basicSsl()] : []),
+        sveltekit(),
+        // matrix-js-sdk builds its keyword push-rule regex with a lookbehind,
+        // which throws on Safari < 16.4. It's only ever tested for a match
+        // (`!!val.match(regex)`), so consuming the boundary is equivalent.
+        // Fails the build if the SDK changes, rather than silently skipping.
+        {
+            name: "zam:sdk-no-lookbehind",
+            transform(code, id) {
+                if (!/matrix-js-sdk[\\/]lib[\\/]pushprocessor\.js$/.test(id)) {
+                    return null;
+                }
+                const from = '"(?<=^|\\\\W)"';
+                if (!code.includes(from)) {
+                    this.error(
+                        "zam:sdk-no-lookbehind: pushprocessor.js changed; recheck its lookbehind",
+                    );
+                }
+                return { code: code.replace(from, '"(?:^|\\\\W)"'), map: null };
+            },
+        },
+        // matrix-js-sdk 44 lets only 3 threads fetch their first page at once,
+        // across all rooms. A room's threads are all created together (the
+        // thread list, a busy room's first sync), so the thread you open could
+        // wait behind dozens of others before its panel filled. Lift the cap.
+        {
+            name: "zam:sdk-thread-fetch-cap",
+            transform(code, id) {
+                if (
+                    !/matrix-js-sdk[\\/]lib[\\/]models[\\/]thread\.js$/.test(id)
+                ) {
+                    return null;
+                }
+                const from = "const MAX_CONCURRENT_INITIAL_FETCHES = 3;";
+                if (!code.includes(from)) {
+                    this.error(
+                        "zam:sdk-thread-fetch-cap: thread.js changed; recheck its initial fetch cap",
+                    );
+                }
+                return {
+                    code: code.replace(
+                        from,
+                        "const MAX_CONCURRENT_INITIAL_FETCHES = Infinity;",
+                    ),
+                    map: null,
+                };
+            },
+        },
+        {
+            ...legacy({
+                targets: ["ios >= 15.8", "> 0.5%", "not dead"],
+                renderLegacyChunks: true,
+            }),
+            apply(config, { isSsrBuild }) {
+                return !isSsrBuild;
+            },
+        },
     ],
-  },
-  fmt: {
-    ignorePatterns: [...zamTree, ...generated, "**/@prompts/**"],
-  },
-  // Zami's own tooling tests. Run them with `vp run test`: at the root, a bare `vp test`
-  // picks up Zam's vitest.config.ts first.
-  test: {
-    include: ["packages/**/__tests__/*.test.ts"],
-    environment: "node",
-  },
-  run: {
-    tasks: {
-      // Zami's tooling tests, then upstream Zam's tests (their `.test.expo.ts` copies)
-      // against Zami's Expo files.
-      test: {
-        cache: false,
-        command: `vp test run -c vite.config.ts && vp test run -c ${ZAM_TESTS}`,
-      },
-      "test:zam": { cache: false, command: `vp test run -c ${ZAM_TESTS}` },
-      typecheck: {
-        command:
-          "tsc -p packages && tsc -p apps/zami && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react",
-      },
-      // Bundles the app's JS for both platforms with Metro (no native build): proves every
-      // import resolves to an Expo file and every file transforms.
-      bundle: {
-        cache: false,
-        command:
-          "cd apps/zami && expo export --platform ios --platform android --dev --output-dir ../../node_modules/.cache/zami/bundle",
-      },
-      "fmt:zam": { cache: false, command: "_zami fmt" },
-      "check:zam": { cache: false, command: "_zami fmt --check && _zami lint && _zami check" },
+    define: {
+        // App version (from package.json) exposed to the client bundle.
+        __APP_VERSION__: JSON.stringify(pkg.version),
     },
-  },
-});
+    optimizeDeps: {
+        // E2EE rust-crypto WASM. The package loads its .wasm via
+        // `new URL("./pkg/…_bg.wasm", import.meta.url)`; when Vite pre-bundles
+        // the dep with esbuild, that reference resolves into `.vite/deps/pkg/…`
+        // which is never emitted there → the fetch 404s and `initRustCrypto`
+        // throws "WebAssembly.compile … HTTP status code is not ok". Excluding
+        // it routes the package through Vite's normal asset pipeline, which
+        // rewrites the URL to the correctly served hashed asset. (Same fix
+        // Element Web / matrix-react-sdk use.)
+        exclude: ["@matrix-org/matrix-sdk-crypto-wasm"],
+    },
+    server: {
+        host: "0.0.0.0",
+        port: 5173,
+    },
+}));
