@@ -1,4 +1,4 @@
-import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
@@ -213,7 +213,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                         }`}
                                     >
                                         {busy ? (
-                                            <View className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            <Spin className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" />
                                         ) : null}
                                         <Text className="text-sm font-semibold text-white">
                                             {t("inboxPanel.accept")}
@@ -256,7 +256,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                     }`}
                                 >
                                     {busy ? (
-                                        <View className="w-3.5 h-3.5 border-2 border-discord-textMuted border-t-transparent rounded-full animate-spin" />
+                                        <Spin className="w-3.5 h-3.5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
                                     ) : null}
                                     <Text className="text-sm font-semibold text-discord-textMuted">
                                         {t("inboxPanel.cancelRequest")}

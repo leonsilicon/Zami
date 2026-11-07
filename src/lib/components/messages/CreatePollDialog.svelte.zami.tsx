@@ -8,10 +8,7 @@ import {
     View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import RNSvg, { Path } from "react-native-svg";
-import { withUniwind } from "uniwind";
-import { Portal } from "@-/com.leonsilicon.zami.rn";
-import { Check } from "lucide-svelte";
+import { Checkbox, Portal, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import {
     pollDialogState,
@@ -24,10 +21,6 @@ import {
     type PollDraft,
 } from "$lib/utils/pollContent";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
-
-// Upstream's inline SVG icons: `w-*`/`h-*` size them, `colorClassName` is their
-// `currentColor`.
-const Svg = withUniwind(RNSvg);
 
 const MAX_OPTIONS = 20;
 
@@ -176,14 +169,10 @@ export default function CreatePollDialog() {
                                                     )}
                                                     className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded hover:bg-discord-messageHover transition-colors disabled:opacity-30"
                                                 >
-                                                    <Svg
-                                                        className="w-4 h-4"
-                                                        colorClassName="accent-discord-textMuted"
-                                                        fill="currentColor"
-                                                        viewBox="0 0 24 24"
-                                                    >
-                                                        <Path d="M18.3 5.71 12 12l6.3 6.29-1.42 1.42L10.59 13.4 4.29 19.7 2.87 18.3 9.17 12 2.87 5.71 4.29 4.29l6.3 6.3 6.29-6.3z" />
-                                                    </Svg>
+                                                    <SvgIcon
+                                                        className="w-4 h-4 text-discord-textMuted"
+                                                        d="M18.3 5.71 12 12l6.3 6.29-1.42 1.42L10.59 13.4 4.29 19.7 2.87 18.3 9.17 12 2.87 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"
+                                                    />
                                                 </Pressable>
                                             </View>
                                         ))}
@@ -264,38 +253,16 @@ export default function CreatePollDialog() {
                                 </View>
 
                                 {/* Multi-select */}
-                                <Pressable
-                                    accessibilityRole="checkbox"
-                                    accessibilityState={{
-                                        checked: allowMultiple,
-                                    }}
-                                    onPress={() =>
-                                        setAllowMultiple(!allowMultiple)
-                                    }
-                                    className="flex-row items-center gap-2.5 cursor-pointer select-none"
-                                >
-                                    {/* Zami: the checkbox, drawn. */}
-                                    <View
-                                        className={`h-4 w-4 rounded border items-center justify-center ${
-                                            allowMultiple
-                                                ? "bg-discord-accent border-discord-accent"
-                                                : "border-discord-textMuted"
-                                        }`}
-                                    >
-                                        {allowMultiple && (
-                                            <Check
-                                                size={12}
-                                                strokeWidth={3}
-                                                className="text-white"
-                                            />
-                                        )}
-                                    </View>
-                                    <Text className="flex-shrink text-sm text-discord-textPrimary">
-                                        {t(
-                                            "createPollDialog.allowSelectingMultipleOptions",
-                                        )}
-                                    </Text>
-                                </Pressable>
+                                <Checkbox
+                                    checked={allowMultiple}
+                                    onChange={setAllowMultiple}
+                                    label={t(
+                                        "createPollDialog.allowSelectingMultipleOptions",
+                                    )}
+                                    labelClassName="flex-shrink text-sm text-discord-textPrimary"
+                                    className="items-center gap-2.5 cursor-pointer select-none"
+                                    inputClassName="h-4 w-4 rounded"
+                                />
 
                                 {/* Footer */}
                                 <View className="flex-row items-center justify-end gap-3 pt-1">

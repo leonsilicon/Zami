@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { X } from "lucide-svelte";
 import { useEffect, useEffectEvent, useState } from "react";
@@ -330,7 +331,7 @@ export default function RoomDirectory() {
                                 }`}
                             >
                                 {joiningId === entry.roomId ? (
-                                    <View className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    <Spin className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full" />
                                 ) : null}
                                 <Text className="text-sm font-semibold text-white">
                                     {t("common.join")}
@@ -352,7 +353,7 @@ export default function RoomDirectory() {
                             }`}
                         >
                             {loadingMore ? (
-                                <View className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full animate-spin" />
+                                <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full" />
                             ) : null}
                             <Text className="text-sm font-medium text-discord-textSecondary">
                                 {t("common.loadMore")}
@@ -363,7 +364,7 @@ export default function RoomDirectory() {
                 ListEmptyComponent={
                     loading ? (
                         <View className="flex-row items-center justify-center py-10">
-                            <View className="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full animate-spin" />
+                            <Spin className="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full" />
                         </View>
                     ) : !showRooms ? (
                         <Text className="text-sm text-discord-textMuted text-center py-10">

@@ -35,11 +35,15 @@ these, which keep the element's props as close as React Native allows:
 - `Checkbox`: `<label><input type="checkbox"> text</label>`. `checked`,
   `onChange(checked)`, `label` (a string is a `Text` styled by `labelClassName`, by
   default `text-sm text-discord-textPrimary`; any other node renders as it is),
-  `accessibilityLabel`, `disabled` and `className` (the `<label>`'s layout classes; it's
-  a row, by default `items-center gap-2`). `accessibilityRole="checkbox"`.
+  `accessibilityLabel`, `disabled`, `className` (the `<label>`'s layout classes; it's
+  a row, by default `items-center gap-2`) and `inputClassName` (the `<input>`'s size,
+  rounding and margins; by default the browser's `w-3.5 h-3.5 rounded-sm`).
+  `accessibilityRole="checkbox"`.
 - `Range`: `<input type="range">`. `value`, `min`/`max`/`step` (HTML's defaults: 0,
-  100, 1), `onChange(value)` (`oninput`), `onChangeEnd(value)` (`onchange`),
-  `disabled`, `accessibilityLabel` and `className`. A tap or a sideways drag sets it
+  100, 1), `onChange(value)` (`oninput`), `onChangeEnd(value)` (`onchange`: a drag, tap
+  or step that changed the value has ended), `disabled`, `accessibilityLabel`,
+  `accessibilityValueText` (`aria-valuetext`), `ticks` (the values of its `<datalist>`,
+  marked under the track) and `className`. A tap or a sideways drag sets it
   (react-native-gesture-handler; a vertical swipe still scrolls); VoiceOver and
   TalkBack step it by `step`.
 - `SvgIcon`: an inline `<svg fill="currentColor"><path d="…" /></svg>`. `d` (or `Path`
@@ -48,12 +52,17 @@ these, which keep the element's props as close as React Native allows:
   would (Zam's primary text color without one). Screen readers skip it.
 - `pickedFile(asset)`: `<input type="file">` → `expo-image-picker` or
   `expo-document-picker`, then this: the picked asset as the `File` the input gives,
-  named, typed and dated like it, whose `arrayBuffer()` works and which keeps the
-  asset's `uri`.
+  named, typed and dated like it, which keeps the asset's `uri`. Its bytes are in memory
+  (Zami's Blob polyfill makes `fetch(uri).blob()` an in-memory Blob), so it reads and
+  slices as on the web.
 - `confirmAlert(message, { confirmText, cancelText, destructive })`: `confirm()` as a
   native alert, resolving true when confirmed. Pass the button texts translated.
 - `Spin` / `Pulse`: Tailwind's `animate-spin` and `animate-pulse`, which Uniwind doesn't
   support. Give them the element's other classes (`<Spin className="w-4 h-4 border-2 …
-  rounded-full" />`) or wrap what animates (`<Spin><Loader2 size={16} /></Spin>`).
+  rounded-full" />`), which style the box that animates, so its margins and flex classes
+  work as on the web; or wrap what animates (`<Spin><Loader2 size={16} /></Spin>`), where
+  `className` places the wrapper (it keeps what it wraps centred, so it turns in place
+  even when a `stretch` parent widens it). Other view props (accessibility) pass through;
+  a `Spin` takes no touches.
 - `anchorElement(view)`: a view's on-screen box as the `HTMLElement` Zam's anchoring helpers
   read (`openProfileCard(userId, el)` only calls `getBoundingClientRect()`).

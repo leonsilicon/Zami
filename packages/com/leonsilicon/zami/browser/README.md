@@ -9,7 +9,10 @@ Native.
 - **document:** `visibilityState`, `hidden`, `hasFocus()` and `visibilitychange` follow
   AppState (a backgrounded app is a hidden page). `documentElement.dataset.theme` switches
   the Uniwind theme, and `documentElement.style.setProperty("--x", …)` sets a Uniwind CSS
-  variable. Queries find nothing; creating nodes throws where it's called.
+  variable. Queries find nothing; creating nodes throws where it's called, except the
+  head-only `<style>`, `<link>` and `<meta>`, which are inert (custom CSS can't style
+  React Native views), and `<a>`: clicking it opens its link, or with `download` set,
+  offers the file through the share sheet (iOS has no Downloads folder for apps).
 - **window:** the global object, plus `focus`/`blur` (AppState) and `resize` events,
   `matchMedia` for width, hover, pointer and preference queries, `open` (the system opens
   the link), and `innerWidth`/`innerHeight`.

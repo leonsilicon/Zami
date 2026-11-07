@@ -1,4 +1,4 @@
-import { Portal } from "@-/com.leonsilicon.zami.rn";
+import { Portal, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useState } from "react";
 import { BackHandler, I18nManager, Pressable, Text, View } from "react-native";
@@ -431,10 +431,12 @@ export default function VerificationModal() {
                                             )}
                                         </Text>
                                     ) : (
-                                        <Loader2
-                                            size={28}
-                                            className="animate-spin text-discord-accent"
-                                        />
+                                        <Spin>
+                                            <Loader2
+                                                size={28}
+                                                className="text-discord-accent"
+                                            />
+                                        </Spin>
                                     )}
                                 </View>
                             ) : pane === "scan" ? (
@@ -583,10 +585,12 @@ export default function VerificationModal() {
                         </>
                     ) : (
                         <View className="mt-6 flex-col items-center gap-3">
-                            <Loader2
-                                size={32}
-                                className="animate-spin text-discord-accent"
-                            />
+                            <Spin>
+                                <Loader2
+                                    size={32}
+                                    className="text-discord-accent"
+                                />
+                            </Spin>
                             <Text className="text-center text-sm text-discord-textSecondary">
                                 {confirmed
                                     ? t(

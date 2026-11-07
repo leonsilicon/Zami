@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
@@ -43,7 +44,9 @@ export default function OutboxStrip({ roomId }: Props) {
                         </>
                     ) : item.status === "sending" ? (
                         <>
-                            <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin text-discord-textMuted" />
+                            <Spin>
+                                <Loader2 className="w-3.5 h-3.5 flex-shrink-0 text-discord-textMuted" />
+                            </Spin>
                             <Text className="flex-shrink-0 text-xs text-discord-textMuted">
                                 {t("outboxStrip.sending")}
                             </Text>

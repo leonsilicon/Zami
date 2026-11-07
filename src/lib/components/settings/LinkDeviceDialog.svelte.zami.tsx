@@ -1,4 +1,4 @@
-import { openLink } from "@-/com.leonsilicon.zami.rn";
+import { openLink, Spin } from "@-/com.leonsilicon.zami.rn";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
@@ -237,10 +237,12 @@ export default function LinkDeviceDialog({
                                 </Text>
                             </Pressable>
                         ) : (
-                            <Loader2
-                                size={28}
-                                className="animate-spin text-discord-accent"
-                            />
+                            <Spin>
+                                <Loader2
+                                    size={28}
+                                    className="text-discord-accent"
+                                />
+                            </Spin>
                         )}
                     </View>
                 </>
@@ -409,10 +411,12 @@ export default function LinkDeviceDialog({
                                 </Text>
                             </Pressable>
                             <View className="mt-4 flex-row items-center justify-center gap-2">
-                                <Loader2
-                                    size={16}
-                                    className="animate-spin text-discord-accent"
-                                />
+                                <Spin>
+                                    <Loader2
+                                        size={16}
+                                        className="text-discord-accent"
+                                    />
+                                </Spin>
                                 <Text className="text-xs text-discord-textMuted">
                                     {t("qrLogin.linkWaiting")}
                                 </Text>
@@ -420,10 +424,12 @@ export default function LinkDeviceDialog({
                         </>
                     ) : (
                         <View className="mt-4 flex-row justify-center">
-                            <Loader2
-                                size={24}
-                                className="animate-spin text-discord-accent"
-                            />
+                            <Spin>
+                                <Loader2
+                                    size={24}
+                                    className="text-discord-accent"
+                                />
+                            </Spin>
                         </View>
                     )}
                 </>

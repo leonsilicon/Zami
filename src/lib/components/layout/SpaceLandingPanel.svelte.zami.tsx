@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Hash, Menu } from "lucide-svelte";
 import { useState } from "react";
@@ -169,7 +170,7 @@ export default function SpaceLandingPanel({
                 )}
                 {stillLoading ? (
                     <View className="flex-1 flex-row items-center justify-center gap-3">
-                        <View className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full animate-spin" />
+                        <Spin className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
                         <Text className="text-discord-textMuted">
                             {t("spaceLandingPanel.loadingRooms")}
                         </Text>

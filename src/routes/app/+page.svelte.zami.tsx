@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 import { t } from "$lib/i18n";
@@ -15,7 +16,7 @@ export default function Page() {
     return (
         <View className="flex-1 flex-row items-center justify-center bg-discord-backgroundTertiary">
             <View className="flex-row items-center gap-3">
-                <View className="w-6 h-6 border-2 border-discord-textMuted border-t-transparent rounded-full animate-spin" />
+                <Spin className="w-6 h-6 border-2 border-discord-textMuted border-t-transparent rounded-full" />
                 <Text className="text-discord-textMuted">
                     {t("appPage.redirecting")}
                 </Text>

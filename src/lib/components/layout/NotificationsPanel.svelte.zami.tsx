@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
@@ -265,7 +266,7 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
                 ListEmptyComponent={
                     showSpinner ? (
                         <View className="flex-row justify-center mt-8">
-                            <View className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full animate-spin" />
+                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
                         </View>
                     ) : (
                         <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">

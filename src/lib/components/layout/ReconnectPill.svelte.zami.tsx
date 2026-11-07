@@ -1,4 +1,4 @@
-import { Portal } from "@-/com.leonsilicon.zami.rn";
+import { Portal, Pulse } from "@-/com.leonsilicon.zami.rn";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -50,13 +50,11 @@ export default function ReconnectPill({ syncState }: Props) {
                     accessibilityLiveRegion="polite"
                     className="flex-row items-center gap-2 rounded-full bg-discord-backgroundTertiary/95 px-3 py-1.5 shadow-lg ring-1 ring-black/20"
                 >
-                    <View
-                        className={`h-2 w-2 flex-shrink-0 rounded-full ${
-                            offline
-                                ? "bg-discord-danger"
-                                : "bg-discord-warning animate-pulse"
-                        }`}
-                    />
+                    {offline ? (
+                        <View className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger" />
+                    ) : (
+                        <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-warning" />
+                    )}
                     <Text className="text-xs font-medium text-discord-textSecondary">
                         {status.label}
                     </Text>

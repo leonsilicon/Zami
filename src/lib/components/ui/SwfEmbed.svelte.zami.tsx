@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Pressable, Text } from "react-native";
+import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import FlashEmbed from "./FlashEmbed.svelte";
 
@@ -36,7 +36,7 @@ export default function SwfEmbed({ getSrc }: Props) {
         >
             {loading ? (
                 <>
-                    <View className="w-8 h-8 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                    <Spin className="w-8 h-8 border-2 border-white/60 border-t-transparent rounded-full" />
                     <Text className="text-white/60 text-xs">
                         {t("common.loading")}
                     </Text>

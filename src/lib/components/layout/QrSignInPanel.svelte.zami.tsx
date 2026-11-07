@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
@@ -181,10 +182,12 @@ export default function QrSignInPanel({
             ) : step === "preparing" ? (
                 <>
                     <View className="mt-5 flex-row justify-center">
-                        <Loader2
-                            size={28}
-                            className="animate-spin text-discord-accent"
-                        />
+                        <Spin>
+                            <Loader2
+                                size={28}
+                                className="text-discord-accent"
+                            />
+                        </Spin>
                     </View>
                     <Text className="mt-2 text-center text-xs text-discord-textMuted">
                         {t("qrLogin.preparing")}
@@ -277,10 +280,12 @@ export default function QrSignInPanel({
                     </>
                 ) : (
                     <View className="mt-5 flex-row justify-center">
-                        <Loader2
-                            size={28}
-                            className="animate-spin text-discord-accent"
-                        />
+                        <Spin>
+                            <Loader2
+                                size={28}
+                                className="text-discord-accent"
+                            />
+                        </Spin>
                     </View>
                 )
             ) : step === "number" ? (
@@ -326,10 +331,12 @@ export default function QrSignInPanel({
             ) : step === "approval" ? (
                 <>
                     <View className="mt-5 flex-row justify-center">
-                        <Loader2
-                            size={28}
-                            className="animate-spin text-discord-accent"
-                        />
+                        <Spin>
+                            <Loader2
+                                size={28}
+                                className="text-discord-accent"
+                            />
+                        </Spin>
                     </View>
                     <Text className="mt-2 text-center text-sm text-discord-textSecondary">
                         {t("qrLogin.waitingApproval")}
@@ -338,10 +345,12 @@ export default function QrSignInPanel({
             ) : (
                 <>
                     <View className="mt-5 flex-row justify-center">
-                        <Loader2
-                            size={28}
-                            className="animate-spin text-discord-accent"
-                        />
+                        <Spin>
+                            <Loader2
+                                size={28}
+                                className="text-discord-accent"
+                            />
+                        </Spin>
                     </View>
                     <Text className="mt-2 text-center text-sm text-discord-textSecondary">
                         {t("qrLogin.signingIn")}

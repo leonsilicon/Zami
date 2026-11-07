@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -548,7 +549,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                 ListEmptyComponent={
                     searching && rows.length === 0 ? (
                         <View className="flex-row justify-center mt-8">
-                            <View className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full animate-spin" />
+                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
                         </View>
                     ) : error ? (
                         <Text className="text-sm text-discord-danger text-center mt-8 px-4">

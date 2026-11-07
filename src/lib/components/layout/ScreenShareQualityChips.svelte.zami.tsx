@@ -1,12 +1,7 @@
+import { Range } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useRef, useState } from "react";
-import {
-    Pressable,
-    Text,
-    TextInput,
-    View,
-    type GestureResponderEvent,
-} from "react-native";
+import { useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import {
@@ -288,10 +283,10 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                     value={sliderFromBitrate(shownBitrate, ceiling)}
                     accessibilityLabel={t("screenShareQualityChips.bitrate")}
                     accessibilityValueText={bitrateLabel(shownBitrate)}
-                    onInput={(position) =>
+                    onChange={(position) =>
                         setDraftBitrate(bitrateFromSlider(position, ceiling))
                     }
-                    onChange={(position) => commitBitrate(position)}
+                    onChangeEnd={(position) => commitBitrate(position)}
                 />
                 <Text className="text-xs text-discord-textMuted mt-0.5">
                     {t("screenShareQualityChips.bitrateCapHint")}
@@ -364,115 +359,6 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                     }
                 />
             </View>
-        </View>
-    );
-}
-
-// Zami: React Native has no <input type="range">. This is a track and thumb: a touch
-// or drag along it reports each value as it moves (`oninput`) and the last one on
-// release (`onchange`), and VoiceOver steps it (swipe up/down).
-function Range({
-    min,
-    max,
-    step,
-    value,
-    onInput,
-    onChange,
-    accessibilityLabel,
-    accessibilityValueText,
-    className = "",
-}: {
-    min: number;
-    max: number;
-    step: number;
-    value: number;
-    onInput?: (value: number) => void;
-    onChange?: (value: number) => void;
-    accessibilityLabel: string;
-    accessibilityValueText?: string;
-    className?: string;
-}) {
-    const [width, setWidth] = useState(0);
-    // The track's left edge on the page, taken when a touch starts.
-    const left = useRef(0);
-    // The value when the touch started, and the last one it moved to.
-    const start = useRef(value);
-    const last = useRef(value);
-    const fraction =
-        max > min ? Math.min(Math.max((value - min) / (max - min), 0), 1) : 0;
-    const THUMB = 16;
-
-    function clamp(next: number): number {
-        return Math.min(max, Math.max(min, next));
-    }
-
-    function track(pageX: number) {
-        if (width <= 0) return;
-        const at = Math.min(Math.max((pageX - left.current) / width, 0), 1);
-        const next = clamp(min + Math.round((at * (max - min)) / step) * step);
-        if (next === last.current) return;
-        last.current = next;
-        onInput?.(next);
-    }
-
-    function release() {
-        if (last.current !== start.current) onChange?.(last.current);
-    }
-
-    return (
-        <View
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel={accessibilityLabel}
-            accessibilityValue={
-                accessibilityValueText !== undefined
-                    ? { text: accessibilityValueText }
-                    : { min, max, now: value }
-            }
-            accessibilityActions={[
-                { name: "increment" },
-                { name: "decrement" },
-            ]}
-            onAccessibilityAction={(event) => {
-                const delta =
-                    event.nativeEvent.actionName === "increment" ? step : -step;
-                const next = clamp(value + delta);
-                if (next === value) return;
-                onInput?.(next);
-                onChange?.(next);
-            }}
-            onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderTerminationRequest={() => false}
-            onResponderGrant={(event: GestureResponderEvent) => {
-                left.current =
-                    event.nativeEvent.pageX - event.nativeEvent.locationX;
-                start.current = value;
-                last.current = value;
-                track(event.nativeEvent.pageX);
-            }}
-            onResponderMove={(event: GestureResponderEvent) =>
-                track(event.nativeEvent.pageX)
-            }
-            onResponderRelease={release}
-            onResponderTerminate={release}
-            className={`h-6 justify-center ${className}`}
-        >
-            <View
-                pointerEvents="none"
-                className="h-1 rounded-full bg-discord-divider overflow-hidden"
-            >
-                <View
-                    className="h-1 bg-discord-accent"
-                    style={{ width: `${fraction * 100}%` }}
-                />
-            </View>
-            <View
-                pointerEvents="none"
-                className="absolute w-4 h-4 rounded-full bg-discord-accent"
-                style={{ left: fraction * Math.max(width - THUMB, 0) }}
-            />
         </View>
     );
 }

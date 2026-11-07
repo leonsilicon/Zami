@@ -1,7 +1,6 @@
+import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 // Ctrl+/: every keyboard shortcut as currently bound, as in Discord.
 import { KEYBIND_CATEGORIES, KEYBIND_DEFS } from "$lib/keybinds/keybinds";
@@ -14,27 +13,6 @@ interface Props {
     onClose: () => void;
     /** Opens Settings > Keybinds. */
     onCustomize: () => void;
-}
-
-// Zami: the inline <svg fill="currentColor"> close icon, in its button's text color.
-function CloseIcon({ className }: { className: string }) {
-    const { color } = useResolveClassNames(className);
-    return (
-        <View
-            className={className}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-        >
-            <Svg
-                width="100%"
-                height="100%"
-                viewBox="0 0 24 24"
-                fill={color as string | undefined}
-            >
-                <Path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z" />
-            </Svg>
-        </View>
-    );
 }
 
 // Zami: the scrolling body is a ScrollView inside the panel (the panel itself
@@ -84,7 +62,10 @@ export default function KeyboardShortcutsDialog({
                     accessibilityLabel={t("common.closeDialog")}
                     className="p-1.5 rounded hover:bg-discord-messageHover"
                 >
-                    <CloseIcon className="w-5 h-5 text-discord-textMuted" />
+                    <SvgIcon
+                        className="w-5 h-5 text-discord-textMuted"
+                        d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"
+                    />
                 </Pressable>
             </View>
             <ScrollView

@@ -13,8 +13,10 @@
   "dependencies": {
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
     "expo-clipboard": "catalog:",
+    "expo-file-system": "catalog:",
     "expo-localization": "catalog:",
     "expo-location": "catalog:",
+    "expo-sharing": "catalog:",
     "uniwind": "catalog:"
   },
   "peerDependencies": {

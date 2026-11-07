@@ -1,4 +1,4 @@
-import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
@@ -302,10 +302,10 @@ export default function DraftDmView({
                         }
                     >
                         {sending ? (
-                            <View
+                            <Spin
                                 accessibilityElementsHidden
                                 importantForAccessibility="no-hide-descendants"
-                                className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full animate-spin"
+                                className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full"
                             />
                         ) : (
                             <Send

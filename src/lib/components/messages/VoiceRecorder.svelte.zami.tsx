@@ -1,3 +1,4 @@
+import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import {
     AudioQuality,
     IOSOutputFormat,
@@ -13,8 +14,7 @@ import { File } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
-import RNSvg, { Path, Rect } from "react-native-svg";
-import { withUniwind } from "uniwind";
+import { Rect } from "react-native-svg";
 import { t } from "$lib/i18n";
 import { sendVoiceMessage } from "$lib/matrix/client";
 import type { MediaRelation } from "$lib/matrix/client";
@@ -30,10 +30,6 @@ import {
     adoptCapture,
     type CaptureLifecycle,
 } from "$lib/utils/captureLifecycle";
-
-// Upstream's inline SVG icons: `w-*`/`h-*` size them, `colorClassName` is their
-// `currentColor`.
-const Svg = withUniwind(RNSvg);
 
 interface Props {
     roomId: string;
@@ -438,14 +434,10 @@ export default function VoiceRecorder({
                         className="flex-shrink-0 p-1.5 rounded transition-colors"
                         accessibilityLabel={t("voiceRecorder.cancelRecording")}
                     >
-                        <Svg
-                            className="w-5 h-5"
-                            colorClassName="accent-discord-textMuted"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <Path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                        </Svg>
+                        <SvgIcon
+                            className="w-5 h-5 text-discord-textMuted"
+                            d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                        />
                     </Pressable>
 
                     {/* Red pulsing dot */}
@@ -476,14 +468,9 @@ export default function VoiceRecorder({
                         onPress={stop}
                         className="flex-shrink-0 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-discord-accent hover:opacity-90 transition-opacity"
                     >
-                        <Svg
-                            className="w-4 h-4"
-                            colorClassName="accent-white"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
+                        <SvgIcon className="w-4 h-4 text-white">
                             <Rect x="6" y="6" width="12" height="12" rx="1.5" />
-                        </Svg>
+                        </SvgIcon>
                         <Text className="text-white text-sm font-medium">
                             {t("voiceRecorder.stop")}
                         </Text>
@@ -499,14 +486,10 @@ export default function VoiceRecorder({
                         className="flex-shrink-0 p-1.5 rounded transition-colors disabled:opacity-40"
                         accessibilityLabel={t("voiceRecorder.discardRecording")}
                     >
-                        <Svg
-                            className="w-5 h-5"
-                            colorClassName="accent-discord-textMuted"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <Path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                        </Svg>
+                        <SvgIcon
+                            className="w-5 h-5 text-discord-textMuted"
+                            d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                        />
                     </Pressable>
 
                     {/* Waveform preview */}
@@ -543,23 +526,15 @@ export default function VoiceRecorder({
                             className="flex-shrink-0 w-8 h-8 rounded-full bg-discord-backgroundTertiary items-center justify-center"
                         >
                             {previewStatus.playing ? (
-                                <Svg
-                                    className="w-4 h-4"
-                                    colorClassName="accent-discord-textPrimary"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <Path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-                                </Svg>
+                                <SvgIcon
+                                    className="w-4 h-4 text-discord-textPrimary"
+                                    d="M6 5h4v14H6zM14 5h4v14h-4z"
+                                />
                             ) : (
-                                <Svg
-                                    className="w-4 h-4 ms-0.5"
-                                    colorClassName="accent-discord-textPrimary"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <Path d="M8 5v14l11-7z" />
-                                </Svg>
+                                <SvgIcon
+                                    className="w-4 h-4 ms-0.5 text-discord-textPrimary"
+                                    d="M8 5v14l11-7z"
+                                />
                             )}
                         </Pressable>
                     )}
@@ -573,21 +548,17 @@ export default function VoiceRecorder({
                     >
                         {phase === "sending" ? (
                             <>
-                                <View className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
                                 <Text className="text-white text-sm font-medium">
                                     {t("voiceRecorder.sending")}
                                 </Text>
                             </>
                         ) : (
                             <>
-                                <Svg
-                                    className="w-4 h-4"
-                                    colorClassName="accent-white"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <Path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                                </Svg>
+                                <SvgIcon
+                                    className="w-4 h-4 text-white"
+                                    d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"
+                                />
                                 <Text className="text-white text-sm font-medium">
                                     {t("voiceRecorder.send")}
                                 </Text>

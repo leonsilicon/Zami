@@ -3,12 +3,11 @@
 // needs: create recovery on a new account, or confirm this session on an
 // existing one (another device, or the recovery key). Security settings
 // keeps the full toolbox; this is the short path for everyone else.
-import { openLink } from "@-/com.leonsilicon.zami.rn";
+import { Checkbox, openLink, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { Check } from "lucide-svelte";
 import {
     useEffect,
     useEffectEvent,
@@ -111,39 +110,6 @@ function Secondary({
         >
             <Text className="text-center text-discord-textPrimary font-semibold text-sm">
                 {label}
-            </Text>
-        </Pressable>
-    );
-}
-
-// Zami: <label><input type="checkbox"> text</label> → a pressable checkbox.
-function Checkbox({
-    checked,
-    onChange,
-    children,
-}: {
-    checked: boolean;
-    onChange: (checked: boolean) => void;
-    children?: ReactNode;
-}) {
-    return (
-        <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked }}
-            onPress={() => onChange(!checked)}
-            className="flex-row items-start gap-2 cursor-pointer"
-        >
-            <View
-                className={`mt-0.5 w-4 h-4 rounded-sm border items-center justify-center ${
-                    checked
-                        ? "bg-discord-accent border-discord-accent"
-                        : "border-discord-textMuted"
-                }`}
-            >
-                {checked && <Check size={12} className="text-white" />}
-            </View>
-            <Text className="flex-1 text-sm text-discord-textSecondary">
-                {children}
             </Text>
         </Pressable>
     );
@@ -550,9 +516,14 @@ export default function EncryptionSetupDialog() {
                             </Text>
                         </Pressable>
                     </View>
-                    <Checkbox checked={saved} onChange={setSaved}>
-                        {t("securitySettings.iVeSavedMyRecoveryKey")}
-                    </Checkbox>
+                    <Checkbox
+                        checked={saved}
+                        onChange={setSaved}
+                        label={t("securitySettings.iVeSavedMyRecoveryKey")}
+                        labelClassName="flex-1 text-sm text-discord-textSecondary"
+                        className="items-start gap-2 cursor-pointer"
+                        inputClassName="mt-0.5 w-4 h-4 rounded-sm"
+                    />
                     <Primary
                         label={t("securitySettings.done")}
                         onPress={finishSetup}
@@ -718,10 +689,10 @@ export default function EncryptionSetupDialog() {
                     accessibilityLiveRegion="polite"
                     className="flex-row items-center gap-2"
                 >
-                    <View
+                    <Spin
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
-                        className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full animate-spin"
+                        className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full"
                     />
                     <Text className="shrink text-sm text-discord-textMuted">
                         {t("encryptionSetup.checking")}

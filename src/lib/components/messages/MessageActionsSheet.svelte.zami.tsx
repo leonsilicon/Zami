@@ -1,0 +1,184 @@
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { useResolveClassNames } from "uniwind";
+import { t } from "$lib/i18n";
+import Portal from "$lib/components/ui/Portal.svelte";
+import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
+import type {
+    MessageActionKey,
+    MessageActionRow,
+} from "$lib/utils/messageActionsMenu";
+import type { PluginMessageActionView } from "$lib/utils/pluginMessageActions";
+
+interface Props {
+    /** Ordered overflow rows from `messageActionsMenu`. */
+    rows: MessageActionRow[];
+    /** Plugin-contributed action rows (appended after core rows). */
+    pluginRows?: PluginMessageActionView[];
+    /** Run the chosen core action. The sheet closes itself first. */
+    onChoose: (key: MessageActionKey) => void;
+    /** Run the chosen plugin action. The sheet closes itself first. */
+    onChoosePlugin?: (key: string) => void;
+    /** Dismiss the sheet (backdrop tap / Escape / after a choice). */
+    onClose: () => void;
+}
+
+// Solid glyphs matching the desktop toolbar buttons, so the sheet reads as
+// the same controls in a different layout.
+const ICONS: Record<MessageActionKey, string> = {
+    thread: "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 14H6v-2h2v2zm0-3H6V9h2v2zm0-3H6V6h2v2zm7 6h-5v-2h5v2zm3-3h-8V9h8v2zm0-3h-8V6h8v2z",
+    edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
+    pin: "M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z",
+    "copy-link":
+        "M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z",
+    report: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z",
+    redact: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+    delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+};
+
+export default function MessageActionsSheet({
+    rows,
+    pluginRows = [],
+    onChoose,
+    onChoosePlugin,
+    onClose,
+}: Props) {
+    // A row flagged `confirm` swaps the menu for an inline "are you sure?" step
+    // instead of running straight away — today only Delete, which has no
+    // follow-up dialog of its own.
+    const [pending, setPending] = useState<MessageActionRow | null>(null);
+
+    function pick(row: MessageActionRow) {
+        if (row.confirm) {
+            setPending(row);
+            return;
+        }
+        run(row.key);
+    }
+
+    function run(key: MessageActionKey) {
+        // Close FIRST, mirroring RoomHeaderOverflowMenu: an action that opens
+        // its own dialog (report/redact) claims the single modal slot, so the
+        // sheet must release it before the action runs.
+        onClose();
+        onChoose(key);
+    }
+
+    function runPlugin(key: string) {
+        // Close FIRST (release the single modal slot), mirroring core rows:
+        // a plugin action may open its own popover/modal.
+        onClose();
+        onChoosePlugin?.(key);
+    }
+
+    return (
+        <Portal>
+            <BottomSheet onClose={onClose}>
+                {pending ? (
+                    <View className="px-4 py-3">
+                        <Text className="text-sm text-discord-textPrimary mb-3">
+                            {t("messageActionsSheet.thisMessage", {
+                                label: pending.label,
+                            })}
+                        </Text>
+                        <View className="flex-row justify-end gap-2">
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => setPending(null)}
+                                className="px-3 py-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                            >
+                                <Text className="text-sm font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                                    {t("common.cancel")}
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => run(pending.key)}
+                                className="px-3 py-1.5 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                            >
+                                <Text className="text-sm font-semibold text-white">
+                                    {pending.label}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                ) : (
+                    <View
+                        accessibilityRole="menu"
+                        accessibilityLabel={t(
+                            "messageActionsSheet.messageActions",
+                        )}
+                        className="pb-1"
+                    >
+                        {rows.map((row) => (
+                            <Pressable
+                                key={row.key}
+                                accessibilityRole="menuitem"
+                                onPress={() => pick(row)}
+                                className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                            >
+                                <SvgIcon
+                                    d={ICONS[row.key]}
+                                    className={`w-5 h-5 flex-shrink-0 ${
+                                        row.danger
+                                            ? "text-discord-danger"
+                                            : "text-discord-textMuted"
+                                    }`}
+                                />
+                                <Text
+                                    numberOfLines={1}
+                                    className={`flex-1 text-sm ${
+                                        row.danger
+                                            ? "text-discord-danger"
+                                            : "text-discord-textPrimary"
+                                    }`}
+                                >
+                                    {row.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                        {pluginRows.map((row) => (
+                            <Pressable
+                                key={row.entryId}
+                                accessibilityRole="menuitem"
+                                onPress={() => runPlugin(row.key)}
+                                className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                            >
+                                {row.icon ? (
+                                    <SvgIcon
+                                        d={row.icon}
+                                        className="w-5 h-5 flex-shrink-0 text-discord-textMuted"
+                                    />
+                                ) : (
+                                    <View className="w-5 h-5 flex-shrink-0 items-center justify-center">
+                                        <Text className="text-xs font-semibold text-discord-textMuted">
+                                            {row.label.slice(0, 1)}
+                                        </Text>
+                                    </View>
+                                )}
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-1 text-sm text-discord-textPrimary"
+                                >
+                                    {row.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
+            </BottomSheet>
+        </Portal>
+    );
+}
+
+/** Zami: Zam's inline `<svg fill="currentColor"><path d=…/></svg>`. `className`
+ *  sizes and places it, and its text color fills it, as `currentColor` would. */
+function SvgIcon({ d, className }: { d: string; className: string }) {
+    const { color, ...style } = useResolveClassNames(className);
+    return (
+        <Svg viewBox="0 0 24 24" fill={color} style={style}>
+            <Path d={d} />
+        </Svg>
+    );
+}

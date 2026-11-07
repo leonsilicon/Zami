@@ -2,9 +2,13 @@
 // app is a hidden page). Zam's theme switches (`documentElement.dataset.theme`) and CSS
 // variables (`documentElement.style.setProperty("--x", …)`) go to Uniwind. Building or
 // querying DOM nodes has no equivalent: queries find nothing, and creating a node
-// throws where it's called.
-import { AppState } from "react-native";
+// throws where it's called, except the head-only ones (`<style>`, `<link>`, `<meta>`),
+// which can't affect React Native views: they're inert, and appending them does nothing.
+// An `<a>` works as Zam uses one off-screen: clicking it opens its link, or with
+// `download` set, saves the file through the share sheet.
+import { AppState, Linking } from "react-native";
 import { Uniwind } from "uniwind";
+import { shareDownload } from "#download";
 import { createEventHub, noDom } from "#events";
 
 export const documentEvents = createEventHub();
@@ -76,6 +80,14 @@ const classList = {
   contains: (): boolean => false,
 };
 
+const INERT_TAGS = new Set(["style", "link", "meta", "a"]);
+const inert = new WeakSet<object>();
+
+function appendChild<T>(parent: string, child: T): T {
+  if (typeof child === "object" && child !== null && inert.has(child)) return child;
+  return noDom(`<${parent}>.appendChild`);
+}
+
 function element(tagName: string, style: object = {}) {
   return {
     tagName: tagName.toUpperCase(),
@@ -87,9 +99,29 @@ function element(tagName: string, style: object = {}) {
     setAttribute(): void {},
     removeAttribute(): void {},
     getAttribute: (): null => null,
-    appendChild: (): never => noDom(`<${tagName}>.appendChild`),
+    textContent: "",
+    appendChild: <T>(child: T): T => appendChild(tagName, child),
+    remove(): void {},
     querySelector: (): null => null,
     querySelectorAll: (): never[] => [],
+  };
+}
+
+function anchor() {
+  return {
+    ...element("a"),
+    href: "",
+    download: "",
+    target: "",
+    rel: "",
+    click(this: { href: string; download: string }): void {
+      if (this.href === "") return;
+      if (this.download !== "") {
+        shareDownload(this.href, this.download).catch((error: unknown) =>
+          console.error("[zami] download failed", error),
+        );
+      } else void Linking.openURL(this.href);
+    },
   };
 }
 
@@ -122,7 +154,12 @@ export const zamiDocument = {
   getElementById: (): null => null,
   querySelector: (): null => null,
   querySelectorAll: (): never[] => [],
-  createElement: (tagName: string): never => noDom(`document.createElement("${tagName}")`),
+  createElement(tagName: string) {
+    if (!INERT_TAGS.has(tagName.toLowerCase())) noDom(`document.createElement("${tagName}")`);
+    const node = tagName.toLowerCase() === "a" ? anchor() : element(tagName);
+    inert.add(node);
+    return node;
+  },
   createTreeWalker: (): never => noDom("document.createTreeWalker"),
   createRange: (): never => noDom("document.createRange"),
 };

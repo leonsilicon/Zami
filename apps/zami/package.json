@@ -91,6 +91,7 @@
     "@types/qrcode": "catalog:",
     "@types/react": "catalog:",
     "@webgpu/types": "catalog:",
+    "spessasynth_core": "catalog:",
     "typescript": "catalog:"
   }
 }

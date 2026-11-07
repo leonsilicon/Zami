@@ -1,3 +1,4 @@
+import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import type { DownloadProgress } from "$lib/utils/downloadProgress";
@@ -37,7 +38,7 @@ export default function MediaProgress({ label, progress = null }: Props) {
 
     return (
         <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
-            <View className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full flex-shrink-0" />
             <View className="min-w-0 flex-1">
                 <View className="flex-row items-baseline justify-between gap-2">
                     <Text

@@ -8,17 +8,11 @@ import {
     type AccessibilityActionEvent,
     type GestureResponderEvent,
 } from "react-native";
-import RNSvg, { Path } from "react-native-svg";
-import { withUniwind } from "uniwind";
-import { mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { mediaSource, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import { mxcToHttp } from "$lib/matrix/client";
 import { decryptAttachment } from "$lib/utils/decryptAttachment";
 import { formatCallDuration } from "$lib/utils/callDuration";
-
-// Upstream's inline SVG icons: `w-*`/`h-*` size them, `colorClassName` is their
-// `currentColor`.
-const Svg = withUniwind(RNSvg);
 
 type EncryptedFile = {
     url: string;
@@ -297,25 +291,17 @@ export default function VoiceMessagePlayer({
                 className="w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center disabled:opacity-50"
             >
                 {loading ? (
-                    <View className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
                 ) : playing ? (
-                    <Svg
-                        className="w-4 h-4"
-                        colorClassName="accent-white"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <Path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-                    </Svg>
+                    <SvgIcon
+                        className="w-4 h-4 text-white"
+                        d="M6 5h4v14H6zM14 5h4v14h-4z"
+                    />
                 ) : (
-                    <Svg
-                        className="w-4 h-4 ms-0.5"
-                        colorClassName="accent-white"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <Path d="M8 5v14l11-7z" />
-                    </Svg>
+                    <SvgIcon
+                        className="w-4 h-4 ms-0.5 text-white"
+                        d="M8 5v14l11-7z"
+                    />
                 )}
             </Pressable>
 

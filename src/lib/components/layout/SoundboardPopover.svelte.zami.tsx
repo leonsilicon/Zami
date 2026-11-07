@@ -1,6 +1,7 @@
+import { Range } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import type { Room } from "matrix-js-sdk";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
     BackHandler,
     Pressable,
@@ -9,7 +10,6 @@ import {
     Text,
     View,
     useWindowDimensions,
-    type GestureResponderEvent,
     type LayoutRectangle,
     type ViewStyle,
 } from "react-native";
@@ -133,7 +133,7 @@ export default function SoundboardPopover({
                     step={1}
                     value={Math.round(myLevel * 100)}
                     accessibilityLabel={t("soundboard.yourVolume")}
-                    onInput={(value) => setUserSoundVolume(myId, value / 100)}
+                    onChange={(value) => setUserSoundVolume(myId, value / 100)}
                     className="w-full mt-1.5"
                 />
             </View>
@@ -253,93 +253,3 @@ const styles = StyleSheet.create({
     // Sized by its content, up to the panel's max height.
     scroll: { flexGrow: 0, flexShrink: 1 },
 });
-
-// Zami: React Native has no <input type="range">. This is a track and thumb: a touch
-// or drag along it reports each value as it moves (`oninput`), and VoiceOver steps
-// it (swipe up/down).
-function Range({
-    min,
-    max,
-    step,
-    value,
-    onInput,
-    accessibilityLabel,
-    className = "",
-}: {
-    min: number;
-    max: number;
-    step: number;
-    value: number;
-    onInput: (value: number) => void;
-    accessibilityLabel: string;
-    className?: string;
-}) {
-    const [width, setWidth] = useState(0);
-    // The track's left edge on the page, taken when a touch starts.
-    const left = useRef(0);
-    const last = useRef(value);
-    const fraction =
-        max > min ? Math.min(Math.max((value - min) / (max - min), 0), 1) : 0;
-    const THUMB = 16;
-
-    function clamp(next: number): number {
-        return Math.min(max, Math.max(min, next));
-    }
-
-    function track(pageX: number) {
-        if (width <= 0) return;
-        const at = Math.min(Math.max((pageX - left.current) / width, 0), 1);
-        const next = clamp(min + Math.round((at * (max - min)) / step) * step);
-        if (next === last.current) return;
-        last.current = next;
-        onInput(next);
-    }
-
-    return (
-        <View
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel={accessibilityLabel}
-            accessibilityValue={{ min, max, now: value }}
-            accessibilityActions={[
-                { name: "increment" },
-                { name: "decrement" },
-            ]}
-            onAccessibilityAction={(event) => {
-                const delta =
-                    event.nativeEvent.actionName === "increment" ? step : -step;
-                const next = clamp(value + delta);
-                if (next !== value) onInput(next);
-            }}
-            onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderTerminationRequest={() => false}
-            onResponderGrant={(event: GestureResponderEvent) => {
-                left.current =
-                    event.nativeEvent.pageX - event.nativeEvent.locationX;
-                last.current = value;
-                track(event.nativeEvent.pageX);
-            }}
-            onResponderMove={(event: GestureResponderEvent) =>
-                track(event.nativeEvent.pageX)
-            }
-            className={`h-6 justify-center ${className}`}
-        >
-            <View
-                pointerEvents="none"
-                className="h-1 rounded-full bg-discord-divider overflow-hidden"
-            >
-                <View
-                    className="h-1 bg-discord-accent"
-                    style={{ width: `${fraction * 100}%` }}
-                />
-            </View>
-            <View
-                pointerEvents="none"
-                className="absolute w-4 h-4 rounded-full bg-discord-accent"
-                style={{ left: fraction * Math.max(width - THUMB, 0) }}
-            />
-        </View>
-    );
-}

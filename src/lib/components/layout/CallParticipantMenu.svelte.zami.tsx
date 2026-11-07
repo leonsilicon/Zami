@@ -1,3 +1,4 @@
+import { Range } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Circle, ChevronRight } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
@@ -10,7 +11,6 @@ import {
     Text,
     View,
     useWindowDimensions,
-    type GestureResponderEvent,
     type LayoutRectangle,
     type PressableInstance,
     type ViewStyle,
@@ -586,7 +586,7 @@ export default function CallParticipantMenu({
                     <View className="w-full h-px bg-discord-divider my-1" />
 
                     {/* Zami: the `<label for>` names the slider, and the
-                        `<datalist>` tick at 100% is the slider's `tick`. */}
+                        `<datalist>` tick at 100% is the slider's `ticks`. */}
                     <View className="px-3 py-1.5">
                         <View className="flex-row items-center justify-between gap-2">
                             <Text className="flex-shrink text-xs text-discord-textMuted uppercase font-semibold tracking-wide">
@@ -600,12 +600,12 @@ export default function CallParticipantMenu({
                             min={0}
                             max={MAX_PARTICIPANT_VOLUME * 100}
                             step={1}
-                            tick={100}
+                            ticks={[100]}
                             value={Math.round(audio.volume * 100)}
                             accessibilityLabel={t(
                                 "callParticipantMenu.userVolume",
                             )}
-                            onInput={(value) =>
+                            onChange={(value) =>
                                 setUserVolume(userId, value / 100)
                             }
                             className="w-full mt-1.5"
@@ -624,12 +624,12 @@ export default function CallParticipantMenu({
                             min={0}
                             max={MAX_PARTICIPANT_VOLUME * 100}
                             step={1}
-                            tick={100}
+                            ticks={[100]}
                             value={Math.round(audio.soundVolume * 100)}
                             accessibilityLabel={t(
                                 "callParticipantMenu.soundboardVolume",
                             )}
-                            onInput={(value) =>
+                            onChange={(value) =>
                                 setUserSoundVolume(userId, value / 100)
                             }
                             className="w-full mt-1.5"
@@ -649,12 +649,12 @@ export default function CallParticipantMenu({
                                 min={0}
                                 max={MAX_PARTICIPANT_VOLUME * 100}
                                 step={1}
-                                tick={100}
+                                ticks={[100]}
                                 value={Math.round(audio.shareVolume * 100)}
                                 accessibilityLabel={t(
                                     "callParticipantMenu.shareVolume",
                                 )}
-                                onInput={(value) =>
+                                onChange={(value) =>
                                     setUserShareVolume(userId, value / 100)
                                 }
                                 className="w-full mt-1.5"
@@ -839,108 +839,4 @@ function FilledCircle({
 }) {
     const { color } = useResolveClassNames(className);
     return <Circle size={size} className={className} fill={color as string} />;
-}
-
-// Zami: React Native has no <input type="range">. This is a track and thumb: a touch
-// or drag along it reports each value as it moves (`oninput`), and VoiceOver steps
-// it (swipe up/down). `tick` marks one value on the track, as a <datalist> does.
-function Range({
-    min,
-    max,
-    step,
-    value,
-    tick,
-    onInput,
-    accessibilityLabel,
-    className = "",
-}: {
-    min: number;
-    max: number;
-    step: number;
-    value: number;
-    tick?: number;
-    onInput: (value: number) => void;
-    accessibilityLabel: string;
-    className?: string;
-}) {
-    const [width, setWidth] = useState(0);
-    // The track's left edge on the page, taken when a touch starts.
-    const left = useRef(0);
-    const last = useRef(value);
-    const fractionOf = (v: number) =>
-        max > min ? Math.min(Math.max((v - min) / (max - min), 0), 1) : 0;
-    const fraction = fractionOf(value);
-    const THUMB = 16;
-
-    function clamp(next: number): number {
-        return Math.min(max, Math.max(min, next));
-    }
-
-    function track(pageX: number) {
-        if (width <= 0) return;
-        const at = Math.min(Math.max((pageX - left.current) / width, 0), 1);
-        const next = clamp(min + Math.round((at * (max - min)) / step) * step);
-        if (next === last.current) return;
-        last.current = next;
-        onInput(next);
-    }
-
-    return (
-        <View
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel={accessibilityLabel}
-            accessibilityValue={{ min, max, now: value }}
-            accessibilityActions={[
-                { name: "increment" },
-                { name: "decrement" },
-            ]}
-            onAccessibilityAction={(event) => {
-                const delta =
-                    event.nativeEvent.actionName === "increment" ? step : -step;
-                const next = clamp(value + delta);
-                if (next !== value) onInput(next);
-            }}
-            onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderTerminationRequest={() => false}
-            onResponderGrant={(event: GestureResponderEvent) => {
-                left.current =
-                    event.nativeEvent.pageX - event.nativeEvent.locationX;
-                last.current = value;
-                track(event.nativeEvent.pageX);
-            }}
-            onResponderMove={(event: GestureResponderEvent) =>
-                track(event.nativeEvent.pageX)
-            }
-            className={`h-6 justify-center ${className}`}
-        >
-            <View
-                pointerEvents="none"
-                className="h-1 rounded-full bg-discord-divider overflow-hidden"
-            >
-                <View
-                    className="h-1 bg-discord-accent"
-                    style={{ width: `${fraction * 100}%` }}
-                />
-            </View>
-            {tick !== undefined && (
-                <View
-                    pointerEvents="none"
-                    className="absolute bottom-0 w-px h-1.5 bg-discord-textMuted"
-                    style={{
-                        left:
-                            THUMB / 2 +
-                            fractionOf(tick) * Math.max(width - THUMB, 0),
-                    }}
-                />
-            )}
-            <View
-                pointerEvents="none"
-                className="absolute w-4 h-4 rounded-full bg-discord-accent"
-                style={{ left: fraction * Math.max(width - THUMB, 0) }}
-            />
-        </View>
-    );
 }
