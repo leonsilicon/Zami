@@ -21,13 +21,24 @@ ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=path/to/AuthKey_….p8 vpx _testfl
 vpx _testflight --export-only   # stop after the signed .ipa (apps/zami/.build/testflight)
 ```
 
-It runs `expo prebuild`, stamps the build number with the time (`YYYYMMDD.HHMM`, UTC, so
-each upload is newer), archives the Release configuration and exports it with
-xcodebuild. Signing is automatic: with the App Store Connect API key, xcodebuild creates
-the provisioning profiles it needs, using team `M76P5G9HXK`'s distribution certificate,
-which must be in this Mac's keychain. The app record (bundle ID `com.leonsilicon.zami`)
-must already exist in App Store Connect; Apple's API can't create one.
+The key can also come as its contents, in `ASC_KEY_P8`, as CI passes it.
 
-`app.json` declares the app's encryption exempt from export documentation
-(`ios.config.usesNonExemptEncryption`): it uses only standard algorithms (Matrix's
-Olm/Megolm through matrix-sdk-crypto, and AES, HMAC, SHA-2 and PBKDF2).
+1. With the App Store Connect API key, it finds which of the team's distribution
+   certificates is in this Mac's keychain, and keeps an App Store provisioning profile
+   for the app current (`com.leonsilicon.zami App Store (_testflight)`, covering every
+   distribution certificate of the team), installing it where Xcode looks.
+2. It runs `expo prebuild` and signs the app target's Release configuration by hand with
+   that certificate and profile. Signing by hand needs no Xcode account and no
+   development certificate, so it runs the same here and on CI.
+3. It stamps the build number with the time (`YYYYMMDD.HHMM`, UTC, so each upload is
+   newer), archives the Release configuration and exports or uploads it with xcodebuild.
+
+The app record (bundle ID `com.leonsilicon.zami`, team `M76P5G9HXK`) must already exist in
+App Store Connect; Apple's API can't create one. `app.json` declares the app's encryption
+exempt from export documentation (`ios.config.usesNonExemptEncryption`): it uses only
+standard algorithms (Matrix's Olm/Megolm through matrix-sdk-crypto, and AES, HMAC, SHA-2
+and PBKDF2).
+
+The workflow `.github/workflows/zami-testflight.yml` runs it on every push to `main` (and on
+demand) on a GitHub-hosted Mac, with the key and a distribution certificate from the
+repository's secrets.

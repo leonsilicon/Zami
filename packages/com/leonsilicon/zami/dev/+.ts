@@ -1,2 +1,12 @@
 export { runDev, warnIfOutOfSync, type DevTarget } from "#dev";
-export { ascKeyFromEnv, buildNumber, exportOptions, runTestflight, type AscKey } from "#testflight";
+export {
+  appStoreSigning,
+  ascKeyFromEnv,
+  ascToken,
+  buildNumber,
+  exportOptions,
+  runTestflight,
+  signReleaseManually,
+  type AscKey,
+  type ExportSigning,
+} from "#testflight";
