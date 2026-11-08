@@ -9,7 +9,11 @@
     "backgroundColor": "#202225",
     "ios": {
       "bundleIdentifier": "com.leonsilicon.zami",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "appleTeamId": "M76P5G9HXK",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.leonsilicon.zami"
