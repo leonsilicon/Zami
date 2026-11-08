@@ -1,8 +1,8 @@
-# Ships Zami to TestFlight: every push to main, and on demand. It runs `vpx _testflight`,
-# which archives the Release build, signs it with the team's distribution certificate
-# and the App Store profile it keeps current through the App Store Connect API, and
-# uploads it. Builds reach the internal group "Leon" once App Store Connect has
-# processed them.
+# Builds one of Zami's variants and uploads it to TestFlight, with `vpx _testflight` on a
+# GitHub-hosted Mac: "staging" is the app "(S) Zami", "production" the app "Zami" (see
+# apps/zami/app.config.ts). zami-staging.yml and zami-production.yml call it; it also
+# runs on its own from the Actions tab. Builds reach each app's internal group "Leon"
+# once App Store Connect has processed them.
 #
 # Secrets: ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8 (an App Store Connect API key and its
 # .p8 contents), and IOS_DIST_CERT_P12 (base64) with IOS_DIST_CERT_PASSWORD: one of team
@@ -10,24 +10,42 @@
 name: Zami TestFlight
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      variant:
+        description: The app to build, "staging" or "production".
+        required: true
+        type: string
+      ref:
+        description: The commit to build. Defaults to the one that triggered the run.
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
+    inputs:
+      variant:
+        description: The app to build
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
 
 permissions:
   contents: read
 
-# One upload at a time; a newer push replaces a waiting one, never a running one.
-concurrency:
-  group: zami-testflight
-  cancel-in-progress: false
-
 jobs:
   ios:
+    name: iOS ${{ inputs.variant }} → TestFlight
     runs-on: macos-26
     timeout-minutes: 180
+    # One upload of each app at a time; a newer run replaces a waiting one, never a running one.
+    concurrency:
+      group: zami-testflight-${{ inputs.variant }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: latest-stable
@@ -59,7 +77,8 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-        run: vpx _testflight
+          VARIANT: ${{ inputs.variant }}
+        run: vpx _testflight --variant "$VARIANT"
       - name: Remove the keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

@@ -174,6 +174,55 @@ function keychainIdentities(): Set<string> {
 }
 
 /**
+ * The bundle ID's resource, registered (with push notifications, which the app's
+ * entitlements ask for) if the team doesn't have it yet, as for a new variant.
+ */
+async function registeredBundleId(key: AscKey, bundleId: string): Promise<Resource<unknown>> {
+  const bundleIds = await asc<{ data: Resource<{ identifier: string }>[] }>(
+    key,
+    "GET",
+    `/v1/bundleIds?filter[identifier]=${encodeURIComponent(bundleId)}&limit=50`,
+  );
+  const existing = bundleIds.data.find((candidate) => candidate.attributes.identifier === bundleId);
+  if (existing) return existing;
+  const created = (
+    await asc<{ data: Resource<unknown> }>(key, "POST", "/v1/bundleIds", {
+      data: {
+        type: "bundleIds",
+        attributes: { identifier: bundleId, name: bundleId, platform: "IOS" },
+      },
+    })
+  ).data;
+  await asc(key, "POST", "/v1/bundleIdCapabilities", {
+    data: {
+      type: "bundleIdCapabilities",
+      attributes: { capabilityType: "PUSH_NOTIFICATIONS" },
+      relationships: { bundleId: { data: { type: "bundleIds", id: created.id } } },
+    },
+  });
+  console.log(`Registered the bundle ID ${bundleId}`);
+  return created;
+}
+
+/** The App Store Connect app for the bundle ID, which Apple's API can't create. */
+async function appRecord(key: AscKey, bundleId: string): Promise<Resource<{ name: string }>> {
+  const apps = await asc<{ data: Resource<{ name: string; bundleId: string }>[] }>(
+    key,
+    "GET",
+    `/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&fields[apps]=name,bundleId`,
+  );
+  const app = apps.data.find((candidate) => candidate.attributes.bundleId === bundleId);
+  if (!app) {
+    throw new Error(
+      `App Store Connect has no app for ${bundleId}, and its API can't create one. Create it ` +
+        "in App Store Connect, or let Xcode do it: open an archive of the app (" +
+        "`vpx _testflight --export-only`) in Xcode's Organizer and choose Distribute App.",
+    );
+  }
+  return app;
+}
+
+/**
  * The team's App Store profile for the app, created or renewed when it's missing,
  * invalid or lacks one of the team's distribution certificates, and installed where
  * Xcode looks. Returns it with a distribution identity this Mac can sign with.
@@ -220,13 +269,7 @@ export async function appStoreSigning(
     profile = undefined;
   }
   if (!profile) {
-    const bundleIds = await asc<{ data: Resource<{ identifier: string }>[] }>(
-      key,
-      "GET",
-      `/v1/bundleIds?filter[identifier]=${encodeURIComponent(bundleId)}&limit=50`,
-    );
-    const bundle = bundleIds.data.find((candidate) => candidate.attributes.identifier === bundleId);
-    if (!bundle) throw new Error(`Bundle ID ${bundleId} isn't registered with team ${teamId}`);
+    const bundle = await registeredBundleId(key, bundleId);
     profile = (
       await asc<{ data: Profile }>(key, "POST", "/v1/profiles", {
         data: {
@@ -257,37 +300,64 @@ export async function appStoreSigning(
   return { teamId, bundleId, profileName, identity };
 }
 
-function run(command: string, args: string[], cwd: string): void {
+function run(command: string, args: string[], cwd: string, env = process.env): void {
   console.log(`\n$ ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, { cwd, stdio: "inherit" });
+  const result = spawnSync(command, args, { cwd, env, stdio: "inherit" });
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status}`);
 }
 
+/** The app's variants (apps/zami/app.config.ts): the app "Zami", and "(S) Zami". */
+export const VARIANTS = ["production", "staging"] as const;
+export type Variant = (typeof VARIANTS)[number];
+
+export function variantFromArgs(args: string[]): Variant {
+  const index = args.indexOf("--variant");
+  if (index === -1) return "production";
+  const value = args[index + 1];
+  if (!VARIANTS.includes(value as Variant)) {
+    throw new Error(`--variant must be one of ${VARIANTS.join(", ")}, not ${value}`);
+  }
+  return value as Variant;
+}
+
 /**
- * Builds the app for the App Store and uploads it to TestFlight, signed by hand with a
- * distribution certificate from the keychain and the App Store profile the API key
- * keeps current, so it needs no Xcode account or development certificate (as on CI).
+ * Builds the variant for the App Store and uploads it to TestFlight, signed by hand
+ * with a distribution certificate from the keychain and the App Store profile the API
+ * key keeps current, so it needs no Xcode account or development certificate (as on CI).
  * Returns the build number.
  */
 export async function runTestflight(options: {
   key: AscKey;
   upload: boolean;
+  variant?: Variant;
   cwd?: string;
 }): Promise<string> {
   const appDir = join(new Git(options.cwd ?? process.cwd()).root, "apps/zami");
   const iosDir = join(appDir, "ios");
   const outDir = join(appDir, ".build", "testflight");
   const archive = join(outDir, "Zami.xcarchive");
-  const app = createRequire(join(appDir, "package.json"))("./app.json") as {
-    expo: { ios: { appleTeamId: string; bundleIdentifier: string } };
+  const env = {
+    ...process.env,
+    ZAMI_VARIANT: options.variant ?? "production",
+    EXPO_NO_GIT_STATUS: "1",
   };
-  const { appleTeamId: teamId, bundleIdentifier: bundleId } = app.expo.ios;
+  const expoCli = createRequire(join(appDir, "package.json")).resolve("expo/bin/cli");
+  const config = JSON.parse(
+    execFileSync(process.execPath, [expoCli, "config", "--json", "--type", "public"], {
+      cwd: appDir,
+      env,
+      encoding: "utf8",
+    }),
+  ) as { name: string; ios: { appleTeamId: string; bundleIdentifier: string } };
+  const { appleTeamId: teamId, bundleIdentifier: bundleId } = config.ios;
+  console.log(`Building ${config.name} (${bundleId})`);
+  if (options.upload) await appRecord(options.key, bundleId);
 
   const signing = await appStoreSigning(options.key, teamId, bundleId);
   console.log(`Signing with ${signing.identity} and the profile "${signing.profileName}"`);
 
-  const expoCli = createRequire(join(appDir, "package.json")).resolve("expo/bin/cli");
-  run(process.execPath, [expoCli, "prebuild", "--platform", "ios"], appDir);
+  // --clean: the generated project is the variant's alone (its bundle ID, name, schemes).
+  run(process.execPath, [expoCli, "prebuild", "--platform", "ios", "--clean"], appDir, env);
   const pbxproj = join(iosDir, "Zami.xcodeproj", "project.pbxproj");
   writeFileSync(pbxproj, signReleaseManually(readFileSync(pbxproj, "utf8"), signing));
 
@@ -317,6 +387,7 @@ export async function runTestflight(options: {
       "archive",
     ],
     iosDir,
+    env,
   );
 
   const plist = join(outDir, "ExportOptions.plist");

@@ -7,6 +7,9 @@ export {
   exportOptions,
   runTestflight,
   signReleaseManually,
+  variantFromArgs,
+  VARIANTS,
   type AscKey,
   type ExportSigning,
+  type Variant,
 } from "#testflight";

@@ -52,7 +52,7 @@ jobs:
           if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
             git fetch origin "$BRANCH"
             git checkout -B "$BRANCH" "origin/$BRANCH"
-            git merge --no-edit origin/main
+            git merge --no-edit origin/trunk
           else
             git checkout -B "$BRANCH"
           fi
@@ -123,7 +123,7 @@ jobs:
           if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
           else
-            gh pr create --base main --head "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
+            gh pr create --base trunk --head "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
           fi
 
       # Upstream's own workflows (releases, Android builds) must never run in Zami.

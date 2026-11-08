@@ -1,0 +1,101 @@
+# Zami's staging build, as Haniverse's "Create Staging Build": it overwrites `staging` with
+# the latest `trunk`, uploads the app "(S) Zami" to TestFlight from it, and (except for
+# the nightly run) opens or updates the `staging` → `production` pull request. Merging
+# that pull request ships the same commit as the app "Zami" (zami-production.yml).
+#
+# The nightly run only builds when `trunk` has moved since the last staging build.
+name: Zami staging build
+
+on:
+  schedule:
+    - cron: "7 4 * * *"
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zami-staging
+  cancel-in-progress: false
+
+jobs:
+  prepare-staging:
+    name: Overwrite staging with latest trunk
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+      build: ${{ steps.sync.outputs.build }}
+    steps:
+      - name: Force-push latest trunk to staging
+        id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PUSHED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          trunk=$(git ls-remote "$repo" refs/heads/trunk | cut -f1)
+          staging=$(git ls-remote "$repo" refs/heads/staging | cut -f1)
+          # A push to staging has already moved it: what it held before is the push's base.
+          if [ "$EVENT" = push ]; then staging=$(jq -r .before "$GITHUB_EVENT_PATH"); fi
+          if [ "$staging" != "$trunk" ] || [ "$PUSHED" != "$trunk" ]; then
+            dir=$(mktemp -d)
+            git -C "$dir" init -q
+            git -C "$dir" config credential.helper '!gh auth git-credential'
+            git -C "$dir" remote add origin "$repo"
+            git -C "$dir" fetch -q --depth=1 --no-tags origin "$trunk"
+            git -C "$dir" push -q --force origin "$trunk:refs/heads/staging"
+          fi
+          build=true
+          if [ "$EVENT" = schedule ] && [ "$staging" = "$trunk" ]; then build=false; fi
+          echo "trunk $trunk, staging was ${staging:-missing}, build: $build"
+          { echo "sha=$trunk"; echo "build=$build"; } >> "$GITHUB_OUTPUT"
+
+  ios:
+    name: iOS staging
+    needs: prepare-staging
+    if: needs.prepare-staging.outputs.build == 'true'
+    uses: ./.github/workflows/zami-testflight.yml
+    with:
+      variant: staging
+      ref: ${{ needs.prepare-staging.outputs.sha }}
+    secrets: inherit
+
+  open-production-pr:
+    name: Open production PR for the green staging build
+    needs: [prepare-staging, ios]
+    if: github.event_name != 'schedule' && needs.ios.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Open or update staging → production PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.prepare-staging.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ahead=$(gh api "repos/$GITHUB_REPOSITORY/compare/production...$SHA" --jq .ahead_by)
+          if [ "$ahead" = 0 ]; then
+            echo "production already has $SHA"
+            exit 0
+          fi
+          body="Staging build of \`$SHA\` ($ahead commits ahead of production) is on TestFlight as **(S) Zami**: $RUN_URL
+
+          Merging ships this commit as the app **Zami** (zami-production.yml)."
+          pr=$(gh pr list -R "$GITHUB_REPOSITORY" --base production --head staging --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" -R "$GITHUB_REPOSITORY" --body "$body"
+            echo "Updated #$pr"
+          else
+            gh pr create -R "$GITHUB_REPOSITORY" --base production --head staging --title "Release ${SHA:0:10} to production" --body "$body"
+          fi

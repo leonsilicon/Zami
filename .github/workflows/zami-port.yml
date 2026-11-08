@@ -73,4 +73,4 @@ jobs:
           git commit -q -m "Port Zam components to Expo"
           git push origin "$branch"
           { echo "Ported with Claude Opus 5.5:"; echo; cat node_modules/.cache/zami/report.md 2>/dev/null; } > "$RUNNER_TEMP/body.md"
-          gh pr create --base main --head "$branch" --title "Port Zam components to Expo" --body-file "$RUNNER_TEMP/body.md"
+          gh pr create --base trunk --head "$branch" --title "Port Zam components to Expo" --body-file "$RUNNER_TEMP/body.md"

@@ -9,6 +9,7 @@ import {
   buildNumber,
   exportOptions,
   signReleaseManually,
+  variantFromArgs,
   type ExportSigning,
 } from "#testflight";
 
@@ -133,5 +134,18 @@ describe("App Store Connect key", () => {
         Buffer.from(signature!, "base64url"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("variantFromArgs", () => {
+  test("builds the app Zami unless asked for another variant", () => {
+    expect(variantFromArgs([])).toBe("production");
+    expect(variantFromArgs(["--export-only"])).toBe("production");
+    expect(variantFromArgs(["--variant", "staging"])).toBe("staging");
+  });
+
+  test("refuses a variant the app doesn't have", () => {
+    expect(() => variantFromArgs(["--variant", "beta"])).toThrow(/production, staging/);
+    expect(() => variantFromArgs(["--variant"])).toThrow(/not undefined/);
   });
 });

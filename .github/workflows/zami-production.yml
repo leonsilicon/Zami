@@ -1,0 +1,21 @@
+# Zami's production build, as Haniverse's "Deploy Production Build": a push to `production`
+# (merging the `staging` → `production` pull request that zami-staging.yml opens) uploads
+# the app "Zami" to TestFlight from it. From there, releasing it on the App Store is a
+# manual step in App Store Connect.
+name: Zami production build
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: iOS production
+    uses: ./.github/workflows/zami-testflight.yml
+    with:
+      variant: production
+    secrets: inherit
