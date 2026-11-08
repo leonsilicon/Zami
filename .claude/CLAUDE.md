@@ -19,6 +19,10 @@ changing anything.
 - Run the app with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
 - Run the end-to-end flows (`apps/zami/.maestro`) with `vpx _maestro` (iOS) or
   `vpx _maestro android`. Update them when you change a screen they cover.
+- Check that translated views look like upstream's with `vpx _parity` (two iOS
+  simulators, Docker for its homeserver; `vpx _parity room settings-*` for some views).
+  Add a recipe to `packages/com/leonsilicon/zami/parity/views.ts` for a view it doesn't
+  reach yet, and record accepted differences with `--update-baseline`.
 - Test with `vp run test`: it includes upstream's own tests, run against the
   Zami files. A failing upstream test means the Zami file is wrong, not the test.
 - Format and lint with Vite+: `vp fmt`, `vp lint`, `vp check`. The root `vite.config.js`

@@ -170,7 +170,7 @@ export default defineConfig({
       "test:zam": { cache: false, command: `vp test run -c ${ZAM_TESTS}` },
       typecheck: {
         command:
-          "tsc -p packages && tsc -p apps/zami && tsc -p apps/push-gateway && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react",
+          "tsc -p packages && tsc -p apps/zami && tsc -p apps/push-gateway && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react && tsc -p packages/com/leonsilicon/zami/parity",
       },
       // Bundles the app's JS for both platforms with Metro (no native build): proves every
       // import resolves to a Zami file and every file transforms.

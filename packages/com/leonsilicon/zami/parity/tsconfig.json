@@ -1,0 +1,19 @@
+{
+  // The agents and view recipes, which run inside the apps (`$lib` is Zam's tree).
+  "extends": "../../../../../apps/zami/tsconfig.json",
+  "compilerOptions": { "lib": ["esnext", "dom"] },
+  "include": [
+    "views.ts",
+    "fixtures.ts",
+    "scope.ts",
+    "agent.ts",
+    "protocol.ts",
+    "web.ts",
+    "native.tsx",
+    "+native.tsx",
+    "../../../../../src/app.zami.d.ts",
+    "../../../../../src/lib/types/*.zami.d.ts",
+    "../../../../../apps/zami/vite-env.d.ts",
+    "../../../../../apps/zami/uniwind-types.d.ts"
+  ]
+}

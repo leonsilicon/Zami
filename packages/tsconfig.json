@@ -19,8 +19,17 @@
     "com/leonsilicon/zami/ports/*.js",
     "com/leonsilicon/zami/dev/*.ts",
     "com/leonsilicon/zami/maestro/**/*.ts",
+    "com/leonsilicon/zami/parity/*.ts",
+    "com/leonsilicon/zami/parity/__tests__/*.ts",
     "com/leonsilicon/zami/vite/*.ts",
     "com/leonsilicon/zami/push-gateway/**/*.ts",
     "com/leonsilicon/zami/metro/*.js"
+  ],
+  // The parity agents and recipes run in the apps: parity/tsconfig.json checks them.
+  "exclude": [
+    "com/leonsilicon/zami/parity/views.ts",
+    "com/leonsilicon/zami/parity/scope.ts",
+    "com/leonsilicon/zami/parity/agent.ts",
+    "com/leonsilicon/zami/parity/web.ts"
   ]
 }
