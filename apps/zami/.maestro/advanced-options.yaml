@@ -1,9 +1,11 @@
-# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox, off by
-# default in Zami, unlike Zam, because sliding sync breaks signing in to Beeper) switches on
-# and off and reports its state to accessibility. Maestro reads that state differently per
-# platform: Android's node is checkable and checked; iOS gives React Native's checkbox no
+# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox) toggles
+# both ways and reports its state to accessibility, whichever state it starts in.
+#
+# Maestro reads that state differently per platform. iOS gives React Native's checkbox no
 # checked trait, but its value says "checkbox, checked" (or "unchecked"), which Maestro
-# takes as the element's text.
+# takes as the element's text. Android's node is a checked CheckBox; Maestro matches
+# `checked: true` there but not `checked: false`, so an unchecked box is one that isn't
+# visible as checked.
 appId: com.leonsilicon.zami
 ---
 - runFlow: subflows/launch-app.yaml
@@ -15,35 +17,43 @@ appId: com.leonsilicon.zami
     element:
       text: "Use sliding sync"
     direction: DOWN
+
+# iOS, starting checked, then starting unchecked (each leaves it as it found it).
 - runFlow:
     when:
       platform: iOS
+      visible: "checkbox, checked"
     commands:
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
       - assertVisible: "checkbox, unchecked"
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
       - assertVisible: "checkbox, checked"
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
+- runFlow:
+    when:
+      platform: iOS
+      visible: "checkbox, unchecked"
+    commands:
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - assertVisible: "checkbox, checked"
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
       - assertVisible: "checkbox, unchecked"
+
+# Android, the same.
 - runFlow:
     when:
       platform: Android
+      visible: { text: "Use sliding sync", checked: true }
     commands:
-      - assertVisible:
-          text: "Use sliding sync"
-          checked: false
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
-      - assertVisible:
-          text: "Use sliding sync"
-          checked: true
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
-      - assertVisible:
-          text: "Use sliding sync"
-          checked: false
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - assertNotVisible: { text: "Use sliding sync", checked: true }
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - assertVisible: { text: "Use sliding sync", checked: true }
+- runFlow:
+    when:
+      platform: Android
+      notVisible: { text: "Use sliding sync", checked: true }
+    commands:
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - assertVisible: { text: "Use sliding sync", checked: true }
+      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - assertNotVisible: { text: "Use sliding sync", checked: true }
