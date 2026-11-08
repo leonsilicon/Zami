@@ -89,7 +89,8 @@ jobs:
             echo "production already has $SHA"
             exit 0
           fi
-          body="Staging build of \`$SHA\` ($ahead commits ahead of production) is on TestFlight as **(S) Zami**: $RUN_URL
+          commits=$([ "$ahead" = 1 ] && echo "1 commit" || echo "$ahead commits")
+          body="Staging build of \`$SHA\` ($commits ahead of production) is on TestFlight as **(S) Zami**: $RUN_URL
 
           Merging ships this commit as the app **Zami** (zami-production.yml)."
           pr=$(gh pr list -R "$GITHUB_REPOSITORY" --base production --head staging --state open --json number --jq '.[0].number // empty')
