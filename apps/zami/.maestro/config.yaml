@@ -3,6 +3,5 @@
 # install and launches the app itself. See README.md.
 flows:
   - smoke.yaml
-  - encryption.yaml
-  - toggle.yaml
-  - toasts.yaml
+  - advanced-options.yaml
+  - register.yaml

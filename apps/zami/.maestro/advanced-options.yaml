@@ -1,0 +1,43 @@
+# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox, on by
+# default) switches off and on and reports its state to accessibility. Maestro reads that
+# state differently per platform: Android's node is checkable and checked; iOS gives React
+# Native's checkbox no checked trait, but its value says "checkbox, checked" (or
+# "unchecked"), which Maestro takes as the element's text.
+appId: com.leonsilicon.zami
+---
+- runFlow: subflows/launch-app.yaml
+- tapOn:
+    text: ".*Advanced options"
+    retryTapIfNoChange: false
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible: "checkbox, checked"
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible: "checkbox, unchecked"
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible: "checkbox, checked"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - assertVisible:
+          text: "Use sliding sync"
+          checked: true
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible:
+          text: "Use sliding sync"
+          checked: false
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible:
+          text: "Use sliding sync"
+          checked: true

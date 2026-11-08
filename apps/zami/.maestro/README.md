@@ -9,7 +9,7 @@ renders.
 
 ```sh
 vpx _maestro                    # the suite (config.yaml) on the zami-maestro iOS simulator
-vpx _maestro ios toasts         # one flow
+vpx _maestro ios register       # one flow
 vpx _maestro android            # the connected Android emulator or device
 ```
 
@@ -29,20 +29,19 @@ Bare Maestro works too, against `vpx _dev`'s Metro on 8081, but without the rese
 
 ## Suite
 
-`config.yaml` lists the flows `vpx _maestro` runs by default. For now they cover the
-preview root (`apps/zami/root.tsx`). It checks each layer the port depends on, until
-Zam's routes replace it:
+`config.yaml` lists the flows `vpx _maestro` runs by default. A fresh install has no
+session, so they cover Zam's sign-in screen (LoginView), which needs no server:
 
-| flow              | proves                                                                      |
-| ----------------- | --------------------------------------------------------------------------- |
-| `smoke.yaml`      | the bundle loads on Hermes, Zam's i18n resolves strings, Splash renders     |
-| `encryption.yaml` | matrix-sdk-crypto-wasm initializes on its wasm2c build and reports versions |
-| `toggle.yaml`     | Zam's ToggleSwitch toggles and reports its checked state to accessibility   |
-| `toasts.yaml`     | a Svelte rune store drives React; a cold relaunch starts with it empty      |
+| flow                    | proves                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `smoke.yaml`            | the bundle loads on Hermes, Zam's i18n resolves strings, LoginView renders     |
+| `advanced-options.yaml` | the advanced options open; rn's Checkbox toggles and reports its checked state |
+| `register.yaml`         | LoginView switches to registration; a cold relaunch is back on sign-in         |
 
-When the root changes, update the first-screen gate in `subflows/launch-app.yaml`, and
-retarget or retire these flows. Flows for Zam's real screens that sign in will need a
-Matrix homeserver the runner owns, seeded per flow, like Haniverse's seed server.
+Flows for the screens behind sign-in (rooms, end-to-end encryption, settings) need a
+Matrix homeserver the runner owns, seeded per flow, like Haniverse's seed server. Until
+then, `matrix-sdk-crypto-wasm` on its wasm2c build is only exercised on a device after
+signing in. When the first screen changes, update the gate in `subflows/launch-app.yaml`.
 
 Subflows:
 

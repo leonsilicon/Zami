@@ -13,9 +13,9 @@ appId: com.leonsilicon.zami
       RCT_jsLocation: ${output.metroHost}
 # The first launch after Metro starts bundles the whole app. Waiting on the first screen
 # and the error screens together fails fast on an error instead of waiting out the
-# timeout. Update the first screen here when the app's root changes (it's the preview
-# root, apps/zami/root.tsx, until Zam's routes are ported).
+# timeout. A fresh install has no session, so the first screen is Zam's sign-in screen
+# (LoginView); update this when that changes.
 - extendedWaitUntil:
-    visible: "Zami preview|.*(Uncaught Error|Render Error|Syntax Error|Unable to resolve module|Could not connect to development server|No script URL provided|Unable to load script|Reload \\(⌘R\\)|Reload \\(R, R\\)).*"
+    visible: "Welcome back!|.*(Uncaught Error|Render Error|Syntax Error|Unable to resolve module|Could not connect to development server|No script URL provided|Unable to load script|Reload \\(⌘R\\)|Reload \\(R, R\\)).*"
     timeout: 300000
 - runFlow: assert-no-error-screen.yaml
