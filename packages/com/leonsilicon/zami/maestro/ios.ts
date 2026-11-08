@@ -39,8 +39,8 @@ function listDevices(): SimDevice[] {
     .filter((device) => device.isAvailable);
 }
 
-/** Creates the `zami-maestro` simulator: the newest iPhone on the newest iOS runtime. */
-function createSimulator(): string {
+/** Creates a simulator named `name`: the newest iPhone on the newest iOS runtime. */
+function createSimulator(name = SIMULATOR_NAME): string {
   const { runtimes } = JSON.parse(simctl(["list", "runtimes", "-j"])) as {
     runtimes: SimRuntime[];
   };
@@ -56,10 +56,8 @@ function createSimulator(): string {
       "No iOS simulator runtime with an iPhone is installed (Xcode → Settings → Components).",
     );
   }
-  console.log(
-    `Creating the ${SIMULATOR_NAME} simulator (${deviceType.identifier}, iOS ${runtime.version})`,
-  );
-  return simctl(["create", SIMULATOR_NAME, deviceType.identifier, runtime.identifier]).trim();
+  console.log(`Creating the ${name} simulator (${deviceType.identifier}, iOS ${runtime.version})`);
+  return simctl(["create", name, deviceType.identifier, runtime.identifier]).trim();
 }
 
 export interface Simulator {
@@ -73,20 +71,25 @@ export interface Simulator {
  * `zami-maestro` simulator, so a run never disturbs a simulator in use for development.
  */
 export function resolveSimulator(device: string | undefined): Simulator {
-  const devices = listDevices();
-  let udid: string;
-  if (device === undefined) {
-    udid =
-      devices.find((candidate) => candidate.name === SIMULATOR_NAME)?.udid ?? createSimulator();
-  } else {
-    const matches = devices.filter(
-      (candidate) => candidate.udid === device || candidate.name === device,
-    );
-    const match = matches.find((candidate) => candidate.state === "Booted") ?? matches[0];
-    if (match === undefined)
-      throw new Error(`No iOS simulator ${device} (see \`xcrun simctl list devices\`)`);
-    udid = match.udid;
+  if (device === undefined) return ensureSimulator(SIMULATOR_NAME);
+  const matches = listDevices().filter(
+    (candidate) => candidate.udid === device || candidate.name === device,
+  );
+  const match = matches.find((candidate) => candidate.state === "Booted") ?? matches[0];
+  if (match === undefined) {
+    throw new Error(`No iOS simulator ${device} (see \`xcrun simctl list devices\`)`);
   }
+  return boot(match.udid);
+}
+
+/** The simulator named `name`, created (see createSimulator) if missing, booted. */
+export function ensureSimulator(name: string): Simulator {
+  const udid =
+    listDevices().find((candidate) => candidate.name === name)?.udid ?? createSimulator(name);
+  return boot(udid);
+}
+
+function boot(udid: string): Simulator {
   const booted = listDevices().find((candidate) => candidate.udid === udid)?.state !== "Booted";
   if (booted) {
     console.log(`Booting simulator ${udid}`);

@@ -96,6 +96,11 @@ same order, same names, same branches.
     `flex-row`.
   - Text styles don't inherit. Move `text-*`, `font-*` and colors from containers onto
     the `Text` inside.
+    A `Text` with no size class is 16px, as unsized text is on the web (React Native's
+    own default is 14), and draws in Zam's font (`@-/com.leonsilicon.zami.fonts`).
+  - A `ScrollView` grows to fill its parent by default (`flexGrow: 1`), where an
+    `overflow-y-auto` element doesn't. Give a sized one (`w-*`, `h-*`, `max-h-*`) without
+    `flex-1` the class `grow-0`.
   - There's no `currentColor`. Replace `border-current`/`bg-current` with the color the
     text has.
   - Full-viewport sizing (`100vh`/`100dvh`) → `flex-1`.

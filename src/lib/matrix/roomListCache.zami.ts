@@ -288,7 +288,11 @@ export async function saveSnapshot(
     snapshot: RoomListSnapshot,
 ): Promise<void> {
     try {
-        await withStore("readwrite", (s) => s.put(snapshot, key));
+        // Zami: the snapshot's absent fields are `undefined`. Without them it is
+        // plain JSON, which the IndexedDB stand-in stores and reads back far
+        // faster than a value it has to walk and tag.
+        const plain = JSON.parse(JSON.stringify(snapshot)) as RoomListSnapshot;
+        await withStore("readwrite", (s) => s.put(plain, key));
     } catch (err) {
         reportStorageError(err, { fromIndexedDB: true });
         console.warn("[roomListCache] save failed", err);

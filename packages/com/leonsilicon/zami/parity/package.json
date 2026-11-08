@@ -1,0 +1,37 @@
+{
+  "name": "@-/com.leonsilicon.zami.parity",
+  "version": "0.0.0",
+  "private": true,
+  "description": "`vpx _parity`: compares every view of the Zami app with upstream Zam's, rendered on the same iOS simulator.",
+  "bin": {
+    "_parity": "./_parity.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#native": "./native.tsx",
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts",
+    "./native": "./+native.tsx"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.dev": "workspace:*",
+    "@-/com.leonsilicon.zami.maestro": "workspace:*",
+    "@-/com.leonsilicon.zami.ports": "workspace:*",
+    "expo": "catalog:",
+    "pixelmatch": "catalog:",
+    "pngjs": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-safe-area-context": "catalog:",
+    "react-native-webview": "catalog:",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pngjs": "catalog:",
+    "@types/ws": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

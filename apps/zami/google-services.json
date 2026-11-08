@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "242724437616",
+    "project_id": "leonsilicon-zami",
+    "storage_bucket": "leonsilicon-zami.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:242724437616:android:4c069387a1bdc6d0f93eb5",
+        "android_client_info": {
+          "package_name": "com.leonsilicon.zami"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1ciuVH4tT9Rg8-N3kQHDRl2jjcc42NTQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:242724437616:android:a84f0ae9afa4b7dcf93eb5",
+        "android_client_info": {
+          "package_name": "com.leonsilicon.zami.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1ciuVH4tT9Rg8-N3kQHDRl2jjcc42NTQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

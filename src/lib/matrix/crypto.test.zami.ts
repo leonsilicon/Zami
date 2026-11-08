@@ -2210,6 +2210,25 @@ describe("ownDeviceKeysReplaced", () => {
         expect(client.downloadKeysForUsers).toHaveBeenCalledTimes(1);
     });
 
+    // Zami: what lets a returning device start without waiting for the server.
+    it("matches a store holding the recorded key, without the network", async () => {
+        localStorage.setItem(RECORD, "freshEd");
+        const client = await withServerKeys("unreachable");
+        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(true);
+        expect(client.downloadKeysForUsers).not.toHaveBeenCalled();
+    });
+
+    it("doesn't match a store with no record, or with another key", async () => {
+        const client = await withServerKeys("unreachable");
+        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(
+            false,
+        );
+        localStorage.setItem(RECORD, "lostEd");
+        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(
+            false,
+        );
+    });
+
     // Sync would upload keys nobody has vouched for: don't let it start.
     it("refuses to pass when it can't check at all", async () => {
         const client = await withServerKeys("unreachable");

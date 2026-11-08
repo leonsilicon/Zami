@@ -102,7 +102,7 @@ export default function ExtendedProfileDebug() {
                         line breaks and indentation. */}
                     <ScrollView
                         nestedScrollEnabled
-                        className="bg-discord-backgroundTertiary rounded max-h-96"
+                        className="bg-discord-backgroundTertiary rounded max-h-96 grow-0"
                         contentContainerClassName="p-3"
                     >
                         <Text

@@ -32,7 +32,9 @@ import { keepSlidingSyncAlive } from "$lib/matrix/slidingSyncKeepAlive";
 import { adaptSlidingSyncTimeout } from "$lib/matrix/slidingSyncTimeout";
 import { resendRoomSubscriptions } from "$lib/matrix/slidingSyncSubscriptions";
 import {
+    isSlidingSyncConfirmed,
     isSlidingSyncEnabled,
+    setSlidingSyncConfirmed,
     setSlidingSyncEnabled,
 } from "$lib/matrix/slidingSyncPref";
 
@@ -276,27 +278,50 @@ export async function buildSlidingSync(
 
     // Ask the server before committing: on one that lacks the endpoint sync
     // would otherwise just sit in an error state with no way back.
-    try {
-        await client.slidingSync(
-            { lists: {}, timeout: 0, clientTimeout: 10000 },
-            client.getHomeserverUrl(),
-        );
-    } catch (err) {
-        if (isSlidingSyncUnsupportedError(err)) {
-            const reason = t("client.thisHomeserverDoesnTSupportSliding");
-            console.warn(
-                "[matrix] sliding sync unsupported, falling back",
-                err,
+    const probe = async (): Promise<boolean | null> => {
+        try {
+            await client.slidingSync(
+                { lists: {}, timeout: 0, clientTimeout: 10000 },
+                client.getHomeserverUrl(),
             );
-            // Turned off so the next boot doesn't probe and warn again; the
-            // user can re-enable it from Debug settings if the server changes.
-            setSlidingSyncEnabled(userId, false);
-            slidingSyncFallbackReason = reason;
-            hooks.onFallback?.(reason);
+            return true;
+        } catch (err) {
+            if (isSlidingSyncUnsupportedError(err)) {
+                console.warn(
+                    "[matrix] sliding sync unsupported, falling back",
+                    err,
+                );
+                return false;
+            }
+            // Anything else (network blip, 5xx, rate limit) is not evidence the
+            // server can't do it; let the real sync loop retry as it normally does.
+            return null;
+        }
+    };
+    const fallBack = () => {
+        const reason = t("client.thisHomeserverDoesnTSupportSliding");
+        // Turned off so the next boot doesn't probe and warn again; the
+        // user can re-enable it from Debug settings if the server changes.
+        setSlidingSyncEnabled(userId, false);
+        slidingSyncFallbackReason = reason;
+        hooks.onFallback?.(reason);
+    };
+    // Zami: only until the server has said yes once. After that the question
+    // is asked behind the app instead of in front of it: this request held up
+    // the splash for a round trip on every launch, and for ten seconds on a
+    // bad connection. A server that has since dropped the endpoint falls back
+    // on the next launch.
+    if (isSlidingSyncConfirmed(userId)) {
+        void probe().then((supported) => {
+            if (supported === false) fallBack();
+        });
+    } else {
+        const supported = await probe();
+        if (supported === false) {
+            fallBack();
             return undefined;
         }
-        // Anything else (network blip, 5xx, rate limit) is not evidence the
-        // server can't do it; let the real sync loop retry as it normally does.
+        if (supported) setSlidingSyncConfirmed(userId);
     }
 
     const lists = new Map<string, MSC3575List>([

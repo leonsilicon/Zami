@@ -15,6 +15,13 @@
         "vite-plus": "catalog:",
       },
     },
+    "apps/push-gateway": {
+      "name": "@-apps/push-gateway",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.push-gateway": "workspace:*",
+      },
+    },
     "apps/site": {
       "name": "@-apps/site",
       "version": "0.0.0",
@@ -31,6 +38,7 @@
         "@-/com.leonsilicon.zami.icons": "workspace:*",
         "@-/com.leonsilicon.zami.keyboard": "workspace:*",
         "@-/com.leonsilicon.zami.metro": "workspace:*",
+        "@-/com.leonsilicon.zami.parity": "workspace:*",
         "@-/com.leonsilicon.zami.rn": "workspace:*",
         "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
         "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
@@ -263,12 +271,46 @@
         "uniwind": "*",
       },
     },
+    "packages/com/leonsilicon/zami/parity": {
+      "name": "@-/com.leonsilicon.zami.parity",
+      "version": "0.0.0",
+      "bin": {
+        "_parity": "./_parity.ts",
+      },
+      "dependencies": {
+        "@-/com.leonsilicon.zami.dev": "workspace:*",
+        "@-/com.leonsilicon.zami.maestro": "workspace:*",
+        "@-/com.leonsilicon.zami.ports": "workspace:*",
+        "expo": "catalog:",
+        "pixelmatch": "catalog:",
+        "pngjs": "catalog:",
+        "react": "catalog:",
+        "react-native": "catalog:",
+        "react-native-safe-area-context": "catalog:",
+        "react-native-webview": "catalog:",
+        "ws": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@types/pngjs": "catalog:",
+        "@types/ws": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/ports": {
       "name": "@-/com.leonsilicon.zami.ports",
       "version": "0.0.0",
       "bin": {
         "_zami": "./_zami.ts",
       },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/push-gateway": {
+      "name": "@-/com.leonsilicon.zami.push-gateway",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/node": "catalog:",
         "vite-plus": "catalog:",
@@ -380,8 +422,10 @@
     "@noble/hashes": "2.4.0",
     "@twemoji/api": "17.0.2",
     "@types/node": "24.19.2",
+    "@types/pngjs": "6.0.5",
     "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
+    "@types/ws": "8.18.1",
     "@webgpu/types": "0.1.74",
     "acorn": "8.19.0",
     "brotli": "1.3.3",
@@ -427,13 +471,15 @@
     "lucide-react-native": "0.509.0",
     "matrix-js-sdk": "45.0.0",
     "mp4box": "2.4.1",
+    "pixelmatch": "8.0.0",
+    "pngjs": "7.0.0",
     "qrcode": "1.5.4",
     "react": "19.3.0",
     "react-native": "0.88.1",
     "react-native-audio-api": "1.0.0",
     "react-native-gesture-handler": "3.3.0",
     "react-native-get-random-values": "2.1.0",
-    "react-native-indexeddb-sqlite": "0.1.0",
+    "react-native-indexeddb-sqlite": "0.1.1",
     "react-native-keyboard-controller": "1.22.7",
     "react-native-maps": "1.29.11",
     "react-native-matrix-sdk-crypto-wasm": "0.1.0",
@@ -476,7 +522,11 @@
 
     "@-/com.leonsilicon.zami.metro": ["@-/com.leonsilicon.zami.metro@workspace:packages/com/leonsilicon/zami/metro"],
 
+    "@-/com.leonsilicon.zami.parity": ["@-/com.leonsilicon.zami.parity@workspace:packages/com/leonsilicon/zami/parity"],
+
     "@-/com.leonsilicon.zami.ports": ["@-/com.leonsilicon.zami.ports@workspace:packages/com/leonsilicon/zami/ports"],
+
+    "@-/com.leonsilicon.zami.push-gateway": ["@-/com.leonsilicon.zami.push-gateway@workspace:packages/com/leonsilicon/zami/push-gateway"],
 
     "@-/com.leonsilicon.zami.rn": ["@-/com.leonsilicon.zami.rn@workspace:packages/com/leonsilicon/zami/rn"],
 
@@ -487,6 +537,8 @@
     "@-/com.leonsilicon.zami.vite": ["@-/com.leonsilicon.zami.vite@workspace:packages/com/leonsilicon/zami/vite"],
 
     "@-/com.leonsilicon.zami.webcrypto": ["@-/com.leonsilicon.zami.webcrypto@workspace:packages/com/leonsilicon/zami/webcrypto"],
+
+    "@-apps/push-gateway": ["@-apps/push-gateway@workspace:apps/push-gateway"],
 
     "@-apps/site": ["@-apps/site@workspace:apps/site"],
 
@@ -1098,6 +1150,8 @@
 
     "@types/node": ["@types/node@24.19.2", "", { "dependencies": { "undici-types": ">=7.24.0 <7.24.7" } }, "sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ=="],
 
+    "@types/pngjs": ["@types/pngjs@6.0.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ=="],
+
     "@types/qrcode": ["@types/qrcode@1.5.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw=="],
 
     "@types/react": ["@types/react@19.3.0", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg=="],
@@ -1105,6 +1159,8 @@
     "@types/react-test-renderer": ["@types/react-test-renderer@19.3.1", "", { "dependencies": { "@types/react": "*" } }, "sha512-9AwMfeBOcXsN5kC4oAauNTOKEwqLHtc69tkJC2CihQ5fCELDwzfQvookvtyaxm6i+vc5LLD0V5OLB8arzY8Smw=="],
 
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
+
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "@types/yargs": ["@types/yargs@17.0.35", "", { "dependencies": { "@types/yargs-parser": "*" } }, "sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg=="],
 
@@ -1966,9 +2022,11 @@
 
     "picomatch": ["picomatch@4.0.7", "", {}, "sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA=="],
 
+    "pixelmatch": ["pixelmatch@8.0.0", "", { "dependencies": { "pngjs": "^7.0.0" }, "bin": { "pixelmatch": "bin/pixelmatch" } }, "sha512-cIqOLfh5k52us715qf3B3+kTOxZv+WDv77HN7xokLScYQGYQHi4m/ynoDIPpvF2LvCyUJGyvzY64i0QCXtzu1g=="],
+
     "plist": ["plist@3.1.1", "", { "dependencies": { "@xmldom/xmldom": "^0.9.10", "base64-js": "^1.5.1", "xmlbuilder": "^15.1.1" } }, "sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA=="],
 
-    "pngjs": ["pngjs@5.0.0", "", {}, "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw=="],
+    "pngjs": ["pngjs@7.0.0", "", {}, "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow=="],
 
     "possible-typed-array-names": ["possible-typed-array-names@1.1.0", "", {}, "sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg=="],
 
@@ -2008,7 +2066,7 @@
 
     "react-native-get-random-values": ["react-native-get-random-values@2.1.0", "", { "dependencies": { "fast-base64-decode": "^1.0.0" }, "peerDependencies": { "react-native": ">=0.81" } }, "sha512-ooSUj9zTICGZ/eDFzNCnC+Pyb0SxE6y2QtC8S8z/BBJY+9dUjjNWD0DgRCSfXuC/c2k9V03xLMF6y/yUYEk4ew=="],
 
-    "react-native-indexeddb-sqlite": ["react-native-indexeddb-sqlite@0.1.0", "", { "dependencies": { "fake-indexeddb": "6.2.7" } }, "sha512-vfoTj6GFqtQjWftiqvOx/MtBK06vSERp+jw7jet8rpioOcIvLJnDWgAh6UoGmyswhs4SxjynpGZ+A869Qb3HOQ=="],
+    "react-native-indexeddb-sqlite": ["react-native-indexeddb-sqlite@0.1.1", "", { "dependencies": { "fake-indexeddb": "6.2.7" } }, "sha512-bokXFCsA+HPiti43lZlLLFYN3hSs7sT4AErEIBC5lF5lmx3ffey8eZU7hnXomJZi+4qeOrNbeFqM56PIMMDbpw=="],
 
     "react-native-is-edge-to-edge": ["react-native-is-edge-to-edge@1.3.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-NIXU/iT5+ORyCc7p0z2nnlkouYKX425vuU1OEm6bMMtWWR9yvb+Xg5AZmImTKoF9abxCPqrKC3rOZsKzUYgYZA=="],
 
@@ -2390,8 +2448,6 @@
 
     "@vitest/browser/magic-string": ["magic-string@1.4.5", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w=="],
 
-    "@vitest/browser/pngjs": ["pngjs@7.0.0", "", {}, "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow=="],
-
     "@vitest/mocker/magic-string": ["magic-string@1.4.5", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w=="],
 
     "@vitest/snapshot/magic-string": ["magic-string@1.4.5", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w=="],
@@ -2467,6 +2523,8 @@
     "parse5/entities": ["entities@9.0.0", "", {}, "sha512-oJFNDJg3kTPwAD1cNn2+WmUq4wFoo09npc3Ydf1D7ED4smRiWrsKnaLxykrTWgyGEcusc87P5dxlAleol9kpkg=="],
 
     "plist/@xmldom/xmldom": ["@xmldom/xmldom@0.9.12", "", {}, "sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A=="],
+
+    "qrcode/pngjs": ["pngjs@5.0.0", "", {}, "sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw=="],
 
     "qrcode/yargs": ["yargs@15.4.1", "", { "dependencies": { "cliui": "^6.0.0", "decamelize": "^1.2.0", "find-up": "^4.1.0", "get-caller-file": "^2.0.1", "require-directory": "^2.1.1", "require-main-filename": "^2.0.0", "set-blocking": "^2.0.0", "string-width": "^4.2.0", "which-module": "^2.0.0", "y18n": "^4.0.0", "yargs-parser": "^18.1.2" } }, "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A=="],
 

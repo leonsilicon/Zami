@@ -1,5 +1,11 @@
 # Push Notifications (Sygnal)
 
+> **Zami:** none of this applies to the Zami app. It has no Capacitor, native Java
+> services, Sygnal or web push: its pushes go through Zami's own push gateway and Expo's
+> push service, on iOS and Android, set up as
+> [`apps/push-gateway/README.md`](apps/push-gateway/README.md) describes. What follows is
+> Zam's setup, kept in sync with upstream.
+
 Zam has **three** notification paths. Only two of them involve a push gateway;
 mixing them up is the usual source of confusion, so they are listed separately
 here.

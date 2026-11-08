@@ -15,6 +15,7 @@ import {
     RuleId,
     IndexedDBStore,
     HttpApiEvent,
+    MatrixError,
     UserEvent,
     SetPresence,
     Direction,
@@ -39,14 +40,15 @@ import type {
     IEvent,
     ISearchResults,
     MatrixClient,
-    MatrixError,
     Room,
     RoomMember,
     ReceiptType,
     Beacon,
     RegisterResponse,
 } from "matrix-js-sdk";
+import { buildFeatureSupportMap } from "matrix-js-sdk/lib/feature";
 import { VerificationMethod } from "matrix-js-sdk/lib/types";
+import { readScoped, writeScoped } from "$lib/utils/scopedStorage";
 import {
     shouldKickSync,
     watchdogOverdueMs,
@@ -143,6 +145,7 @@ import {
     saveSnapshot,
     snapshotKey,
     type MaterializedCache,
+    type RoomListSnapshot,
 } from "./roomListCache";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import { forgetSignInPassword } from "$lib/stores/onboarding.svelte";
@@ -301,6 +304,7 @@ import {
     forgetOwnDeviceKey,
     initCrypto,
     isCryptoAvailable,
+    ownDeviceKeyMatchesRecord,
     ownDeviceKeysReplaced,
     CryptoStoreLostError,
     SessionInUseError,
@@ -660,7 +664,7 @@ async function createAuthenticatedClient(opts: {
     // the old store is gone. Sign the device out (which takes its stale keys
     // off the server, so senders stop encrypting to them) rather than give
     // it new keys nobody's crypto will accept.
-    if (await ownDeviceKeysReplaced(client)) {
+    const signOutLostDevice = async (): Promise<void> => {
         console.warn(
             `[matrix] encryption data for ${opts.deviceId} is gone; signing it out`,
         );
@@ -670,6 +674,27 @@ async function createAuthenticatedClient(opts: {
             console.warn("[matrix] signing out the lost session failed", err);
         }
         forgetOwnDeviceKey(opts.userId, opts.deviceId);
+    };
+    // Zami: a store holding the key already recorded for this device isn't a
+    // fresh one, so the app doesn't wait for the server to say so: that request
+    // kept every launch on the splash for a round trip, or as long as a bad
+    // connection hangs. If the server does disagree, the session ends the way
+    // an expired one does.
+    if (await ownDeviceKeyMatchesRecord(client)) {
+        void ownDeviceKeysReplaced(client)
+            .then(async (replaced) => {
+                if (!replaced || matrixClient !== client) return;
+                await signOutLostDevice();
+                client.emit(
+                    HttpApiEvent.SessionLoggedOut,
+                    new MatrixError({ errcode: "M_UNKNOWN_TOKEN" }),
+                );
+            })
+            .catch((err: unknown) =>
+                console.warn("[matrix] checking our device keys failed", err),
+            );
+    } else if (await ownDeviceKeysReplaced(client)) {
+        await signOutLostDevice();
         throw new CryptoStoreLostError();
     }
 
@@ -1362,6 +1387,47 @@ function kickSync(client: MatrixClient): void {
     setTimeout(() => client.retryImmediately(), 0);
 }
 
+const SERVER_VERSIONS_KEY = "matrix:serverVersions";
+
+/**
+ * Zami: `startClient` waits for /versions before anything else, which kept
+ * every launch on the splash for a round trip, or as long as a bad connection
+ * hangs. A server's answer rarely changes, so a returning account starts from
+ * the copy saved last time while the real request runs; the SDK takes the
+ * fresh answer when it lands.
+ */
+async function serveServerVersionsFromCache(
+    client: MatrixClient,
+): Promise<void> {
+    const userId = client.getUserId();
+    if (!userId || typeof client.getVersions !== "function") return;
+    const refresh = client.getVersions();
+    void refresh.then(
+        (versions) =>
+            writeScoped(SERVER_VERSIONS_KEY, userId, JSON.stringify(versions)),
+        () => {},
+    );
+    let latest: Awaited<ReturnType<MatrixClient["getVersions"]>>;
+    try {
+        const saved = readScoped(SERVER_VERSIONS_KEY, userId);
+        if (!saved) return;
+        latest = JSON.parse(saved);
+    } catch {
+        return;
+    }
+    client.canSupport = await buildFeatureSupportMap(latest);
+    client.getVersions = () => Promise.resolve(latest);
+    void refresh.then(
+        (versions) => {
+            latest = versions;
+        },
+        // The SDK retries on the next call, once it is back in charge.
+        () => {
+            delete (client as { getVersions?: unknown }).getVersions;
+        },
+    );
+}
+
 /**
  * Start the sync loop for the current client and return a disposer that
  * detaches this session's listeners.
@@ -1605,6 +1671,7 @@ export async function startSync(
             onStateChange("STOPPED");
             return dispose;
         }
+        await serveServerVersionsFromCache(client);
         await client.startClient({
             slidingSync: slidingSync,
             initialSyncLimit: 8,
@@ -2109,7 +2176,14 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     if (!userId || !deviceId) return;
     const snapshot = await loadSnapshot(snapshotKey(userId, deviceId));
     if (!snapshot || matrixClient !== client || roomListComplete) return;
-    roomListCache = materializeSnapshot(client, snapshot);
+    // Zami: only the rooms the first screen can show are built before it
+    // paints, or every launch of an account with thousands of rooms would wait
+    // on all of them. The rest follow in the background.
+    const [firstRooms, otherRooms] = splitForFirstPaint(snapshot.rooms);
+    roomListCache = materializeSnapshot(client, {
+        ...snapshot,
+        rooms: firstRooms,
+    });
     for (const [spaceId, list] of Object.entries(snapshot.hierarchies ?? {}))
         if (!hierarchyCache.has(spaceId)) hierarchyCache.set(spaceId, list);
     // The cached events of an encrypted room are ciphertext. Decrypt them from
@@ -2117,11 +2191,68 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     // "unable to decrypt" everywhere. Never awaited: no key means the
     // placeholder is the correct rendering anyway.
     void decryptCachedEvents(client, roomListCache);
+    void materializeRemainingRooms(client, roomListCache, snapshot, otherRooms);
+}
+
+/** Zami: how many cached rooms are built before the app first paints. */
+const FIRST_PAINT_ROOMS = 50;
+
+/** Zami: how long one background slice of room building may hold the JS thread. */
+const ROOM_BUILD_SLICE_MS = 8;
+
+/** Zami: the rooms active most recently, then the rest. */
+function splitForFirstPaint(
+    rooms: RoomListSnapshot["rooms"],
+): [RoomListSnapshot["rooms"], RoomListSnapshot["rooms"]] {
+    const lastActivity = (room: RoomListSnapshot["rooms"][number]): number =>
+        room.timeline?.[room.timeline.length - 1]?.origin_server_ts ?? 0;
+    const byRecency = [...rooms].sort(
+        (a, b) => lastActivity(b) - lastActivity(a),
+    );
+    return [
+        byRecency.slice(0, FIRST_PAINT_ROOMS),
+        byRecency.slice(FIRST_PAINT_ROOMS),
+    ];
+}
+
+/**
+ * Zami: add the rest of a snapshot's rooms to the cache a few at a time,
+ * yielding between slices so the app stays responsive, and show them together
+ * at the end. Stops if live sync has replaced the cache in the meantime.
+ */
+async function materializeRemainingRooms(
+    client: MatrixClient,
+    cache: MaterializedCache,
+    snapshot: RoomListSnapshot,
+    rooms: RoomListSnapshot["rooms"],
+): Promise<void> {
+    if (rooms.length === 0) return;
+    const built = new Map<string, Room>();
+    let next = 0;
+    while (next < rooms.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (roomListCache !== cache || matrixClient !== client) return;
+        const sliceStart = performance.now();
+        while (
+            next < rooms.length &&
+            performance.now() - sliceStart < ROOM_BUILD_SLICE_MS
+        ) {
+            const { rooms: slice } = materializeSnapshot(client, {
+                ...snapshot,
+                accountData: [],
+                rooms: [rooms[next++]!],
+            });
+            for (const [roomId, room] of slice) built.set(roomId, room);
+        }
+    }
+    for (const [roomId, room] of built) cache.rooms.set(roomId, room);
+    for (const cb of roomUpdateSubscribers) cb();
+    void decryptCachedEvents(client, { rooms: built });
 }
 
 async function decryptCachedEvents(
     client: MatrixClient,
-    cache: MaterializedCache,
+    cache: Pick<MaterializedCache, "rooms">,
 ): Promise<void> {
     for (const room of cache.rooms.values()) {
         for (const ev of room.getLiveTimeline().getEvents()) {

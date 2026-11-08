@@ -1,13 +1,15 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
   appFontFamily,
+  DEFAULT_FONT_STACK,
   fontFamilies,
   resolveFontStack,
   setAppFontStack,
   setFontLoaded,
+  setFontsInstalled,
   subscribeAppFont,
 } from "#app-font";
-import { classChoosesFamily } from "#font-class";
+import { classChoosesFamily, classChoosesSize } from "#font-class";
 
 // Zam's stacks (messageDisplay's MESSAGE_FONTS and CUSTOM_FONT_STACK).
 const INTER = '"Inter", "Helvetica Neue", Arial, "Noto Sans Syriac Eastern", sans-serif';
@@ -55,6 +57,23 @@ describe("the app's font", () => {
   });
 });
 
+describe("Zam's default font", () => {
+  test("is Zam's stack, which falls back to installed families as on the web", () => {
+    setAppFontStack(null);
+    expect(resolveFontStack(null)).toBe(resolveFontStack(DEFAULT_FONT_STACK));
+    setFontsInstalled(["Helvetica Neue", "Arial"]);
+    // gg sans isn't there; Helvetica Neue is, as on iOS.
+    expect(appFontFamily()).toBe("Helvetica Neue");
+    // A picked font that isn't loaded falls back the same way.
+    expect(resolveFontStack('"Inter", "Helvetica Neue", Arial, sans-serif')).toBe(
+      resolveFontStack("Inter") ?? "Helvetica Neue",
+    );
+    setFontLoaded("Helvetica Neue", null);
+    setFontLoaded("Arial", null);
+    expect(appFontFamily()).toBeNull();
+  });
+});
+
 describe("classChoosesFamily", () => {
   test("is true for font-mono, font-serif and arbitrary families, with variants", () => {
     for (const className of [
@@ -79,6 +98,34 @@ describe("classChoosesFamily", () => {
       "fontmono",
     ]) {
       expect([className, classChoosesFamily(className)]).toEqual([className, false]);
+    }
+  });
+});
+
+describe("classChoosesSize", () => {
+  test("is true for Tailwind's sizes and bracketed lengths, with variants", () => {
+    for (const className of [
+      "text-sm",
+      "font-semibold text-xs text-discord-textMuted",
+      "md:text-base",
+      "!text-2xl",
+      "text-[10px]",
+      "text-[0.625rem]",
+    ]) {
+      expect([className, classChoosesSize(className)]).toEqual([className, true]);
+    }
+  });
+
+  test("is false for colors, alignment and other text- utilities", () => {
+    for (const className of [
+      undefined,
+      "text-discord-textPrimary",
+      "text-white text-center",
+      "text-[#e0e0e0]",
+      "text-[rgb(var(--discord-accent-rgb)_/_1)]",
+      "text-smaller",
+    ]) {
+      expect([className, classChoosesSize(className)]).toEqual([className, false]);
     }
   });
 });

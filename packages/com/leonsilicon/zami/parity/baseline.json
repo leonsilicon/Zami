@@ -1,0 +1,815 @@
+{
+  "upstream": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
+  "views": {
+    "composer-actions": {
+      "pixels": 0.0239,
+      "issues": [
+        "missing:label:Message #general#0",
+        "missing:label:Message timeline#0",
+        "missing:label:More room options#0",
+        "missing:label:Show full room description#0",
+        "missing:label:Start voice call#0",
+        "missing:text:Company-wide chatter#0",
+        "missing:text:Create thread#0",
+        "missing:text:Message #general#0",
+        "missing:text:general#0",
+        "moved:text:Camera#0",
+        "moved:text:Create poll#0",
+        "moved:text:Files#0",
+        "moved:text:Photos & videos#0",
+        "moved:text:Record voice message#0",
+        "moved:text:Send a file directly#0",
+        "moved:text:Share location#0"
+      ]
+    },
+    "create-poll": {
+      "pixels": 0.1325,
+      "issues": [
+        "font:text:Ask something\u2026#0",
+        "font:text:Option 1#0",
+        "font:text:Option 2#0",
+        "missing:label:Remove option#0",
+        "missing:label:Remove option#1",
+        "missing:placeholder:Ask something\u2026#0",
+        "moved:label:Option 1#0",
+        "moved:label:Option 2#0",
+        "moved:text:+ Add option#0",
+        "moved:text:Add a question.#0",
+        "moved:text:Allow selecting multiple options#0",
+        "moved:text:Ask something\u2026#0",
+        "moved:text:Cancel#0",
+        "moved:text:Create poll#0",
+        "moved:text:Create poll#1",
+        "moved:text:Hide until closed#0",
+        "moved:text:Option 1#0",
+        "moved:text:Option 2#0",
+        "moved:text:Options#0",
+        "moved:text:Question#0",
+        "moved:text:Results#0",
+        "moved:text:Show as people vote#0",
+        "resized:label:Option 1#0",
+        "resized:label:Option 2#0",
+        "wraps:text:Show as people vote#0"
+      ]
+    },
+    "draft-dm": {
+      "pixels": 0.1155,
+      "issues": [
+        "moved:label:Message Carol#0",
+        "moved:label:Send#0",
+        "moved:text:@carol:localhost#0",
+        "moved:text:C#1",
+        "moved:text:Carol#1",
+        "moved:text:Message Carol#0",
+        "moved:text:Nothing is created until you send your first message. Carol is invited then.#0",
+        "moved:text:This is the start of your direct messages with Carol.#0"
+      ]
+    },
+    "drawer": {
+      "pixels": 0.0082,
+      "issues": []
+    },
+    "drawer-space": {
+      "pixels": 0.004,
+      "issues": ["font:text:general#0"]
+    },
+    "emoji-picker": {
+      "pixels": 0.1076,
+      "issues": [
+        "extra:text:\u263a\ufe0f#0",
+        "extra:text:\u26bd#0",
+        "extra:text:\u2708\ufe0f#0",
+        "extra:text:\u2764\ufe0f#0",
+        "extra:text:\ud83c\udf4e#0",
+        "extra:text:\ud83c\udfc1#0",
+        "extra:text:\ud83d\udc36#0",
+        "extra:text:\ud83d\udc4b#0",
+        "extra:text:\ud83d\udca1#0",
+        "extra:text:\ud83d\ude00#0",
+        "extra:text:\ud83d\ude00#1",
+        "extra:text:\ud83d\ude01#0",
+        "extra:text:\ud83d\ude02#0",
+        "extra:text:\ud83d\ude03#0",
+        "extra:text:\ud83d\ude04#0",
+        "extra:text:\ud83d\ude05#0",
+        "extra:text:\ud83d\ude06#0",
+        "extra:text:\ud83d\ude07#0",
+        "extra:text:\ud83d\ude09#0",
+        "extra:text:\ud83d\ude0a#0",
+        "extra:text:\ud83d\ude0b#0",
+        "extra:text:\ud83d\ude0d#0",
+        "extra:text:\ud83d\ude10#0",
+        "extra:text:\ud83d\ude11#0",
+        "extra:text:\ud83d\ude17#0",
+        "extra:text:\ud83d\ude18#0",
+        "extra:text:\ud83d\ude1b#0",
+        "extra:text:\ud83d\ude1c#0",
+        "extra:text:\ud83d\ude1d#0",
+        "extra:text:\ud83d\ude36#0",
+        "extra:text:\ud83d\ude42#0",
+        "extra:text:\ud83e\udd10#0",
+        "extra:text:\ud83e\udd11#0",
+        "extra:text:\ud83e\udd14#0",
+        "extra:text:\ud83e\udd17#0",
+        "extra:text:\ud83e\udd23#0",
+        "extra:text:\ud83e\udd28#0",
+        "extra:text:\ud83e\udd29#0",
+        "extra:text:\ud83e\udd2a#0",
+        "extra:text:\ud83e\udd2b#0",
+        "extra:text:\ud83e\udd2d#0",
+        "extra:text:\ud83e\udd70#0",
+        "extra:text:\ud83e\udd72#0",
+        "extra:text:\ud83e\udee1#0",
+        "extra:text:\ud83e\udee5#0",
+        "font:text:Search emoji\u2026#0",
+        "missing:label:Smileys & Emotion#0",
+        "missing:label:face with open eyes and hand over mouth#0",
+        "missing:label:face with peeking eye#0",
+        "missing:label:kissing face with closed eyes#0",
+        "missing:label:kissing face with smiling eyes#0",
+        "missing:label:melting face#0",
+        "missing:label:upside-down face#0",
+        "missing:text:GIFs#0",
+        "moved:label:Emoji#0",
+        "moved:label:Search emoji#0",
+        "moved:label:beaming face with smiling eyes#0",
+        "moved:label:face blowing a kiss#0",
+        "moved:label:face savoring food#0",
+        "moved:label:face with hand over mouth#0",
+        "moved:label:face with tears of joy#0",
+        "moved:label:face with tongue#0",
+        "moved:label:grinning face with big eyes#0",
+        "moved:label:grinning face with smiling eyes#0",
+        "moved:label:grinning face with sweat#0",
+        "moved:label:grinning face#0",
+        "moved:label:grinning squinting face#0",
+        "moved:label:kissing face#0",
+        "moved:label:money-mouth face#0",
+        "moved:label:rolling on the floor laughing#0",
+        "moved:label:saluting face#0",
+        "moved:label:shushing face#0",
+        "moved:label:slightly smiling face#0",
+        "moved:label:smiling face with halo#0",
+        "moved:label:smiling face with heart-eyes#0",
+        "moved:label:smiling face with hearts#0",
+        "moved:label:smiling face with open hands#0",
+        "moved:label:smiling face with smiling eyes#0",
+        "moved:label:smiling face with tear#0",
+        "moved:label:smiling face#0",
+        "moved:label:squinting face with tongue#0",
+        "moved:label:star-struck#0",
+        "moved:label:thinking face#0",
+        "moved:label:winking face with tongue#0",
+        "moved:label:winking face#0",
+        "moved:label:zany face#0",
+        "moved:text:Emoji#0",
+        "moved:text:Search emoji\u2026#0",
+        "moved:text:Smileys & Emotion#0",
+        "moved:text:Stickers#0",
+        "resized:label:Emoji#0",
+        "resized:label:Search emoji#0",
+        "resized:label:beaming face with smiling eyes#0",
+        "resized:label:face blowing a kiss#0",
+        "resized:label:face savoring food#0",
+        "resized:label:face with hand over mouth#0",
+        "resized:label:face with tears of joy#0",
+        "resized:label:face with tongue#0",
+        "resized:label:grinning face with big eyes#0",
+        "resized:label:grinning face with smiling eyes#0",
+        "resized:label:grinning face with sweat#0",
+        "resized:label:grinning face#0",
+        "resized:label:grinning squinting face#0",
+        "resized:label:kissing face#0",
+        "resized:label:money-mouth face#0",
+        "resized:label:rolling on the floor laughing#0",
+        "resized:label:saluting face#0",
+        "resized:label:shushing face#0",
+        "resized:label:slightly smiling face#0",
+        "resized:label:smiling face with halo#0",
+        "resized:label:smiling face with heart-eyes#0",
+        "resized:label:smiling face with hearts#0",
+        "resized:label:smiling face with open hands#0",
+        "resized:label:smiling face with smiling eyes#0",
+        "resized:label:smiling face with tear#0",
+        "resized:label:smiling face#0",
+        "resized:label:squinting face with tongue#0",
+        "resized:label:star-struck#0",
+        "resized:label:thinking face#0",
+        "resized:label:winking face with tongue#0",
+        "resized:label:winking face#0",
+        "resized:label:zany face#0"
+      ]
+    },
+    "encryption-setup": {
+      "pixels": 0.0076,
+      "issues": []
+    },
+    "gif-picker": {
+      "pixels": 0.2324,
+      "issues": [
+        "clipped:text:GIFs#0",
+        "font:text:GIFs#0",
+        "font:text:Search KLIPY\u2026#0",
+        "missing:label:GIF results#0",
+        "missing:text:GIFs#1",
+        "missing:text:Powered by KLIPY#0",
+        "moved:label:GIF result 1#0",
+        "moved:label:GIF result 2#0",
+        "moved:label:Search GIFs#0",
+        "moved:label:Trending#0",
+        "moved:text:Emoji#0",
+        "moved:text:Favourites#0",
+        "moved:text:GIFs#0",
+        "moved:text:Search KLIPY\u2026#0",
+        "moved:text:Stickers#0",
+        "resized:label:GIF result 1#0",
+        "resized:label:GIF result 2#0",
+        "resized:label:Search GIFs#0",
+        "resized:label:Trending#0"
+      ]
+    },
+    "inbox": {
+      "pixels": 0.0072,
+      "issues": ["moved:text:Invited by @carol:localhost#0"]
+    },
+    "invite-dialog": {
+      "pixels": 0.3181,
+      "issues": [
+        "font:text:Search for people\u2026#0",
+        "missing:text:Invite#0",
+        "moved:label:Search for people\u2026#0",
+        "moved:text:Close#0",
+        "moved:text:Invite People#0",
+        "moved:text:Invite by email#0",
+        "moved:text:Invite people to general.#0",
+        "moved:text:Search for people\u2026#0",
+        "moved:text:Your homeserver has no identity server, so email invites aren't available.#0",
+        "resized:label:Search for people\u2026#0"
+      ]
+    },
+    "landing": {
+      "pixels": 0.0272,
+      "issues": [
+        "moved:text:##0",
+        "moved:text:This is the beginning of the #Announcements room.#0",
+        "moved:text:Welcome to #Announcements!#0"
+      ]
+    },
+    "message-actions": {
+      "pixels": 0.0127,
+      "issues": [
+        "missing:text:2 replies#0",
+        "missing:text:Thread: notes from the weekly sync#0",
+        "missing:text:\u00b7 <time>#0",
+        "moved:text:<time>#0",
+        "moved:text:C#0",
+        "moved:text:Carol#0"
+      ]
+    },
+    "message-actions-own": {
+      "pixels": 0.0122,
+      "issues": ["moved:text:<time>#0", "moved:text:C#0", "moved:text:Carol#0"]
+    },
+    "panel-media": {
+      "pixels": 0.0337,
+      "issues": ["missing:text:Company-wide chatter#0"]
+    },
+    "panel-members": {
+      "pixels": 0.0086,
+      "issues": ["missing:text:Company-wide chatter#0"]
+    },
+    "panel-notifications": {
+      "pixels": 0.0085,
+      "issues": ["missing:text:Company-wide chatter#0"]
+    },
+    "panel-pinned": {
+      "pixels": 0.0123,
+      "issues": ["extra:text:Jump#0", "missing:text:News from the office#0"]
+    },
+    "panel-search": {
+      "pixels": 0.2756,
+      "issues": [
+        "font:text:Search - try from: or has:image#0",
+        "missing:placeholder:Search - try from: or has:image#0",
+        "missing:text:Company-wide chatter#0",
+        "moved:label:Message timeline#0",
+        "resized:label:Message timeline#0"
+      ]
+    },
+    "panel-threads": {
+      "pixels": 0.0061,
+      "issues": ["missing:text:Company-wide chatter#0"]
+    },
+    "quick-switcher": {
+      "pixels": 0.0272,
+      "issues": [
+        "moved:text:##0",
+        "moved:text:This is the beginning of the #Announcements room.#0",
+        "moved:text:Welcome to #Announcements!#0"
+      ]
+    },
+    "register": {
+      "pixels": 0.1539,
+      "issues": [
+        "clipped:text:Already have an account?#0",
+        "clipped:text:Create account on matrix.org#0",
+        "extra:text:Download the apps#0",
+        "extra:text:GitHub#0",
+        "extra:text:Website#0",
+        "missing:placeholder:https://matrix.org#0",
+        "moved:text:##0",
+        "moved:text:Already have an account?#0",
+        "moved:text:Create account on matrix.org#0",
+        "moved:text:Create an account#0",
+        "moved:text:Homeserver#0",
+        "moved:text:Register on a Matrix homeserver#0",
+        "moved:text:Sign in#0",
+        "moved:text:Your account lives on this server. Not sure? matrix.org is free and open to everyone.#0",
+        "moved:text:Your credentials are sent directly to your homeserver and never stored by this app beyond your device.#0",
+        "moved:text:matrix.org creates new accounts on its own account page. Zam opens it; pick a username and password there, and you come straight back here signed in.#0",
+        "moved:text:\u25b8 Advanced options#0",
+        "wraps:text:matrix.org creates new accounts on its own account page. Zam opens it; pick a username and password there, and you come straight back here signed in.#0"
+      ]
+    },
+    "room": {
+      "pixels": 0.0122,
+      "issues": ["moved:text:<time>#0", "moved:text:C#0", "moved:text:Carol#0"]
+    },
+    "room-announcements": {
+      "pixels": 0.0272,
+      "issues": [
+        "moved:text:##0",
+        "moved:text:This is the beginning of the #Announcements room.#0",
+        "moved:text:Welcome to #Announcements!#0"
+      ]
+    },
+    "room-directory": {
+      "pixels": 0.3032,
+      "issues": [
+        "clipped:text:Public rooms on your homeserver \u00b7 ~0 rooms#0",
+        "clipped:text:Search rooms\u2026#0",
+        "extra:text:Search#0",
+        "font:text:Search rooms\u2026#0",
+        "font:text:Server (optional)#0",
+        "missing:placeholder:Search rooms\u2026#0",
+        "missing:placeholder:Server (optional)#0",
+        "moved:text:Explore rooms#0",
+        "moved:text:No rooms found.#0",
+        "moved:text:Public rooms on your homeserver \u00b7 ~0 rooms#0",
+        "moved:text:Search rooms\u2026#0",
+        "moved:text:Server (optional)#0",
+        "wraps:text:Public rooms on your homeserver \u00b7 ~0 rooms#0"
+      ]
+    },
+    "room-dm": {
+      "pixels": 0.0124,
+      "issues": ["moved:text:##0", "moved:text:Welcome to #Bob!#0"]
+    },
+    "room-header-overflow": {
+      "pixels": 0.0158,
+      "issues": ["moved:label:More room options#0", "resized:label:More room options#0"]
+    },
+    "room-menu": {
+      "pixels": 0.0233,
+      "issues": ["missing:label:Close#0", "moved:text:Copy Room Link#0", "moved:text:Settings#0"]
+    },
+    "room-random": {
+      "pixels": 0.0129,
+      "issues": ["moved:text:##0", "moved:text:Welcome to #random!#0"]
+    },
+    "room-settings": {
+      "pixels": 0.0046,
+      "issues": []
+    },
+    "room-settings-access": {
+      "pixels": 0.0519,
+      "issues": [
+        "moved:text:Addresses#0",
+        "moved:text:Allow guests to join without an account#0",
+        "moved:text:Discoverability#0",
+        "moved:text:Guest Access#0",
+        "moved:text:Guests are anonymous accounts the homeserver creates on demand. Many servers disable guest registration entirely, in which case this has no effect.#0",
+        "moved:text:List this room in the server directory#0",
+        "moved:text:Lists the room by ID. Being found by name also needs a published address - add one below.#0",
+        "moved:text:Members since joining#0"
+      ]
+    },
+    "room-settings-general": {
+      "pixels": 0.01,
+      "issues": ["clipped:text:<room>#0"]
+    },
+    "room-settings-members": {
+      "pixels": 0.0029,
+      "issues": ["font:text:Search members\u2026#0", "missing:placeholder:Search members\u2026#0"]
+    },
+    "room-settings-notifications": {
+      "pixels": 0.0074,
+      "issues": ["moved:text:Never notify.#0"]
+    },
+    "room-settings-permissions": {
+      "pixels": 0.014,
+      "issues": [
+        "moved:text:Ban members#0",
+        "moved:text:Join calls (voice/video)#0",
+        "moved:text:Moderator#3",
+        "moved:text:Moderator#4",
+        "moved:text:Moderator#5",
+        "moved:text:Moderator#6",
+        "moved:text:Name any thread#0",
+        "moved:text:Redact messages#0"
+      ]
+    },
+    "room-settings-security": {
+      "pixels": 0.0133,
+      "issues": [
+        "moved:text:Encryption can't be turned off once it's on. Everyone will need a client that supports encryption to read new messages.#0",
+        "moved:text:Not encrypted#0",
+        "moved:text:You need power level 100 to enable encryption.#0"
+      ]
+    },
+    "room-topic": {
+      "pixels": 0.0155,
+      "issues": []
+    },
+    "settings": {
+      "pixels": 0.0089,
+      "issues": [
+        "font:text:Search settings\u2026#0",
+        "missing:label:Close settings#0",
+        "moved:label:Search settings#0",
+        "resized:label:Search settings#0"
+      ]
+    },
+    "settings-about": {
+      "pixels": 0.0463,
+      "issues": [
+        "extra:text:Full Changelog: https://github.com/az4521/Zam/compare/v1.54.12...v1.54.13#0",
+        "extra:text:\u2022#0",
+        "extra:text:\u2022#1",
+        "extra:text:\ud83d\udc1b Fixed#0",
+        "font:text:Failed read receipts are retried: if sending a read receipt failed, Zam still treated the room as read until the next reload, when it came back unread. It now retries the next time you read the room, and clears the room's notification dot once the receipt goes through.#0",
+        "font:text:Rooms and DMs coming back as unread: encrypted rooms (including DMs) could show as unread again after you read them, because the server's unread count overwrote Zam's own count whenever the room appeared in a sync update. Zam now keeps its own count for encrypted rooms.#0",
+        "missing:label:Close settings#0",
+        "missing:text:\ud83d\udc1b FixedFull Changelog: https://github.com/az4521/Zam/compare/v1.54.12...v1.54.13#0",
+        "moved:text:Check for updates#0",
+        "moved:text:Failed read receipts are retried: if sending a read receipt failed, Zam still treated the room as read until the next reload, when it came back unread. It now retries the next time you read the room, and clears the room's notification dot once the receipt goes through.#0",
+        "moved:text:Rooms and DMs coming back as unread: encrypted rooms (including DMs) could show as unread again after you read them, because the server's unread count overwrote Zam's own count whenever the room appeared in a sync update. Zam now keeps its own count for encrypted rooms.#0",
+        "wraps:text:Failed read receipts are retried: if sending a read receipt failed, Zam still treated the room as read until the next reload, when it came back unread. It now retries the next time you read the room, and clears the room's notification dot once the receipt goes through.#0",
+        "wraps:text:Rooms and DMs coming back as unread: encrypted rooms (including DMs) could show as unread again after you read them, because the server's unread count overwrote Zam's own count whenever the room appeared in a sync update. Zam now keeps its own count for encrypted rooms.#0"
+      ]
+    },
+    "settings-account": {
+      "pixels": 0.0349,
+      "issues": [
+        "extra:text:Pronouns#0",
+        "extra:text:Separate with commas, most preferred first.#0",
+        "extra:text:Tell people about yourself#0",
+        "font:text:On holiday until the 23rd#0",
+        "font:text:she/her, they/them#0",
+        "font:text:\ud83c\udf34#0",
+        "missing:label:Close settings#0",
+        "missing:label:Show when I am in a call#0",
+        "missing:placeholder:Your display name#0",
+        "missing:placeholder:she/her, they/them#0",
+        "missing:text:PronounsSeparate with commas, most preferred first.#0",
+        "missing:text:Save#0",
+        "moved:label:Pick a status emoji#0",
+        "moved:label:Status emoji#0",
+        "moved:label:Status text#0",
+        "moved:text:Bio#0",
+        "moved:text:Change banner#0",
+        "moved:text:On holiday until the 23rd#0",
+        "moved:text:Show when I am in a call#0",
+        "moved:text:Status#0",
+        "moved:text:she/her, they/them#0",
+        "moved:text:\ud83c\udf34#0",
+        "resized:label:Status text#0"
+      ]
+    },
+    "settings-appearance": {
+      "pixels": 0.0545,
+      "issues": [
+        "extra:text:English#0",
+        "extra:text:Import#1",
+        "extra:text:Paste theme code#0",
+        "font:text:Preset name#0",
+        "missing:label:Close settings#0",
+        "missing:label:Keep room list open#0",
+        "missing:label:Right-align my messages (bubble layout)#0",
+        "missing:label:Show name colours#0",
+        "missing:placeholder:Preset name#0",
+        "missing:text:Save preset#0",
+        "moved:label:Display language#0",
+        "moved:text:Display your own messages on the right in a colored bubble#0",
+        "moved:text:Don't auto-close the room list when switching between spaces or Home. Opening a room or DM always closes it.#0",
+        "moved:text:Draw people's names in the colour they picked in their profile. Turn off to use the normal text colour for everyone.#0",
+        "moved:text:Import#0",
+        "moved:text:Keep room list open#0",
+        "moved:text:Preset name#0",
+        "moved:text:Save#0",
+        "moved:text:Show name colours#0",
+        "moved:text:Theme colors#0",
+        "resized:label:Display language#0",
+        "wraps:text:Display your own messages on the right in a colored bubble#0",
+        "wraps:text:Don't auto-close the room list when switching between spaces or Home. Opening a room or DM always closes it.#0",
+        "wraps:text:Draw people's names in the colour they picked in their profile. Turn off to use the normal text colour for everyone.#0"
+      ]
+    },
+    "settings-emotes": {
+      "pixels": 0.0264,
+      "issues": [
+        "font:text:Credit / attribution (optional)#0",
+        "font:text:Pack name#0",
+        "font:text:shortcode#0",
+        "missing:label:Close settings#0",
+        "missing:placeholder:Credit / attribution (optional)#0",
+        "missing:placeholder:Pack name#0",
+        "missing:placeholder:Search packs#0",
+        "missing:placeholder:shortcode#0",
+        "missing:text::#1",
+        "missing:text:Save#0",
+        "moved:text:No custom images#0",
+        "moved:text:No packs enabled in all rooms#0",
+        "moved:text:Sticker#0",
+        "moved:text:Upload Image#0"
+      ]
+    },
+    "settings-general": {
+      "pixels": 0.0002,
+      "issues": ["missing:label:Close settings#0"]
+    },
+    "settings-keybinds": {
+      "pixels": 0.0382,
+      "issues": [
+        "extra:text:Cmd#1",
+        "extra:text:Cmd#2",
+        "extra:text:Cmd#3",
+        "extra:text:Next channel with mentions#0",
+        "extra:text:Option#4",
+        "extra:text:Option#5",
+        "extra:text:Option#6",
+        "extra:text:Previous space#0",
+        "extra:text:\u2191#2",
+        "missing:label:Close settings#0",
+        "missing:label:Remove shortcut for Next channel#0",
+        "missing:label:Remove shortcut for Next unread channel#0",
+        "missing:label:Remove shortcut for Previous channel#0",
+        "missing:label:Remove shortcut for Previous unread channel#0",
+        "missing:label:Remove shortcut for Quick switcher#0",
+        "missing:text:Reset all#0",
+        "moved:label:Change shortcut for Next channel#0",
+        "moved:label:Change shortcut for Next unread channel#0",
+        "moved:label:Change shortcut for Previous channel#0",
+        "moved:label:Change shortcut for Previous unread channel#0",
+        "moved:label:Change shortcut for Quick switcher#0",
+        "moved:text:Click a shortcut to change it, then press the new keys. Shortcuts work while Zam is focused. Push to talk and push to mute can also use a mouse side button or a single modifier key.#0",
+        "moved:text:Cmd#0",
+        "moved:text:K#0",
+        "moved:text:Navigation#0",
+        "moved:text:Next channel#0",
+        "moved:text:Next unread channel#0",
+        "moved:text:Option#0",
+        "moved:text:Option#1",
+        "moved:text:Option#2",
+        "moved:text:Option#3",
+        "moved:text:Previous channel with mentions#0",
+        "moved:text:Previous channel#0",
+        "moved:text:Previous unread channel#0",
+        "moved:text:Quick switcher#0",
+        "moved:text:Shift#0",
+        "moved:text:Shift#1",
+        "moved:text:\u2191#0",
+        "moved:text:\u2191#1",
+        "moved:text:\u2193#0",
+        "moved:text:\u2193#1",
+        "resized:label:Change shortcut for Next channel#0",
+        "resized:label:Change shortcut for Next unread channel#0",
+        "resized:label:Change shortcut for Previous channel#0",
+        "resized:label:Change shortcut for Previous unread channel#0",
+        "resized:label:Change shortcut for Quick switcher#0",
+        "wraps:text:Click a shortcut to change it, then press the new keys. Shortcuts work while Zam is focused. Push to talk and push to mute can also use a mouse side button or a single modifier key.#0"
+      ]
+    },
+    "settings-messages-media": {
+      "pixels": 0.0663,
+      "issues": [
+        "extra:text:Rearrange MP4 videos you send so they can start playing while they download. Nothing is re-encoded and the picture is unchanged. Turn this off to send files exactly as they are.#0",
+        "extra:text:Send videos that stream faster#0",
+        "missing:label:Check spelling#0",
+        "missing:label:Close settings#0",
+        "missing:label:Hold to open message menu#0",
+        "missing:label:Pause videos off-screen#0",
+        "missing:label:Read receipt avatars#0",
+        "missing:label:Show Matrix IDs#0",
+        "moved:label:Link previews#0",
+        "moved:text:Check spelling#0",
+        "moved:text:Hold to open message menu#0",
+        "moved:text:Link previews#0",
+        "moved:text:On touch devices, open a message's actions by holding it instead of tapping. When off, a tap opens the menu.#0",
+        "moved:text:Pause a playing video when it scrolls out of view to save battery. You restart it yourself when you scroll back.#0",
+        "moved:text:Pause videos off-screen#0",
+        "moved:text:Show who has read each message as small avatars underneath it. This only changes what you see on this device - to stop others seeing how far you've read, use Private read receipts in Privacy & Safety.#0",
+        "moved:text:Underline misspelled words and offer corrections while you type. Turn off to stop spellcheck and keyboard autocorrect in the message editors on this device.#0",
+        "moved:text:When off, no link preview is loaded and your homeserver never fetches the linked page on your behalf. Control where preview media loads from in Privacy & Safety.#0",
+        "wraps:text:On touch devices, open a message's actions by holding it instead of tapping. When off, a tap opens the menu.#0",
+        "wraps:text:Pause a playing video when it scrolls out of view to save battery. You restart it yourself when you scroll back.#0",
+        "wraps:text:Show who has read each message as small avatars underneath it. This only changes what you see on this device - to stop others seeing how far you've read, use Private read receipts in Privacy & Safety.#0"
+      ]
+    },
+    "settings-notifications": {
+      "pixels": 0.0728,
+      "issues": [
+        "extra:text:1 minute#0",
+        "extra:text:Permission is blocked in system settings#0",
+        "missing:label:Close settings#0",
+        "missing:label:Notification sound#0",
+        "missing:text:None#0",
+        "missing:text:Notifications are not supported here#0",
+        "missing:text:Unavailable#0",
+        "moved:label:Pop-ups#0",
+        "moved:label:Quiet on my other devices#0",
+        "moved:text:Loud only#0",
+        "moved:text:Multiple Devices#0",
+        "moved:text:Notification sound#0",
+        "moved:text:Play a sound for loud notifications#0",
+        "moved:text:Pop-ups#0",
+        "moved:text:Push notifications#0",
+        "moved:text:Quiet on my other devices#0",
+        "moved:text:Silent and loud#0",
+        "moved:text:Sound#0",
+        "moved:text:System Permission#0",
+        "moved:text:Which notifications show a system pop-up while the app is in the background.#0",
+        "moved:text:While you're actively using one device, the others skip the notification sound and pop-up until that device has been idle this long. Applies to every device on your account; notifications still appear in your inbox and unread counts are unchanged.#0",
+        "resized:label:Quiet on my other devices#0",
+        "wraps:text:Pop-up notifications#0",
+        "wraps:text:Which notifications show a system pop-up while the app is in the background.#0",
+        "wraps:text:While you're actively using one device, the others skip the notification sound and pop-up until that device has been idle this long. Applies to every device on your account; notifications still appear in your inbox and unread counts are unchanged.#0"
+      ]
+    },
+    "settings-plugins": {
+      "pixels": 0.0414,
+      "issues": [
+        "extra:text:Example Theme#0",
+        "missing:label:Close settings#0",
+        "missing:label:Enable Double-tap & swipe actions#0",
+        "missing:label:Enable Fun slash commands#0",
+        "missing:label:Enable Link preview rewriter#0",
+        "missing:label:Enable Text replacer#0",
+        "missing:text:Install#0",
+        "missing:text:Install#1",
+        "moved:text:Browse#0",
+        "moved:text:Dice Roller#0",
+        "moved:text:Emoji Stealer#0",
+        "moved:text:Roll dice with /roll \u2014 e.g. /roll 2d6+1.#0",
+        "moved:text:az4521/zam-plugins#0",
+        "moved:text:v1.0.0 \u00b7 az4521#0",
+        "moved:text:v1.0.0 \u00b7 az4521#1",
+        "wraps:text:Right-click or long-press a custom emoji to copy it into your personal pack or a room/space pack you can edit.#0"
+      ]
+    },
+    "settings-privacy": {
+      "pixels": 0.0738,
+      "issues": [
+        "extra:text:Blocked users#0",
+        "missing:label:Close settings#0",
+        "missing:label:Hide message text in notifications#0",
+        "missing:label:Index encrypted rooms on this device#0",
+        "missing:label:Private read receipts#0",
+        "missing:label:Send typing indicators#0",
+        "moved:label:Link preview media#0",
+        "moved:text:All#0",
+        "moved:text:Hide message text in notifications#0",
+        "moved:text:Hide your read receipts from other users. Your unread counts still work; others just can't see how far you've read.#0",
+        "moved:text:Homeserver only#0",
+        "moved:text:Images and videos on ordinary link previews come through your homeserver. \"All\" also loads YouTube players, X/Twitter cards, and GIFs your server can't preview straight from those sites, so they learn your IP address and when you read the message. \"Homeserver only\" holds those back; \"Off\" also holds back what your server serves. Either way, each affected preview keeps a button to load its media. The link-preview on/off switch lives in Messages & Media.#0",
+        "moved:text:Index encrypted rooms on this device#0",
+        "moved:text:Keeps a compressed copy of your encrypted rooms' messages on this device so search and the media list work in them. History is fetched slowly in the background. Turning this off deletes the copy.#0",
+        "moved:text:Let other people in a room see when you are typing. Turn off to type without anyone being told.#0",
+        "moved:text:Link preview media#0",
+        "moved:text:Notifications on this device say who messaged you, but not what they said. The sender and room names are still shown. Applies to this device only.#0",
+        "moved:text:Off#0",
+        "moved:text:Send typing indicators#0",
+        "resized:label:Link preview media#0",
+        "wraps:text:Hide your read receipts from other users. Your unread counts still work; others just can't see how far you've read.#0",
+        "wraps:text:Images and videos on ordinary link previews come through your homeserver. \"All\" also loads YouTube players, X/Twitter cards, and GIFs your server can't preview straight from those sites, so they learn your IP address and when you read the message. \"Homeserver only\" holds those back; \"Off\" also holds back what your server serves. Either way, each affected preview keeps a button to load its media. The link-preview on/off switch lives in Messages & Media.#0",
+        "wraps:text:Keeps a compressed copy of your encrypted rooms' messages on this device so search and the media list work in them. History is fetched slowly in the background. Turning this off deletes the copy.#0"
+      ]
+    },
+    "settings-rich-presence": {
+      "pixels": 0.0002,
+      "issues": ["missing:label:Close settings#0"]
+    },
+    "settings-security": {
+      "pixels": 0.044,
+      "issues": [
+        "extra:text:Message history backup#0",
+        "missing:label:Close settings#0",
+        "missing:text:Active#0",
+        "missing:text:Key only#0",
+        "missing:text:Not set up#0",
+        "missing:text:Not set up#1",
+        "missing:text:Not set up#2",
+        "missing:text:Not stored#0",
+        "missing:text:Unverified#0",
+        "moved:text:Set up recovery#1",
+        "moved:text:We'll create a recovery key - a one-time code that unlocks your encrypted history and verifies new sessions. Store it somewhere safe like a password manager; it's shown only once and we can't recover it for you.#0",
+        "wraps:text:We'll create a recovery key - a one-time code that unlocks your encrypted history and verifies new sessions. Store it somewhere safe like a password manager; it's shown only once and we can't recover it for you.#0"
+      ]
+    },
+    "settings-server": {
+      "pixels": 0.0211,
+      "issues": [
+        "missing:label:Close settings#0",
+        "missing:text:12#0",
+        "missing:text:Not supported#0",
+        "missing:text:Not supported#1",
+        "missing:text:Supported#0",
+        "missing:text:Supported#1",
+        "missing:text:Supported#2",
+        "missing:text:Supported#3",
+        "missing:text:Supported#4",
+        "missing:text:Supported#5",
+        "missing:text:v1.17#0",
+        "moved:text:Default room version#0",
+        "moved:text:Delayed events (call cleanup)#0",
+        "moved:text:Latest spec version#0",
+        "moved:text:SFU discovery (rtc_foci)#0",
+        "moved:text:Server#1"
+      ]
+    },
+    "settings-voice": {
+      "pixels": 0.0528,
+      "issues": [
+        "extra:text:Audio output is routed by the operating system on this platform.#0",
+        "extra:text:Auto gain control#0",
+        "extra:text:Camera#0",
+        "extra:text:Default#0",
+        "extra:text:Echo cancellation#0",
+        "extra:text:Even out voice volumes (Unavailable)#0",
+        "extra:text:FastEnhancer (Unavailable)#0",
+        "extra:text:Microphone unavailable - check browser permissions#0",
+        "extra:text:Normalize (Unavailable)#0",
+        "extra:text:This browser can't run FastEnhancer, so RNNoise is used instead.#0",
+        "extra:text:Your browser's built-in AGC. It may change your system microphone volume.#0",
+        "missing:label:Close settings#0",
+        "missing:label:Even out voice volumes#0",
+        "missing:label:Push to talk#0",
+        "missing:text:Even out voice volumes#0",
+        "missing:text:Runs on your device and ships with the app, so there is nothing to download. Small and steady: it keeps your voice at an even level. The default.#0",
+        "missing:text:Test mic#0",
+        "missing:text:Test speaker#0",
+        "moved:text:Automatically turns quiet people up and loud people down, so you don't have to set everyone's volume by hand.#0",
+        "moved:text:Call volume#0",
+        "moved:text:In calls your mic only sends while the push to talk key is held.#0",
+        "moved:text:Noise suppression#0",
+        "moved:text:Output device#0",
+        "moved:text:Push to talk#0",
+        "moved:text:Voice processing#0",
+        "wraps:text:Automatically turns quiet people up and loud people down, so you don't have to set everyone's volume by hand.#0",
+        "wraps:text:In calls your mic only sends while the push to talk key is held.#0"
+      ]
+    },
+    "sign-in": {
+      "pixels": 0.1945,
+      "issues": [
+        "clipped:text:Continue to account.matrix.org#0",
+        "clipped:text:Don't have an account?#0",
+        "missing:placeholder:https://matrix.org#0",
+        "moved:text:##0",
+        "moved:text:Continue to account.matrix.org#0",
+        "moved:text:Don't have an account?#0",
+        "moved:text:Homeserver#0",
+        "moved:text:Register#0",
+        "moved:text:Sign in to your Matrix account#0",
+        "moved:text:Sign in with QR code#0",
+        "moved:text:The server your account is on: the part after the colon in @you:server.#0",
+        "moved:text:Welcome back!#0",
+        "moved:text:Your credentials are sent directly to your homeserver and never stored by this app beyond your device.#0",
+        "moved:text:matrix.org signs you in on its own account page. Zam opens it, and you come straight back here signed in.#0",
+        "moved:text:\u25b8 Advanced options#0",
+        "wraps:text:matrix.org signs you in on its own account page. Zam opens it, and you come straight back here signed in.#0"
+      ]
+    },
+    "space-add-menu": {
+      "pixels": 0.0058,
+      "issues": []
+    },
+    "space-home": {
+      "pixels": 0.0093,
+      "issues": ["moved:text:Your rooms#0", "moved:text:general#0", "moved:text:random#0"]
+    },
+    "sticker-picker": {
+      "pixels": 0.021,
+      "issues": [
+        "font:text:Search stickers\u2026#0",
+        "missing:text:GIFs#0",
+        "moved:label:Search stickers#0",
+        "moved:text:Emoji#0",
+        "moved:text:No sticker packs available#0",
+        "moved:text:Search stickers\u2026#0",
+        "moved:text:Stickers#0",
+        "resized:label:Search stickers#0"
+      ]
+    }
+  }
+}
