@@ -177,7 +177,11 @@ function keychainIdentities(): Set<string> {
  * The bundle ID's resource, registered (with push notifications, which the app's
  * entitlements ask for) if the team doesn't have it yet, as for a new variant.
  */
-async function registeredBundleId(key: AscKey, bundleId: string): Promise<Resource<unknown>> {
+async function registeredBundleId(
+  key: AscKey,
+  bundleId: string,
+  appName: string,
+): Promise<Resource<unknown>> {
   const bundleIds = await asc<{ data: Resource<{ identifier: string }>[] }>(
     key,
     "GET",
@@ -189,7 +193,12 @@ async function registeredBundleId(key: AscKey, bundleId: string): Promise<Resour
     await asc<{ data: Resource<unknown> }>(key, "POST", "/v1/bundleIds", {
       data: {
         type: "bundleIds",
-        attributes: { identifier: bundleId, name: bundleId, platform: "IOS" },
+        // Apple takes only letters, digits and spaces in the name.
+        attributes: {
+          identifier: bundleId,
+          name: appName.replace(/[^A-Za-z0-9 ]/g, "").trim() || "App",
+          platform: "IOS",
+        },
       },
     })
   ).data;
@@ -231,6 +240,7 @@ export async function appStoreSigning(
   key: AscKey,
   teamId: string,
   bundleId: string,
+  appName = bundleId,
 ): Promise<ExportSigning> {
   const profileName = `${bundleId} App Store (_testflight)`;
   const certificates = (
@@ -269,7 +279,7 @@ export async function appStoreSigning(
     profile = undefined;
   }
   if (!profile) {
-    const bundle = await registeredBundleId(key, bundleId);
+    const bundle = await registeredBundleId(key, bundleId, appName);
     profile = (
       await asc<{ data: Profile }>(key, "POST", "/v1/profiles", {
         data: {
@@ -353,7 +363,7 @@ export async function runTestflight(options: {
   console.log(`Building ${config.name} (${bundleId})`);
   if (options.upload) await appRecord(options.key, bundleId);
 
-  const signing = await appStoreSigning(options.key, teamId, bundleId);
+  const signing = await appStoreSigning(options.key, teamId, bundleId, config.name);
   console.log(`Signing with ${signing.identity} and the profile "${signing.profileName}"`);
 
   // --clean: the generated project is the variant's alone (its bundle ID, name, schemes).
