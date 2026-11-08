@@ -150,7 +150,9 @@ export default function LoginView({
     const [mode, setModeState] = useState<"login" | "register">("login");
     // On by default: servers without sliding sync fall back to regular sync
     // on first start (see buildSlidingSync in client.ts).
-    const [useSlidingSync, setUseSlidingSync] = useState(true);
+    // Zami: off by default instead, because sliding sync breaks signing in to
+    // Beeper. It can still be turned on here or in Debug settings.
+    const [useSlidingSync, setUseSlidingSync] = useState(false);
     // Non-blocking note while an SSO flow runs in another window (desktop /
     // Android), where this form stays usable in case the user abandons it.
     // Zami: and over the Expo app, in its auth session.
