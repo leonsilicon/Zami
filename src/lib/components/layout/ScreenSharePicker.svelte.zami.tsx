@@ -277,7 +277,7 @@ export default function ScreenSharePicker() {
                         <ScrollView
                             nativeID="screenshare-picker-quality"
                             style={styles.quality}
-                            className="border-t border-discord-divider max-h-[40vh]"
+                            className="border-t border-discord-divider max-h-[40vh] grow-0"
                             contentContainerClassName="px-4 py-3 gap-3"
                         >
                             <ScreenShareQualityChips />

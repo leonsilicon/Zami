@@ -512,7 +512,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                         // Desktop: category sidebar beside the active panel.
                         <View className="flex-row flex-1 min-h-0">
                             <ScrollView
-                                className="flex-shrink-0 w-40 border-e border-discord-divider min-h-0"
+                                className="flex-shrink-0 w-40 border-e border-discord-divider min-h-0 grow-0"
                                 contentContainerClassName="gap-0.5 px-2 py-3"
                             >
                                 {settingsGroups.map((group) => (

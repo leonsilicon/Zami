@@ -1729,12 +1729,14 @@ export default function SpaceSidebar({
     return (
         <>
             {/* Zami: the AMOLED theme's hairline between the rail and the room
-                list (app.css `:root[data-theme="amoled"] .space-rail`). */}
+                list (app.css `:root[data-theme="amoled"] .space-rail`).
+                `grow-0`: a ScrollView grows by default (a `<nav>` doesn't), which
+                split the drawer's spare width between the rail and the room list. */}
             <ScrollView
                 ref={navEl}
                 scrollEnabled={!touchDragActive}
                 showsVerticalScrollIndicator={false}
-                className={`space-rail w-[4.5rem] bg-discord-backgroundTertiary flex-shrink-0 ${
+                className={`space-rail w-[4.5rem] grow-0 bg-discord-backgroundTertiary flex-shrink-0 ${
                     theme === "amoled" ? "border-e border-white/15" : ""
                 }`}
                 contentContainerClassName="flex flex-col items-center py-3 gap-2"
@@ -2211,7 +2213,7 @@ export default function SpaceSidebar({
                             </Text>
                         ) : (
                             <ScrollView
-                                className="max-h-72"
+                                className="max-h-72 grow-0"
                                 contentContainerClassName="flex flex-col gap-1"
                             >
                                 {addRoomCandidates.map((room) => (
