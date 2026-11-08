@@ -1,0 +1,11 @@
+# LoginView switches to registration, and a cold relaunch starts on sign-in again.
+appId: com.leonsilicon.zami
+---
+- runFlow: subflows/launch-app.yaml
+- tapOn:
+    text: "Register"
+    retryTapIfNoChange: false
+- assertVisible: "Create an account"
+- assertVisible: "Already have an account?"
+- runFlow: subflows/launch-app.yaml
+- assertVisible: "Sign in to your Matrix account"

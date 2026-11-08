@@ -363,73 +363,86 @@ export async function runTestflight(options: {
   console.log(`Building ${config.name} (${bundleId})`);
   if (options.upload) await appRecord(options.key, bundleId);
 
-  const signing = await appStoreSigning(options.key, teamId, bundleId, config.name);
-  console.log(`Signing with ${signing.identity} and the profile "${signing.profileName}"`);
+  try {
+    const signing = await appStoreSigning(options.key, teamId, bundleId, config.name);
+    console.log(`Signing with ${signing.identity} and the profile "${signing.profileName}"`);
 
-  // --clean: the generated project is the variant's alone (its bundle ID, name, schemes).
-  run(process.execPath, [expoCli, "prebuild", "--platform", "ios", "--clean"], appDir, env);
-  // Expo names the project after the app: "Zami", or "SZami" for "(S) Zami".
-  const workspace = readdirSync(iosDir).find((file) => file.endsWith(".xcworkspace"));
-  if (!workspace) throw new Error(`expo prebuild made no Xcode workspace in ${iosDir}`);
-  const project = workspace.slice(0, -".xcworkspace".length);
-  const pbxproj = join(iosDir, `${project}.xcodeproj`, "project.pbxproj");
-  writeFileSync(pbxproj, signReleaseManually(readFileSync(pbxproj, "utf8"), signing));
+    // --clean: the generated project is the variant's alone (its bundle ID, name, schemes).
+    run(process.execPath, [expoCli, "prebuild", "--platform", "ios", "--clean"], appDir, env);
+    // Expo names the project after the app: "Zami", or "SZami" for "(S) Zami".
+    const workspace = readdirSync(iosDir).find((file) => file.endsWith(".xcworkspace"));
+    if (!workspace) throw new Error(`expo prebuild made no Xcode workspace in ${iosDir}`);
+    const project = workspace.slice(0, -".xcworkspace".length);
+    const pbxproj = join(iosDir, `${project}.xcodeproj`, "project.pbxproj");
+    writeFileSync(pbxproj, signReleaseManually(readFileSync(pbxproj, "utf8"), signing));
 
-  const version = buildNumber();
-  run(
-    "/usr/libexec/PlistBuddy",
-    ["-c", `Set :CFBundleVersion ${version}`, join(iosDir, project, "Info.plist")],
-    appDir,
-  );
+    const version = buildNumber();
+    run(
+      "/usr/libexec/PlistBuddy",
+      ["-c", `Set :CFBundleVersion ${version}`, join(iosDir, project, "Info.plist")],
+      appDir,
+    );
 
-  rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(outDir, { recursive: true });
-  run(
-    "xcrun",
-    [
-      "xcodebuild",
-      "-workspace",
-      workspace,
-      "-scheme",
-      project,
-      "-configuration",
-      "Release",
-      "-destination",
-      "generic/platform=iOS",
-      "-archivePath",
-      archive,
-      "archive",
-    ],
-    iosDir,
-    env,
-  );
+    rmSync(outDir, { recursive: true, force: true });
+    mkdirSync(outDir, { recursive: true });
+    run(
+      "xcrun",
+      [
+        "xcodebuild",
+        "-workspace",
+        workspace,
+        "-scheme",
+        project,
+        "-configuration",
+        "Release",
+        "-destination",
+        "generic/platform=iOS",
+        "-archivePath",
+        archive,
+        "archive",
+      ],
+      iosDir,
+      env,
+    );
 
-  const plist = join(outDir, "ExportOptions.plist");
-  writeFileSync(plist, exportOptions(signing, options.upload));
-  run(
-    "xcrun",
-    [
-      "xcodebuild",
-      "-exportArchive",
-      "-archivePath",
-      archive,
-      "-exportPath",
-      join(outDir, "export"),
-      "-exportOptionsPlist",
-      plist,
-      "-authenticationKeyPath",
-      options.key.path,
-      "-authenticationKeyID",
-      options.key.id,
-      "-authenticationKeyIssuerID",
-      options.key.issuer,
-    ],
-    iosDir,
-  );
-  console.log(
-    options.upload
-      ? `\nUploaded build ${version}. It appears in TestFlight once App Store Connect has processed it.`
-      : `\nExported build ${version} to ${join(outDir, "export")}.`,
-  );
-  return version;
+    const plist = join(outDir, "ExportOptions.plist");
+    writeFileSync(plist, exportOptions(signing, options.upload));
+    run(
+      "xcrun",
+      [
+        "xcodebuild",
+        "-exportArchive",
+        "-archivePath",
+        archive,
+        "-exportPath",
+        join(outDir, "export"),
+        "-exportOptionsPlist",
+        plist,
+        "-authenticationKeyPath",
+        options.key.path,
+        "-authenticationKeyID",
+        options.key.id,
+        "-authenticationKeyIssuerID",
+        options.key.issuer,
+      ],
+      iosDir,
+    );
+    console.log(
+      options.upload
+        ? `\nUploaded build ${version}. It appears in TestFlight once App Store Connect has processed it.`
+        : `\nExported build ${version} to ${join(outDir, "export")}.`,
+    );
+    return version;
+  } finally {
+    // Leave the generated project as the app "Zami", which `vpx _dev` and the Maestro
+    // flows build; its pods install on their next build.
+    if (env.ZAMI_VARIANT !== "production") {
+      run(
+        process.execPath,
+        [expoCli, "prebuild", "--platform", "ios", "--clean", "--no-install"],
+        appDir,
+        { ...process.env, ZAMI_VARIANT: "production", EXPO_NO_GIT_STATUS: "1" },
+      );
+    }
+  }
 }

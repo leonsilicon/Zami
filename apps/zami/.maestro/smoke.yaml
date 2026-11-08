@@ -1,9 +1,9 @@
-# The app starts from a fresh install and renders its first screen: Metro's bundle loads
-# on Hermes, Zam's i18n resolves its English strings (which needs the FormatJS polyfills),
-# and Zam's Splash component renders through Uniwind.
+# The app starts from a fresh install and renders Zam's sign-in screen: Metro's bundle
+# loads on Hermes, Zam's i18n resolves its English strings (which needs the FormatJS
+# polyfills), the stores restore no session, and LoginView renders through Uniwind.
 appId: com.leonsilicon.zami
 ---
 - runFlow: subflows/launch-app.yaml
-- assertVisible: "i18n: Restoring session…"
-# Splash's own copy of the same string (Maestro matches the whole text).
-- assertVisible: "Restoring session…"
+- assertVisible: "Sign in to your Matrix account"
+- assertVisible: "Sign in with QR code"
+- assertVisible: "Don't have an account?"
