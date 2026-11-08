@@ -1,8 +1,9 @@
 // The font Zam's settings choose for the whole app. On the web, Zam sets it as a CSS stack
 // on the root element (`--zam-font-family`, which `html, body` use) and every element
 // inherits it. React Native text inherits nothing from the root and takes one family, so
-// the app keeps it here: the stack's first family the app has loaded (as on the web,
-// where a family that isn't loaded falls back to the next), or none (the system font).
+// the app keeps it here: the stack's first family the app has (as on the web, where a
+// family that isn't loaded or installed falls back to the next), or none (the system
+// font). With no font picked, that's Zam's own stack, as on the web.
 // Plain TypeScript, so Zam's code can set it from anywhere, tests included.
 
 type Listener = () => void;
@@ -13,6 +14,18 @@ const loaded = new Map<string, string>();
 let family: string | null = null;
 const listeners = new Set<Listener>();
 
+/**
+ * Zam's font when none is picked: its stylesheet's stack for `html, body` (src/app.css),
+ * which a browser on iOS draws in Helvetica Neue.
+ */
+export const DEFAULT_FONT_STACK = '"gg sans", "Helvetica Neue", Helvetica, Arial, sans-serif';
+
+/**
+ * The families iOS ships that Zam's stacks name, which a browser there finds installed
+ * (see setFontsInstalled).
+ */
+export const IOS_INSTALLED_FONTS: readonly string[] = ["Helvetica Neue", "Helvetica", "Arial"];
+
 /** The families in a CSS `font-family` value, unquoted. */
 export function fontFamilies(value: string): string[] {
   return value
@@ -21,10 +34,12 @@ export function fontFamilies(value: string): string[] {
     .filter((name) => name !== "");
 }
 
-/** The family to render for a CSS stack: its first loaded family, or null for none. */
+/**
+ * The family to render for a CSS stack (Zam's default stack for null): its first family
+ * the app has, or null for none (the system font).
+ */
 export function resolveFontStack(value: string | null): string | null {
-  if (value === null) return null;
-  for (const name of fontFamilies(value)) {
+  for (const name of fontFamilies(value ?? DEFAULT_FONT_STACK)) {
     const rendered = loaded.get(name);
     if (rendered !== undefined) return rendered;
   }
@@ -38,7 +53,7 @@ function update(): void {
   for (const listener of listeners) listener();
 }
 
-/** Sets the app's font as Zam's CSS stack (`--zam-font-family`), or null for the system's. */
+/** Sets the app's font as Zam's CSS stack (`--zam-font-family`), or null for Zam's default. */
 export function setAppFontStack(value: string | null): void {
   stack = value;
   update();
@@ -52,6 +67,12 @@ export function setAppFontStack(value: string | null): void {
 export function setFontLoaded(name: string, rendered: string | null = name): void {
   if (rendered === null) loaded.delete(name);
   else loaded.set(name, rendered);
+  update();
+}
+
+/** Makes families the platform has installed available to stacks, as a browser finds them. */
+export function setFontsInstalled(names: readonly string[]): void {
+  for (const name of names) loaded.set(name, name);
   update();
 }
 

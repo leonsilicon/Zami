@@ -1,8 +1,10 @@
 // Every Text and TextInput in the app gets the app's font (appFontFamily()) unless it
-// chooses its own, as every element inherits the root's `font-family` on the web. React
-// Native has no default font to set, and its Text is a plain function, so the JSX runtime
-// hands each <Text>/<TextInput> element to a thin wrapper that adds the family. A Text
-// nested in another inherits its parent's font, so only outermost ones get it.
+// chooses its own, as every element inherits the root's `font-family` on the web, and the
+// web's default size, 16px (React Native's is 14), unless it sets one: on the web, text
+// with no size class is 16px. React Native has no default font to set, and its Text is a
+// plain function, so the JSX runtime hands each <Text>/<TextInput> element to a thin
+// wrapper that adds them. A Text nested in another inherits its parent's font, so only
+// outermost ones get them.
 //
 // The wrapper reads two contexts (the family, which AppFontProvider at the root provides,
 // and React Native's own "inside a Text" flag) and renders the element as it was, with
@@ -24,7 +26,7 @@ import {
   type TextStyle,
 } from "react-native";
 import { appFontFamily, subscribeAppFont } from "#app-font";
-import { classChoosesFamily } from "#font-class";
+import { classChoosesFamily, classChoosesSize } from "#font-class";
 
 type Create = (type: unknown, ...rest: unknown[]) => unknown;
 type Runtime = Record<"jsx" | "jsxs" | "jsxDEV", Create | undefined>;
@@ -50,15 +52,33 @@ function choosesOwnFamily({ className, style }: FontProps): boolean {
   return style != null && StyleSheet.flatten(style)?.fontFamily != null;
 }
 
+/** A browser's default text size, which Zam's unsized text has. */
+const WEB_FONT_SIZE = 16;
+
+function choosesOwnSize({ className, style }: FontProps): boolean {
+  if (classChoosesSize(className)) return true;
+  return style != null && StyleSheet.flatten(style)?.fontSize != null;
+}
+
 function withAppFont(Component: ComponentType<FontProps>, name: string, nestable: boolean) {
   function AppFont(props: FontProps) {
     const family = useContext(AppFontContext);
     const nested = useContext(TextAncestorContext);
-    if (family === null || (nestable && nested) || choosesOwnFamily(props)) {
+    if (nestable && nested) return createElement(Component, props);
+    // Only what the element doesn't choose itself: this goes before the element's own
+    // style, and Uniwind puts its classes before that, so it would override them.
+    const fontFamily = family !== null && !choosesOwnFamily(props) ? family : undefined;
+    const fontSize = choosesOwnSize(props) ? undefined : WEB_FONT_SIZE;
+    if (fontFamily === undefined && fontSize === undefined) {
       return createElement(Component, props);
     }
-    // Before the element's own style, which its classes join (Uniwind puts them first).
-    return createElement(Component, { ...props, style: [{ fontFamily: family }, props.style] });
+    // No key without a value: React Native's flattening copies `undefined` over the
+    // value a class set.
+    const base: TextStyle = {
+      ...(fontFamily === undefined ? {} : { fontFamily }),
+      ...(fontSize === undefined ? {} : { fontSize }),
+    };
+    return createElement(Component, { ...props, style: [base, props.style] });
   }
   AppFont.displayName = name;
   return AppFont;

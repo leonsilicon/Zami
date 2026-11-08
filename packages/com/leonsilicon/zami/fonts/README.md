@@ -15,11 +15,17 @@ Fonts for Zam's code in React Native, which has none of the web's: no `@font-fac
 - **The app's font** (`./app-font`, no React Native): on the web Zam sets the chosen font
   as a CSS stack on the root (`--zam-font-family`) and everything inherits it. Here
   `applyMessageFont` (`src/lib/utils/messageDisplay.zami.ts`) calls `setAppFontStack`, and
-  the app renders the stack's first family it has loaded (`setFontLoaded`), or the system
-  font, as a browser falls back past a family it doesn't have.
+  the app renders the stack's first family it has loaded (`setFontLoaded`) or the
+  platform has installed (`setFontsInstalled`), or the system font, as a browser falls
+  back past a family it doesn't have. With no font picked, the stack is Zam's own
+  (`DEFAULT_FONT_STACK`, from `src/app.css`), so on iOS the app draws Helvetica Neue,
+  as Safari draws Zam (`IOS_INSTALLED_FONTS`, which the app marks installed on iOS).
 - **Every Text and TextInput** takes that family (`installAppFont()`, which the app calls
   first), unless it picks its own (a `font-mono`/`font-sans`/`font-serif`/`font-[…]`
   class or a `fontFamily` style) or is nested in another Text, whose font it inherits.
+  It also takes the web's default size, 16px (React Native's is 14), unless it sets one
+  (a `text-xs` … `text-9xl` or `text-[<length>]` class, or a `fontSize` style): on the
+  web, Zam's text with no size class is 16px.
   React Native has no default font to set and its Text is a plain function, so the JSX
   runtime (`react/jsx-runtime`, `react/jsx-dev-runtime`) hands those elements to a wrapper
   that puts the family before their own style.

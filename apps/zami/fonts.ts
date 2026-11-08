@@ -2,9 +2,18 @@
 // Appearance), and Zam's bundled fonts load before Zam's code starts, as its stylesheet's
 // @font-face rules make them available on the web. assets/fonts holds them as TrueType,
 // written from Zam's WOFF2 files by `vpx _fonts` (@-/com.leonsilicon.zami.fonts).
-import { installAppFont, loadFontFamilies } from "@-/com.leonsilicon.zami.fonts";
+import {
+  installAppFont,
+  IOS_INSTALLED_FONTS,
+  loadFontFamilies,
+  setFontsInstalled,
+} from "@-/com.leonsilicon.zami.fonts";
+import { Platform } from "react-native";
 
 installAppFont();
+// The families iOS ships that Zam's stacks fall back to, as Safari finds them: with no
+// font picked, Zam draws in Helvetica Neue there.
+if (Platform.OS === "ios") setFontsInstalled(IOS_INSTALLED_FONTS);
 
 /**
  * Resolves once Zam's bundled fonts are loaded (or failed to), or after five seconds:
