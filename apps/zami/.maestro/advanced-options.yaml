@@ -1,37 +1,37 @@
-# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox, on by
-# default) switches off and on and reports its state to accessibility. Maestro reads that
-# state differently per platform: Android's node is checkable and checked; iOS gives React
-# Native's checkbox no checked trait, but its value says "checkbox, checked" (or
-# "unchecked"), which Maestro takes as the element's text.
+# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox, off by
+# default in Zami, unlike Zam, because sliding sync breaks signing in to Beeper) switches on
+# and off and reports its state to accessibility. Maestro reads that state differently per
+# platform: Android's node is checkable and checked; iOS gives React Native's checkbox no
+# checked trait, but its value says "checkbox, checked" (or "unchecked"), which Maestro
+# takes as the element's text.
 appId: com.leonsilicon.zami
 ---
 - runFlow: subflows/launch-app.yaml
 - tapOn:
     text: ".*Advanced options"
     retryTapIfNoChange: false
+# On a small screen (CI's Android emulator) the checkbox opens below the fold.
+- scrollUntilVisible:
+    element:
+      text: "Use sliding sync"
+    direction: DOWN
 - runFlow:
     when:
       platform: iOS
     commands:
-      - assertVisible: "checkbox, checked"
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
       - assertVisible: "checkbox, unchecked"
       - tapOn:
           text: "Use sliding sync"
           retryTapIfNoChange: false
       - assertVisible: "checkbox, checked"
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible: "checkbox, unchecked"
 - runFlow:
     when:
       platform: Android
     commands:
-      - assertVisible:
-          text: "Use sliding sync"
-          checked: true
-      - tapOn:
-          text: "Use sliding sync"
-          retryTapIfNoChange: false
       - assertVisible:
           text: "Use sliding sync"
           checked: false
@@ -41,3 +41,9 @@ appId: com.leonsilicon.zami
       - assertVisible:
           text: "Use sliding sync"
           checked: true
+      - tapOn:
+          text: "Use sliding sync"
+          retryTapIfNoChange: false
+      - assertVisible:
+          text: "Use sliding sync"
+          checked: false
