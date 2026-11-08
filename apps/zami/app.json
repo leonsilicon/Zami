@@ -2,6 +2,7 @@
   "expo": {
     "name": "Zami",
     "slug": "zami",
+    "icon": "./assets/icon.png",
     "owner": "improvelabs",
     "scheme": ["zami", "com.leonsilicon.zami"],
     "version": "0.1.0",
