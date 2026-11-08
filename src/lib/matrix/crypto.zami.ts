@@ -1877,6 +1877,23 @@ export async function ownDeviceKeysReplaced(
 }
 
 /**
+ * Zami: whether the engine just opened holds the key recorded for this device
+ * (see ownDeviceKeysReplaced), which needs no network. It is then the store
+ * that made this device, so sync can start before the server has been asked.
+ */
+export async function ownDeviceKeyMatchesRecord(
+    client: MatrixClient,
+): Promise<boolean> {
+    const crypto = client.getCrypto();
+    const userId = client.getUserId();
+    const deviceId = client.getDeviceId();
+    if (!cryptoAvailable || !crypto || !userId || !deviceId) return false;
+    const recorded = readScoped(ownDeviceKeyName(deviceId), userId);
+    if (!recorded) return false;
+    return recorded === (await crypto.getOwnDeviceKeys()).ed25519;
+}
+
+/**
  * Every session of `userId` that this session's crypto knows, with its trust.
  * For someone we share an encrypted room with, these are exactly the sessions
  * our messages are encrypted for: one missing here gets no keys from us. With

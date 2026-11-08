@@ -401,6 +401,7 @@
     },
   },
   "patchedDependencies": {
+    "react-native-indexeddb-sqlite@0.1.0": "patches/react-native-indexeddb-sqlite@0.1.0.patch",
     "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
   },
   "catalog": {
