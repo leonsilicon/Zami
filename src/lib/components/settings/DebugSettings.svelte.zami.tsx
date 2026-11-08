@@ -625,7 +625,7 @@ export default function DebugSettings() {
                 ) : (
                     <ScrollView
                         nestedScrollEnabled
-                        className="mt-1 max-h-60 rounded bg-discord-backgroundTertiary"
+                        className="mt-1 max-h-60 rounded bg-discord-backgroundTertiary grow-0"
                         contentContainerClassName="p-2"
                     >
                         <Text

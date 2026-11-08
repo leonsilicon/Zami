@@ -665,7 +665,7 @@ export default function RichPresenceSettings() {
                                         <ScrollView
                                             nestedScrollEnabled
                                             keyboardShouldPersistTaps="handled"
-                                            className="max-h-56"
+                                            className="max-h-56 grow-0"
                                         >
                                             {shownPrograms.map((p) => (
                                                 <Pressable

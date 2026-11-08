@@ -30,6 +30,7 @@
     "@-/com.leonsilicon.zami.icons": "workspace:*",
     "@-/com.leonsilicon.zami.keyboard": "workspace:*",
     "@-/com.leonsilicon.zami.metro": "workspace:*",
+    "@-/com.leonsilicon.zami.parity": "workspace:*",
     "@-/com.leonsilicon.zami.rn": "workspace:*",
     "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
     "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
