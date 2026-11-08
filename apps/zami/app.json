@@ -2,6 +2,7 @@
   "expo": {
     "name": "Zami",
     "slug": "zami",
+    "owner": "improvelabs",
     "scheme": ["zami", "com.leonsilicon.zami"],
     "version": "0.1.0",
     "orientation": "default",
@@ -16,7 +17,8 @@
       }
     },
     "android": {
-      "package": "com.leonsilicon.zami"
+      "package": "com.leonsilicon.zami",
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-sqlite",
@@ -67,6 +69,11 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0e15223a-ea96-4bfc-9411-7879f30a8e35"
+      }
+    }
   }
 }

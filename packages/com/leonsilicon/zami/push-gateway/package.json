@@ -1,0 +1,17 @@
+{
+  "name": "@-/com.leonsilicon.zami.push-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Matrix push gateway in front of Expo's push service: homeservers post Matrix notify requests to it, and it sends them to the Expo push tokens they name.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

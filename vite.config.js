@@ -55,13 +55,15 @@ const zamIgnored = [...zamFiles, ...zamUnformatted];
 // The Zami versions in Zam's tree.
 const zamiFiles = ["**/*.zami.*"];
 
-// Generated: native projects (Expo prebuild), Expo's cache, and the class-name types
-// Uniwind rewrites on every Metro start.
+// Generated: native projects (Expo prebuild), Expo's cache, the class-name types Uniwind
+// rewrites on every Metro start, and Wrangler's types (`wrangler types`) and local state.
 const generated = [
   "apps/zami/ios/**",
   "apps/zami/android/**",
   "apps/zami/.expo/**",
   "apps/zami/uniwind-types.d.ts",
+  "apps/push-gateway/worker-configuration.d.ts",
+  "apps/*/.wrangler/**",
 ];
 
 const ZAM_TESTS = "packages/com/leonsilicon/zami/vite/vitest.zam.config.ts";
@@ -168,7 +170,7 @@ export default defineConfig({
       "test:zam": { cache: false, command: `vp test run -c ${ZAM_TESTS}` },
       typecheck: {
         command:
-          "tsc -p packages && tsc -p apps/zami && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react",
+          "tsc -p packages && tsc -p apps/zami && tsc -p apps/push-gateway && tsc -p packages/com/leonsilicon/zami/sveltekit && tsc -p packages/com/leonsilicon/zami/svelte-react",
       },
       // Bundles the app's JS for both platforms with Metro (no native build): proves every
       // import resolves to a Zami file and every file transforms.

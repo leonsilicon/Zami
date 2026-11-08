@@ -1,0 +1,10 @@
+{
+  "name": "@-apps/push-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "description": "zami-push.leonsilicon.com: Zami's Matrix push gateway, which sends homeservers' pushes through Expo's push service, on Cloudflare Workers.",
+  "type": "module",
+  "dependencies": {
+    "@-/com.leonsilicon.zami.push-gateway": "workspace:*"
+  }
+}

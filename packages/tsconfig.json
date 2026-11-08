@@ -20,6 +20,7 @@
     "com/leonsilicon/zami/dev/*.ts",
     "com/leonsilicon/zami/maestro/**/*.ts",
     "com/leonsilicon/zami/vite/*.ts",
+    "com/leonsilicon/zami/push-gateway/**/*.ts",
     "com/leonsilicon/zami/metro/*.js"
   ]
 }

@@ -48,12 +48,11 @@ Zam's build-time settings (`VITE_*`) are Expo environment variables here, named
 `EXPO_PUBLIC_*` (`import.meta.env.VITE_FOO` reads `EXPO_PUBLIC_FOO`) and inlined when the
 dev server bundles the app, so set them before `vpx _dev`:
 
-- `EXPO_PUBLIC_PUSH_GATEWAY_URL`: the notify endpoint of the Sygnal push gateway that
-  delivers Zami's iOS pushes (`https://…/_matrix/push/v1/notify`). That Sygnal needs an
-  `apns` app with the id `com.leonsilicon.zami` (the bundle id) and Zami's APNs key, with
-  `platform: sandbox` for development builds. Unset, the iOS app registers no pusher (Zam's
-  own gateway, its default, has no app for Zami) and shows notifications only while it's
-  running.
+- `EXPO_PUBLIC_PUSH_GATEWAY_URL`: the notify endpoint of the push gateway the app registers
+  its pushers with (`https://…/_matrix/push/v1/notify`). Unset, it's Zami's own,
+  [`apps/push-gateway`](../apps/push-gateway/README.md), which sends pushes through Expo's
+  push service with the credentials the EAS project `@improvelabs/zami` holds. That README
+  describes the setup.
 
 ## Editors
 
@@ -78,6 +77,7 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | --- | --- |
 | `apps/zami` | The Expo app (`@-apps/zami`) |
 | `apps/site` | https://zami.leonsilicon.com, the app's home page and OAuth `client_uri` (`@-apps/site`, Cloudflare Workers) |
+| `apps/push-gateway` | https://zami-push.leonsilicon.com, the Matrix push gateway that sends the app's pushes through Expo's push service (`@-apps/push-gateway`, Cloudflare Workers) |
 | `packages/com/leonsilicon/zami/ports` | `_zami`: maps upstream files to Zami versions, syncs and checks them |
 | `packages/com/leonsilicon/zami/metro` | Metro config: resolves only `.zami.` files in Zam's tree; compiles rune modules; handles Vite's build-time features |
 | `packages/com/leonsilicon/zami/vite` | The same for Vite, so upstream's tests run against the Zami files |
@@ -85,6 +85,7 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | `packages/com/leonsilicon/zami/svelte-react` | `useRune`/`useDeepRune`: React components re-render when Svelte runes change |
 | `packages/com/leonsilicon/zami/icons` | `lucide-svelte` for the app: lucide-react-native icons that take Zam's Tailwind classes |
 | `packages/com/leonsilicon/zami/rn` | What translations share in place of web features: `Portal`, `Html`, `Image`/`mediaSource` |
+| `packages/com/leonsilicon/zami/push-gateway` | The push gateway itself: Matrix notify requests in, Expo push messages out |
 | `packages/com/leonsilicon/zami/dev` | `_dev`: builds, installs and runs the app with its dev server |
 | `packages/com/leonsilicon/zami/maestro` | `_maestro`: runs the app's Maestro end-to-end flows (`apps/zami/.maestro`) on a simulator or emulator |
 | `zami-ports.json` | Which upstream files have a Zami version (all but the unused configuration in `exclude`), and the override (`package.json`) |
