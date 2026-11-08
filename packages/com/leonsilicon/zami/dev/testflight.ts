@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, createPrivateKey, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -368,13 +368,17 @@ export async function runTestflight(options: {
 
   // --clean: the generated project is the variant's alone (its bundle ID, name, schemes).
   run(process.execPath, [expoCli, "prebuild", "--platform", "ios", "--clean"], appDir, env);
-  const pbxproj = join(iosDir, "Zami.xcodeproj", "project.pbxproj");
+  // Expo names the project after the app: "Zami", or "SZami" for "(S) Zami".
+  const workspace = readdirSync(iosDir).find((file) => file.endsWith(".xcworkspace"));
+  if (!workspace) throw new Error(`expo prebuild made no Xcode workspace in ${iosDir}`);
+  const project = workspace.slice(0, -".xcworkspace".length);
+  const pbxproj = join(iosDir, `${project}.xcodeproj`, "project.pbxproj");
   writeFileSync(pbxproj, signReleaseManually(readFileSync(pbxproj, "utf8"), signing));
 
   const version = buildNumber();
   run(
     "/usr/libexec/PlistBuddy",
-    ["-c", `Set :CFBundleVersion ${version}`, join(iosDir, "Zami", "Info.plist")],
+    ["-c", `Set :CFBundleVersion ${version}`, join(iosDir, project, "Info.plist")],
     appDir,
   );
 
@@ -385,9 +389,9 @@ export async function runTestflight(options: {
     [
       "xcodebuild",
       "-workspace",
-      "Zami.xcworkspace",
+      workspace,
       "-scheme",
-      "Zami",
+      project,
       "-configuration",
       "Release",
       "-destination",
