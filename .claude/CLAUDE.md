@@ -17,6 +17,8 @@ changing anything.
 - Code that isn't the Zami version of a Zam file goes in a Flatcap package under
   `packages/com/leonsilicon/zami/` (see the user's Flatcap conventions).
 - Run the app with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
+- Run the end-to-end flows (`apps/zami/.maestro`) with `vpx _maestro` (iOS) or
+  `vpx _maestro android`. Update them when you change a screen they cover.
 - Test with `vp run test`: it includes upstream's own tests, run against the
   Zami files. A failing upstream test means the Zami file is wrong, not the test.
 - Format and lint with Vite+: `vp fmt`, `vp lint`, `vp check`. The root `vite.config.js`

@@ -18,6 +18,7 @@
     "com/leonsilicon/zami/ports/**/*.ts",
     "com/leonsilicon/zami/ports/*.js",
     "com/leonsilicon/zami/dev/*.ts",
+    "com/leonsilicon/zami/maestro/**/*.ts",
     "com/leonsilicon/zami/vite/*.ts",
     "com/leonsilicon/zami/metro/*.js"
   ]

@@ -236,6 +236,21 @@
         "expo-modules-core": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/maestro": {
+      "name": "@-/com.leonsilicon.zami.maestro",
+      "version": "0.0.0",
+      "bin": {
+        "_maestro": "./_maestro.ts",
+      },
+      "dependencies": {
+        "@-/com.leonsilicon.zami.dev": "workspace:*",
+        "@-/com.leonsilicon.zami.ports": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/metro": {
       "name": "@-/com.leonsilicon.zami.metro",
       "version": "0.0.0",
@@ -456,6 +471,8 @@
     "@-/com.leonsilicon.zami.icons": ["@-/com.leonsilicon.zami.icons@workspace:packages/com/leonsilicon/zami/icons"],
 
     "@-/com.leonsilicon.zami.keyboard": ["@-/com.leonsilicon.zami.keyboard@workspace:packages/com/leonsilicon/zami/keyboard"],
+
+    "@-/com.leonsilicon.zami.maestro": ["@-/com.leonsilicon.zami.maestro@workspace:packages/com/leonsilicon/zami/maestro"],
 
     "@-/com.leonsilicon.zami.metro": ["@-/com.leonsilicon.zami.metro@workspace:packages/com/leonsilicon/zami/metro"],
 

@@ -1,0 +1,8 @@
+# The default suite: what `vpx _maestro` (iOS) and `vpx _maestro android` run when given no
+# flow names. The runner resets the app before every flow, so each one starts from a fresh
+# install and launches the app itself. See README.md.
+flows:
+  - smoke.yaml
+  - encryption.yaml
+  - toggle.yaml
+  - toasts.yaml

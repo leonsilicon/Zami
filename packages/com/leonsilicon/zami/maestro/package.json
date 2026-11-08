@@ -1,0 +1,24 @@
+{
+  "name": "@-/com.leonsilicon.zami.maestro",
+  "version": "0.0.0",
+  "private": true,
+  "description": "`vpx _maestro`: run the Zami app's Maestro end-to-end flows on an iOS simulator or Android emulator.",
+  "bin": {
+    "_maestro": "./_maestro.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.dev": "workspace:*",
+    "@-/com.leonsilicon.zami.ports": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

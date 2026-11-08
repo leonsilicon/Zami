@@ -1,0 +1,93 @@
+# Zami's end-to-end flows (apps/zami/.maestro) on an Android emulator. It builds the
+# debug APK, boots an emulator, and runs `vpx _maestro android`, which installs that APK,
+# serves the app's JS from Metro and runs the suite in config.yaml (or the flows given to
+# a manual run). Each flow's logs and failure screenshots are uploaded as an artifact.
+name: Zami Maestro
+
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      flows:
+        description: Flows to run, space-separated (e.g. `smoke toasts`). Empty runs the suite in config.yaml.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zami-maestro-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      MAESTRO_VERSION: 2.6.1
+      MAESTRO_SHA256: 3440825f514f537c6a96bcf5de995780c2a4a7f83a43208fdc95d4f1fecfad3b
+    steps:
+      - name: Free disk space for the Android build and emulator
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          node-version: "24"
+          run-install: true
+          cache: true
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Cache Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('bun.lock', 'apps/zami/app.json') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: Build the debug APK (x86_64, the emulator's architecture)
+        working-directory: apps/zami
+        run: |
+          vpx expo prebuild --platform android --no-install
+          cd android
+          ./gradlew :app:assembleDebug -PreactNativeArchitectures=x86_64 --no-daemon
+      - name: Install Maestro
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" "https://github.com/mobile-dev-inc/maestro/releases/download/cli-$MAESTRO_VERSION/maestro.zip"
+          echo "$MAESTRO_SHA256  $RUNNER_TEMP/maestro.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the Maestro flows on an Android emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          FLOWS: ${{ inputs.flows }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
+          script: vpx _maestro android $FLOWS
+      - name: Upload the Maestro output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: maestro-android
+          path: node_modules/.cache/zami/maestro/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
