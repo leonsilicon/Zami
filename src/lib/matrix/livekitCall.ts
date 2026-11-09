@@ -1716,6 +1716,105 @@ export async function leaveVoiceCall(): Promise<void> {
     await leaveVoiceCallInternal();
 }
 
+// ── Calls a reload walked out of ────────────────────────────────────────
+// A reload (or a closed window) never runs leaveVoiceCall, and the homeserver
+// has no delayed leave event to send for us, so this device's membership stayed
+// in the room for its whole 4 h expiry: everyone else kept a ghost of us in the
+// call, and the reloaded page saw itself as already in it.
+
+/** When this page started: a membership sent before then is a previous
+ *  page's. */
+const PAGE_STARTED = Date.now();
+
+/** State keys of this device's live legacy call memberships in `room`. */
+function ownMembershipStateKeys(
+    client: MatrixClient,
+    room: Room,
+    sentBefore = Infinity,
+): string[] {
+    const me = client.getUserId();
+    const device = client.getDeviceId();
+    if (!me || !device) return [];
+    const keys: string[] = [];
+    for (const ev of room.currentState.getStateEvents(
+        EventType.GroupCallMemberPrefix,
+    ) ?? []) {
+        const content = ev.getContent();
+        if (ev.getSender() !== me || content.device_id !== device) continue;
+        if (ev.getTs() >= sentBefore) continue;
+        const key = ev.getStateKey();
+        if (key) keys.push(key);
+    }
+    return keys;
+}
+
+function membershipStatePath(
+    client: MatrixClient,
+    roomId: string,
+    stateKey: string,
+): string {
+    return (
+        `${client.getHomeserverUrl().replace(/\/+$/, "")}/_matrix/client/v3/rooms/` +
+        `${encodeURIComponent(roomId)}/state/` +
+        `${encodeURIComponent(EventType.GroupCallMemberPrefix)}/` +
+        encodeURIComponent(stateKey)
+    );
+}
+
+/** Once synced: empty every call membership of this device that an earlier
+ *  page left behind. Skipped while a call is joining or joined, which would
+ *  be sending the same state key. */
+export async function clearStaleOwnCallMemberships(): Promise<void> {
+    const client = matrixClient;
+    if (!client || activeVoice) return;
+    const seq = voiceJoinSeq;
+    const sends: Promise<unknown>[] = [];
+    for (const room of client.getRooms()) {
+        for (const key of ownMembershipStateKeys(client, room, PAGE_STARTED)) {
+            if (activeVoice || seq !== voiceJoinSeq) break;
+            sends.push(
+                client.sendStateEvent(
+                    room.roomId,
+                    EventType.GroupCallMemberPrefix,
+                    {} as never,
+                    key,
+                ),
+            );
+        }
+    }
+    await Promise.allSettled(sends);
+}
+
+/** The page is going away mid-call: drop the membership with a request that
+ *  outlives the page (keepalive), since the SDK's own leave is async and is
+ *  cut off. Whatever this misses, the sweep above clears on the next load. */
+function leaveCallOnPageHide(): void {
+    const call = activeVoice;
+    const client = matrixClient;
+    const token = client?.getAccessToken();
+    if (!call || !client || !token) return;
+    const room = client.getRoom(call.roomId);
+    if (!room) return;
+    for (const key of ownMembershipStateKeys(client, room)) {
+        try {
+            void fetch(membershipStatePath(client, call.roomId, key), {
+                method: "PUT",
+                keepalive: true,
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: "{}",
+            }).catch(() => {});
+        } catch {
+            // Best effort.
+        }
+    }
+    for (const r of callLkRooms(call)) void r.disconnect().catch(() => {});
+}
+if (typeof window !== "undefined")
+    window.addEventListener("pagehide", leaveCallOnPageHide);
+
 let voiceLeaveInFlight: Promise<void> | null = null;
 
 async function leaveVoiceCallInternal(): Promise<void> {
@@ -1779,7 +1878,7 @@ async function leaveVoiceCallInternal(): Promise<void> {
 
 // The first-mic-track creation in flight, so a double unmute can't publish
 // two microphones.
-let micCreation: Promise<void> | null = null;
+let micCreation: Promise<unknown> | null = null;
 
 /** Turn the call's mic on or off. Once a mic track exists this is LiveKit's
  *  own mute/unmute. Creating the FIRST one with Zam's mic chain on is done
@@ -3290,8 +3389,10 @@ function reportListeningLoss(call: ActiveVoiceCall, loss: number | null): void {
  * on the way out, or a listener's, which they report to us) and stop once
  * the call is clean again (utils/audioRedundancy). Encrypted calls repeat the
  * earlier frames inside each packet (audio/redundancy), which costs nothing
- * to switch; the others turn RED on by republishing the mic, so a muted mic
- * waits and picks the change up on a later sample.
+ * to switch. The others turn RED on by republishing the mic, which briefly
+ * cuts the other end's audio, so they never turn it back off: at most one
+ * switch per call. A muted mic waits and picks the change up on a later
+ * sample.
  */
 async function sampleAudioRedundancy(call: ActiveVoiceCall): Promise<void> {
     const lp = call.lkRoom.localParticipant;
@@ -3319,7 +3420,8 @@ async function sampleAudioRedundancy(call: ActiveVoiceCall): Promise<void> {
     const loss = Math.max(sending ?? 0, reportedLossOf(call).worst(now));
     let controller = micRedundancy.get(call);
     if (!controller) {
-        controller = new RedundancyController();
+        // Only encrypted calls can switch redundancy off without a republish.
+        controller = new RedundancyController(!call.e2ee);
         micRedundancy.set(call, controller);
     }
     const change = controller.push(loss, now);
@@ -3338,19 +3440,22 @@ async function sampleAudioRedundancy(call: ActiveVoiceCall): Promise<void> {
         controller.undo(change);
         return;
     }
-    await republishMicRed(call, change);
+    if (!(await republishMicRed(call, change))) controller.undo(change);
 }
 
+/** Republish the mic with RED on or off. Returns whether the new setting
+ *  took effect, so the caller can try again on a later sample when it did
+ *  not (and not believe a latched-on setting that never went out). */
 async function republishMicRed(
     call: ActiveVoiceCall,
     red: boolean,
-): Promise<void> {
+): Promise<boolean> {
     const lp = call.lkRoom.localParticipant;
     const source = call.lk.Track.Source.Microphone;
     while (micCreation) await micCreation;
     const pub = lp.getTrackPublication(source);
     const track = pub?.audioTrack;
-    if (!pub || !track || activeVoice !== call) return;
+    if (!pub || !track || activeVoice !== call) return false;
     const previous = { ...pub.options, source };
     // Held in micCreation so a mute or unmute during the swap waits for it
     // rather than creating a second track.
@@ -3359,9 +3464,10 @@ async function republishMicRed(
             await lp.unpublishTrack(track, false);
             if (activeVoice !== call) {
                 track.stop();
-                return;
+                return false;
             }
             await publishWithRetry(lp, track, { ...previous, red });
+            return true;
         } catch (err) {
             console.error("Mic redundancy switch failed:", err);
             if (activeVoice === call) {
@@ -3371,11 +3477,12 @@ async function republishMicRed(
                     console.error("Couldn't restore the mic:", restoreErr);
                 }
             }
+            return false;
         }
     })();
     micCreation = run;
     try {
-        await run;
+        return await run;
     } finally {
         micCreation = null;
     }

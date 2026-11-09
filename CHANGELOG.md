@@ -4,6 +4,44 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.55.4
+
+✨ **New**
+
+- **Read receipts glide:** when a read avatar moves from one message to the next, it now slides across instead of jumping, when motion is allowed.
+
+🐛 **Fixed**
+
+- **Mic restarts during lossy voice calls:** in unencrypted calls, audio redundancy no longer switches back off once the connection recovers. Turning it off restarted your mic stream, which briefly cut your voice for everyone else; it now stays on for the rest of the call after it first comes on. Encrypted calls still turn it off when the link is clean, since that costs nothing.
+- **Rejoining a call after a reload:** reloading the page used to leave this device in the call room until the membership expired, so the reloaded page thought it was already in the call. Reloading or closing the window now leaves properly.
+- **Favourite GIFs:** picking one now sends it as an actual image instead of a dead link. Favourites saved on another homeserver, from an old account or imported data, are fetched correctly too.
+- **Duplicate notifications on the iOS Home Screen app:** each message could show two notifications. It now shows one.
+- **Encryption setup offered on an account that already has it:** for a few seconds after switching accounts, Zam offered to set up encryption because the first sync had not finished. It now waits.
+- **MIDI playhead stopping short:** the playhead now reaches the end of the file when playback finishes.
+- **Zoomed SVG images:** zooming an SVG now redraws it sharp instead of enlarging a blurry bitmap, you can zoom out below the fitted size, and clicking empty space closes the viewer.
+- **Video stopping when made fullscreen:** a video no longer pauses or unloads the moment it goes fullscreen.
+
+## v1.55.3
+
+✨ **New**
+
+- **Four more languages:** Zam can now be shown in Russian (Русский), Ukrainian (Українська), Chinese (简体中文) and Brazilian Portuguese (Português (Brasil)). Pick one under Appearance > Language in settings; dates use that language's month and weekday names too. Browsers set to Traditional Chinese get Simplified Chinese, and Portugal Portuguese gets the Brazilian translation. The translations are machine-drafted and need review by native speakers.
+- **Full updates in the Flatpak:** desktop updates that change the app itself now install in the Flatpak too, through the Flatpak portal, and Zam restarts into the new version. Before, the Flatpak could only take web updates and pointed you to the release page for the rest. If the portal refuses an update (for example, it needs new permissions), Zam tells you to update from your software center or with `flatpak update`.
+
+🐛 **Fixed**
+
+- **Untranslated text in German, French, Spanish and Japanese:** the soundboard, QR code sign-in, identity change warnings, rich presence, custom CSS and several call and debug settings were still in English. They are now translated.
+
+## v1.55.2
+
+✨ **New**
+
+- **Rich presence for plugins:** plugins can now show what you're doing on your profile ("Playing ...", "Listening to ...") and read other people's rich presence, through the new `zam.presence` API (needs the `"presence"` capability). Each plugin is listed under Settings > Rich presence, where you can switch it off. This works in the web and Android apps too, not only on desktop.
+
+🐛 **Fixed**
+
+- **Read avatars jumping back after a reload:** someone's read avatar now stays on their own latest message after you reload, instead of moving back to an older one.
+
 ## v1.55.1
 
 ✨ **New**
