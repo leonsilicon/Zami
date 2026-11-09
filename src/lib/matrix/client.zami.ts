@@ -10888,5 +10888,6 @@ export {
     setVideoInputDevice,
     setVoiceCaptureConstraints,
     getRemoteAudioStreams,
+    clearStaleOwnCallMemberships,
 } from "./livekitCall";
 export type { CallCodecState, CallEncryptionState } from "./livekitCall";

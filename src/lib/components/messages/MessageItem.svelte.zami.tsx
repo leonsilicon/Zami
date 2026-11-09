@@ -3374,6 +3374,10 @@ function MessageItem({
                             bubble.alignOwn ? "start-4" : "end-4"
                         }`}
                     >
+                        {/* Zami: not ported: receiptGlide (an avatar gliding
+                            from the message its receipt left). It measures DOM
+                            rects across rows and animates with the Web
+                            Animations API; each avatar here just appears. */}
                         {receiptCluster.shown.map((r) => (
                             <Avatar
                                 key={r.userId}

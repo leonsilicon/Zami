@@ -121,7 +121,8 @@ function isObjectUrl(url: string): boolean {
     return url.startsWith("blob:") || url.startsWith("file:");
 }
 
-const MIN_SCALE = 1;
+// Below 1 the image shrinks inside its fitted size.
+const MIN_SCALE = 0.1;
 const MAX_SCALE = 16;
 const ZOOM_STEP = 1.25;
 
@@ -370,6 +371,14 @@ export default function Lightbox({
         imgH.value = imageH;
     }, [imageW, imageH, imgW, imgH]);
 
+    // ── Sharp vectors ───────────────────────────────────────────────────────
+    // Zami: not ported: re-laying out a zoomed SVG at its zoom (and scaling
+    // the transform down by as much) so it is drawn again sharp. expo-image
+    // rasterizes the SVG once, and whether a larger layout makes it decode
+    // again has not been checked on a device; a zoomed SVG may stay blurry.
+    // A vector without a size already takes its ratio from the loaded file
+    // (`naturalBox` above), upstream's `loadedRatio`.
+
     // Clamp the pan so the image can't be dragged past its visible edges.
     function maxPan(s: number) {
         "worklet";
@@ -478,7 +487,7 @@ export default function Lightbox({
             cancelAnimation(ty);
             cancelAnimation(dismiss);
             panPointers.value = e.numberOfPointers;
-            panDismiss.value = scale.value <= MIN_SCALE;
+            panDismiss.value = scale.value <= 1;
         },
         onUpdate: (e) => {
             "worklet";
@@ -490,7 +499,7 @@ export default function Lightbox({
             }
             // Two fingers are the pinch's.
             if (e.numberOfPointers >= 2) return;
-            if (scale.value > MIN_SCALE) {
+            if (scale.value > 1) {
                 tx.value += e.changeX;
                 ty.value += e.changeY;
                 clampPan();
@@ -514,7 +523,7 @@ export default function Lightbox({
         onActivate: (e) => {
             "worklet";
             if (!onImage(e.x, e.y)) return;
-            if (scale.value > MIN_SCALE) {
+            if (scale.value !== 1) {
                 scale.value = withTiming(1, ZOOM_TIMING);
                 tx.value = withTiming(0, ZOOM_TIMING);
                 ty.value = withTiming(0, ZOOM_TIMING);
@@ -526,6 +535,9 @@ export default function Lightbox({
 
     // Zami: the gestures take the whole viewer, so a pinch can start beside a
     // small image; a tap off the image is then the backdrop's click.
+    // Zami: not ported: a tap on an empty (transparent) part of a vector's
+    // box also closing the viewer. Upstream reads the pixel back through a
+    // canvas, which React Native lacks; here the whole box counts as image.
     const backdropTap = useTapGesture({
         onActivate: (e) => {
             "worklet";

@@ -18,6 +18,8 @@ import { t } from "$lib/i18n";
 import FavouriteFileImg from "$lib/components/ui/FavouriteFileImg.svelte";
 import {
     eventFavouriteFile,
+    isMatrixMediaUrl,
+    mediaUrlFavouriteFile,
     parseEventFavouriteSource,
 } from "$lib/matrix/favouriteFile";
 import {
@@ -238,15 +240,29 @@ export default function GifPicker({
         onClose();
     }
 
-    // Zami: unused upstream too (a favourite's tile sends pickUrl(gif.url)).
-    // oxlint-disable-next-line no-unused-vars -- kept so upstream's diffs map.
     async function pickFavourite(gif: FavouriteGif) {
         const source = parseEventFavouriteSource(gif.source);
-        if (!source) return pickUrl(gif.url);
-        const file = await eventFavouriteFile(source).catch(() => null);
-        if (!file) return;
-        onSelectFile?.(file);
-        onClose();
+        if (source) {
+            const file = await eventFavouriteFile(source).catch(() => null);
+            if (!file) return;
+            onSelectFile?.(file);
+            onClose();
+            return;
+        }
+        // An upload starred from an unencrypted room is keyed by its Matrix
+        // media URL. That needs the access token, so it cannot be previewed
+        // from the URL; attach the bytes, as for an encrypted favourite, and it
+        // is sent as an image. A URL naming another homeserver is routed
+        // through ours.
+        if (onSelectFile && isMatrixMediaUrl(gif.url)) {
+            const file = await mediaUrlFavouriteFile(gif.url).catch(() => null);
+            if (file) {
+                onSelectFile(file);
+                onClose();
+                return;
+            }
+        }
+        pickUrl(gif.url);
     }
 
     // Favourites starred before the picker sent klipy.com page links are keyed
@@ -376,7 +392,12 @@ export default function GifPicker({
         // closes the picker.
         if (e.key === "Enter" && activeIndex >= 0) {
             e.preventDefault();
-            pickUrl(activeKeys[activeIndex]);
+            if (tab === "favourites") {
+                const gif = visibleFavourites[activeIndex];
+                if (gif) void pickFavourite(gif);
+            } else {
+                pickUrl(activeKeys[activeIndex]);
+            }
         }
     }
 
@@ -583,7 +604,7 @@ export default function GifPicker({
                                     editing={editingUrl === gif.url}
                                     tagDraft={tagDraft}
                                     onTagDraftChange={setTagDraft}
-                                    onPick={() => pickUrl(gif.url)}
+                                    onPick={() => void pickFavourite(gif)}
                                     onStartEditing={() => startEditing(gif)}
                                     onSaveTags={() => void saveTags()}
                                 />

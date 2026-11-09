@@ -847,6 +847,7 @@ export const en = {
     "richPresence.viaScan": "Process scan",
     "richPresence.viaRpc": "Discord Rich Presence",
     "richPresence.viaMedia": "Media player",
+    "richPresence.viaPlugin": "Plugin",
     "richPresence.blocked": "Blocked",
     "richPresence.allowed": "Allowed",
 
@@ -3893,6 +3894,8 @@ export const en = {
     "updateStatus.aNewVersionIsAvailable":
         "A new version is available{versionSuffix}",
     "updateStatus.openReleasePage": "Open release page",
+    "updateStatus.flatpakManualUpdate":
+        "Update available{versionSuffix}. Install it from your software center or with flatpak update",
     "updateStatus.updateCheckFailed": "Update check failed",
     "updateStatus.checkForUpdatesToInstallThe":
         "Check for updates to install the latest version.",

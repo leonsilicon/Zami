@@ -27,6 +27,9 @@ export interface UpdateStatusInput {
     autoApplyBlocked?: boolean;
     /** The offered version already failed to install on an earlier launch. */
     installFailed?: boolean;
+    /** With "unsupported": the app cannot install it, the system can (a
+     *  Flatpak update that needs new permissions, or no update portal). */
+    manual?: "flatpak";
 }
 
 export interface UpdateStatusView {
@@ -50,8 +53,16 @@ export interface UpdateStatusView {
  * omits the `(v…)` fragment rather than printing `(undefined)`.
  */
 export function updateStatusView(input: UpdateStatusInput): UpdateStatusView {
-    const { phase, percent, version, message, platform, kind, installFailed } =
-        input;
+    const {
+        phase,
+        percent,
+        version,
+        message,
+        platform,
+        kind,
+        installFailed,
+        manual,
+    } = input;
 
     const versionSuffix = version ? ` (v${version})` : "";
     const clampedPercent = Math.max(0, Math.min(100, Math.round(percent ?? 0)));
@@ -147,6 +158,17 @@ export function updateStatusView(input: UpdateStatusInput): UpdateStatusView {
             };
 
         case "unsupported":
+            // The release page has nothing a Flatpak can install.
+            if (manual === "flatpak")
+                return {
+                    label: t("updateStatus.flatpakManualUpdate", {
+                        versionSuffix,
+                    }),
+                    action: "none",
+                    actionLabel: "",
+                    busy: false,
+                    percent: null,
+                };
             return {
                 label: t("updateStatus.aNewVersionIsAvailable", {
                     versionSuffix,

@@ -297,7 +297,13 @@ import {
     unregisterPush,
     clearDeliveredNativeNotifications,
 } from "$lib/push";
-import { initWebPush, readWebPushState, teardownWebPush } from "$lib/webPush";
+import {
+    initWebPush,
+    readWebPushState,
+    teardownWebPush,
+    webPushDelivers,
+    isIosHomeScreenApp,
+} from "$lib/webPush";
 import {
     syncNativeAccounts,
     syncNativeSession,
@@ -1054,6 +1060,10 @@ export default function AppShell() {
                     Notification.permission !== "granted")
             )
                 return;
+            // An iOS Home Screen app gets every message as a web push too, and
+            // iOS does not let the page's popup and the worker's replace each
+            // other by tag, so both showed. The worker's one stays.
+            if (!native && isIosHomeScreenApp() && webPushDelivers()) return;
             const n: NativeNotificationHandle =
                 native ??
                 (new Notification(title, {
