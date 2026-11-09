@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
-import { View } from "react-native";
+import { View, type ViewProps } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import type { ShouldStartLoadRequest } from "react-native-webview/lib/WebViewTypes";
 import { isSandboxPage, parseFrameMessage } from "#messages";
@@ -24,6 +24,7 @@ export interface FlashSandboxProps {
   onNavigate?: (url: string) => void;
   /** The frame's classes (its box); the page fills it. */
   className?: string;
+  pointerEvents?: ViewProps["pointerEvents"];
   /** The iframe's `title`. */
   accessibilityLabel?: string;
 }
@@ -52,6 +53,7 @@ export function FlashSandbox({
   onMessage,
   onNavigate,
   className,
+  pointerEvents,
   accessibilityLabel,
 }: FlashSandboxProps) {
   // (WebView's props are `WebViewProps & P`, and P defaults to undefined.)
@@ -102,6 +104,7 @@ export function FlashSandbox({
   return (
     <View
       className={className}
+      pointerEvents={pointerEvents}
       accessibilityLabel={accessibilityLabel}
       // Touches on the movie are the page's (as in an iframe), not an enclosing
       // Pressable's; the WebView gets them natively either way.

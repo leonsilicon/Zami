@@ -398,7 +398,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugPanel.debugPanel": "PANNEAU DE DÉBOGAGE",
     "debugPanel.sync": "Synchro :",
     "debugPanel.refresh": "↻ actualiser",
-    "debugPanel.copied": "✓ copié",
+    "debugPanel.copied": "copié",
     "debugPanel.copy": "⧉ copier",
     "debugPanel.unreadState": "ÉTAT NON LU",
     "debugPanel.unread": "non lus :",
@@ -719,6 +719,9 @@ const messages: Partial<Record<MessageKey, string>> = {
 
     // src/lib/components/ui/FlashEmbed.svelte
     "flashEmbed.suspend": "Suspendre",
+    "flashEmbed.resize": "Redimensionner le lecteur",
+    "flashEmbed.resizeHint":
+        "Faites glisser ou utilisez les flèches pour redimensionner. Double-cliquez pour réinitialiser.",
 
     // src/lib/components/messages/ForwardMessageDialog.svelte
     "forwardMessageDialog.forwardMessage": "Transférer le message",
@@ -878,6 +881,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.image": "Image",
     "lightbox.videoNoun": "vidéo",
     "lightbox.imageNoun": "image",
+    "lightbox.zoomIn": "Zoom avant",
+    "lightbox.zoomOut": "Zoom arrière",
+    "lightbox.zoomReset": "Réinitialiser le zoom",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "Vidéo YouTube",
@@ -1569,7 +1575,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pluginsSettings.localFolder": "Dossier local",
     "pluginsSettings.loadFromFolder": "Charger un plugin depuis un dossier",
     "pluginsSettings.loadFromFolderHint":
-        "Pour développer un plugin : choisissez le dossier contenant son manifest.json et son bundle. Zam en garde une copie et l’exécute comme n’importe quel plugin ; utilisez Recharger après chaque build. Il exécute du code en pleine confiance, ne chargez donc que des dossiers que vous avez écrits ou auxquels vous faites confiance.",
+        "Pour développer un plugin : choisissez le dossier contenant son manifest.json et son bundle, ou un dossier de dépôt contenant plusieurs dossiers de plugin de ce type. Zam en garde une copie et l’exécute comme n’importe quel plugin ; utilisez Recharger après chaque build. Il exécute du code en pleine confiance, ne chargez donc que des dossiers que vous avez écrits ou auxquels vous faites confiance.",
     "pluginsSettings.chooseFolder": "Choisir un dossier",
     "pluginsSettings.reload": "Recharger",
     "pluginsSettings.reloading": "Rechargement…",
@@ -1606,7 +1612,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pollBody.resultsAreRevealedWhenThePoll":
         "Les résultats seront révélés à la fin du sondage",
     "pollBody.chooseUpTo": "· choisissez jusqu'à {maxSelections}",
-    "pollBody.selected": "✓ sélectionné",
+    "pollBody.selected": "sélectionné",
     "pollBody.submitting": "Envoi…",
     "pollBody.submitVote": "Voter",
     "pollBody.votesAreHidden": "Les votes sont masqués",
@@ -2130,7 +2136,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "securitySettings.onlyOnce": "une seule fois",
     "securitySettings.storeItNowWithoutItYou":
         ". Conservez-la maintenant - sans elle, vous ne pourrez pas récupérer votre historique chiffré si vous perdez l'accès à vos sessions.",
-    "securitySettings.copied": "Copié ✓",
+    "securitySettings.copied": "Copié",
     "securitySettings.copyKey": "Copier la clé",
     "securitySettings.youCanAlsoUnlockWithThe":
         "Vous pouvez aussi déverrouiller avec la phrase secrète choisie. Gardez quand même la clé - c'est le seul moyen d'accès si vous oubliez la phrase secrète.",
@@ -2892,6 +2898,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/VoiceMessagePlayer.svelte
     "voiceMessagePlayer.seek": "Avancer",
     "voiceMessagePlayer.voiceMessage": "Message vocal",
+    "midiPlayer.play": "Lire",
+    "midiPlayer.pause": "Pause",
+    "midiPlayer.seek": "Position",
+    "midiPlayer.volume": "Volume",
 
     // src/lib/components/messages/VoiceRecorder.svelte
     "voiceRecorder.cancelRecording": "Annuler l'enregistrement",

@@ -1,3 +1,5 @@
+import MidiPlayer from "$lib/components/ui/MidiPlayer.svelte";
+import { isSvg } from "$lib/utils/attachmentMime";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
@@ -156,9 +158,9 @@ import { mayRedactEvent } from "$lib/utils/redaction";
 import { isVerificationRequestMessage } from "$lib/utils/verificationMessage";
 import { stripFormattedFallback } from "$lib/utils/replyFallback";
 import { parseVoiceContent } from "$lib/utils/voiceMessage";
-import { isMidiAttachment, midiUrlToWavUrl } from "$lib/utils/midi";
+import { isMidiAttachment } from "$lib/utils/midi";
 import { isTrackerAttachment, trackerUrlToWavUrl } from "$lib/utils/tracker";
-import { reservedMediaBox } from "$lib/utils/mediaDimensions";
+import { reservedMediaBox, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
 import { videoPoster } from "$lib/utils/roomMedia";
 import { utdPlaceholderText } from "$lib/utils/encryptionState";
@@ -1446,6 +1448,13 @@ function MessageItem({
                 (n ?? "").trim().toLowerCase().endsWith(".gif"),
             ));
 
+    const isSvgImage =
+        msgtype === "m.image" &&
+        isSvg(
+            (content?.info as { mimetype?: string } | undefined)?.mimetype,
+            mediaFilename || (content?.body as string | undefined),
+        );
+
     // Image conversion.
     // In chat we show a server-scaled 800x600 thumbnail to save bandwidth; the
     // full-resolution image is only requested when opened in the lightbox.
@@ -1459,7 +1468,7 @@ function MessageItem({
             if (msgtype !== "m.image") return null;
             // GIFs are served full-res in chat so they keep animating; the server
             // thumbnail would (depending on homeserver) drop the animation.
-            if (isGif) return mxcToHttp(content?.url as string);
+            if (isGif || isSvgImage) return mxcToHttp(content?.url as string);
             // Homeservers generally can't thumbnail JPEG XL, so ask for the
             // original; utils/jxl transcodes it where the engine can't decode it.
             if (
@@ -1474,7 +1483,7 @@ function MessageItem({
             );
         })();
         return () => value;
-    }, [msgtype, isGif, content, mediaFilename]);
+    }, [msgtype, isGif, isSvgImage, content, mediaFilename]);
 
     // Reserved display box (px) for uploaded images/stickers, from the sender's
     // untrusted `info.w`/`info.h`. Rendered as the `<img>`'s width/height
@@ -1501,7 +1510,9 @@ function MessageItem({
         (content?.info as any)?.h ??
         (content?.info as any)?.thumbnail_info?.h ??
         learnedSize?.height;
-    const imageBox = reservedMediaBox(imgInfoW, imgInfoH, 512, 384);
+    const imageBox = isSvgImage
+        ? vectorMediaBox(imgInfoW, imgInfoH, 512, 384)
+        : reservedMediaBox(imgInfoW, imgInfoH, 512, 384);
     const stickerBox = reservedMediaBox(imgInfoW, imgInfoH, 192, 192);
 
     // Encrypted image: decrypt on mount when content.file is present
@@ -1810,7 +1821,8 @@ function MessageItem({
         mediaFilename,
     );
     const audioPlayable =
-        msgtype === "m.audio" || (msgtype === "m.file" && audioIsTracker);
+        msgtype === "m.audio" ||
+        (msgtype === "m.file" && (audioIsTracker || audioIsMidi));
 
     /**
      * Save the attachment as it was sent, decrypted if need be. The audio
@@ -1862,20 +1874,15 @@ function MessageItem({
         if (!audioClicked || !audioPlayable) return;
         if (audioStreamUrl) return;
         const file = content?.file as EncryptedFile | undefined;
-        const isMidi = audioIsMidi;
         const isTracker = audioIsTracker;
         let cancelled = false;
-        // <audio> can't decode MIDI or tracker modules, so render to WAV first.
-        // Zami: MIDI renders on the app's thread (no Workers). Not ported:
+        // MIDI goes to MidiPlayer, which owns its rendering and playback.
+        // Zami: not ported:
         // tracker modules. Their renderer is libopenmpt compiled to
         // WebAssembly, which Hermes can't run, so they fail to load and show
         // the failed state (the file card still saves the module).
         const toPlayableAudio = (url: string) =>
-            isMidi
-                ? midiUrlToWavUrl(url)
-                : isTracker
-                  ? trackerUrlToWavUrl(url)
-                  : url;
+            isTracker ? trackerUrlToWavUrl(url) : url;
         if (file) {
             // Encrypted audio
             setAudioLoading(true);
@@ -2451,38 +2458,43 @@ function MessageItem({
         }
         return (
             <View className="flex-row items-center gap-3 p-3 bg-discord-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={mediaFilename || t("messageItem.audio")}
-                    accessibilityState={{ disabled: audioLoading }}
-                    onPress={() => {
-                        if (audioBlobUrl) return;
-                        if (audioFailed) {
-                            setAudioFailed(false);
-                            setAudioAttempt((n) => n + 1);
-                        } else {
-                            setAudioClicked(true);
+                {!(audioIsMidi && audioBlobUrl) ? (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                            mediaFilename || t("messageItem.audio")
                         }
-                    }}
-                    className={`w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center ${
-                        audioLoading ? "opacity-50" : ""
-                    }`}
-                    disabled={audioLoading}
-                >
-                    {audioLoading || (audioStreamUrl && !audioStreamReady) ? (
-                        <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                    ) : !audioBlobUrl && !audioStreamUrl ? (
-                        <SvgIcon
-                            d={PLAY_PATH}
-                            className="w-4 h-4 text-white ms-0.5"
-                        />
-                    ) : (
-                        <SvgIcon
-                            d={MUSIC_PATH}
-                            className="w-4 h-4 text-white"
-                        />
-                    )}
-                </Pressable>
+                        accessibilityState={{ disabled: audioLoading }}
+                        onPress={() => {
+                            if (audioBlobUrl) return;
+                            if (audioFailed) {
+                                setAudioFailed(false);
+                                setAudioAttempt((n) => n + 1);
+                            } else {
+                                setAudioClicked(true);
+                            }
+                        }}
+                        className={`w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center ${
+                            audioLoading ? "opacity-50" : ""
+                        }`}
+                        disabled={audioLoading}
+                    >
+                        {audioLoading ||
+                        (audioStreamUrl && !audioStreamReady) ? (
+                            <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                        ) : !audioBlobUrl && !audioStreamUrl ? (
+                            <SvgIcon
+                                d={PLAY_PATH}
+                                className="w-4 h-4 text-white ms-0.5"
+                            />
+                        ) : (
+                            <SvgIcon
+                                d={MUSIC_PATH}
+                                className="w-4 h-4 text-white"
+                            />
+                        )}
+                    </Pressable>
+                ) : null}
                 <View className="flex-1 min-w-0">
                     <Text
                         numberOfLines={1}
@@ -2496,8 +2508,16 @@ function MessageItem({
                         audioStreamReady ? null : (
                             audioBar()
                         )
+                    ) : audioIsMidi && audioBlobUrl ? (
+                        <MidiPlayer
+                            midiUrl={audioBlobUrl}
+                            onfail={() => {
+                                setAudioBlobUrl(null);
+                                setAudioFailed(true);
+                            }}
+                        />
                     ) : audioBlobUrl ? (
-                        // For MIDI and trackers, this <audio>'s own
+                        // For trackers, this <audio>'s own
                         // download saves the rendered WAV; the button
                         // beside it saves the original.
                         <AudioControls src={audioBlobUrl} />
@@ -2698,6 +2718,7 @@ function MessageItem({
                                 alt={ucur.alt}
                                 placeholders={ucur.placeholders}
                                 dims={ucur.dims}
+                                mimetype={ucur.mimetype}
                                 onClose={() => setUploadGallery(null)}
                                 onPrev={
                                     uprev !== null
@@ -2755,7 +2776,7 @@ function MessageItem({
                                     contentFit="contain"
                                     onError={mediaImgRetry.onError}
                                     onLoad={(e) => {
-                                        if (imageBox) return;
+                                        if (isSvgImage || imageBox) return;
                                         learnMediaSize(
                                             mediaSizeKey,
                                             e.source.width,
@@ -2814,6 +2835,13 @@ function MessageItem({
                             alt={mediaFilename}
                             filename={mediaFilename || undefined}
                             placeholders={lightboxPlaceholders}
+                            mimetype={
+                                (
+                                    content?.info as
+                                        | { mimetype?: string }
+                                        | undefined
+                                )?.mimetype
+                            }
                             preview={file ? imagePreview : null}
                             dims={{ w: imgInfoW, h: imgInfoH }}
                             favourite={
@@ -2939,7 +2967,7 @@ function MessageItem({
                             }
                         />
                     ) : null}
-                    {audioIsTracker ? audioCard() : null}
+                    {audioIsTracker || audioIsMidi ? audioCard() : null}
                     <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
                         <SvgIcon
                             d={FILE_PATH}
@@ -3833,14 +3861,18 @@ function uploadImageOf(e: MatrixEvent): GalleryImage {
     };
     const sender = videoPoster(c as Record<string, unknown>);
     const isGifUpload = c.info?.mimetype === "image/gif";
+    const isVectorUpload = isSvg(c.info?.mimetype, c.filename ?? c.body);
     return {
         src: mxcToHttp(c.url as string) ?? "",
         alt: (c.filename ?? c.body ?? "") as string,
         placeholders: [
-            isGifUpload ? null : mxcToHttp(c.url as string, 800, 600, "scale"),
+            isGifUpload || isVectorUpload
+                ? null
+                : mxcToHttp(c.url as string, 800, 600, "scale"),
             sender?.kind === "plain" ? mxcToHttp(sender.mxc) : null,
         ],
         dims: { w: c.info?.w, h: c.info?.h },
+        mimetype: c.info?.mimetype,
     };
 }
 

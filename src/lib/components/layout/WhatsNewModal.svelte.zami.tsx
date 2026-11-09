@@ -1,3 +1,4 @@
+import { X } from "lucide-svelte";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { t } from "$lib/i18n";
@@ -93,9 +94,10 @@ export default function WhatsNewModal({
                     accessibilityLabel={t("common.close")}
                     className="px-1"
                 >
-                    <Text className="text-discord-textMuted hover:text-discord-textPrimary text-lg leading-none">
-                        ✕
-                    </Text>
+                    <X
+                        size={16}
+                        className="text-discord-textMuted hover:text-discord-textPrimary text-lg leading-none"
+                    />
                 </Pressable>
             </View>
             <ScrollView

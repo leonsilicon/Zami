@@ -14,11 +14,17 @@ import {
     audioToWav,
     BasicSoundBank,
 } from "spessasynth_core";
-import { decodeOpusSample, isOpusSample } from "$lib/utils/opusSample";
+import { decodeBankOpusSamples } from "$lib/utils/opusSample";
 
-// Zami: spessasynth's SF3 Vorbis decoder is WebAssembly, which Hermes lacks,
-// so it fails as it loads; render goes on without it.
-void BasicSoundBank.isSF3DecoderReady.catch(() => {});
+// Zami: spessasynth's SF3 Vorbis decoder is WebAssembly, which Hermes lacks.
+// Its constructor attaches a success-only .then to this shared promise, so
+// catching it only at our await still left an unhandled rejection. Resolve
+// the native fallback before making a synth; Opus/PCM samples are decoded here.
+if (typeof WebAssembly === "undefined") {
+    BasicSoundBank.isSF3DecoderReady = BasicSoundBank.isSF3DecoderReady.catch(
+        () => {},
+    );
+}
 
 export interface MidiRenderRequest {
     id: number;
@@ -48,14 +54,9 @@ let loaded: { key: string; bank: BasicSoundBank } | null = null;
  * which the synth can't decode itself: decode them all up front.
  */
 async function decodeOpusSamples(bank: BasicSoundBank): Promise<void> {
-    await Promise.all(
-        bank.samples.map(async (sample) => {
-            if (!sample.isCompressed) return;
-            const raw = sample.getRawData(true);
-            if (!isOpusSample(raw)) return;
-            sample.setAudioData(await decodeOpusSample(raw), sample.sampleRate);
-        }),
-    );
+    for (const d of await decodeBankOpusSamples(bank.samples)) {
+        bank.samples[d.index].setAudioData(d.pcm, d.sampleRate);
+    }
 }
 
 // Zami: exported: React Native has no Web Workers, so midiSoundBank calls it on

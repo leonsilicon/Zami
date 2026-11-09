@@ -1,3 +1,4 @@
+import { X, Check, Circle } from "lucide-svelte";
 import { Portal } from "@-/com.leonsilicon.zami.rn";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
@@ -251,11 +252,19 @@ export default function DebugPanel({ room }: Props) {
                                 onPress={copyReport}
                                 className="text-xs px-2 py-0.5 rounded bg-[#2a4a2a] hover:bg-[#3a5a3a] font-mono"
                             >
-                                <Text className={MONO}>
-                                    {copyDone
-                                        ? t("debugPanel.copied")
-                                        : t("debugPanel.copy")}
-                                </Text>
+                                <View className="flex-row items-center justify-center gap-1">
+                                    {copyDone ? (
+                                        <Check
+                                            size={12}
+                                            className="text-discord-textPrimary"
+                                        />
+                                    ) : null}
+                                    <Text className={MONO}>
+                                        {copyDone
+                                            ? t("debugPanel.copied")
+                                            : t("debugPanel.copy")}
+                                    </Text>
+                                </View>
                             </Pressable>
                             <Pressable
                                 accessibilityRole="button"
@@ -264,7 +273,7 @@ export default function DebugPanel({ room }: Props) {
                                 }
                                 className="text-xs px-2 py-0.5 rounded bg-[#4a2a2a] hover:bg-[#5a3a3a] font-mono"
                             >
-                                <Text className={MONO}>✕</Text>
+                                <X size={14} className={MONO} />
                             </Pressable>
                         </View>
                     </View>
@@ -426,17 +435,19 @@ export default function DebugPanel({ room }: Props) {
                                                         className="px-3 py-1 border-b border-[#1a1a1a]"
                                                     >
                                                         <View className="flex flex-row items-center gap-2 flex-wrap">
-                                                            <Text
-                                                                className={`font-mono text-[11px] ${
+                                                            <Circle
+                                                                size={10}
+                                                                fill={
+                                                                    rule.enabled
+                                                                        ? "currentColor"
+                                                                        : "none"
+                                                                }
+                                                                className={
                                                                     rule.enabled
                                                                         ? "text-green-400"
                                                                         : "text-red-400"
-                                                                }`}
-                                                            >
-                                                                {rule.enabled
-                                                                    ? "●"
-                                                                    : "○"}
-                                                            </Text>
+                                                                }
+                                                            />
                                                             <Text className="font-mono text-[11px] text-yellow-200 font-medium">
                                                                 {rule.rule_id}
                                                             </Text>

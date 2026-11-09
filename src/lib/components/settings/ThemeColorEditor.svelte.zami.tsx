@@ -1,3 +1,4 @@
+import { X, Pencil, TriangleAlert } from "lucide-svelte";
 import {
     resolveFontStack,
     subscribeAppFont,
@@ -478,9 +479,10 @@ export default function ThemeColorEditor() {
                                                         startRename(name);
                                                     }}
                                                 >
-                                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
-                                                        ✎
-                                                    </Text>
+                                                    <Pencil
+                                                        size={12}
+                                                        className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                                    />
                                                 </Pressable>
                                                 <Pressable
                                                     accessibilityRole="button"
@@ -620,12 +622,18 @@ export default function ThemeColorEditor() {
                     </Text>
                     <View className="flex flex-col gap-1">
                         {warnings.map((warning) => (
-                            <Text
+                            <View
+                                className="flex-row items-center gap-1"
                                 key={warning.token}
-                                className="text-xs text-discord-danger"
                             >
-                                ⚠ {warning.label}: {warning.ratio}:1
-                            </Text>
+                                <TriangleAlert
+                                    size={12}
+                                    className="text-discord-danger"
+                                />
+                                <Text className="text-xs text-discord-danger">
+                                    {warning.label}: {warning.ratio}:1
+                                </Text>
+                            </View>
                         ))}
                     </View>
                 </View>
@@ -825,9 +833,10 @@ function ColorRow({
                 onPress={onReset}
                 disabled={disabled}
             >
-                <Text className="text-discord-textMuted hover:text-discord-textPrimary">
-                    ✕
-                </Text>
+                <X
+                    size={14}
+                    className="text-discord-textMuted hover:text-discord-textPrimary"
+                />
             </Pressable>
         </View>
     );

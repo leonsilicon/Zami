@@ -12,7 +12,7 @@ import {
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, ChevronRight, Circle } from "lucide-svelte";
+import { ArrowLeft, ChevronRight, Circle, TriangleAlert } from "lucide-svelte";
 import type { Room, RoomMember } from "matrix-js-sdk";
 import {
     useCallback,
@@ -2999,12 +2999,20 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         <View className="mt-3 gap-1">
                                                             {aclWarnings.map(
                                                                 (w) => (
-                                                                    <Text
+                                                                    <View
+                                                                        className="flex-row items-center gap-1"
                                                                         key={w}
-                                                                        className="text-sm text-discord-danger"
                                                                     >
-                                                                        ⚠ {w}
-                                                                    </Text>
+                                                                        <TriangleAlert
+                                                                            size={
+                                                                                14
+                                                                            }
+                                                                            className="text-discord-danger"
+                                                                        />
+                                                                        <Text className="text-sm text-discord-danger">
+                                                                            {w}
+                                                                        </Text>
+                                                                    </View>
                                                                 ),
                                                             )}
                                                         </View>

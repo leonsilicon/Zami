@@ -1,3 +1,4 @@
+import { Check } from "lucide-svelte";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
@@ -185,6 +186,10 @@ export default function PollBody({ event, room }: Props) {
                                         <>
                                             {" "}
                                             <Text className="text-xs text-discord-accent font-semibold">
+                                                <Check
+                                                    size={12}
+                                                    className="text-discord-accent"
+                                                />
                                                 {t("pollBody.selected")}
                                             </Text>
                                         </>

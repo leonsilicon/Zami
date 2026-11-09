@@ -1,3 +1,4 @@
+import { Check, Lock } from "lucide-svelte";
 // Guided first-run encryption setup. Opens after a sign-in (and from the
 // footer nudge) and walks the user through the ONE thing their account
 // needs: create recovery on a new account, or confirm this session on an
@@ -500,11 +501,19 @@ export default function EncryptionSetupDialog() {
                             onPress={() => void copyKey()}
                             className="flex-1 py-2 bg-discord-backgroundSecondary hover:bg-discord-messageHover rounded border border-discord-divider"
                         >
-                            <Text className="text-center text-discord-textPrimary text-sm">
-                                {copied
-                                    ? t("securitySettings.copied")
-                                    : t("securitySettings.copyKey")}
-                            </Text>
+                            <View className="flex-row items-center justify-center gap-1">
+                                {copied ? (
+                                    <Check
+                                        size={14}
+                                        className="text-discord-textPrimary"
+                                    />
+                                ) : null}
+                                <Text className="text-center text-discord-textPrimary text-sm">
+                                    {copied
+                                        ? t("securitySettings.copied")
+                                        : t("securitySettings.copyKey")}
+                                </Text>
+                            </View>
                         </Pressable>
                         <Pressable
                             accessibilityRole="button"
@@ -881,11 +890,11 @@ export default function EncryptionSetupDialog() {
                         importantForAccessibility="no-hide-descendants"
                         className="flex-shrink-0 w-10 h-10 rounded-full bg-discord-accent/15 flex-row items-center justify-center"
                     >
-                        <Text className="text-discord-accent text-xl">
-                            {flow === "finished" || plan.kind === "done"
-                                ? "✓"
-                                : "🔒"}
-                        </Text>
+                        {flow === "finished" || plan.kind === "done" ? (
+                            <Check size={22} className="text-discord-accent" />
+                        ) : (
+                            <Lock size={20} className="text-discord-accent" />
+                        )}
                     </View>
                     <View className="min-w-0 shrink">
                         <Text

@@ -86,6 +86,7 @@ export type MediaBlobResult =
  */
 export async function authedMediaBlobResult(
     src: string,
+    mimeHint?: string,
 ): Promise<MediaBlobResult> {
     const c = mediaCreds();
     if (!c || !isAuthedMediaUrl(src)) return { url: null, transient: false };
@@ -110,7 +111,13 @@ export async function authedMediaBlobResult(
     try {
         // Retyped like any attachment: these URLs sit in an <img>, where
         // "Open image in new tab" would run an unsanitized SVG in our origin.
-        const blob = await safeMediaBlob(raw);
+        // Servers often send SVG as octet-stream; the event's declared type
+        // then decides, still through the same sanitizer.
+        const untyped = !raw.type || raw.type === "application/octet-stream";
+        const blob = await safeMediaBlob(
+            raw,
+            untyped && mimeHint ? mimeHint : raw.type,
+        );
         return {
             url: URL.createObjectURL((await maybeDecodeJxl(blob)) ?? blob),
         };
@@ -120,8 +127,11 @@ export async function authedMediaBlobResult(
 }
 
 /** Fetch authed media with the token → object URL, or null if unavailable. */
-export async function authedMediaBlobUrl(src: string): Promise<string | null> {
-    return (await authedMediaBlobResult(src)).url;
+export async function authedMediaBlobUrl(
+    src: string,
+    mimeHint?: string,
+): Promise<string | null> {
+    return (await authedMediaBlobResult(src, mimeHint)).url;
 }
 
 /**
@@ -405,6 +415,7 @@ export interface MediaRetry {
  */
 export function createMediaRetry(
     getSrc: () => string | null | undefined,
+    getMimeHint?: () => string | undefined,
 ): MediaRetry {
     let effective = $state<string | null | undefined>(undefined);
     let failed = $state(false);
@@ -429,7 +440,7 @@ export function createMediaRetry(
     function startAuthed(s: string, g: number): void {
         pending = true;
         waitingSrc = null;
-        void authedMediaBlobResult(s).then((r) => {
+        void authedMediaBlobResult(s, getMimeHint?.()).then((r) => {
             if (g !== gen) {
                 if (r.url !== null) URL.revokeObjectURL(r.url);
                 return;
