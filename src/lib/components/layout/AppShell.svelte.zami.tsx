@@ -1590,6 +1590,10 @@ export default function AppShell() {
     const hierarchyLastAppliedAt = useRef<number | null>(null);
     const hierarchyLastFailedKey = useRef<string | null>(null);
     const hierarchyLastFailedAt = useRef<number | null>(null);
+    // Zami: the space of the request in flight, and whether a background
+    // refresh asked for another fetch while it ran (see below).
+    const hierarchyInFlightSpaceId = useRef<string | null>(null);
+    const hierarchyRefetchWanted = useRef(false);
 
     function requestHierarchy(spaceId: string, force: boolean) {
         const parentSpaceId = roomsState.spaceDrillParentId ?? null;
@@ -1604,6 +1608,22 @@ export default function AppShell() {
             // Cheap: the child list behind this is memoized by signature.
             joinedChildCount: getRoomsInSpace(spaceId).length,
         });
+        // Zami: a background refresh doesn't cut off a fetch of the same space;
+        // it fetches again once that one has landed. Every room-list rebuild
+        // asks, and while an account loads, each one counts more of the space's
+        // rooms (the saved room list, then the saved sync, then live sync), so
+        // each started over a fetch of up to ten pages and threw the last one
+        // away: a large space's "Loading rooms…" lasted until a fetch outran the
+        // rebuilds. An open (`force`) still replaces it.
+        if (
+            !force &&
+            hierarchyInFlightKey.current !== null &&
+            hierarchyInFlightKey.current !== key &&
+            hierarchyInFlightSpaceId.current === spaceId
+        ) {
+            hierarchyRefetchWanted.current = true;
+            return;
+        }
         if (
             !shouldFetchHierarchy({
                 key,
@@ -1633,6 +1653,9 @@ export default function AppShell() {
 
         const generation = ++hierarchyGeneration.current;
         hierarchyInFlightKey.current = key;
+        hierarchyInFlightSpaceId.current = spaceId;
+        // Zami: this fetch reflects everything up to now.
+        hierarchyRefetchWanted.current = false;
         // Only a user-driven open shows the spinner; a background TTL refresh
         // must not flash one over data that is already on screen.
         if (force) roomsState.hierarchyLoading = true;
@@ -1644,8 +1667,10 @@ export default function AppShell() {
         )
             .catch(() => null)
             .then((hierarchy) => {
-                if (hierarchyInFlightKey.current === key)
+                if (hierarchyInFlightKey.current === key) {
                     hierarchyInFlightKey.current = null;
+                    hierarchyInFlightSpaceId.current = null;
+                }
                 const action = hierarchyResultAction({
                     requestGeneration: generation,
                     latestGeneration: hierarchyGeneration.current,
@@ -1676,6 +1701,15 @@ export default function AppShell() {
                     hierarchyLastAppliedAt.current = null;
                 }
                 roomsState.hierarchyLoading = false;
+                // Zami: the refresh that waited for this fetch (see above).
+                if (
+                    hierarchyRefetchWanted.current &&
+                    hierarchyInFlightKey.current === null &&
+                    roomsState.activeSpaceId === spaceId
+                ) {
+                    hierarchyRefetchWanted.current = false;
+                    requestHierarchy(spaceId, false);
+                }
             });
     }
 
@@ -2429,6 +2463,10 @@ export default function AppShell() {
             if (userId && room) clearReadNotifications(room, userId);
         });
         reloadLastLocationFromStorage();
+        // Zami: settle the main pane for the space and room just restored, from
+        // the saved room list. The rebuild above ran before they were known, and
+        // the next one may not come until the saved sync has been replayed.
+        resolveLandingSurface();
         reloadNotificationsFromStorage();
         // PWA cold-start deep-link. When a notification is tapped with no
         // focused client, the service worker opens `/#room=<id>&event=<id>`

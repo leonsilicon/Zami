@@ -6,6 +6,7 @@ import {
     getRoomsInSpace,
     getRoomTags,
     isRoomLandable,
+    isRoomListFromCache,
     isVideoRoom,
     markRoomPendingArrival,
     roomTypeIsKnown,
@@ -57,12 +58,28 @@ function saveLastSpace(spaceId: string | null): void {
 }
 
 /**
+ * Zami: whether the account's last space and room have been read. Until then
+ * "no room selected" is only the value from before the account was known, so the
+ * landing chain must not take it for "none remembered" (see resolveLandingSurface).
+ */
+let lastLocationLoaded = false;
+
+/**
  * Re-read the active account's persisted last space and room. Module init
  * runs before the account is known, so the app shell calls this on boot.
  */
 export function reloadLastLocationFromStorage(): void {
+    lastLocationLoaded = true;
     roomsState.activeSpaceId = loadLastSpace();
     roomsState.activeRoomId = getLastRoom(roomsState.activeSpaceId);
+    // Zami: the space's last known children, as setActiveSpace shows them, while
+    // the fresh /hierarchy loads. The app shell mounts after the saved room list
+    // (which keeps them) is loaded, so they're here already; without them a
+    // space opened on a "Loading rooms…" spinner for as long as /hierarchy took,
+    // which for a large space is many pages.
+    roomsState.spaceHierarchy = roomsState.activeSpaceId
+        ? (getCachedHierarchy(roomsState.activeSpaceId) ?? [])
+        : [];
     // The restored room is a destination like any other, so it gets the same
     // surface decision. On boot that decision is almost always deferred (no
     // rooms exist yet), which is precisely why this call matters: it arms the
@@ -269,7 +286,16 @@ export function resolveLandingSurface(): void {
         // Conservative on purpose: an offline or erroring boot simply never
         // runs the chain, and the user keeps whatever the cache gave them —
         // never worse than the behaviour before this feature.
-        roomsReady: auth.syncState === "SYNCING",
+        // Zami: or, with nothing selected, the saved room list (see
+        // roomListCache.ts). There is no remembered room to overwrite then, and
+        // a launch with none otherwise showed an empty pane until live sync,
+        // which for a large account is the saved sync's replay and more. Live
+        // sync still moves the user on if that room turns out to be gone.
+        roomsReady:
+            auth.syncState === "SYNCING" ||
+            (lastLocationLoaded &&
+                roomsState.activeRoomId === null &&
+                isRoomListFromCache()),
         showInbox: roomsState.showInbox || roomsState.showSpaceHome,
         activeSpaceId: spaceId,
         activeRoomId: roomsState.activeRoomId,

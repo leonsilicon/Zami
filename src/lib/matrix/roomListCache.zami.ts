@@ -240,9 +240,50 @@ const REST_DB_NAME = "zam-roomlist-cache-rest";
 /** Zami: how many of the most recently active rooms the first screen shows. */
 export const FIRST_PAINT_ROOMS = 50;
 
-/** Zami: a snapshot's rooms, most recently active first, split after `count`. */
-export function splitByRecency(
+/** Zami: where the app will open, which the first screen's rooms must cover. */
+export interface FirstScreen {
+    /** Rooms it may open on: the last room of each space, and of Home. */
+    roomIds?: ReadonlySet<string>;
+    /** The space it opens in, whose most recently active rooms go first too. */
+    spaceId?: string | null;
+}
+
+function isSpace(room: CachedRoom): boolean {
+    return room.state.some(
+        (ev) =>
+            ev.type === "m.room.create" &&
+            (ev.content as { type?: unknown } | undefined)?.type === "m.space",
+    );
+}
+
+/** The rooms a cached space lists (an m.space.child without `via` is removed). */
+function childIdsOf(space: CachedRoom | undefined): Set<string> {
+    const ids = new Set<string>();
+    for (const ev of space?.state ?? []) {
+        const via = (ev.content as { via?: unknown } | undefined)?.via;
+        if (
+            ev.type === "m.space.child" &&
+            ev.state_key &&
+            Array.isArray(via) &&
+            via.length
+        )
+            ids.add(ev.state_key);
+    }
+    return ids;
+}
+
+/**
+ * Zami: split a snapshot's rooms into what the first screen shows and the rest.
+ * The first part is every space, the rooms the app may open on, the `count`
+ * most recently active rooms of the space it opens in, and the `count` most
+ * recently active rooms overall. Spaces rarely have messages, so going by
+ * recency alone left them all for later: the app then opened in a space it
+ * didn't know yet ("this space", "Loading rooms…") instead of its last room,
+ * and Home listed rooms that belong to spaces.
+ */
+export function splitForFirstScreen(
     rooms: CachedRoom[],
+    firstScreen: FirstScreen = {},
     count = FIRST_PAINT_ROOMS,
 ): [CachedRoom[], CachedRoom[]] {
     const lastActivity = (room: CachedRoom): number =>
@@ -250,7 +291,27 @@ export function splitByRecency(
     const byRecency = [...rooms].sort(
         (a, b) => lastActivity(b) - lastActivity(a),
     );
-    return [byRecency.slice(0, count), byRecency.slice(count)];
+    const inSpace = childIdsOf(
+        firstScreen.spaceId
+            ? rooms.find((room) => room.roomId === firstScreen.spaceId)
+            : undefined,
+    );
+    const first: CachedRoom[] = [];
+    const rest: CachedRoom[] = [];
+    let recentInSpace = 0;
+    let recent = 0;
+    for (const room of byRecency) {
+        if (isSpace(room) || firstScreen.roomIds?.has(room.roomId))
+            first.push(room);
+        else if (inSpace.has(room.roomId) && recentInSpace < count) {
+            recentInSpace++;
+            first.push(room);
+        } else if (recent < count) {
+            recent++;
+            first.push(room);
+        } else rest.push(room);
+    }
+    return [first, rest];
 }
 
 function openDb(name = DB_NAME): Promise<IDBDatabase> {
@@ -320,6 +381,8 @@ export async function loadSnapshotRest(key: string): Promise<CachedRoom[]> {
 export async function saveSnapshot(
     key: string,
     snapshot: RoomListSnapshot,
+    // Zami: see splitForFirstScreen.
+    firstScreen: FirstScreen = {},
 ): Promise<void> {
     try {
         // Zami: the snapshot's absent fields are `undefined`. Without them it is
@@ -331,7 +394,7 @@ export async function saveSnapshot(
         // opened, and every launch opens this one before it can draw: with
         // thousands of rooms, the full snapshot was tens of megabytes to read
         // first.
-        const [first, rest] = splitByRecency(plain.rooms);
+        const [first, rest] = splitForFirstScreen(plain.rooms, firstScreen);
         await withStore("readwrite", (s) =>
             s.put({ ...plain, rooms: first }, key),
         );

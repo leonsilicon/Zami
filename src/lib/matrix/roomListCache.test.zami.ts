@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createClient, EventType, MatrixEvent, Room } from "matrix-js-sdk";
-import { buildSnapshot, materializeSnapshot } from "./roomListCache";
+import {
+    buildSnapshot,
+    materializeSnapshot,
+    splitForFirstScreen,
+} from "./roomListCache";
 
 const ME = "@me:example.org";
 const BOB = "@bob:example.org";
@@ -142,5 +146,87 @@ describe("roomListCache", () => {
         expect(bodies).toHaveLength(40);
         expect(bodies.at(0)).toBe("message 5");
         expect(bodies.at(-1)).toBe("message 44");
+    });
+});
+
+// Zami: the first-screen part of the saved room list (see splitForFirstScreen).
+describe("splitForFirstScreen", () => {
+    type Cached = Parameters<typeof splitForFirstScreen>[0][number];
+    const room = (
+        roomId: string,
+        lastTs: number,
+        state: Cached["state"] = [],
+    ): Cached => ({
+        roomId,
+        state,
+        accountData: [],
+        timeline: [{ type: "m.room.message", origin_server_ts: lastTs }],
+    });
+    const space = (roomId: string, children: string[]): Cached => ({
+        roomId,
+        state: [
+            {
+                type: "m.room.create",
+                state_key: "",
+                content: { type: "m.space" },
+            },
+            ...children.map((child) => ({
+                type: "m.space.child",
+                state_key: child,
+                content: { via: ["example.org"] },
+            })),
+            // A removed child (no `via`) isn't one.
+            { type: "m.space.child", state_key: "!gone", content: {} },
+        ],
+        accountData: [],
+    });
+    const ids = (rooms: Cached[]) => rooms.map((r) => r.roomId).sort();
+
+    it("keeps the most recently active rooms first, the rest for later", () => {
+        const rooms = [room("!a", 1), room("!b", 3), room("!c", 2)];
+        const [first, rest] = splitForFirstScreen(rooms, {}, 2);
+        expect(ids(first)).toEqual(["!b", "!c"]);
+        expect(ids(rest)).toEqual(["!a"]);
+    });
+
+    it("always keeps spaces and the rooms the app may open on", () => {
+        const rooms = [
+            space("!space", []),
+            room("!old", 1),
+            room("!new", 9),
+            room("!mid", 5),
+        ];
+        const [first, rest] = splitForFirstScreen(
+            rooms,
+            { roomIds: new Set(["!old"]) },
+            1,
+        );
+        expect(ids(first)).toEqual(["!new", "!old", "!space"]);
+        expect(ids(rest)).toEqual(["!mid"]);
+    });
+
+    it("keeps the recent rooms of the space the app opens in", () => {
+        const rooms = [
+            space("!space", ["!in1", "!in2", "!in3"]),
+            room("!in1", 1),
+            room("!in2", 2),
+            room("!in3", 3),
+            room("!out1", 10),
+            room("!out2", 11),
+            room("!gone", 12),
+        ];
+        const [first, rest] = splitForFirstScreen(
+            rooms,
+            { spaceId: "!space" },
+            2,
+        );
+        expect(ids(first)).toEqual([
+            "!gone",
+            "!in2",
+            "!in3",
+            "!out2",
+            "!space",
+        ]);
+        expect(ids(rest)).toEqual(["!in1", "!out1"]);
     });
 });

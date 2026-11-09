@@ -144,7 +144,8 @@ import {
     deleteSnapshot,
     loadSnapshot,
     loadSnapshotRest,
-    splitByRecency,
+    splitForFirstScreen,
+    type FirstScreen,
     materializeSnapshot,
     saveSnapshot,
     snapshotKey,
@@ -2279,7 +2280,10 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     // paints, or every launch of an account with thousands of rooms would wait
     // on all of them. The rest follow in the background, if still needed
     // (saveSnapshot keeps them apart; a snapshot saved before that has them all).
-    const [firstRooms, otherRooms] = splitByRecency(snapshot.rooms);
+    const [firstRooms, otherRooms] = splitForFirstScreen(
+        snapshot.rooms,
+        firstScreenOf(userId),
+    );
     roomListCache = materializeSnapshot(client, {
         ...snapshot,
         rooms: firstRooms,
@@ -2298,6 +2302,32 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
         otherRooms,
         key,
     );
+}
+
+/**
+ * Zami: where the app will open, read from what the rooms store saves
+ * (rooms.svelte.ts: its last space and each space's last room), so that the
+ * saved room list's first part has everything that screen shows.
+ */
+function firstScreenOf(userId: string): FirstScreen {
+    let lastRooms: unknown = null;
+    try {
+        lastRooms = JSON.parse(
+            readScoped("matrix_last_room_by_space", userId) ?? "null",
+        );
+    } catch {
+        // Unreadable: the first screen falls back to the most recent rooms.
+    }
+    return {
+        roomIds: new Set(
+            lastRooms && typeof lastRooms === "object"
+                ? Object.values(lastRooms).filter(
+                      (id): id is string => typeof id === "string",
+                  )
+                : [],
+        ),
+        spaceId: readScoped("matrix_last_space", userId),
+    };
 }
 
 /** Zami: how long one background slice of room building may hold the JS thread. */
@@ -2407,10 +2437,15 @@ async function saveRoomListSnapshot(
     // reports Complete, so an empty list here means no joined rooms. Keeping
     // the old snapshot instead would bring left rooms back on the next
     // offline start.
-    await saveSnapshot(snapshotKey(userId, deviceId), {
-        ...buildSnapshot(client),
-        hierarchies: Object.fromEntries(hierarchyCache),
-    });
+    await saveSnapshot(
+        snapshotKey(userId, deviceId),
+        {
+            ...buildSnapshot(client),
+            hierarchies: Object.fromEntries(hierarchyCache),
+        },
+        // Zami: see splitForFirstScreen.
+        firstScreenOf(userId),
+    );
 }
 
 /**
@@ -3020,8 +3055,33 @@ function decryptForDisplay(events: MatrixEvent[]): void {
             ? decryptNow.decrypt
             : matrixClient.decryptEventIfNeeded.bind(matrixClient);
     for (const e of events) {
-        if (e.shouldAttemptDecryption()) void decrypt(e);
+        if (!e.shouldAttemptDecryption()) continue;
+        const decrypted = decrypt(e);
+        // Zami: the client re-emits Decrypted only for the events it mapped
+        // itself, not for a saved room's (roomListCache), which stayed "Unable to
+        // decrypt" on screen until live sync replaced the room.
+        const roomId = e.getRoomId();
+        if (roomId && isRoomCachedOnly(roomId)) {
+            const notify = () => notifyCachedDecrypted(e, roomId);
+            void decrypted.then(notify, notify);
+        }
     }
+}
+
+/** Zami: onEventDecrypted's callbacks, for events of saved rooms (above). */
+const cachedDecryptedCallbacks = new Set<
+    (event: MatrixEvent, room: Room) => void
+>();
+/**
+ * Zami: tell onEventDecrypted's callbacks. Right away, not batched on a timer:
+ * a launch replays the saved sync right after the first frame, and that one
+ * long chain of microtasks would hold a timer, and the room, back for seconds.
+ * React batches the re-reads a room's messages cause into one render anyway.
+ */
+function notifyCachedDecrypted(event: MatrixEvent, roomId: string): void {
+    const room = roomListCache?.rooms.get(roomId);
+    if (!room) return;
+    for (const callback of cachedDecryptedCallbacks) callback(event, room);
 }
 
 export function getTimelineMessages(room: Room): MatrixEvent[] {
@@ -9829,11 +9889,15 @@ export function onEventDecrypted(
         if (room) callback(event, room);
     };
     matrixClient.on(MatrixEventEvent.Decrypted as never, handler as never);
-    return () =>
+    // Zami: and the saved rooms' (see decryptForDisplay).
+    cachedDecryptedCallbacks.add(callback);
+    return () => {
+        cachedDecryptedCallbacks.delete(callback);
         matrixClient?.off(
             MatrixEventEvent.Decrypted as never,
             handler as never,
         );
+    };
 }
 
 export interface DecryptedTimelineMeta {
