@@ -86,6 +86,8 @@
     "src/lib/actions/dismissOnOutsidePointer.ts",
     "src/lib/actions/focusTrap.test.ts",
     "src/lib/actions/focusTrap.ts",
+    "src/lib/actions/gifTileVideo.test.ts",
+    "src/lib/actions/gifTileVideo.ts",
     "src/lib/actions/longPress.test.ts",
     "src/lib/actions/longPress.ts",
     "src/lib/actions/parkOffscreen.test.ts",

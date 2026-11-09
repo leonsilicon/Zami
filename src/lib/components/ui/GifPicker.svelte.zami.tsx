@@ -766,7 +766,9 @@ function FavouriteTile({
                 ) : (
                     // Zami: the preview itself, which expo-image animates
                     // (GIF and WebP), where upstream plays `previewVideoUrl`
-                    // in a muted looping <video> when there is one.
+                    // in a muted looping <video> when there is one (loaded
+                    // only near the viewport by `gifTileVideo`; the FlatList's
+                    // virtualization does that here).
                     <Image
                         source={mediaSource(gif.previewUrl)}
                         accessible={false}
@@ -888,7 +890,9 @@ function ResultTile({
                 }`}
             >
                 {/* Zami: the animated preview through expo-image, rather than
-                    one muted looping player per tile for `previewVideoUrl`.
+                    one muted looping player per tile for `previewVideoUrl`
+                    (which upstream's `gifTileVideo` gives a source only near
+                    the viewport; the FlatList only mounts tiles near it).
                     Without dimensions the tile is square. */}
                 <Image
                     source={mediaSource(r.previewUrl)}
