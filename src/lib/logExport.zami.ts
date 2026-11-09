@@ -2,6 +2,11 @@
 // which build, platform, device and crypto state the logs came from, then
 // every line logCapture.ts has kept. The lines are redacted as captured; the
 // header is redacted here.
+import {
+    formatStartup,
+    previousStartup,
+    thisStartup,
+} from "@-/com.leonsilicon.zami.startup";
 import { Capacitor } from "@capacitor/core";
 import { APP_VERSION } from "$lib/update";
 import { getClient } from "$lib/matrix/client";
@@ -65,6 +70,13 @@ export async function buildLogExport(): Promise<string> {
         `own device keys on server: ${
             userId && deviceId ? await ownKeysOnServer(userId, deviceId) : "n/a"
         }`,
+        // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+        ...formatStartup(thisStartup()).map((line) => `this launch: ${line}`),
+        ...(previousStartup()
+            ? formatStartup(previousStartup()!).map(
+                  (line) => `previous launch: ${line}`,
+              )
+            : []),
     ].map(redact);
     const dropped = getDroppedLogCount();
     const lines = getCapturedLogs();

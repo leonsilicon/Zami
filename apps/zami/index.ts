@@ -1,3 +1,5 @@
+// First, so the launch timeline starts as early as the app's JS does.
+import "@-/com.leonsilicon.zami.startup";
 import "#polyfills";
 import "#blob";
 import "#globals";

@@ -49,6 +49,8 @@ import type {
 import { buildFeatureSupportMap } from "matrix-js-sdk/lib/feature";
 import { VerificationMethod } from "matrix-js-sdk/lib/types";
 import { readScoped, writeScoped } from "$lib/utils/scopedStorage";
+import { createSlicedQueue } from "@-/com.leonsilicon.zami.scheduler";
+import { finishStartup, markStartup } from "@-/com.leonsilicon.zami.startup";
 import {
     shouldKickSync,
     watchdogOverdueMs,
@@ -141,6 +143,8 @@ import {
     buildSnapshot,
     deleteSnapshot,
     loadSnapshot,
+    loadSnapshotRest,
+    splitByRecency,
     materializeSnapshot,
     saveSnapshot,
     snapshotKey,
@@ -535,6 +539,79 @@ function handleTokenRefresh(
     }
 }
 
+/** Zami: whether the chats (AppShell) are on screen; see noteChatsOnScreen. */
+let chatsOnScreen = false;
+let chatsDrawnWaiters: (() => void)[] = [];
+// How long the saved sync waits for the chats to be drawn before going ahead.
+const CHATS_DRAWN_WAIT_MS = 2000;
+
+/**
+ * Zami: AppShell reports when it has drawn its first frame, and when it goes
+ * away. Until then, restoring a session holds the SDK's replay of the saved
+ * sync back (see deferSavedSyncUntilDrawn).
+ */
+export function noteChatsOnScreen(onScreen: boolean): void {
+    chatsOnScreen = onScreen;
+    if (!onScreen) return;
+    const waiters = chatsDrawnWaiters;
+    chatsDrawnWaiters = [];
+    for (const resolve of waiters) resolve();
+}
+
+/**
+ * Zami: start replaying the saved sync only once the chats are on screen.
+ * Replaying it rebuilds every room in one long run of the JS thread, and the
+ * session is ready (and AppShell rendered from the saved room list) before it,
+ * so it used to keep that first frame, and the splash, up for seconds on a
+ * large account. Waits at most CHATS_DRAWN_WAIT_MS, in case nothing draws.
+ */
+function deferSavedSyncUntilDrawn(client: MatrixClient): void {
+    const store = client.store as {
+        getSavedSync?: (...args: unknown[]) => Promise<unknown>;
+    };
+    if (typeof store.getSavedSync !== "function") return;
+    const getSavedSync = store.getSavedSync;
+    store.getSavedSync = (...args: unknown[]) => {
+        store.getSavedSync = getSavedSync;
+        if (chatsOnScreen) return getSavedSync(...args);
+        return new Promise<void>((resolve) => {
+            chatsDrawnWaiters.push(resolve);
+            setTimeout(resolve, CHATS_DRAWN_WAIT_MS);
+        }).then(() => getSavedSync(...args));
+    };
+}
+
+/** Zami: how long one turn of queued decryption may hold the JS thread. */
+const DECRYPT_SLICE_MS = 8;
+
+/** Zami: the current client's unqueued decryption, for events on screen. */
+let decryptNow: {
+    client: MatrixClient;
+    decrypt: (event: MatrixEvent) => Promise<void>;
+} | null = null;
+
+/**
+ * Zami: run decryptions a few milliseconds at a time, between turns of the
+ * event loop, newest message first (@-/com.leonsilicon.zami.scheduler).
+ * Restoring a large account asks for thousands at once (the SDK decrypts every
+ * message past each room's read receipt, for accurate unread counts), and each
+ * one runs through the crypto engine's WebAssembly and back through
+ * microtasks: together they held the JS thread for many seconds without a frame
+ * drawn. Newest first, so each room's preview and anything that just arrived
+ * go ahead of old unread messages. Events already decrypted, failed or in
+ * flight answer at once, as before; decryptForDisplay skips the queue.
+ */
+function sliceDecryption(client: MatrixClient): void {
+    if (typeof client.decryptEventIfNeeded !== "function") return;
+    const decrypt = client.decryptEventIfNeeded.bind(client);
+    decryptNow = { client, decrypt: (event) => decrypt(event) };
+    const queue = createSlicedQueue({ sliceMs: DECRYPT_SLICE_MS });
+    client.decryptEventIfNeeded = (event, options) => {
+        if (!event.shouldAttemptDecryption()) return decrypt(event, options);
+        return queue.add(() => decrypt(event, options), event.getTs());
+    };
+}
+
 async function createAuthenticatedClient(opts: {
     baseUrl: string;
     accessToken: string;
@@ -638,6 +715,8 @@ async function createAuthenticatedClient(opts: {
     if (store) {
         resetSyncStoreFallback();
         try {
+            // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+            markStartup("Opening the message cache");
             await store.startup();
             setMatrixStore(store);
         } catch (err) {
@@ -653,11 +732,13 @@ async function createAuthenticatedClient(opts: {
 
     addOrderHints(client, bottomEventId, () => settingsState.orderHints);
     installClient(client);
+    sliceDecryption(client);
 
     // Initialise E2EE before the caller starts sync, so crypto is ready when
     // to-device / m.room.encrypted events arrive. Never throws — a crypto-init
     // failure degrades gracefully (unencrypted rooms keep working; encrypted
     // rooms render UTD placeholders).
+    markStartup("Opening the encryption store");
     await initCrypto(client, opts.userId, opts.deviceId);
 
     // A fresh crypto store under a device the server already has keys for:
@@ -680,6 +761,7 @@ async function createAuthenticatedClient(opts: {
     // kept every launch on the splash for a round trip, or as long as a bad
     // connection hangs. If the server does disagree, the session ends the way
     // an expired one does.
+    markStartup("Checking device keys");
     if (await ownDeviceKeyMatchesRecord(client)) {
         void ownDeviceKeysReplaced(client)
             .then(async (replaced) => {
@@ -1483,6 +1565,19 @@ export async function startSync(
                 (state === "PREPARED" || state === "SYNCING")
             )
                 noteLiveSyncResponse();
+            // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+            if (state === "PREPARED")
+                markStartup(
+                    data?.fromCache
+                        ? "Processed the saved sync"
+                        : "First sync done",
+                    `${client.getRooms().length} rooms`,
+                );
+            if (!data?.fromCache && isHealthySyncState(state))
+                finishStartup(
+                    "Up to date",
+                    `${client.getRooms().length} rooms`,
+                );
             onStateChange(state);
         },
     );
@@ -1627,6 +1722,7 @@ export async function startSync(
     }, 10_000);
 
     // Paint the last known room list while sync catches up.
+    markStartup("Loading saved chats");
     await hydrateRoomListCache(client);
     // A hidden page may never come back (mobile kills it): save on the way out.
     const onHidden = () => {
@@ -1644,6 +1740,7 @@ export async function startSync(
     setSyncHeldForCrypto(false);
 
     try {
+        markStartup("Starting sync");
         const slidingSync = await buildSlidingSync(client, {
             keepToDeviceOnServer: cryptoDown,
             onFallback: onSlidingSyncFallback,
@@ -1672,6 +1769,7 @@ export async function startSync(
             return dispose;
         }
         await serveServerVersionsFromCache(client);
+        deferSavedSyncUntilDrawn(client);
         await client.startClient({
             slidingSync: slidingSync,
             initialSyncLimit: 8,
@@ -2174,12 +2272,14 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     const userId = client.getUserId();
     const deviceId = client.getDeviceId();
     if (!userId || !deviceId) return;
-    const snapshot = await loadSnapshot(snapshotKey(userId, deviceId));
+    const key = snapshotKey(userId, deviceId);
+    const snapshot = await loadSnapshot(key);
     if (!snapshot || matrixClient !== client || roomListComplete) return;
     // Zami: only the rooms the first screen can show are built before it
     // paints, or every launch of an account with thousands of rooms would wait
-    // on all of them. The rest follow in the background.
-    const [firstRooms, otherRooms] = splitForFirstPaint(snapshot.rooms);
+    // on all of them. The rest follow in the background, if still needed
+    // (saveSnapshot keeps them apart; a snapshot saved before that has them all).
+    const [firstRooms, otherRooms] = splitByRecency(snapshot.rooms);
     roomListCache = materializeSnapshot(client, {
         ...snapshot,
         rooms: firstRooms,
@@ -2191,29 +2291,24 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     // "unable to decrypt" everywhere. Never awaited: no key means the
     // placeholder is the correct rendering anyway.
     void decryptCachedEvents(client, roomListCache);
-    void materializeRemainingRooms(client, roomListCache, snapshot, otherRooms);
+    void materializeRemainingRooms(
+        client,
+        roomListCache,
+        snapshot,
+        otherRooms,
+        key,
+    );
 }
-
-/** Zami: how many cached rooms are built before the app first paints. */
-const FIRST_PAINT_ROOMS = 50;
 
 /** Zami: how long one background slice of room building may hold the JS thread. */
 const ROOM_BUILD_SLICE_MS = 8;
 
-/** Zami: the rooms active most recently, then the rest. */
-function splitForFirstPaint(
-    rooms: RoomListSnapshot["rooms"],
-): [RoomListSnapshot["rooms"], RoomListSnapshot["rooms"]] {
-    const lastActivity = (room: RoomListSnapshot["rooms"][number]): number =>
-        room.timeline?.[room.timeline.length - 1]?.origin_server_ts ?? 0;
-    const byRecency = [...rooms].sort(
-        (a, b) => lastActivity(b) - lastActivity(a),
-    );
-    return [
-        byRecency.slice(0, FIRST_PAINT_ROOMS),
-        byRecency.slice(FIRST_PAINT_ROOMS),
-    ];
-}
+/**
+ * Zami: how long after the chats are drawn to wait before reading the rest of
+ * the saved room list. Usually sync has replaced it by then (classic sync as
+ * soon as the saved sync is replayed), and the read is skipped.
+ */
+const REST_OF_ROOM_LIST_DELAY_MS = 3000;
 
 /**
  * Zami: add the rest of a snapshot's rooms to the cache a few at a time,
@@ -2224,8 +2319,22 @@ async function materializeRemainingRooms(
     client: MatrixClient,
     cache: MaterializedCache,
     snapshot: RoomListSnapshot,
-    rooms: RoomListSnapshot["rooms"],
+    otherRooms: RoomListSnapshot["rooms"],
+    key: string,
 ): Promise<void> {
+    await new Promise<void>((resolve) => {
+        if (chatsOnScreen) return resolve();
+        chatsDrawnWaiters.push(resolve);
+        setTimeout(resolve, CHATS_DRAWN_WAIT_MS);
+    });
+    await new Promise((resolve) =>
+        setTimeout(resolve, REST_OF_ROOM_LIST_DELAY_MS),
+    );
+    if (roomListCache !== cache || matrixClient !== client) return;
+    const shown = new Set(cache.rooms.keys());
+    const rooms = [...otherRooms, ...(await loadSnapshotRest(key))].filter(
+        (room) => !shown.has(room.roomId),
+    );
     if (rooms.length === 0) return;
     const built = new Map<string, Room>();
     let next = 0;
@@ -2255,13 +2364,19 @@ async function decryptCachedEvents(
     cache: Pick<MaterializedCache, "rooms">,
 ): Promise<void> {
     for (const room of cache.rooms.values()) {
-        for (const ev of room.getLiveTimeline().getEvents()) {
-            if (!ev.isEncrypted()) continue;
-            try {
-                await client.decryptEventIfNeeded(ev);
-            } catch {
-                // Keys are gone or the event is for another session: leave it.
-            }
+        // Zami: only the newest, for the room list's preview. Live sync replaces
+        // these rooms within moments, and a cached room that is opened decrypts
+        // what it shows (decryptForDisplay); decrypting every cached message
+        // up front was thousands of decryptions per launch for a large account.
+        const events = room.getLiveTimeline().getEvents();
+        let newest: MatrixEvent | undefined;
+        for (let i = events.length - 1; i >= 0 && !newest; i--)
+            if (events[i]!.isEncrypted()) newest = events[i];
+        if (!newest) continue;
+        try {
+            await client.decryptEventIfNeeded(newest);
+        } catch {
+            // Keys are gone or the event is for another session: leave it.
         }
     }
 }
@@ -2899,9 +3014,13 @@ function liveChainEvents(room: Room): MatrixEvent[] {
  */
 function decryptForDisplay(events: MatrixEvent[]): void {
     if (!matrixClient) return;
+    // Zami: on screen, so ahead of the queued backlog (see sliceDecryption).
+    const decrypt =
+        decryptNow?.client === matrixClient
+            ? decryptNow.decrypt
+            : matrixClient.decryptEventIfNeeded.bind(matrixClient);
     for (const e of events) {
-        if (e.shouldAttemptDecryption())
-            void matrixClient.decryptEventIfNeeded(e);
+        if (e.shouldAttemptDecryption()) void decrypt(e);
     }
 }
 

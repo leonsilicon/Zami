@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useUniwind } from "uniwind";
+import { markStartup } from "@-/com.leonsilicon.zami.startup";
 import { fontsReady } from "#fonts";
 import { storageReady } from "#storage";
 import Splash from "$lib/components/layout/Splash.svelte";
@@ -27,6 +28,7 @@ export function Root() {
   // it restores a session.
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    markStartup("Loading storage, translations and fonts");
     void Promise.all([initI18n(), storageReady, fontsReady]).finally(() => setReady(true));
   }, []);
 

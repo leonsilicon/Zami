@@ -234,10 +234,28 @@ export function materializeSnapshot(
 
 const DB_NAME = "zam-roomlist-cache";
 const STORE = "snapshots";
+// Zami: all but the first screen's rooms, kept apart (see saveSnapshot).
+const REST_DB_NAME = "zam-roomlist-cache-rest";
 
-function openDb(): Promise<IDBDatabase> {
+/** Zami: how many of the most recently active rooms the first screen shows. */
+export const FIRST_PAINT_ROOMS = 50;
+
+/** Zami: a snapshot's rooms, most recently active first, split after `count`. */
+export function splitByRecency(
+    rooms: CachedRoom[],
+    count = FIRST_PAINT_ROOMS,
+): [CachedRoom[], CachedRoom[]] {
+    const lastActivity = (room: CachedRoom): number =>
+        room.timeline?.[room.timeline.length - 1]?.origin_server_ts ?? 0;
+    const byRecency = [...rooms].sort(
+        (a, b) => lastActivity(b) - lastActivity(a),
+    );
+    return [byRecency.slice(0, count), byRecency.slice(count)];
+}
+
+function openDb(name = DB_NAME): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
+        const req = indexedDB.open(name, 1);
         req.onupgradeneeded = () => {
             const db = req.result;
             if (!db.objectStoreNames.contains(STORE))
@@ -251,8 +269,9 @@ function openDb(): Promise<IDBDatabase> {
 async function withStore<T>(
     mode: IDBTransactionMode,
     fn: (store: IDBObjectStore) => IDBRequest,
+    name = DB_NAME,
 ): Promise<T> {
-    const db = await openDb();
+    const db = await openDb(name);
     try {
         return await new Promise<T>((resolve, reject) => {
             const tx = db.transaction(STORE, mode);
@@ -283,6 +302,21 @@ export async function loadSnapshot(
     }
 }
 
+/**
+ * Zami: the rooms saveSnapshot kept apart from the first screen's, or none.
+ * Opening their database loads all of them, so read it only when needed.
+ */
+export async function loadSnapshotRest(key: string): Promise<CachedRoom[]> {
+    try {
+        const rest = await withStore<
+            { v: number; rooms: CachedRoom[] } | undefined
+        >("readonly", (s) => s.get(key), REST_DB_NAME);
+        return rest && rest.v === SNAPSHOT_VERSION ? rest.rooms : [];
+    } catch {
+        return [];
+    }
+}
+
 export async function saveSnapshot(
     key: string,
     snapshot: RoomListSnapshot,
@@ -292,7 +326,20 @@ export async function saveSnapshot(
         // plain JSON, which the IndexedDB stand-in stores and reads back far
         // faster than a value it has to walk and tag.
         const plain = JSON.parse(JSON.stringify(snapshot)) as RoomListSnapshot;
-        await withStore("readwrite", (s) => s.put(plain, key));
+        // Zami: the first screen's rooms in one database, the rest in another.
+        // The IndexedDB stand-in loads a whole database when it is first
+        // opened, and every launch opens this one before it can draw: with
+        // thousands of rooms, the full snapshot was tens of megabytes to read
+        // first.
+        const [first, rest] = splitByRecency(plain.rooms);
+        await withStore("readwrite", (s) =>
+            s.put({ ...plain, rooms: first }, key),
+        );
+        await withStore(
+            "readwrite",
+            (s) => s.put({ v: plain.v, rooms: rest }, key),
+            REST_DB_NAME,
+        );
     } catch (err) {
         reportStorageError(err, { fromIndexedDB: true });
         console.warn("[roomListCache] save failed", err);
@@ -300,9 +347,11 @@ export async function saveSnapshot(
 }
 
 export async function deleteSnapshot(key: string): Promise<void> {
-    try {
-        await withStore("readwrite", (s) => s.delete(key));
-    } catch {
-        // Nothing stored or no IndexedDB: nothing to wipe.
+    for (const name of [DB_NAME, REST_DB_NAME]) {
+        try {
+            await withStore("readwrite", (s) => s.delete(key), name);
+        } catch {
+            // Nothing stored or no IndexedDB: nothing to wipe.
+        }
     }
 }

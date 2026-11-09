@@ -1,5 +1,6 @@
 import { addCaptureKeyListener } from "@-/com.leonsilicon.zami.browser";
 import { Portal, Spin } from "@-/com.leonsilicon.zami.rn";
+import { markStartup } from "@-/com.leonsilicon.zami.startup";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { setBadgeCountAsync } from "expo-notifications";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -237,6 +238,7 @@ import {
     onReadReceiptConfirmed,
     startEventIndex,
     type ActiveSessionHeartbeat,
+    noteChatsOnScreen,
 } from "$lib/matrix/client";
 import {
     shouldNotifyDecrypted,
@@ -552,6 +554,24 @@ export default function AppShell() {
     // Zami: upstream samples the release velocity from the touch moves
     // (`lastMoveX`, `lastMoveT`, `dragVelocity`); the pan reports it, and it
     // drops toward zero on a pause before release just the same.
+
+    // Zami: the launch timeline (@-/com.leonsilicon.zami.startup) notes when the
+    // chats first render, which is later than when the session was ready if the JS
+    // thread is busy.
+    useEffect(() => {
+        markStartup("Chats shown");
+        // The first frame drawn after that: later still if the JS thread is
+        // busy. Restoring a session waits for it before replaying the saved
+        // sync (noteChatsOnScreen in client.ts).
+        const frame = requestAnimationFrame(() => {
+            markStartup("Chats on screen");
+            noteChatsOnScreen(true);
+        });
+        return () => {
+            cancelAnimationFrame(frame);
+            noteChatsOnScreen(false);
+        };
+    }, []);
 
     // Keep translate in sync when state changes programmatically (hamburger, etc.)
     // Zami: it re-runs when `leftOpen` or the width changes; `isDragging` is a
@@ -2349,7 +2369,23 @@ export default function AppShell() {
                 return;
             emitNotification(event, room, !!(actions?.tweaks as any)?.sound);
         });
-        const unsubReceipts = onAnyReceiptEvent(() => {
+        // Zami: once per turn of the event loop, not per receipt. Each pass
+        // walks every room twice, and a saved sync replays a receipt per room
+        // in one chain of microtasks: per receipt, that was quadratic in the
+        // number of rooms (see bumpUnreadTick).
+        let receiptsTimer: ReturnType<typeof setTimeout> | null = null;
+        const unsubReceiptEvents = onAnyReceiptEvent(() => {
+            receiptsTimer ??= setTimeout(() => {
+                receiptsTimer = null;
+                onReceipts();
+            }, 0);
+        });
+        const unsubReceipts = () => {
+            unsubReceiptEvents();
+            if (receiptsTimer) clearTimeout(receiptsTimer);
+            receiptsTimer = null;
+        };
+        function onReceipts(): void {
             const userId = getOwnUserId();
             const client = getClient();
             // Before the bump: thread counts a receipt now covers drop to zero
@@ -2383,7 +2419,7 @@ export default function AppShell() {
                     readEventIds,
                 }),
             );
-        });
+        }
         // Fires once the server confirms a read receipt (or it already is
         // confirmed), so the room's loud dot clears without waiting for a
         // receipt event.

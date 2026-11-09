@@ -120,8 +120,21 @@ export const roomsState = $state({
     draftDm: null as { userId: string; encrypt: boolean } | null,
 });
 
+// Zami: at most one bump per turn of the event loop. Replaying a saved sync adds
+// every cached message in one long chain of microtasks, and Svelte flushes its
+// effects between them, so a bump per message re-ran every unread badge and
+// preview (each a pass over all rooms) once per message: on Hermes, minutes of
+// "Restoring session" for a large account. A timer can't fire inside that chain,
+// so its bumps collapse into one when it ends; otherwise this is a frame later.
+let unreadBumpQueued = false;
+
 export function bumpUnreadTick(): void {
-    roomsState.unreadTick++;
+    if (unreadBumpQueued) return;
+    unreadBumpQueued = true;
+    setTimeout(() => {
+        unreadBumpQueued = false;
+        roomsState.unreadTick++;
+    }, 0);
 }
 
 /**

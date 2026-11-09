@@ -1,4 +1,9 @@
 import { Range } from "@-/com.leonsilicon.zami.rn";
+import {
+    formatStartup,
+    previousStartup,
+    thisStartup,
+} from "@-/com.leonsilicon.zami.startup";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useState } from "react";
@@ -402,6 +407,39 @@ export default function DebugSettings() {
                         />
                     </View>
                 ) : null}
+            </View>
+
+            {/* Zami: the launch timeline (@-/com.leonsilicon.zami.startup), for a
+                slow "Restoring session". A diagnostic, so not translated. */}
+            <View>
+                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    Startup
+                </Text>
+                {(
+                    [
+                        ["This launch", thisStartup()],
+                        ["Previous launch", previousStartup()],
+                    ] as const
+                ).map(([label, record]) =>
+                    record ? (
+                        <View
+                            key={label}
+                            className="py-2 border-b border-discord-divider"
+                        >
+                            <Text className="text-sm text-discord-textPrimary mb-1">
+                                {label}
+                            </Text>
+                            {formatStartup(record).map((line, i) => (
+                                <Text
+                                    key={i}
+                                    className="text-discord-textMuted font-mono text-xs"
+                                >
+                                    {line}
+                                </Text>
+                            ))}
+                        </View>
+                    ) : null,
+                )}
             </View>
 
             <View>

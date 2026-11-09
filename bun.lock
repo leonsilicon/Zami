@@ -40,6 +40,8 @@
         "@-/com.leonsilicon.zami.metro": "workspace:*",
         "@-/com.leonsilicon.zami.parity": "workspace:*",
         "@-/com.leonsilicon.zami.rn": "workspace:*",
+        "@-/com.leonsilicon.zami.scheduler": "workspace:*",
+        "@-/com.leonsilicon.zami.startup": "workspace:*",
         "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
         "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
         "@-/com.leonsilicon.zami.webcrypto": "workspace:*",
@@ -345,6 +347,20 @@
         "react-native": "*",
       },
     },
+    "packages/com/leonsilicon/zami/scheduler": {
+      "name": "@-/com.leonsilicon.zami.scheduler",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/startup": {
+      "name": "@-/com.leonsilicon.zami.startup",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/svelte-react": {
       "name": "@-/com.leonsilicon.zami.svelte-react",
       "version": "0.0.0",
@@ -529,6 +545,10 @@
     "@-/com.leonsilicon.zami.push-gateway": ["@-/com.leonsilicon.zami.push-gateway@workspace:packages/com/leonsilicon/zami/push-gateway"],
 
     "@-/com.leonsilicon.zami.rn": ["@-/com.leonsilicon.zami.rn@workspace:packages/com/leonsilicon/zami/rn"],
+
+    "@-/com.leonsilicon.zami.scheduler": ["@-/com.leonsilicon.zami.scheduler@workspace:packages/com/leonsilicon/zami/scheduler"],
+
+    "@-/com.leonsilicon.zami.startup": ["@-/com.leonsilicon.zami.startup@workspace:packages/com/leonsilicon/zami/startup"],
 
     "@-/com.leonsilicon.zami.svelte-react": ["@-/com.leonsilicon.zami.svelte-react@workspace:packages/com/leonsilicon/zami/svelte-react"],
 

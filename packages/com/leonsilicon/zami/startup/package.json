@@ -1,0 +1,16 @@
+{
+  "name": "@-/com.leonsilicon.zami.startup",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A timeline of each app launch: when each step of restoring a session began, kept for the next launch and shown while the splash is up.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

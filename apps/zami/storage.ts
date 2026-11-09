@@ -2,10 +2,15 @@
 // Native has none, so this installs fake-indexeddb written through to SQLite. Installing
 // it loads the databases, which is asynchronous: the root waits for `storageReady` before
 // it starts Zam's code.
+import { setStartupStatsSource } from "@-/com.leonsilicon.zami.startup";
 import { openDatabaseSync } from "expo-sqlite";
 import { installPersistentIndexedDB } from "react-native-indexeddb-sqlite";
 import { expoSqlite } from "react-native-indexeddb-sqlite/expo";
 
 export const storageReady: Promise<unknown> = installPersistentIndexedDB({
   sqlite: expoSqlite(openDatabaseSync("indexeddb.db")),
+}).then((installed) => {
+  // The launch timeline notes how much of it each step loads from SQLite.
+  setStartupStatsSource(() => installed.stats);
+  return installed;
 });
