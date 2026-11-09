@@ -360,7 +360,10 @@ export async function reloadToLatest(): Promise<void> {
     // would be answered by the OLD cached shell and show the same error again,
     // so retry a few times first.
     let fresh = false;
-    for (let attempt = 0; attempt < 4 && !fresh; attempt++) {
+    // Zami: no server serves the app (location is https://zami.invalid), so
+    // that fetch can only fail; don't make the reload wait out its retries.
+    const fetchAttempts = 0;
+    for (let attempt = 0; attempt < fetchAttempts && !fresh; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
         try {
             const res = await fetch(location.href, { cache: "reload" });
