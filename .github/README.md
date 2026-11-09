@@ -31,7 +31,9 @@ never conflicts, and a scheduled workflow does the rest:
 2. It merges upstream's changes into the copied Zami files.
 3. Claude (Opus 5.5) migrates upstream's changes to the translated components and
    resolves conflicts, checking its work against upstream's own tests.
-4. It opens a pull request for review.
+4. Claude ports the rest of upstream's changes to wherever Zami implements that behavior,
+   since text merged into a file the app doesn't run changes nothing.
+5. It opens a pull request for review.
 
 ## Setup and running
 

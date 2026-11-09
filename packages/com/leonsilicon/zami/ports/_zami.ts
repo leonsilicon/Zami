@@ -5,7 +5,9 @@
 //   _zami sync [--since <commit>] [--dry-run] [--worklist <path>] [--summary <path>]
 //                                              copy new upstream files, three-way merge
 //                                              upstream changes into copies, and list
-//                                              the rest (translations, conflicts) as work
+//                                              the rest (translations, conflicts) as work,
+//                                              and everything else upstream changed since
+//                                              --since for review
 //   _zami done <zami file>...                  mark files as migrated to the merged upstream commit
 //   _zami diff <zami file>                     what upstream changed since the file was last synced
 //   _zami check [--strict]                     CI invariants; exits 1 on failure

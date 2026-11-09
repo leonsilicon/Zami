@@ -249,6 +249,63 @@ test("sync copies, merges, flags work, and check enforces the invariants", () =>
   );
 });
 
+test("review lists every upstream change that isn't already work, on a resumed sync too", () => {
+  const upstream = join(dir, "review-upstream");
+  const zami = join(dir, "review-zami");
+  mkdirSync(upstream);
+  git(upstream, "init", "-q", "-b", "master");
+  put(upstream, "static/sw.js", "self.version = 1;\n");
+  put(upstream, "src/B.svelte", "<p>hello</p>\n");
+  put(upstream, "src/Gone.svelte", "<p>gone</p>\n");
+  put(upstream, "electron/main.cjs", "module.exports = 1;\n");
+  git(upstream, "add", "-A");
+  git(upstream, "commit", "-q", "-m", "upstream 1");
+  const from = git(upstream, "rev-parse", "HEAD").trim();
+
+  git(dir, "init", "-q", "-b", "main", zami);
+  git(zami, "remote", "add", "upstream", upstream);
+  git(zami, "fetch", "-q", "upstream");
+  git(zami, "checkout", "-q", "-B", "main", "upstream/master");
+  put(zami, "zami-ports.json", JSON.stringify({ include: ["**"], exclude: ["electron/**"] }));
+  sync(new Project(zami));
+  put(zami, "src/B.svelte.zami.tsx", "export default function B() { return null; }\n");
+  put(zami, "src/Gone.svelte.zami.tsx", "export default function Gone() { return null; }\n");
+  markDone(new Project(zami), ["src/B.svelte.zami.tsx", "src/Gone.svelte.zami.tsx"]);
+  git(zami, "add", "-A");
+  git(zami, "commit", "-q", "-m", "zami versions");
+
+  put(upstream, "static/sw.js", "self.version = 2;\n");
+  put(upstream, "src/B.svelte", "<p>hello world</p>\n");
+  rmSync(join(upstream, "src/Gone.svelte"));
+  put(upstream, "src/added.ts", "export const added = 1;\n");
+  put(upstream, "electron/main.cjs", "module.exports = 2;\n");
+  git(upstream, "add", "-A");
+  git(upstream, "commit", "-q", "-m", "upstream 2");
+  git(zami, "fetch", "-q", "upstream");
+  git(zami, "merge", "-q", "--no-edit", "upstream/master");
+
+  const expected = [
+    { upstreamPath: "electron/main.cjs", status: "M" },
+    { upstreamPath: "src/Gone.svelte", status: "D" },
+    { upstreamPath: "src/added.ts", status: "A", zamiPath: "src/added.zami.ts" },
+    { upstreamPath: "static/sw.js", status: "M", zamiPath: "static/sw.zami.js" },
+  ];
+  const first = sync(new Project(zami), { since: from });
+  assert.equal(first.since, from);
+  assert.deepEqual(first.review, expected);
+  assert.deepEqual(
+    first.work.map((item) => item.zamiPath),
+    ["src/B.svelte.zami.tsx"],
+    "a translated component is work, not review",
+  );
+
+  // A later run still sees what the first one merged, though the manifest has moved on.
+  git(zami, "add", "-A");
+  git(zami, "commit", "-q", "-m", "partial sync");
+  assert.deepEqual(sync(new Project(zami), { since: from }).review, expected);
+  assert.deepEqual(sync(new Project(zami)).review, []);
+});
+
 test("excluding an upstream file drops its Zami version, unless Zami changed it", () => {
   const upstream = join(dir, "exclude-upstream");
   const zami = join(dir, "exclude-zami");
