@@ -395,7 +395,7 @@ export const en = {
     "debugPanel.debugPanel": "DEBUG PANEL",
     "debugPanel.sync": "Sync:",
     "debugPanel.refresh": "↻ refresh",
-    "debugPanel.copied": "✓ copied",
+    "debugPanel.copied": "copied",
     "debugPanel.copy": "⧉ copy",
     "debugPanel.unreadState": "UNREAD STATE",
     "debugPanel.unread": "unread:",
@@ -727,6 +727,9 @@ export const en = {
 
     // src/lib/components/ui/FlashEmbed.svelte
     "flashEmbed.suspend": "Suspend",
+    "flashEmbed.resize": "Resize player",
+    "flashEmbed.resizeHint":
+        "Drag or use arrow keys to resize. Double-click to reset.",
 
     // src/lib/components/messages/ForwardMessageDialog.svelte
     "forwardMessageDialog.forwardMessage": "Forward message",
@@ -997,6 +1000,9 @@ export const en = {
     "lightbox.image": "Image",
     "lightbox.videoNoun": "video",
     "lightbox.imageNoun": "image",
+    "lightbox.zoomIn": "Zoom in",
+    "lightbox.zoomOut": "Zoom out",
+    "lightbox.zoomReset": "Reset zoom",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "YouTube video",
@@ -1656,7 +1662,7 @@ export const en = {
     "pluginsSettings.localFolder": "Local folder",
     "pluginsSettings.loadFromFolder": "Load a plugin from a folder",
     "pluginsSettings.loadFromFolderHint":
-        "For developing a plugin: pick the folder with its manifest.json and bundle. Zam keeps a copy and runs it like any plugin; use Reload after you rebuild. It runs full-trust code, so only load folders you wrote or trust.",
+        "For developing a plugin: pick the folder with its manifest.json and bundle, or a repo folder holding several such plugin folders. Zam keeps a copy and runs it like any plugin; use Reload after you rebuild. It runs full-trust code, so only load folders you wrote or trust.",
     "pluginsSettings.chooseFolder": "Choose folder",
     "pluginsSettings.reload": "Reload",
     "pluginsSettings.reloading": "Reloading…",
@@ -1691,7 +1697,7 @@ export const en = {
     "pollBody.resultsAreRevealedWhenThePoll":
         "Results are revealed when the poll ends",
     "pollBody.chooseUpTo": "· choose up to {maxSelections}",
-    "pollBody.selected": "✓ selected",
+    "pollBody.selected": "selected",
     "pollBody.submitting": "Submitting…",
     "pollBody.submitVote": "Submit vote",
     "pollBody.votesAreHidden": "Votes are hidden",
@@ -2216,7 +2222,7 @@ export const en = {
     "securitySettings.onlyOnce": "only once",
     "securitySettings.storeItNowWithoutItYou":
         ". Store it now - without it you can't recover your encrypted history if you lose access to your sessions.",
-    "securitySettings.copied": "Copied ✓",
+    "securitySettings.copied": "Copied",
     "securitySettings.copyKey": "Copy key",
     "securitySettings.youCanAlsoUnlockWithThe":
         "You can also unlock with the passphrase you chose. Keep the key anyway - it's the only way in if you forget the passphrase.",
@@ -2863,6 +2869,10 @@ export const en = {
     // src/lib/components/messages/VoiceMessagePlayer.svelte
     "voiceMessagePlayer.seek": "Seek",
     "voiceMessagePlayer.voiceMessage": "Voice message",
+    "midiPlayer.play": "Play",
+    "midiPlayer.pause": "Pause",
+    "midiPlayer.seek": "Position",
+    "midiPlayer.volume": "Volume",
 
     // src/lib/components/messages/VoiceRecorder.svelte
     "voiceRecorder.cancelRecording": "Cancel recording",

@@ -399,7 +399,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugPanel.debugPanel": "PANEL DE DEPURACIÓN",
     "debugPanel.sync": "Sincronización:",
     "debugPanel.refresh": "↻ actualizar",
-    "debugPanel.copied": "✓ copiado",
+    "debugPanel.copied": "copiado",
     "debugPanel.copy": "⧉ copiar",
     "debugPanel.unreadState": "ESTADO DE NO LEÍDOS",
     "debugPanel.unread": "no leídos:",
@@ -720,6 +720,9 @@ const messages: Partial<Record<MessageKey, string>> = {
 
     // src/lib/components/ui/FlashEmbed.svelte
     "flashEmbed.suspend": "Suspender",
+    "flashEmbed.resize": "Cambiar el tamaño del reproductor",
+    "flashEmbed.resizeHint":
+        "Arrastra o usa las flechas para cambiar el tamaño. Doble clic para restablecer.",
 
     // src/lib/components/messages/ForwardMessageDialog.svelte
     "forwardMessageDialog.forwardMessage": "Reenviar mensaje",
@@ -918,6 +921,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.image": "Imagen",
     "lightbox.videoNoun": "vídeo",
     "lightbox.imageNoun": "imagen",
+    "lightbox.zoomIn": "Acercar",
+    "lightbox.zoomOut": "Alejar",
+    "lightbox.zoomReset": "Restablecer el zoom",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "Vídeo de YouTube",
@@ -1602,7 +1608,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pluginsSettings.localFolder": "Carpeta local",
     "pluginsSettings.loadFromFolder": "Cargar un plugin desde una carpeta",
     "pluginsSettings.loadFromFolderHint":
-        "Para desarrollar un plugin: elige la carpeta con su manifest.json y el bundle. Zam guarda una copia y lo ejecuta como cualquier plugin; usa Recargar tras recompilar. Ejecuta código con confianza total, así que carga solo carpetas que hayas escrito o en las que confíes.",
+        "Para desarrollar un plugin: elige la carpeta con su manifest.json y el bundle, o una carpeta de repositorio con varias carpetas de plugin así. Zam guarda una copia y lo ejecuta como cualquier plugin; usa Recargar tras recompilar. Ejecuta código con confianza total, así que carga solo carpetas que hayas escrito o en las que confíes.",
     "pluginsSettings.chooseFolder": "Elegir carpeta",
     "pluginsSettings.reload": "Recargar",
     "pluginsSettings.reloading": "Recargando…",
@@ -1639,7 +1645,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pollBody.resultsAreRevealedWhenThePoll":
         "Los resultados se muestran cuando termina la encuesta",
     "pollBody.chooseUpTo": "· elige hasta {maxSelections}",
-    "pollBody.selected": "✓ seleccionada",
+    "pollBody.selected": "seleccionada",
     "pollBody.submitting": "Enviando…",
     "pollBody.submitVote": "Enviar voto",
     "pollBody.votesAreHidden": "Los votos están ocultos",
@@ -2169,7 +2175,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "securitySettings.onlyOnce": "solo una vez",
     "securitySettings.storeItNowWithoutItYou":
         ". Guárdala ahora: sin ella no podrás recuperar tu historial cifrado si pierdes el acceso a tus sesiones.",
-    "securitySettings.copied": "Copiada ✓",
+    "securitySettings.copied": "Copiada",
     "securitySettings.copyKey": "Copiar la clave",
     "securitySettings.youCanAlsoUnlockWithThe":
         "También puedes desbloquear con la frase de contraseña que elegiste. Conserva la clave de todos modos: es la única forma de entrar si olvidas la frase.",
@@ -2928,6 +2934,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/VoiceMessagePlayer.svelte
     "voiceMessagePlayer.seek": "Buscar posición",
     "voiceMessagePlayer.voiceMessage": "Mensaje de voz",
+    "midiPlayer.play": "Reproducir",
+    "midiPlayer.pause": "Pausar",
+    "midiPlayer.seek": "Posición",
+    "midiPlayer.volume": "Volumen",
 
     // src/lib/components/messages/VoiceRecorder.svelte
     "voiceRecorder.cancelRecording": "Cancelar la grabación",
