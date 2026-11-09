@@ -4,6 +4,31 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.54.16
+
+🐛 **Fixed**
+
+- **iOS app after an update:** reopening Zam after a new version no longer gets stuck on "500 Internal Error". It now waits for the network, clears the old cached copy and reloads into the new version.
+- **Duplicate and own-message notifications on iOS:** notifications for messages you sent, and a second copy of the same notification, are now suppressed. Old leftover push registrations from this device are cleaned up.
+- **Windows updates:** "Restart to apply" now installs silently and reopens Zam. A version that failed to install is no longer re-applied automatically, and Zam keeps an update log.
+- **Windows portable build:** it no longer tries to install an update it cannot apply and points to the release page instead.
+- **Crashes when switching windows on Windows:** Zam now recovers a crashed window by reloading it and records what went wrong in a log file.
+
+## v1.54.15
+
+🐛 **Fixed**
+
+- **"Listening to" in the Flatpak:** the Flatpak could not see media players on the system, so what you were playing never showed in your presence. It now has permission to read media players over MPRIS.
+
+## v1.54.14
+
+🐛 **Fixed**
+
+- **Games run through Proton or Wine are detected:** on Linux (including the Flatpak), Steam games that run as Windows programs were never recognised by game scanning, so no activity showed. Zam now matches them and ignores Wine's own system programs.
+- **Games in folders with spaces are detected in the Flatpak:** native games under paths like `steamapps/common/Hollow Knight` are matched.
+- **Scanning recovers after a failed host check:** a slow first permission check no longer turns scanning off until Zam restarts.
+- **Steam icons for scanned games on Windows:** the game's own Steam icon is used, and a Discord icon that fails to load falls back to the program's icon.
+
 ## v1.54.13
 
 🐛 **Fixed**

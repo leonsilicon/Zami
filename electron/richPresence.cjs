@@ -10,7 +10,7 @@
 //                       the local servers in discordRpc.cjs.
 //   Game scanner        gameScanner.cjs finds known games by their executable.
 //   Media               mediaSession.cjs reports what media players are playing
-//                       (SMTC on Windows, MPRIS on Linux, Spotify and Music on
+//                       (SMTC on Windows, MPRIS on Linux, MediaRemote on
 //                       macOS) as "Listening to".
 //
 // Everything is off until the renderer asks (Settings > General). Nothing is
@@ -109,6 +109,8 @@ function createRichPresence({
     // Downloads Discord's game list (net.fetch). Without it the list is only
     // read from disk.
     fetch,
+    // Where the macOS MediaRemote adapter lives (see mediaSession.cjs).
+    mediaDir,
     log = () => {},
 }) {
     const knownGames = createKnownGames({
@@ -119,6 +121,19 @@ function createRichPresence({
     const loadGames = () => knownGames.load();
     let generation = 0;
     let hostAccessCheck = null;
+    // Only a success is kept: a failed check is asked again on the next
+    // configure, so granting access later does not need a restart.
+    const checkHostAccess = () =>
+        (hostAccessCheck ??= hostAccess().then(
+            (ok) => {
+                if (!ok) hostAccessCheck = null;
+                return ok;
+            },
+            () => {
+                hostAccessCheck = null;
+                return false;
+            },
+        ));
     let hostAllowed = !inFlatpak;
     let tcp = null;
     let unix = null; // { server, wss, dir, key }
@@ -615,8 +630,7 @@ function createRichPresence({
         }
         if (inFlatpak && local && want.arrpc) {
             // Controlling Discord or starting a process outside the sandbox.
-            hostAccessCheck ??= hostAccess();
-            hostAllowed = await hostAccessCheck;
+            hostAllowed = await checkHostAccess();
             fake.setHostAccess(hostAllowed);
         }
         if (local && want.arrpc && want.fake) await fake.start();
@@ -624,8 +638,7 @@ function createRichPresence({
         if (local && want.scan && !scanner) {
             // A Flatpak sandbox cannot see the host's processes; it can ask
             // the host to list them, if the user allowed that.
-            if (inFlatpak) hostAccessCheck ??= hostAccess();
-            const allowed = !inFlatpak || (await hostAccessCheck);
+            const allowed = !inFlatpak || (await checkHostAccess());
             status.scan.needsPermission = !allowed;
             if (allowed && gen === generation) scanner = startScanner();
         } else if (!want.scan) {
@@ -637,6 +650,7 @@ function createRichPresence({
                 inFlatpak,
                 log,
                 fetch,
+                mediaDir,
             });
             media.start();
         }

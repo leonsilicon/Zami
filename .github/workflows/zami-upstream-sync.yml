@@ -27,6 +27,8 @@ concurrency:
 
 env:
   BRANCH: zami/upstream-sync
+  # Adding the `upstream` remote would otherwise make gh act on Zam's own repository.
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   sync:

@@ -91,6 +91,63 @@ export function parseReleaseAssets(raw: unknown): ReleaseAsset[] {
     return out;
 }
 
+// Web/PWA only. The version the last check offered, so a reload knows what it is
+// aiming for, and the version a reload was last tried for in this tab. The
+// latter is per tab (sessionStorage): it stops a reload loop when the server
+// keeps serving an older build than the release.
+let offeredVersion: string | null = null;
+const RELOAD_TARGET_KEY = "zam:pwa-reload-target";
+
+function readReloadTarget(): string | null {
+    try {
+        return sessionStorage.getItem(RELOAD_TARGET_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function writeReloadTarget(version: string | null): void {
+    try {
+        if (version === null) sessionStorage.removeItem(RELOAD_TARGET_KEY);
+        else sessionStorage.setItem(RELOAD_TARGET_KEY, version);
+    } catch {
+        // No storage: the loop guard is lost, the reload itself still works.
+    }
+}
+
+// How long a reload waits for a newly found service worker to take control.
+const SW_ACTIVATION_WAIT_MS = 5000;
+
+/**
+ * Resolves once a newly found service worker has activated (or is redundant), or
+ * after `ms`. A reload while the new worker is still installing would be served
+ * by the old one, so the page would come back on the old build.
+ */
+function waitForWorkerActivation(
+    reg: ServiceWorkerRegistration,
+    ms: number,
+): Promise<void> {
+    return new Promise((resolve) => {
+        const worker = reg.installing ?? reg.waiting;
+        if (!worker) {
+            resolve();
+            return;
+        }
+        const done = () => {
+            clearTimeout(timer);
+            worker.removeEventListener("statechange", onState);
+            resolve();
+        };
+        const onState = () => {
+            if (worker.state === "activated" || worker.state === "redundant")
+                done();
+        };
+        const timer = setTimeout(done, ms);
+        worker.addEventListener("statechange", onState);
+        onState();
+    });
+}
+
 /**
  * Fetch the latest GitHub release and compare it to the current build.
  * Throws on network / API errors (e.g. no releases yet → 404).
@@ -109,10 +166,29 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     const data = await res.json();
     const latest: string = (data.tag_name ?? data.name ?? "").toString();
     if (!latest) throw new Error(t("update.couldNotReadTheLatestVersion"));
+    const latestVersion = latest.replace(/^v/i, "");
+    offeredVersion = latestVersion;
+
+    if (!CAN_INSTALL_UPDATE) {
+        // A reload for this version was already tried in this tab. If this
+        // build is still older, the server has not caught up: say so, rather
+        // than offering the same reload again.
+        const tried = readReloadTarget();
+        if (tried && compareVersions(APP_VERSION, tried) >= 0) {
+            writeReloadTarget(null);
+        } else if (tried && compareVersions(latestVersion, APP_VERSION) > 0) {
+            throw new Error(
+                t("update.staleBuild", {
+                    current: APP_VERSION,
+                    latest: latestVersion,
+                }),
+            );
+        }
+    }
 
     return {
         current: APP_VERSION,
-        latest: latest.replace(/^v/i, ""),
+        latest: latestVersion,
         updateAvailable: compareVersions(latest, APP_VERSION) > 0,
         url:
             data.html_url ??
@@ -214,6 +290,31 @@ export function openReleasePage(url: string): void {
 }
 
 /**
+ * Unregister the service worker and delete its caches, so the reload that
+ * follows cannot be answered from an old precached shell (or old hashed
+ * chunks). Only called once the network has just answered, so offline support
+ * comes back when the page registers a fresh worker on boot.
+ */
+async function dropServiceWorkerCaches(): Promise<void> {
+    try {
+        if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+        }
+    } catch {
+        // ignore
+    }
+    try {
+        if (typeof caches !== "undefined") {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+    } catch {
+        // ignore
+    }
+}
+
+/**
  * Force this tab/PWA to pick up a newly deployed build. Web/PWA installs have
  * no installer to run — "updating" means making sure a stale service worker
  * or HTTP-cached HTML/JS bundle isn't still being served, then reloading.
@@ -225,20 +326,49 @@ export function openReleasePage(url: string): void {
  * hosted.
  */
 export async function reloadToLatest(): Promise<void> {
+    // Already reloaded for this version in this tab and still on the old build:
+    // another reload would only bring the same prompt back. Refuse, and say why.
+    const target = offeredVersion;
+    if (!CAN_INSTALL_UPDATE && target) {
+        if (
+            readReloadTarget() === target &&
+            compareVersions(APP_VERSION, target) < 0
+        ) {
+            throw new Error(
+                t("update.staleBuild", {
+                    current: APP_VERSION,
+                    latest: target,
+                }),
+            );
+        }
+        writeReloadTarget(target);
+    }
     if ("serviceWorker" in navigator) {
         try {
             const reg = await navigator.serviceWorker.getRegistration();
-            await reg?.update();
+            if (reg) {
+                await reg.update();
+                await waitForWorkerActivation(reg, SW_ACTIVATION_WAIT_MS);
+            }
         } catch {
             // Ignore — still attempt the reload below regardless.
         }
     }
-    try {
-        // Bypass the HTTP cache so a stale cached document doesn't just get
-        // handed straight back to us by the reload() call that follows.
-        await fetch(location.href, { cache: "reload" });
-    } catch {
-        // Offline or blocked — fall through and reload anyway.
+    // Bypass the HTTP cache so a stale cached document doesn't just get handed
+    // straight back to us by the reload() below. Right after iOS resumes a
+    // PWA the network is often not up yet and this fetch fails; reloading then
+    // would be answered by the OLD cached shell and show the same error again,
+    // so retry a few times first.
+    let fresh = false;
+    for (let attempt = 0; attempt < 4 && !fresh; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+        try {
+            const res = await fetch(location.href, { cache: "reload" });
+            fresh = res.ok;
+        } catch {
+            // Offline or blocked — retry, then reload anyway.
+        }
     }
+    if (fresh) await dropServiceWorkerCaches();
     location.reload();
 }
