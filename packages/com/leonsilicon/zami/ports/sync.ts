@@ -26,14 +26,33 @@ export interface WorkItem {
   new?: boolean;
 }
 
+/**
+ * An upstream change the sync can't vouch for. It merged the text into a copy, or there's
+ * no Zami version to merge it into, but Zami may need the same behavior somewhere else:
+ * the Expo app has no service worker, so a fix to `static/sw.js` only counts once it's in
+ * Zami's push code.
+ */
+export interface ReviewItem {
+  /** The upstream file at the merged commit (its old path, if upstream deleted it). */
+  upstreamPath: string;
+  /** What upstream did to the file: `A`, `M`, `D` or `R`. */
+  status: string;
+  /** The copy that took the change as text, if the file has one. */
+  zamiPath?: string;
+}
+
 export interface SyncResult {
   upstreamSha: string;
+  /** The commit `review` starts from, when the sync was given one. */
+  since?: string;
   created: string[];
   merged: string[];
   moved: { from: string; to: string }[];
   deleted: string[];
   orphans: string[];
   work: WorkItem[];
+  /** Everything upstream changed since `since` that isn't in `work` already. */
+  review: ReviewItem[];
 }
 
 export function sync(
@@ -44,21 +63,33 @@ export function sync(
   const upstreamSha = project.upstreamSha;
   const manifest = project.manifest;
   const addedSince = new Set<string>();
-  if (options.since !== undefined) {
-    for (const change of project.git
-      .changes(project.git.revParse(options.since), upstreamSha)
-      .values()) {
+  const review: ReviewItem[] = [];
+  const since = options.since === undefined ? undefined : project.git.revParse(options.since);
+  if (since !== undefined) {
+    for (const [path, change] of project.git.changes(since, upstreamSha)) {
       if (change.newPath !== null && change.status !== "M") addedSince.add(change.newPath);
+      const upstreamPath = change.newPath ?? path;
+      const inScope = change.newPath !== null && project.inScope(upstreamPath);
+      const mapping = mapUpstreamPath(upstreamPath);
+      // A translated component's change is already work: `migrate`, or `port` when it's new.
+      if (inScope && mapping.kind === "translate") continue;
+      review.push({
+        upstreamPath,
+        status: change.status,
+        ...(inScope ? { zamiPath: mapping.zamiPath } : {}),
+      });
     }
   }
   const result: SyncResult = {
     upstreamSha,
+    ...(since === undefined ? {} : { since }),
     created: [],
     merged: [],
     moved: [],
     deleted: [],
     orphans: [],
     work: [],
+    review,
   };
   const modes = new Map(project.upstreamTree().map((entry) => [entry.path, entry.mode]));
   const write = (path: string, content: Buffer, upstreamPath: string) => {
@@ -274,6 +305,10 @@ export function summarize(result: SyncResult): string {
       "",
     );
   }
+  section(
+    "No Zami version (reviewed for an equivalent in Zami's code)",
+    result.review.filter((item) => item.zamiPath === undefined).map((item) => item.upstreamPath),
+  );
   section("Orphans (no upstream file; check by hand)", result.orphans);
   return lines.join("\n");
 }
