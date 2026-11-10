@@ -89,13 +89,14 @@ import MessageRedactAction, {
     type MessageRedactActionHandle,
 } from "$lib/components/messages/MessageRedactAction.svelte";
 import MessageActionsSheet from "$lib/components/messages/MessageActionsSheet.svelte";
+import ViewSourceDialog from "$lib/components/messages/ViewSourceDialog.svelte";
 import {
     messageActionsMenu,
     type MessageActionKey,
 } from "$lib/utils/messageActionsMenu";
 import EventShield from "./EventShield.svelte";
 import MessageDecorations from "$lib/components/messages/MessageDecorations.svelte";
-import { Check, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
+import { Check, Code, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
 import Reactions from "$lib/components/messages/Reactions.svelte";
 import ReactorPopover from "./ReactorPopover.svelte";
 import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
@@ -122,6 +123,7 @@ import {
     resendMessage,
     deleteFailedMessage,
     getRoom,
+    isRoomCachedOnly,
     getMessageShareLink,
     joinRoom,
     seedRoomStateIfMissing,
@@ -163,7 +165,11 @@ import { isTrackerAttachment, trackerUrlToWavUrl } from "$lib/utils/tracker";
 import { reservedMediaBox, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
 import { videoPoster } from "$lib/utils/roomMedia";
-import { utdPlaceholderText } from "$lib/utils/encryptionState";
+import {
+    DECRYPTING_MESSAGE_TEXT,
+    isDecryptionPending,
+    utdPlaceholderText,
+} from "$lib/utils/encryptionState";
 import { canRequestRoomKeys, requestRoomKeys } from "$lib/matrix/keyBackfill";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import { getEventShield, isRoomEncrypted } from "$lib/matrix/crypto";
@@ -204,8 +210,11 @@ import {
     isFavouriteGif,
     addFavouriteGif,
     removeFavouriteGif,
+    favouriteSize,
     favouritesState,
+    favouriteUrlForMxc,
 } from "$lib/stores/favourites.svelte";
+import { parseMxc } from "$lib/utils/mxcUri";
 import {
     interfaceState,
     openModal,
@@ -421,6 +430,7 @@ function MessageItem({
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const [pinning, setPinning] = useState(false);
     const [showForwardDialog, setShowForwardDialog] = useState(false);
+    const [showViewSourceDialog, setShowViewSourceDialog] = useState(false);
 
     // Zami: no INTERACTIVE_TARGET_SELECTOR: a touch on a link, button or other
     // pressable inside the row is that element's (the responder system gives it
@@ -927,6 +937,24 @@ function MessageItem({
 
     const msgtype: string = content?.msgtype ?? "";
 
+    // An encrypted envelope nobody has decided yet (a cached replay before the
+    // background decryption pass reaches it, or an attempt in flight) is NOT a
+    // failure. It gets a neutral row; the missing-keys copy is reserved for
+    // events whose decryption actually failed.
+    const decryptionPending = useRune(() => {
+        void messagesState.timelineTick;
+        // Rooms tick too: a cached-only room stops being cached when sync
+        // publishes the live rooms, which changes the answer below.
+        void roomsState.roomsTick;
+        if (!isDecryptionPending(eventType, event.decryptionFailureReason))
+            return false;
+        // Only promise progress where something will actually attempt it: an
+        // attempt already in flight, or a cached room whose background pass is
+        // still coming. A live event that nobody is decrypting (crypto never
+        // started) keeps the UTD copy instead of an eternal spinner.
+        return event.isBeingDecrypted() || isRoomCachedOnly(room.roomId);
+    }, [event, eventType, room]);
+
     // Still encrypted, or failed to decrypt: a failure swaps in an
     // m.room.message stand-in (msgtype m.bad.encrypted) whose body is the
     // SDK's raw "** Unable to decrypt **" text, so the type alone misses it.
@@ -1204,10 +1232,20 @@ function MessageItem({
         setShowActionsSheet(true);
     }
 
+    function openViewSourceDialog() {
+        slotToken.current = openModal("view-source", () => {
+            setShowViewSourceDialog(false);
+        });
+        setShowViewSourceDialog(true);
+    }
+
     function handleActionChoose(key: MessageActionKey) {
         // The sheet has already released the modal slot (it closes before
         // choosing), so report/redact are free to claim it via show().
         switch (key) {
+            case "view-source":
+                openViewSourceDialog();
+                break;
             case "thread":
                 onOpenThread?.(threadRootId);
                 break;
@@ -1251,6 +1289,9 @@ function MessageItem({
 
     const isPoll = isPollStartEventType(eventType);
     const isFileOffer = isFileOfferEventType(eventType);
+    // Zami: not ported: plugin message renderers (`pluginRenderer`, from
+    // findRenderer over pluginRegistry.messageRenderers). A renderer draws
+    // into a DOM element it's handed, and React Native has none to give it.
     const isCallEvent = isCallEventType(eventType);
     // In-room verification requests ride in as m.room.message; their plain-text
     // body claims this client can't do in-chat verification (it can), so they
@@ -1447,6 +1488,19 @@ function MessageItem({
             [mediaFilename, content?.body as string | undefined].some((n) =>
                 (n ?? "").trim().toLowerCase().endsWith(".gif"),
             ));
+
+    // Whether this uploaded image is a WebP. The "send GIFs as animated WebP"
+    // setting turns a GIF into one, named *.webp, so it can still be starred.
+    const isWebp =
+        msgtype === "m.image" &&
+        (((content?.info as { mimetype?: string } | undefined)?.mimetype ?? "")
+            .trim()
+            .toLowerCase() === "image/webp" ||
+            [mediaFilename, content?.body as string | undefined].some((n) =>
+                (n ?? "").trim().toLowerCase().endsWith(".webp"),
+            ));
+    // Whether this image can be starred as a favourite GIF.
+    const canFavouriteImage = isGif || isWebp;
 
     const isSvgImage =
         msgtype === "m.image" &&
@@ -1964,16 +2018,44 @@ function MessageItem({
         () => ({ roomId: room.roomId, eventId }),
         [room.roomId, eventId],
     );
-    // Zami: only a GIF can be a favourite, so only a GIF's row reads the list.
+    /** An mxc URI from event content, or undefined. */
+    function validMxc(value: unknown): string | undefined {
+        return typeof value === "string" && parseMxc(value) ? value : undefined;
+    }
+
+    // The media's mxc, whichever kind of image this is. A message that reuses
+    // a starred GIF's media carries the same mxc, so it matches that favourite.
+    const encryptedMxc = validMxc(
+        (content?.file as { url?: unknown } | undefined)?.url,
+    );
+    const imageMediaMxc = validMxc(content?.url) ?? encryptedMxc;
+    // Zami: only a GIF or WebP can be a favourite, so only their rows read the
+    // list.
     const imageIsFavourited = useRune(() => {
-        if (!isGif) return false;
+        if (!canFavouriteImage) return false;
         void favouritesState.gifs; // track
         const src =
             imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource);
-        return !!src && isFavouriteGif(src);
-    }, [isGif, imageFullUrl, encryptedFavouriteSource]);
+        if (!!src && isFavouriteGif(src)) return true;
+        return (
+            !!imageMediaMxc && favouriteUrlForMxc(imageMediaMxc) !== undefined
+        );
+    }, [
+        canFavouriteImage,
+        imageFullUrl,
+        encryptedFavouriteSource,
+        imageMediaMxc,
+    ]);
 
     function toggleImageFavourite() {
+        // Remove the favourite of this media first, whichever message starred it.
+        const byMedia = imageMediaMxc
+            ? favouriteUrlForMxc(imageMediaMxc)
+            : undefined;
+        if (byMedia !== undefined) {
+            removeFavouriteGif(byMedia);
+            return;
+        }
         const full = imageFullUrl();
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
@@ -1983,13 +2065,23 @@ function MessageItem({
                     url: key,
                     previewUrl: key,
                     source: encryptedFavouriteSource,
+                    ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
         }
         if (isFavouriteGif(full)) {
             removeFavouriteGif(full);
         } else {
-            addFavouriteGif({ url: full, previewUrl: imageThumbUrl() ?? full });
+            addFavouriteGif({
+                url: full,
+                previewUrl: imageThumbUrl() ?? full,
+                // Kept so a GIF sent from the picker goes out under its name.
+                ...(typeof mediaFilename === "string" && mediaFilename
+                    ? { name: mediaFilename }
+                    : {}),
+                ...favouriteSize(imgInfoW, imgInfoH),
+            });
         }
     }
 
@@ -2037,6 +2129,7 @@ function MessageItem({
                 canPin,
                 isPinned,
                 hasLink: eventId.startsWith("$") && !isFailed,
+                canViewSource: true,
                 canReport: !isOwnMessage && !isFailed,
                 canRedact: !isOwnMessage && !isFailed && canRedact,
                 canDelete: isOwnMessage,
@@ -2092,18 +2185,32 @@ function MessageItem({
         return extractEventPermalinks(body(), formattedBody());
     }, [msgtype, body, formattedBody]);
 
-    // Extract http/https URLs from the plain body for link previews
-    const linkedUrls = useMemo(() => {
-        if (msgtype !== "m.text") return [];
-        const matches = body().match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
+    /** The http/https URLs in `text` worth a link preview. */
+    function previewableUrls(text: string): string[] {
+        const matches = text.match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
         return [...new Set(matches)].filter((url) => {
             const target = parseMatrixLink(url);
             return !(target && target.kind !== "user" && target.eventId);
         });
+    }
+
+    // Extract http/https URLs from the plain body for link previews
+    const linkedUrls = useMemo(() => {
+        if (msgtype !== "m.text") return [];
+        return previewableUrls(body());
     }, [msgtype, body]);
+
+    // A media caption gets the same previews, shown under it. Without a caption
+    // `body` is only the file name, which is not text to preview.
+    const captionLinkedUrls = useMemo(
+        () => (hasCaption() ? previewableUrls(body()) : []),
+        [hasCaption, body],
+    );
     const linkPreviewsEnabled = useRune(
-        () => linkedUrls.length > 0 && settingsState.linkPreviewsEnabled,
-        [linkedUrls.length > 0],
+        () =>
+            (linkedUrls.length > 0 || captionLinkedUrls.length > 0) &&
+            settingsState.linkPreviewsEnabled,
+        [linkedUrls.length > 0 || captionLinkedUrls.length > 0],
     );
 
     // True if the body text consists entirely of emoji + whitespace (no other characters)
@@ -2558,7 +2665,16 @@ function MessageItem({
     function mediaCaption() {
         if (isEditing) return editBox();
         if (!hasCaption()) return null;
-        return bodyWithTrailing(bodyHtml, bodyTextClass, 0);
+        return (
+            <>
+                {bodyWithTrailing(bodyHtml, bodyTextClass, 0)}
+                {linkPreviewsEnabled
+                    ? captionLinkedUrls.map((url) => (
+                          <LinkPreview key={url} url={url} />
+                      ))
+                    : null}
+            </>
+        );
     }
 
     // Message body
@@ -2570,6 +2686,25 @@ function MessageItem({
         }
         if (isPoll) return <PollBody event={event} room={room} />;
         if (isFileOffer) return <FileOfferCard event={event} />;
+        // Zami: not ported: the plugin renderer branch (see `isFileOffer`).
+        if (decryptionPending) {
+            // Encrypted, not attempted/failed yet. Neutral copy: the
+            // missing-keys line would be a claim we cannot make until the
+            // decryption attempt actually fails. When it finishes the
+            // decryption tick re-runs this derived timeline and the row
+            // swaps to real content (or to the UTD branch below).
+            return (
+                <Pulse className="flex-row items-center gap-1.5">
+                    <Lock
+                        size={14}
+                        className="flex-shrink-0 text-discord-textMuted"
+                    />
+                    <Text className="text-sm italic text-discord-textMuted leading-relaxed">
+                        {DECRYPTING_MESSAGE_TEXT}
+                    </Text>
+                </Pulse>
+            );
+        }
         if (isUtd) {
             // E2EE UTD (unable-to-decrypt) placeholder. The row chrome
             // (avatar / sender / timestamp) is cleartext; only the body is

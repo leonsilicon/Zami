@@ -21,12 +21,14 @@ import {
     isMatrixMediaUrl,
     mediaUrlFavouriteFile,
     parseEventFavouriteSource,
+    reusableMediaOfFile,
 } from "$lib/matrix/favouriteFile";
 import {
     favouritesState,
     addFavouriteGif,
     removeFavouriteGif,
     isFavouriteGif,
+    setFavouriteGifMxc,
     setFavouriteGifTags,
     upgradeFavouriteGifs,
     type FavouriteGif,
@@ -245,6 +247,10 @@ export default function GifPicker({
         if (source) {
             const file = await eventFavouriteFile(source).catch(() => null);
             if (!file) return;
+            // Favourites starred before the mxc was stored learn it now, so a
+            // message sent from this pick can be matched back to the star.
+            const mxc = reusableMediaOfFile(file)?.file?.url;
+            if (mxc && !gif.mxc) void setFavouriteGifMxc(gif.url, mxc);
             onSelectFile?.(file);
             onClose();
             return;
@@ -255,7 +261,12 @@ export default function GifPicker({
         // is sent as an image. A URL naming another homeserver is routed
         // through ours.
         if (onSelectFile && isMatrixMediaUrl(gif.url)) {
-            const file = await mediaUrlFavouriteFile(gif.url).catch(() => null);
+            const file = await mediaUrlFavouriteFile(
+                gif.url,
+                gif.width,
+                gif.height,
+                gif.name,
+            ).catch(() => null);
             if (file) {
                 onSelectFile(file);
                 onClose();

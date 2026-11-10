@@ -127,6 +127,7 @@ import { showErrorToast } from "$lib/stores/toasts.svelte";
 import QuickActions from "$lib/components/layout/QuickActions.svelte";
 import VoiceCallPanel from "$lib/components/layout/VoiceCallPanel.svelte";
 import CallParticipantMenu from "$lib/components/layout/CallParticipantMenu.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import Portal from "$lib/components/ui/Portal.svelte";
 import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
 import { setNavRooms } from "$lib/keybinds/runner";
@@ -1532,6 +1533,49 @@ export default function RoomList({
         touch: boolean;
     } | null>(null);
 
+    // Plugin room actions (zam.rooms.addAction) for the open context menu. Each
+    // entry carries the ctx it was filtered with, so the click passes the same
+    // room and space flag. A throwing `when` hides that entry only.
+    // Zami: re-derived on each render; `pluginTick` and `roomsTick` (below)
+    // re-render on a change.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const menuPluginActions = (() => {
+        void pluginTick;
+        if (!contextMenu) return [];
+        const roomId = contextMenu.roomId;
+        const ctx = {
+            roomId,
+            isSpace: getRoom(roomId)?.isSpaceRoom() ?? false,
+        };
+        return pluginRegistry.roomActions
+            .filter((e) => {
+                try {
+                    return e.value.when?.(ctx) ?? true;
+                } catch (err) {
+                    console.error("[zam] rooms.addAction when() threw", err);
+                    return false;
+                }
+            })
+            .map((e) => ({
+                key: e.entryId,
+                pluginId: e.pluginId,
+                label: e.value.label,
+                run: () => e.value.onSelect(ctx),
+            }));
+    })();
+
+    // Runs a plugin room action after closing the menu, as the built-in items do.
+    function runPluginRoomAction(run: () => void | Promise<void>) {
+        closeModal();
+        try {
+            Promise.resolve(run()).catch((e) =>
+                console.error("[zam] rooms.addAction onSelect threw", e),
+            );
+        } catch (e) {
+            console.error("[zam] rooms.addAction onSelect threw", e);
+        }
+    }
+
     // Zami: `positionMenu` is `PositionedMenu`'s, above.
 
     function openContextMenu(
@@ -2640,6 +2684,23 @@ export default function RoomList({
                         </Text>
                     </Pressable>
                 )}
+                {menuPluginActions.length > 0 ? (
+                    <>
+                        <View className="w-full h-px bg-discord-divider my-1" />
+                        {menuPluginActions.map((entry) => (
+                            <Pressable
+                                key={entry.key}
+                                accessibilityRole="button"
+                                onPress={() => runPluginRoomAction(entry.run)}
+                                className={menuItemClass}
+                            >
+                                <Text className="text-sm text-discord-textSecondary">
+                                    {entry.label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </>
+                ) : null}
             </>
         );
     };

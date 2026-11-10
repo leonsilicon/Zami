@@ -49,6 +49,8 @@ import {
     isFavouriteGif,
     addFavouriteGif,
     removeFavouriteGif,
+    favouriteSize,
+    favouriteUrlForMxc,
 } from "$lib/stores/favourites.svelte";
 import {
     fetchAttachmentBlob,
@@ -86,6 +88,13 @@ interface Props {
         previewUrl: string;
         /** Pointer to the message, for an encrypted gif (see favouriteFile.ts). */
         source?: { roomId: string; eventId: string };
+        /** The image's media mxc: a favourite holding that media counts as
+         *  this one, and an encrypted gif is saved with it. */
+        mxc?: string;
+        /** The file name, saved with an unencrypted gif so the picker sends
+         *  it under that name. Not stored for an encrypted one: its name is
+         *  read from its message. */
+        name?: string;
     };
     /** Gallery navigation. When supplied, a chevron and the matching arrow
      *  key step to the neighbouring item; omit at the ends of the list. */
@@ -196,22 +205,52 @@ export default function Lightbox({
         ? t("lightbox.videoNoun")
         : t("lightbox.imageNoun");
 
+    /** The favourite this image is saved as, by its URL or else by its media,
+     *  or undefined. Reads favouritesState, so callers stay reactive. */
+    function savedFavouriteUrl(f: NonNullable<typeof favourite>) {
+        if (isFavouriteGif(f.url)) return f.url;
+        return f.mxc ? favouriteUrlForMxc(f.mxc) : undefined;
+    }
+
     // Reactively tracks favourite state (reads favouritesState.gifs $state).
     const favouriteUrl = favourite?.url;
+    const favouriteMxc = favourite?.mxc;
     const favourited = useRune(
-        () => (favouriteUrl ? isFavouriteGif(favouriteUrl) : false),
-        [favouriteUrl],
+        () =>
+            favouriteUrl
+                ? savedFavouriteUrl({
+                      url: favouriteUrl,
+                      previewUrl: "",
+                      mxc: favouriteMxc,
+                  }) !== undefined
+                : false,
+        [favouriteUrl, favouriteMxc],
     );
 
     function toggleFavourite() {
         if (!favourite) return;
-        if (isFavouriteGif(favourite.url)) {
-            void removeFavouriteGif(favourite.url);
+        const saved = savedFavouriteUrl(favourite);
+        if (saved !== undefined) {
+            void removeFavouriteGif(saved);
         } else {
+            // The loaded file's own size, else the size it was sent with.
+            const natural =
+                imgLoaded && loaded
+                    ? favouriteSize(loaded.width, loaded.height)
+                    : {};
             void addFavouriteGif({
                 url: favourite.url,
                 previewUrl: favourite.previewUrl,
                 source: favourite.source,
+                // Only an encrypted gif is stored with its mxc: a plain one
+                // already matches through the media its URL names.
+                ...(favourite.source && favourite.mxc
+                    ? { mxc: favourite.mxc }
+                    : {}),
+                ...(!favourite.source && favourite.name
+                    ? { name: favourite.name }
+                    : {}),
+                ...(natural.width ? natural : favouriteSize(dims?.w, dims?.h)),
             });
         }
     }

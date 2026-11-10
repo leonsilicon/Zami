@@ -1,6 +1,7 @@
 import {
     Checkbox,
     Details,
+    DomMount,
     Image,
     mediaSource,
     pickedFile,
@@ -38,6 +39,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { withUniwind } from "uniwind";
 import { t } from "$lib/i18n";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import InvitePanel from "./InvitePanel.svelte";
 import ImagePackEditor from "./ImagePackEditor.svelte";
@@ -206,11 +209,39 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
     const isSpace = room.isSpaceRoom();
 
+    // Plugin tabs (zam.room.addSettingsTab) this room gets, after Zam's own.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const pluginTabEntries = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.roomSettingsTabs.filter((e) => {
+                try {
+                    return (
+                        e.value.when?.({ roomId: room.roomId, isSpace }) ?? true
+                    );
+                } catch (err) {
+                    console.error("[zam] room settings tab when() threw", err);
+                    return false;
+                }
+            })
+        ),
+        [pluginTick, room.roomId, isSpace],
+    );
+    const pluginTabs = useMemo(
+        () =>
+            pluginTabEntries.map((e) => ({
+                id: `plugin:${e.entryId}` as RoomSettingsTab,
+                label: String(e.value.label),
+            })),
+        [pluginTabEntries],
+    );
+
     const isMobile = useRune(() => interfaceState.isMobile);
     const view = roomSettingsNavView({
         isMobile,
         isSpace,
         selectedTab,
+        pluginTabs,
     });
 
     // The tab whose panel is on screen, or null on the mobile category list
@@ -218,6 +249,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // sitting on the list must not kick off a fetch.
     const activeTab: RoomSettingsTab | null =
         view.mode === "list" ? null : view.tab;
+
+    // Zami: declared after activeTab, which it reads.
+    const activePluginTab =
+        pluginTabEntries.find((e) => activeTab === `plugin:${e.entryId}`) ??
+        null;
 
     // Stable identity: it is the ownership token for the sub-page slot, so it
     // must NOT be recreated on every render. It resets local state ONLY — it
@@ -1366,7 +1402,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         }
     }
 
-    const tabs = roomSettingsTabs({ isSpace });
+    const tabs = roomSettingsTabs({ isSpace, pluginTabs });
 
     // Zami: Zam's panel fills the viewport on mobile (`h-[100dvh]`); here it
     // keeps clear of the status bar, notch and home indicator.
@@ -1901,14 +1937,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                             role="heading"
                             accessibilityLabel={
                                 view.mode === "detail"
-                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab)}`
+                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab, pluginTabs)}`
                                     : undefined
                             }
                             numberOfLines={1}
                             className="text-lg font-bold text-discord-textPrimary min-w-0 truncate flex-1"
                         >
                             {view.mode === "detail"
-                                ? roomSettingsTabLabel(view.tab)
+                                ? roomSettingsTabLabel(view.tab, pluginTabs)
                                 : t("roomSettings.settings", {
                                       name: room.name,
                                   })}
@@ -2060,8 +2096,30 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 >
                                     {trustBanner}
 
-                                    {/* ── General ─────────────────────────────────────────── */}
-                                    {activeTab === "general" ? (
+                                    {/* ── Plugin tab ────────────────────────────────────── */}
+                                    {activePluginTab ? (
+                                        // Zami: the plugin builds DOM into the
+                                        // element (pluginMount), which DomView
+                                        // shows.
+                                        <DomMount
+                                            key={`${activePluginTab.entryId}:${room.roomId}`}
+                                            document={document}
+                                            mount={(el) => {
+                                                const tab = activePluginTab;
+                                                el.setAttribute(
+                                                    "data-zam-plugin",
+                                                    tab.pluginId,
+                                                );
+                                                return pluginMount(el, (el) =>
+                                                    tab.value.render(el, {
+                                                        roomId: room.roomId,
+                                                        isSpace,
+                                                    }),
+                                                ).destroy;
+                                            }}
+                                        />
+                                    ) : /* ── General ─────────────────────────────────────────── */
+                                    activeTab === "general" ? (
                                         <View className="gap-5">
                                             {/* Avatar */}
                                             <View>

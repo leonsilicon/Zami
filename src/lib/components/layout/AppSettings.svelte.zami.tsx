@@ -1,4 +1,5 @@
 import {
+    DomMount,
     Portal,
     revealSettingAnchor,
     SvgIcon,
@@ -10,6 +11,7 @@ import {
     useCallback,
     useEffect,
     useEffectEvent,
+    useMemo,
     useRef,
     useState,
     type ReactNode,
@@ -49,6 +51,8 @@ import VoiceAudioSettings from "$lib/components/settings/VoiceAudioSettings.svel
 import KeybindSettings from "$lib/components/settings/KeybindSettings.svelte";
 import PluginsSettings from "$lib/components/settings/PluginsSettings.svelte";
 import { motionOK } from "$lib/utils/motionPreference";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import {
     interfaceState,
     openSubPage,
@@ -118,7 +122,32 @@ export default function AppSettings({ onClose, onLogout }: Props) {
         nativeApp: Capacitor.isNativePlatform(),
         richPresence: richPresenceAvailable() || pluginPresenceKnown(),
     };
-    const settingsGroups = visibleSettingsGroups(platform);
+    const coreGroups = visibleSettingsGroups(platform);
+    // Plugin pages (zam.ui.addSettingsPage) get a group of their own.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const pluginPages = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.settingsPages.map((e) => ({
+                id: `plugin:${e.entryId}` as SettingsTab,
+                label: String(e.value.label),
+                entry: e,
+            }))
+        ),
+        [pluginTick],
+    );
+    const settingsGroups =
+        pluginPages.length > 0
+            ? [
+                  ...coreGroups,
+                  { title: t("settingsNav.plugins"), tabs: pluginPages },
+              ]
+            : coreGroups;
+    function tabLabel(id: SettingsTab): string {
+        return (
+            pluginPages.find((p) => p.id === id)?.label ?? settingsTabLabel(id)
+        );
+    }
     const searchIndex = SETTINGS_SEARCH_INDEX.filter(
         (e) =>
             isSettingsTabAvailable(e.tab, platform) &&
@@ -315,6 +344,22 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                     <PushDiagnostics />
                 </View>
             );
+        const page = pluginPages.find((p) => p.id === tab);
+        if (page)
+            return (
+                // Zami: the plugin builds DOM into the element (pluginMount),
+                // which DomView shows.
+                <DomMount
+                    key={page.id}
+                    document={document}
+                    mount={(el) => {
+                        el.setAttribute("data-zam-plugin", page.entry.pluginId);
+                        return pluginMount(el, (el) =>
+                            page.entry.value.render(el),
+                        ).destroy;
+                    }}
+                />
+            );
         return null;
     }
 
@@ -376,7 +421,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                             className="text-lg font-bold text-discord-textPrimary min-w-0 truncate flex-1"
                         >
                             {view.mode === "detail"
-                                ? settingsTabLabel(view.tab)
+                                ? tabLabel(view.tab)
                                 : t("common.settings")}
                         </Text>
                         <Pressable

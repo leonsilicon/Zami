@@ -64,6 +64,7 @@ import ErrorToasts from "$lib/components/ui/ErrorToasts.svelte";
 import ScreenSharePicker from "$lib/components/layout/ScreenSharePicker.svelte";
 import JoinConsentDialog from "$lib/components/layout/JoinConsentDialog.svelte";
 import PluginPopoverHost from "$lib/components/plugins/PluginPopoverHost.svelte";
+import PluginOverlayHost from "$lib/components/plugins/PluginOverlayHost.svelte";
 import QuickSwitcher from "$lib/components/layout/QuickSwitcher.svelte";
 import QuickActions, {
     type QuickActionsHandle,
@@ -134,7 +135,7 @@ import { initLiveLocation } from "$lib/stores/liveLocation.svelte";
 import { initOutbox } from "$lib/stores/outbox.svelte";
 import { initBackgroundRelease } from "$lib/backgroundRelease";
 import { initHistoryTrim, noteOpenRoom } from "$lib/historyTrim";
-import { initPlugins } from "$lib/plugins/pluginBoot";
+import { initPlugins, emitPluginNotification } from "$lib/plugins/pluginBoot";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { resolveShortcut, eventToChord } from "$lib/plugins/pluginShortcuts";
 import {
@@ -1045,6 +1046,16 @@ export default function AppShell() {
             body,
             hideBody: settingsState.hideNotificationBody,
         });
+        try {
+            emitPluginNotification({
+                roomId: room.roomId,
+                eventId: eventId ?? "",
+                title,
+                body: text,
+            });
+        } catch {
+            // A plugin listener must never break posting the notification.
+        }
         try {
             // The desktop shell posts through the main process (no web
             // permission involved); the browser uses the Web Notification API.
@@ -3241,6 +3252,8 @@ export default function AppShell() {
             )}
 
             {modal === "plugin-popover" && <PluginPopoverHost />}
+
+            <PluginOverlayHost />
 
             {modal === "share-target" && hasSharePayload && (
                 <ShareTargetSheet />

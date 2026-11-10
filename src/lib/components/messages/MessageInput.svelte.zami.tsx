@@ -57,6 +57,7 @@ import {
     sendFormattedMessage,
     sendSticker,
     sendFile,
+    sendExistingMedia,
     getMediaUploadSizeLimit,
     getMemberName,
     getMemberAvatar,
@@ -83,7 +84,10 @@ import {
     sendThreadReply,
     type CustomEmoji,
     type CustomSticker,
+    type MediaCaption,
+    type MediaRelation,
 } from "$lib/matrix/client";
+import { reusableMediaOfFile } from "$lib/matrix/favouriteFile";
 import { sendEventContent } from "$lib/matrix/pluginHost";
 import {
     buildFormattedBody as buildBody,
@@ -1541,6 +1545,44 @@ export default function MessageInput({
         toastId: number;
     } | null>(null);
 
+    // Sends one queued file as media. A starred GIF re-uses its existing media
+    // instead of uploading the bytes again; when the room can't take that media
+    // (an encrypted one in a plaintext room) the bytes are uploaded as usual.
+    async function sendQueuedMedia(
+        item: QueuedFile,
+        roomId: string,
+        caption: MediaCaption | undefined,
+        relation: MediaRelation | undefined,
+        transform:
+            | ((c: Record<string, unknown>) => Record<string, unknown>)
+            | undefined,
+        onProgress: ((loaded: number, total: number) => void) | undefined,
+        ready: () => Promise<void>,
+    ): Promise<void> {
+        if (
+            item.reuse &&
+            (await sendExistingMedia(
+                roomId,
+                item.reuse,
+                item.name,
+                caption,
+                relation,
+                transform,
+                ready,
+            ))
+        )
+            return;
+        await sendFile(
+            roomId,
+            item.file,
+            caption,
+            relation,
+            transform,
+            onProgress,
+            ready,
+        );
+    }
+
     async function send() {
         // `s/old/new/` edits the last message instead of sending one. Not with
         // files queued: then the text is a caption.
@@ -1833,9 +1875,9 @@ export default function MessageInput({
                         );
                     if (useCaption && i === 0 && formatted) {
                         const { html } = formatted;
-                        return sendFile(
+                        return sendQueuedMedia(
+                            item,
                             targetRoomId,
-                            item.file,
                             {
                                 body: trimmed,
                                 formattedBody: html ?? undefined,
@@ -1847,9 +1889,9 @@ export default function MessageInput({
                             ready,
                         );
                     }
-                    return sendFile(
+                    return sendQueuedMedia(
+                        item,
                         targetRoomId,
-                        item.file,
                         undefined,
                         fileRelation(i),
                         undefined,
@@ -1904,6 +1946,7 @@ export default function MessageInput({
                     item.name,
                     previewUrlFor(item.file),
                     item.direct,
+                    item.reuse,
                 );
             }
         } finally {
@@ -2226,6 +2269,7 @@ export default function MessageInput({
             name,
             previewUrlFor(file),
             direct,
+            reusableMediaOfFile(file),
         );
         // Look up the upload size limit now, while the user is still writing,
         // so its round trip isn't added to the send (slow links: Tor).
@@ -2459,6 +2503,8 @@ export default function MessageInput({
     const closeIcon =
         "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z";
 
+    // Zami: not ported: `data-zam-region="composer"`, the DOM hook plugins
+    // find the composer by (pluginDom.ts); there's no DOM for them to query.
     return (
         <View
             onAccessibilityEscape={onEscape}

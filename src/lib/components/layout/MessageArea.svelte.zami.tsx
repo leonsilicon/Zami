@@ -171,7 +171,11 @@ import {
 import { createBackfillGate } from "$lib/utils/backfillGate";
 import { hostBridge } from "$lib/plugins/hostBridge";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
-import { pluginPanel, openPluginPanel } from "$lib/plugins/pluginPanel.svelte";
+import {
+    pluginPanel,
+    registeredPanelKey,
+    openPluginPanel,
+} from "$lib/plugins/pluginPanel.svelte";
 import { pluginMount } from "$lib/plugins/pluginMount";
 import { rollupRoomThreadUnread } from "$lib/utils/threadUnread";
 import { isOffCanvasClosed } from "$lib/utils/drawerInert";
@@ -694,7 +698,10 @@ export default function MessageArea({
         if (
             interfaceState.sidebar === "plugin" &&
             cur &&
-            !pluginHeaderBtns.some((b) => b.key === cur.key)
+            !pluginHeaderBtns.some((b) => b.key === cur.key) &&
+            !pluginRegistry.panels.some(
+                (e) => registeredPanelKey(e.pluginId, e.value.id) === cur.key,
+            )
         ) {
             closeSidebar();
         }

@@ -58,10 +58,14 @@ import {
     readLocalPlugin,
 } from "./localPlugin";
 import {
+    canPickDirectory,
     deleteLocalHandle,
+    deleteRepoHandle,
     ensureReadable,
     getLocalHandle,
+    listRepoHandles,
     saveLocalHandle,
+    saveRepoHandle,
 } from "./localHandles";
 import { removePluginNative } from "./pluginNative";
 import { APP_VERSION } from "$lib/update";
@@ -86,12 +90,23 @@ import {
 // self-scoped account data; plugins never import client.ts.
 import { persistPluginSync, loadPluginSync } from "../matrix/pluginHost";
 import {
-    onTimelineEvent,
-    onReactionEvent,
+    getOwnUserId,
+    onAnyTyping,
+    onClearRoomEvent,
+    onMemberJoin,
+    onOwnEventSent,
     onRoomUpdate,
     onSyncPrepared,
     onSyncReconnected,
+    setPluginTimelineTypes,
 } from "../matrix/client";
+import type { MatrixEvent, Room } from "matrix-js-sdk";
+import type { PluginEventMap, PluginEventName } from "./types";
+import { rendererEventTypes } from "./pluginRenderers";
+import { belongsToMainTimeline } from "../utils/threadModel";
+import { isPollStartEventType } from "../utils/pollContent";
+import { isFileOfferEventType } from "../utils/fileTransfer";
+import { watchActiveRoom } from "./pluginNav.svelte";
 import { readPluginSettings, writePluginSettings } from "./pluginSettingsStore";
 // Zami: in place of import() of a blob: URL (see blobImport).
 import { domGlobals, importModule } from "@-/com.leonsilicon.zami.rn";
@@ -388,86 +403,135 @@ function repoLoadable(manifest: Manifest, repoRef: string): LoadablePlugin {
 // re-enable without rebuilding boot state.
 const loadables = new Map<string, LoadablePlugin>();
 
-/** Subscribe the globally-available client events and fan them out to plugin
- *  `events.on(...)` handlers. Payloads are plain + serializable (never live
- *  SDK objects), matching the §6 boundary. dispatchPluginEvent reads
+function emit<K extends PluginEventName>(
+    name: K,
+    payload: PluginEventMap[K],
+): void {
+    dispatchPluginEvent(
+        pluginRegistry.eventSubs.map((e) => e.value),
+        name,
+        payload,
+    );
+}
+
+/** Zam's notification path tells plugins it showed one (AppShell). */
+export function emitPluginNotification(
+    payload: PluginEventMap["notification"],
+): void {
+    emit("notification", payload);
+}
+
+/** Whether a cleartext event counts as a "message" for plugins: what the
+ *  main timeline shows as one (not edits or thread replies). */
+function isPluginMessage(event: MatrixEvent, timelineTypes: Set<string>) {
+    const type = event.getType();
+    if (
+        type !== "m.room.message" &&
+        type !== "m.sticker" &&
+        !isPollStartEventType(type) &&
+        !isFileOfferEventType(type) &&
+        !timelineTypes.has(type)
+    )
+        return false;
+    if (event.isRedacted()) return false;
+    if (event.getContent()?.["m.relates_to"]?.rel_type === "m.replace")
+        return false;
+    return belongsToMainTimeline({
+        relatesTo: event.getOriginalContent()?.["m.relates_to"],
+        eventId: event.getId() ?? "",
+    });
+}
+
+function timelinePayload(
+    event: MatrixEvent,
+    room: Room,
+    isLive: boolean,
+): PluginEventMap["message"] {
+    const sender = event.getSender() ?? "";
+    return {
+        roomId: room.roomId,
+        eventId: event.getId() ?? "",
+        sender,
+        type: event.getType(),
+        // Shallow-clone so a plugin that mutates the handed-out content
+        // can't corrupt the SDK's stored event (full-trust footgun).
+        content: { ...event.getContent() },
+        timestamp: event.getTs(),
+        isOwn: sender === getOwnUserId(),
+        isLive,
+    };
+}
+
+/** Subscribe the client events and fan them out to plugin `events.on(...)`
+ *  handlers. Payloads are plain + serializable (never live SDK objects),
+ *  matching the §6 boundary. dispatchPluginEvent reads
  *  pluginRegistry.eventSubs at fire time, so late-registered subs are seen.
- *  Deferred (registered but not fired in v1, no consumer this run): typing
- *  (needs a per-room Room), member-join, message-sent, room-enter, notification.
+ *  Encrypted events are handed over once they decrypt (onClearRoomEvent).
  *  Returns an unsubscribe-all. */
 function initEventBus(): () => void {
     const unsubs: Array<() => void> = [];
 
     unsubs.push(
-        onTimelineEvent((event, room) => {
-            const payload = {
-                roomId: room.roomId,
-                eventId: event.getId() ?? "",
-                sender: event.getSender() ?? "",
-                type: event.getType(),
-                // Shallow-clone so a plugin that mutates the handed-out content
-                // can't corrupt the SDK's stored event (full-trust footgun).
-                content: { ...event.getContent() },
-            };
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "message",
-                payload,
-            );
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "timeline",
-                payload,
-            );
-        }),
-    );
-
-    unsubs.push(
-        onReactionEvent((event, room) => {
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "reaction-added",
-                {
+        onClearRoomEvent((event, room, isLive) => {
+            if (event.getType() === "m.reaction") {
+                const rel = event.getContent()["m.relates_to"] as
+                    | { event_id?: unknown; key?: unknown }
+                    | undefined;
+                const sender = event.getSender() ?? "";
+                emit("reaction-added", {
                     roomId: room.roomId,
                     eventId: event.getId() ?? "",
-                    sender: event.getSender() ?? "",
-                    relatesTo: event.getContent()["m.relates_to"] ?? null,
-                },
+                    sender,
+                    targetEventId:
+                        typeof rel?.event_id === "string" ? rel.event_id : null,
+                    key: typeof rel?.key === "string" ? rel.key : null,
+                    relatesTo: rel ?? null,
+                    isOwn: sender === getOwnUserId(),
+                    isLive,
+                });
+                return;
+            }
+            const types = rendererEventTypes(
+                pluginRegistry.messageRenderers.map((e) => e.value),
             );
+            if (!isPluginMessage(event, types)) return;
+            const payload = timelinePayload(event, room, isLive);
+            emit("message", payload);
+            emit("timeline", { ...payload });
         }),
     );
 
     unsubs.push(
-        onRoomUpdate(() => {
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "room-update",
-                {},
-            );
+        onOwnEventSent((event, room) => {
+            emit("message-sent", {
+                roomId: room.roomId,
+                eventId: event.getId() ?? "",
+                type: event.getType(),
+                content: { ...event.getContent() },
+            });
         }),
     );
 
     unsubs.push(
-        onSyncPrepared(() => {
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "sync",
-                {
-                    state: "PREPARED",
-                },
-            );
-        }),
+        onMemberJoin((roomId, userId, displayName) =>
+            emit("member-join", { roomId, userId, displayName }),
+        ),
     );
+
     unsubs.push(
-        onSyncReconnected(() => {
-            dispatchPluginEvent(
-                pluginRegistry.eventSubs.map((e) => e.value),
-                "sync",
-                {
-                    state: "RECONNECTED",
-                },
-            );
-        }),
+        onAnyTyping((roomId, userIds) => emit("typing", { roomId, userIds })),
+    );
+
+    unsubs.push(
+        watchActiveRoom((roomId, previousRoomId) =>
+            emit("room-enter", { roomId, previousRoomId }),
+        ),
+    );
+
+    unsubs.push(onRoomUpdate(() => emit("room-update", {})));
+    unsubs.push(onSyncPrepared(() => emit("sync", { state: "PREPARED" })));
+    unsubs.push(
+        onSyncReconnected(() => emit("sync", { state: "RECONNECTED" })),
     );
 
     return () => {
@@ -485,6 +549,20 @@ export function initPlugins(): () => void {
     // Wire the imperative UI seam item 8 owns: zam.ui.openPopover routes
     // through hostBridge.openPopover (hostApi.ts). Set once at boot.
     hostBridge.openPopover = openPluginPopover;
+
+    // Custom event types a plugin renders join the timeline. Memoized on the
+    // registry tick: the timeline filter asks once per event.
+    let typesTick = -1;
+    let types = new Set<string>();
+    setPluginTimelineTypes(() => {
+        if (typesTick !== pluginRegistry.tick) {
+            typesTick = pluginRegistry.tick;
+            types = rendererEventTypes(
+                pluginRegistry.messageRenderers.map((e) => e.value),
+            );
+        }
+        return types;
+    });
 
     // Fan client events out to plugin events.on(...) handlers (no-ops safely if
     // the client is not ready yet; the on* helpers guard internally).
@@ -550,9 +628,11 @@ export function initPlugins(): () => void {
 
     // 3) Boot-load enabled plugins (built-ins first, each error-isolated).
     void loader.bootLoad(toBoot);
+    const stopRepoWatch = startLocalRepoWatch();
 
     // Disposer: unsubscribe the event bus + disable every loaded plugin.
     return () => {
+        stopRepoWatch();
         disposeEventBus();
         for (const id of [...loadables.keys()]) {
             if (loader.isLoaded(id)) void loader.disable(id);
@@ -845,10 +925,101 @@ export async function loadLocalFolder(
     }
     if (opts.expectedId && !ids.length && !errors.length)
         errors.push(`No plugin "${opts.expectedId}" in that folder`);
+    // A repo (not a single plugin): remember the root so the watcher finds
+    // plugin folders added to it later.
+    if (opts.handle && dirs[0] !== "") await saveRepoHandle(opts.handle);
     return {
         ok: ids.length > 0 && !errors.length,
         ids,
         error: errors.join("\n") || undefined,
+    };
+}
+
+const REPO_WATCH_MS = 3000;
+
+/** Poll the picked repo folders and load any plugin folder that appears in them.
+ *  Only read permission is used (no prompts). A folder is looked at once per
+ *  session: when its plugin is already installed, or when loading it succeeded
+ *  or failed (a failure is retried only once its manifest.json changes). Removing
+ *  a plugin therefore sticks until the app restarts. Returns the stop function. */
+export function startLocalRepoWatch(): () => void {
+    if (!canPickDirectory()) return () => {};
+    const seen = new Set<string>(); // "<root>/<folder>", handled this session
+    const failed = new Map<string, number>(); // key -> manifest mtime that failed
+    let scanning = false;
+    let stopped = false;
+
+    async function scanRoot(root: FileSystemDirectoryHandle) {
+        const perm = root as unknown as {
+            queryPermission(o: { mode: "read" }): Promise<string>;
+        };
+        if ((await perm.queryPermission({ mode: "read" })) !== "granted")
+            return;
+        const subs: FileSystemDirectoryHandle[] = [];
+        const entries = (
+            root as unknown as {
+                values(): AsyncIterable<FileSystemHandle>;
+            }
+        ).values();
+        for await (const h of entries)
+            if (h.kind === "directory")
+                subs.push(h as FileSystemDirectoryHandle);
+
+        for (const sub of subs) {
+            const key = `${root.name}/${sub.name}`;
+            if (seen.has(key)) continue;
+            let manifest: File;
+            try {
+                manifest = await (
+                    await sub.getFileHandle("manifest.json")
+                ).getFile();
+            } catch {
+                continue; // not a plugin folder
+            }
+            const stamp = manifest.lastModified;
+            if (failed.get(key) === stamp) continue;
+            let id: string;
+            try {
+                id = parseManifest(JSON.parse(await manifest.text())).id;
+            } catch {
+                failed.set(key, stamp);
+                continue;
+            }
+            if (installedPlugins[id]) {
+                seen.add(key);
+                continue;
+            }
+            const res = await loadLocalPlugin(await filesFromDirectory(sub), {
+                handle: sub,
+            });
+            if (res.ok) seen.add(key);
+            else failed.set(key, stamp);
+        }
+    }
+
+    async function tick() {
+        if (document.hidden || scanning || stopped) return;
+        scanning = true;
+        try {
+            for (const root of await listRepoHandles()) {
+                try {
+                    await scanRoot(root);
+                } catch (e) {
+                    // Folder moved or deleted: forget it. Other errors may be
+                    // transient, so keep the handle.
+                    if ((e as Error).name === "NotFoundError")
+                        await deleteRepoHandle(root.name);
+                }
+            }
+        } finally {
+            scanning = false;
+        }
+    }
+
+    const timer = setInterval(() => void tick(), REPO_WATCH_MS);
+    return () => {
+        stopped = true;
+        clearInterval(timer);
     };
 }
 
