@@ -44,13 +44,22 @@
     import MessageReportAction from "$lib/components/messages/MessageReportAction.svelte";
     import MessageRedactAction from "$lib/components/messages/MessageRedactAction.svelte";
     import MessageActionsSheet from "$lib/components/messages/MessageActionsSheet.svelte";
+    import ViewSourceDialog from "$lib/components/messages/ViewSourceDialog.svelte";
     import {
         messageActionsMenu,
         type MessageActionKey,
     } from "$lib/utils/messageActionsMenu";
     import EventShield from "./EventShield.svelte";
     import MessageDecorations from "$lib/components/messages/MessageDecorations.svelte";
-    import { Check, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
+    import {
+        Check,
+        Code,
+        Forward,
+        Link,
+        Lock,
+        Reply,
+        Pencil,
+    } from "lucide-svelte";
     import Reactions from "$lib/components/messages/Reactions.svelte";
     import ReactorPopover from "./ReactorPopover.svelte";
     import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
@@ -82,6 +91,7 @@
         resendMessage,
         deleteFailedMessage,
         getRoom,
+        isRoomCachedOnly,
         getMessageShareLink,
         joinRoom,
         seedRoomStateIfMissing,
@@ -139,7 +149,11 @@
     import { videoPoster } from "$lib/utils/roomMedia";
     import { placeholderStyle } from "$lib/utils/imagePlaceholder";
     import { createMediaRetry } from "$lib/stores/mediaAuth.svelte";
-    import { utdPlaceholderText } from "$lib/utils/encryptionState";
+    import {
+        DECRYPTING_MESSAGE_TEXT,
+        isDecryptionPending,
+        utdPlaceholderText,
+    } from "$lib/utils/encryptionState";
     import {
         canRequestRoomKeys,
         requestRoomKeys,
@@ -170,6 +184,8 @@
         collectAnnotation,
     } from "$lib/utils/pluginMessageActions";
     import { pluginRegistry } from "$lib/stores/plugins.svelte";
+    import { findRenderer } from "$lib/plugins/pluginRenderers";
+    import { pluginMount } from "$lib/plugins/pluginMount";
 
     import { messagesState } from "$lib/stores/messages.svelte";
     import {
@@ -194,8 +210,11 @@
         isFavouriteGif,
         addFavouriteGif,
         removeFavouriteGif,
+        favouriteSize,
         favouritesState,
+        favouriteUrlForMxc,
     } from "$lib/stores/favourites.svelte";
+    import { parseMxc } from "$lib/utils/mxcUri";
     import {
         interfaceState,
         openModal,
@@ -359,6 +378,7 @@
     let confirmingDelete = $state(false);
     let pinning = $state(false);
     let showForwardDialog = $state(false);
+    let showViewSourceDialog = $state(false);
 
     // Elements that own their own tap/gesture — a row tap/hold must defer to
     // them (links, buttons, media, reaction pills, the composer, etc.).
@@ -889,6 +909,24 @@
 
     const msgtype = $derived(content?.msgtype ?? "");
 
+    // An encrypted envelope nobody has decided yet (a cached replay before the
+    // background decryption pass reaches it, or an attempt in flight) is NOT a
+    // failure. It gets a neutral row; the missing-keys copy is reserved for
+    // events whose decryption actually failed.
+    const decryptionPending = $derived.by(() => {
+        void messagesState.timelineTick;
+        // Rooms tick too: a cached-only room stops being cached when sync
+        // publishes the live rooms, which changes the answer below.
+        void roomsState.roomsTick;
+        if (!isDecryptionPending(eventType, event.decryptionFailureReason))
+            return false;
+        // Only promise progress where something will actually attempt it: an
+        // attempt already in flight, or a cached room whose background pass is
+        // still coming. A live event that nobody is decrypting (crypto never
+        // started) keeps the UTD copy instead of an eternal spinner.
+        return event.isBeingDecrypted() || isRoomCachedOnly(room.roomId);
+    });
+
     // Still encrypted, or failed to decrypt: a failure swaps in an
     // m.room.message stand-in (msgtype m.bad.encrypted) whose body is the
     // SDK's raw "** Unable to decrypt **" text, so the type alone misses it.
@@ -1093,10 +1131,20 @@
         showActionsSheet = true;
     }
 
+    function openViewSourceDialog() {
+        slotToken = openModal("view-source", () => {
+            showViewSourceDialog = false;
+        });
+        showViewSourceDialog = true;
+    }
+
     function handleActionChoose(key: MessageActionKey) {
         // The sheet has already released the modal slot (it closes before
         // choosing), so report/redact are free to claim it via show().
         switch (key) {
+            case "view-source":
+                openViewSourceDialog();
+                break;
             case "thread":
                 onOpenThread?.(threadRootId);
                 break;
@@ -1140,6 +1188,20 @@
 
     const isPoll = $derived(isPollStartEventType(eventType));
     const isFileOffer = $derived(isFileOfferEventType(eventType));
+    // A plugin's message renderer for this event (first registered wins).
+    const pluginRenderer = $derived.by(() => {
+        void pluginRegistry.tick;
+        return findRenderer(
+            pluginRegistry.messageRenderers.map((e) => e.value),
+            eventType,
+            msgtype,
+        );
+    });
+    // Remount a plugin's view only when the event's content really changes
+    // (an edit), not on every reaction or receipt that re-runs `content`.
+    const pluginRenderKey = $derived(
+        pluginRenderer ? `${eventId}:${JSON.stringify(content ?? {})}` : "",
+    );
     const isCallEvent = $derived(
         (void messagesState.timelineTick, isCallEventType(eventType)),
     );
@@ -1308,6 +1370,23 @@
                     (n ?? "").trim().toLowerCase().endsWith(".gif"),
                 )),
     );
+
+    // Whether this uploaded image is a WebP. The "send GIFs as animated WebP"
+    // setting turns a GIF into one, named *.webp, so it can still be starred.
+    const isWebp = $derived(
+        msgtype === "m.image" &&
+            ((
+                (content?.info as { mimetype?: string } | undefined)
+                    ?.mimetype ?? ""
+            )
+                .trim()
+                .toLowerCase() === "image/webp" ||
+                [mediaFilename, content?.body as string | undefined].some((n) =>
+                    (n ?? "").trim().toLowerCase().endsWith(".webp"),
+                )),
+    );
+    // Whether this image can be starred as a favourite GIF.
+    const canFavouriteImage = $derived(isGif || isWebp);
 
     // Whether this image is an SVG (a vector, see utils/attachmentMime).
     const isSvgImage = $derived(
@@ -1800,15 +1879,37 @@
         roomId: room.roomId,
         eventId,
     });
+    /** An mxc URI from event content, or undefined. */
+    function validMxc(value: unknown): string | undefined {
+        return typeof value === "string" && parseMxc(value) ? value : undefined;
+    }
+
+    // The media's mxc, whichever kind of image this is. A message that reuses
+    // a starred GIF's media carries the same mxc, so it matches that favourite.
+    const encryptedMxc = $derived(
+        validMxc((content?.file as { url?: unknown } | undefined)?.url),
+    );
+    const imageMediaMxc = $derived(validMxc(content?.url) ?? encryptedMxc);
     const imageIsFavourited = $derived.by(() => {
         favouritesState.gifs; // track
         const src =
             imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource);
-        return !!src && isFavouriteGif(src);
+        if (!!src && isFavouriteGif(src)) return true;
+        return (
+            !!imageMediaMxc && favouriteUrlForMxc(imageMediaMxc) !== undefined
+        );
     });
 
     function toggleImageFavourite(e: MouseEvent) {
         e.stopPropagation();
+        // Remove the favourite of this media first, whichever message starred it.
+        const byMedia = imageMediaMxc
+            ? favouriteUrlForMxc(imageMediaMxc)
+            : undefined;
+        if (byMedia !== undefined) {
+            removeFavouriteGif(byMedia);
+            return;
+        }
         const full = imageFullUrl();
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
@@ -1818,13 +1919,23 @@
                     url: key,
                     previewUrl: key,
                     source: encryptedFavouriteSource,
+                    ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
         }
         if (isFavouriteGif(full)) {
             removeFavouriteGif(full);
         } else {
-            addFavouriteGif({ url: full, previewUrl: imageThumbUrl() ?? full });
+            addFavouriteGif({
+                url: full,
+                previewUrl: imageThumbUrl() ?? full,
+                // Kept so a GIF sent from the picker goes out under its name.
+                ...(typeof mediaFilename === "string" && mediaFilename
+                    ? { name: mediaFilename }
+                    : {}),
+                ...favouriteSize(imgInfoW, imgInfoH),
+            });
         }
     }
 
@@ -1871,6 +1982,7 @@
             canPin,
             isPinned,
             hasLink: eventId.startsWith("$") && !isFailed,
+            canViewSource: true,
             canReport: !isOwnMessage && !isFailed,
             canRedact: !isOwnMessage && !isFailed && canRedact,
             canDelete: isOwnMessage,
@@ -1913,15 +2025,26 @@
         return extractEventPermalinks(body(), formattedBody());
     });
 
-    // Extract http/https URLs from the plain body for link previews
-    const linkedUrls = $derived.by(() => {
-        if (msgtype !== "m.text") return [];
-        const matches = body().match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
+    /** The http/https URLs in `text` worth a link preview. */
+    function previewableUrls(text: string): string[] {
+        const matches = text.match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
         return [...new Set(matches)].filter((url) => {
             const target = parseMatrixLink(url);
             return !(target && target.kind !== "user" && target.eventId);
         });
+    }
+
+    // Extract http/https URLs from the plain body for link previews
+    const linkedUrls = $derived.by(() => {
+        if (msgtype !== "m.text") return [];
+        return previewableUrls(body());
     });
+
+    // A media caption gets the same previews, shown under it. Without a caption
+    // `body` is only the file name, which is not text to preview.
+    const captionLinkedUrls = $derived.by(() =>
+        hasCaption() ? previewableUrls(body()) : [],
+    );
 
     // True if the body text consists entirely of emoji + whitespace (no other characters)
     const emojiOnly = $derived.by(() => {
@@ -2246,6 +2369,7 @@
     }}
     ondblclick={onMessageDblClick}
     data-event-id={eventId}
+    data-sender={senderId}
     use:longPress={{
         onTrigger: () => {
             heldJustFired = true;
@@ -2677,6 +2801,11 @@
                             >
                         {/if}
                     </div>
+                    {#if settingsState.linkPreviewsEnabled}
+                        {#each captionLinkedUrls as url (url)}
+                            <LinkPreview {url} />
+                        {/each}
+                    {/if}
                 {/if}
             {/snippet}
 
@@ -2689,6 +2818,36 @@
                 <PollBody {event} {room} />
             {:else if isFileOffer}
                 <FileOfferCard {event} />
+            {:else if pluginRenderer && !decryptionPending && !isUtd}
+                {@const r = pluginRenderer}
+                {@const ctx = {
+                    roomId: room.roomId,
+                    eventId,
+                    sender: senderId,
+                    type: eventType,
+                    content: { ...(content ?? {}) },
+                    timestamp,
+                    isOwn: isOwnMessage,
+                }}
+                {#key pluginRenderKey}
+                    <div
+                        class="message-body"
+                        data-zam-plugin-render
+                        use:pluginMount={(el) => r.render(el, ctx)}
+                    ></div>
+                {/key}
+            {:else if decryptionPending}
+                <!-- Encrypted, not attempted/failed yet. Neutral copy: the
+                 missing-keys line would be a claim we cannot make until the
+                 decryption attempt actually fails. When it finishes the
+                 decryption tick re-runs this derived timeline and the row
+                 swaps to real content (or to the UTD branch below). -->
+                <div
+                    class="message-body flex items-center gap-1.5 text-sm italic text-discord-textMuted leading-relaxed animate-pulse"
+                >
+                    <Lock size={14} class="flex-shrink-0" />
+                    <span>{DECRYPTING_MESSAGE_TEXT}</span>
+                </div>
             {:else if isUtd}
                 <!-- E2EE UTD (unable-to-decrypt) placeholder. The row chrome
                  (avatar / sender / timestamp) is cleartext; only the body is
@@ -2858,7 +3017,7 @@
                                 />
                             {/if}
                         </a>
-                        {#if isGif}
+                        {#if canFavouriteImage}
                             <button
                                 onclick={toggleImageFavourite}
                                 title={imageIsFavourited
@@ -2948,7 +3107,7 @@
                         mimetype={(
                             content?.info as { mimetype?: string } | undefined
                         )?.mimetype}
-                        favourite={!isGif
+                        favourite={!canFavouriteImage
                             ? undefined
                             : file
                               ? {
@@ -2959,9 +3118,15 @@
                                         encryptedFavouriteSource,
                                     ),
                                     source: encryptedFavouriteSource,
+                                    mxc: encryptedMxc,
                                 }
                               : full
-                                ? { url: full, previewUrl: thumb ?? full }
+                                ? {
+                                      url: full,
+                                      previewUrl: thumb ?? full,
+                                      mxc: imageMediaMxc,
+                                      name: mediaFilename || undefined,
+                                  }
                                 : undefined}
                         onClose={() => (imageLightboxOpen = false)}
                     />
@@ -3647,6 +3812,17 @@
                     {/if}
                 </button>
             {/if}
+            {#if !interfaceState.isTouchscreen}
+                <button
+                    data-message-action
+                    onclick={openViewSourceDialog}
+                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    title={t("messageItem.viewSource")}
+                    aria-label={t("messageItem.viewSource")}
+                >
+                    <Code size={16} />
+                </button>
+            {/if}
             {#if !interfaceState.isTouchscreen && !isOwnMessage && !isFailed}
                 <MessageReportAction
                     roomId={room.roomId}
@@ -3761,6 +3937,10 @@
 
 {#if showForwardDialog}
     <ForwardMessageDialog {event} />
+{/if}
+
+{#if showViewSourceDialog}
+    <ViewSourceDialog {event} />
 {/if}
 
 <style>

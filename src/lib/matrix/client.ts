@@ -408,6 +408,7 @@ export {
     getMediaUploadSizeLimit,
     uploadAttachment,
     sendFile,
+    sendExistingMedia,
     sendVoiceMessage,
     mxcToHttp,
     fetchAttachmentBlob,
@@ -1375,6 +1376,12 @@ export async function startSync(
     onStateChange: (state: string) => void,
     onSessionExpired?: () => void,
     onSlidingSyncFallback?: (reason: string) => void,
+    /**
+     * The room the app is about to open. Its cached encrypted tail is
+     * decrypted before the cache is published so the first timeline paint is
+     * already cleartext. Other cached rooms decrypt in the background.
+     */
+    preferredRoomId?: string | null,
 ): Promise<() => void> {
     const owner = captureClient();
     const client = owner.client;
@@ -1561,7 +1568,7 @@ export async function startSync(
     }, 10_000);
 
     // Paint the last known room list while sync catches up.
-    await hydrateRoomListCache(client);
+    await hydrateRoomListCache(client, preferredRoomId);
     // A hidden page may never come back (mobile kills it): save on the way out.
     const onHidden = () => {
         if (document.visibilityState === "hidden")
@@ -1662,6 +1669,14 @@ export interface FavouriteGif {
      *  key (see favouriteFile.ts) and the GIF is read from this message.
      *  Untrusted on read; validate with parseEventFavouriteSource. */
     source?: { roomId: string; eventId: string };
+    /** The media's mxc, set for an encrypted GIF when starred, so a message
+     *  that reuses that media matches this favourite. Untrusted on read:
+     *  compared as a string only. */
+    mxc?: string;
+    /** The original file name, saved when starred from an unencrypted message
+     *  so a GIF sent from the picker keeps it. Untrusted on read (account
+     *  data): favouriteFile.ts cleans it before use. */
+    name?: string;
     tags?: string[];
     /** Natural size of the GIF, when known at the time it was starred. Lets
      *  the picker reserve the tile before the preview loads. Untrusted on
@@ -2053,6 +2068,11 @@ let roomListCache: MaterializedCache | null = null;
 let roomListComplete = false;
 let lastSnapshotSaveAt = 0;
 const SNAPSHOT_SAVE_INTERVAL_MS = 2 * 60_000;
+// A cached event with its key present decrypts from the local store in a few
+// milliseconds. With a key missing the SDK may consult key backup, which can
+// hit the network, so the boot paint waits at most this long for the landing
+// room and then lets the rest fill in behind the neutral "decrypting" row.
+const PREFERRED_DECRYPT_WAIT_MS = 500;
 
 function resetRoomListCache(): void {
     roomListCache = null;
@@ -2102,35 +2122,64 @@ export function isRoomCachedOnly(roomId: string): boolean {
     return !!roomListCache?.rooms.get(roomId) && !matrixClient?.getRoom(roomId);
 }
 
-async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
+async function hydrateRoomListCache(
+    client: MatrixClient,
+    preferredRoomId?: string | null,
+): Promise<void> {
     resetRoomListCache();
     const userId = client.getUserId();
     const deviceId = client.getDeviceId();
     if (!userId || !deviceId) return;
     const snapshot = await loadSnapshot(snapshotKey(userId, deviceId));
     if (!snapshot || matrixClient !== client || roomListComplete) return;
-    roomListCache = materializeSnapshot(client, snapshot);
+    const cache = materializeSnapshot(client, snapshot);
+    // The cached tail of an encrypted room is ciphertext. Decrypt the room the
+    // user is about to open BEFORE publishing, so its first paint is normally
+    // the real conversation instead of a placeholder. The wait is bounded: a
+    // missing key can send the SDK to key backup (network), and boot must not
+    // hang on that. Every other room, and anything this pass did not finish,
+    // is decrypted in the background; while an event waits there, MessageItem
+    // renders a neutral "decrypting" row rather than claiming its keys are
+    // missing.
+    if (preferredRoomId) {
+        const preferred = cache.rooms.get(preferredRoomId);
+        if (preferred)
+            await Promise.race([
+                decryptRoomEvents(client, preferred),
+                new Promise<void>((resolve) =>
+                    setTimeout(resolve, PREFERRED_DECRYPT_WAIT_MS),
+                ),
+            ]);
+        // A logout/reconnect during that await must win over this snapshot.
+        if (matrixClient !== client || roomListComplete) return;
+    }
     for (const [spaceId, list] of Object.entries(snapshot.hierarchies ?? {}))
         if (!hierarchyCache.has(spaceId)) hierarchyCache.set(spaceId, list);
-    // The cached events of an encrypted room are ciphertext. Decrypt them from
-    // the local crypto store so an offline room reads instead of showing
-    // "unable to decrypt" everywhere. Never awaited: no key means the
-    // placeholder is the correct rendering anyway.
-    void decryptCachedEvents(client, roomListCache);
+    roomListCache = cache;
+    void decryptCachedEvents(client, cache, preferredRoomId);
 }
 
 async function decryptCachedEvents(
     client: MatrixClient,
     cache: MaterializedCache,
+    skipRoomId?: string | null,
 ): Promise<void> {
-    for (const room of cache.rooms.values()) {
-        for (const ev of room.getLiveTimeline().getEvents()) {
-            if (!ev.isEncrypted()) continue;
-            try {
-                await client.decryptEventIfNeeded(ev);
-            } catch {
-                // Keys are gone or the event is for another session: leave it.
-            }
+    for (const [roomId, room] of cache.rooms) {
+        if (roomId === skipRoomId) continue;
+        await decryptRoomEvents(client, room);
+    }
+}
+
+async function decryptRoomEvents(
+    client: MatrixClient,
+    room: Room,
+): Promise<void> {
+    for (const ev of room.getLiveTimeline().getEvents()) {
+        if (!ev.isEncrypted()) continue;
+        try {
+            await client.decryptEventIfNeeded(ev);
+        } catch {
+            // Keys are gone or the event is for another session: leave it.
         }
     }
 }
@@ -2639,6 +2688,15 @@ function bottomEventId(room: Room): string | undefined {
     return undefined;
 }
 
+// Custom event types a plugin renders (zam.messages.registerRenderer). Set by
+// the plugin store; client.ts never imports plugins/.
+let pluginTimelineTypes: () => ReadonlySet<string> = () => new Set();
+export function setPluginTimelineTypes(
+    source: () => ReadonlySet<string>,
+): void {
+    pluginTimelineTypes = source;
+}
+
 function isRenderableTimelineEvent(e: MatrixEvent): boolean {
     if (settingsState.showAllEvents) return true;
     if (e.isRedacted()) return false;
@@ -2653,7 +2711,8 @@ function isRenderableTimelineEvent(e: MatrixEvent): boolean {
         e.getType() !== "m.room.encrypted" &&
         !isPollStartEventType(e.getType()) &&
         !isFileOfferEventType(e.getType()) &&
-        !isCallEventType(e.getType())
+        !isCallEventType(e.getType()) &&
+        !pluginTimelineTypes().has(e.getType())
     )
         return false;
     const rel = e.getContent()?.["m.relates_to"];
@@ -5029,7 +5088,8 @@ export function onTimelineEvent(
                     (event.getType() === "m.room.message" ||
                         event.getType() === "m.sticker" ||
                         isFileOfferEventType(event.getType()) ||
-                        isPollStartEventType(event.getType())) &&
+                        isPollStartEventType(event.getType()) ||
+                        pluginTimelineTypes().has(event.getType())) &&
                     !event.isRedacted()))
         ) {
             callback(event, room, isLiveAppend);
@@ -9607,6 +9667,112 @@ export function onEventDecrypted(
             MatrixEventEvent.Decrypted as never,
             handler as never,
         );
+}
+
+/**
+ * Every new non-state room event in cleartext, for the plugin event bus: plain
+ * events as they reach a timeline, encrypted ones once they decrypt (the
+ * ciphertext's arrival facts are remembered, as in onDecryptedTimelineEvent).
+ * Scroll-up backfill is skipped. `isLive` is false for what the first sync
+ * after start-up replays.
+ */
+export function onClearRoomEvent(
+    callback: (event: MatrixEvent, room: Room, isLive: boolean) => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const pending = createBoundedIdMap<{ isLive: boolean }>();
+    const onTimeline = (
+        event: MatrixEvent,
+        room: Room | undefined,
+        toStartOfTimeline?: boolean,
+        removed?: boolean,
+    ) => {
+        if (toStartOfTimeline || removed || !room || event.isState()) return;
+        const isLive = isInitialSyncComplete();
+        if (event.isEncrypted() && event.getClearContent() === null) {
+            const eventId = event.getId();
+            if (eventId) pending.set(eventId, { isLive });
+            return;
+        }
+        callback(event, room, isLive);
+    };
+    const onDecrypted = (event: MatrixEvent) => {
+        const eventId = event.getId();
+        const meta = eventId ? pending.get(eventId) : undefined;
+        if (!eventId || !meta || event.isDecryptionFailure()) return;
+        const roomId = event.getRoomId();
+        const room = roomId ? matrixClient?.getRoom(roomId) : undefined;
+        if (!room) return;
+        pending.delete(eventId);
+        callback(event, room, meta.isLive);
+    };
+    matrixClient.on(RoomEvent.Timeline, onTimeline as never);
+    matrixClient.on(MatrixEventEvent.Decrypted as never, onDecrypted as never);
+    return () => {
+        matrixClient?.off(RoomEvent.Timeline, onTimeline as never);
+        matrixClient?.off(
+            MatrixEventEvent.Decrypted as never,
+            onDecrypted as never,
+        );
+    };
+}
+
+/** An event sent from this device that the server accepted. */
+export function onOwnEventSent(
+    callback: (event: MatrixEvent, room: Room) => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const handler = (event: MatrixEvent, room: Room | undefined) => {
+        if (room && event.status === EventStatus.SENT) callback(event, room);
+    };
+    matrixClient.on(RoomEvent.LocalEchoUpdated, handler as never);
+    return () =>
+        matrixClient?.off(RoomEvent.LocalEchoUpdated, handler as never);
+}
+
+/** Someone (not you) joined a room you are in, after the first sync. */
+export function onMemberJoin(
+    callback: (roomId: string, userId: string, displayName: string) => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const handler = (
+        _event: MatrixEvent,
+        member: RoomMember,
+        oldMembership?: string,
+    ) => {
+        if (!isInitialSyncComplete()) return;
+        if (member.membership !== "join" || oldMembership === "join") return;
+        if (member.userId === matrixClient?.getUserId()) return;
+        callback(member.roomId, member.userId, member.name);
+    };
+    matrixClient.on(RoomMemberEvent.Membership as never, handler as never);
+    return () =>
+        matrixClient?.off(
+            RoomMemberEvent.Membership as never,
+            handler as never,
+        );
+}
+
+/** Typing changes in any room (others only). */
+export function onAnyTyping(
+    callback: (roomId: string, userIds: string[]) => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const handler = (_event: unknown, member: RoomMember) => {
+        const room = matrixClient?.getRoom(member.roomId);
+        if (!room) return;
+        const myId = matrixClient?.getUserId();
+        callback(
+            room.roomId,
+            room
+                .getMembers()
+                .filter((m) => m.typing && m.userId !== myId)
+                .map((m) => m.userId),
+        );
+    };
+    matrixClient.on(RoomMemberEvent.Typing as never, handler as never);
+    return () =>
+        matrixClient?.off(RoomMemberEvent.Typing as never, handler as never);
 }
 
 export interface DecryptedTimelineMeta {
