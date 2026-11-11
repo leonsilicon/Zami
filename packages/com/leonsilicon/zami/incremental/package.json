@@ -1,0 +1,25 @@
+{
+  "name": "@-/com.leonsilicon.zami.incremental",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Doing work only when its inputs change: keyed memos, revision counters for Matrix room state and image packs, an incrementally kept sorted list, debouncing, a one-item selection store, and section lookup by scroll offset.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts",
+    "./react": "./+react.ts"
+  },
+  "dependencies": {
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "matrix-js-sdk": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

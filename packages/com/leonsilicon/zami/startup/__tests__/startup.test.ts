@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 function memoryStorage(): Storage {
   const data = new Map<string, string>();
@@ -94,5 +94,104 @@ describe("startup timeline", () => {
       "  4.00 s  Up to date (3 rooms)",
       'JS stall: 900 ms, from "Restoring session"',
     ]);
+  });
+});
+
+describe("stalls after the launch", () => {
+  let clock = 0;
+  beforeEach(() => {
+    clock = 0;
+    vi.stubGlobal("localStorage", memoryStorage());
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** Time passes with the thread free: each timer runs when it's due. */
+  function idle(ms: number): void {
+    for (let t = 0; t < ms; t += 10) {
+      clock += 10;
+      vi.advanceTimersByTime(10);
+    }
+  }
+
+  /**
+   * Right after a tick of the watch (the next one is due in 200 ms), the JS thread is busy for
+   * `ms`; then timers run, late. The watch sees `ms - 200`.
+   */
+  function stall(ms: number): void {
+    idle(200 - (clock % 200));
+    clock += ms;
+    vi.advanceTimersByTime(ms);
+    idle(200);
+  }
+
+  test("keeps the longest, with where the app was before and after, and saves them", async () => {
+    const startup = await load();
+    let room = "room A";
+    startup.setStallContext(() => room);
+    const stats = {
+      hydratedRecords: 0,
+      hydrateMs: 0,
+      indexBuilds: 0,
+      indexBuildMs: 0,
+      idbTasks: 0,
+    };
+    startup.setStartupStatsSource(() => stats);
+    startup.finishStartup("Up to date");
+    idle(1000);
+    expect(startup.thisStartup().sessionStalls).toBeUndefined();
+
+    idle(200 - (clock % 200));
+    // During this stall, the user switched rooms and IndexedDB ran 120 tasks.
+    room = "room B";
+    stats.idbTasks = 120;
+    clock += 400;
+    vi.advanceTimersByTime(400);
+    idle(1000);
+    stall(600);
+    idle(1000);
+    const record = startup.thisStartup();
+    expect(record.sessionStallCount).toBe(2);
+    expect(record.sessionStalls).toEqual([
+      { ms: 400, at: expect.any(Number), context: "room B" },
+      { ms: 200, at: expect.any(Number), context: "room A → room B", idb: "120 tasks" },
+    ]);
+    // Saved a while later, not on every stall.
+    vi.advanceTimersByTime(2000);
+    const saved = JSON.parse(localStorage.getItem("zami:startup")!) as typeof record;
+    expect(saved.sessionStalls).toHaveLength(2);
+    expect(startup.formatSessionStalls(record)[0]).toBe(
+      "stalls after launch: 2, 600 ms in all; longest:",
+    );
+  });
+
+  test("keeps only the ten longest, and ignores time spent in the background", async () => {
+    const startup = await load();
+    startup.finishStartup();
+    for (let i = 1; i <= 15; i++) stall(300 + i * 10);
+    expect(startup.thisStartup().sessionStalls?.map((s) => s.ms)).toEqual([
+      250, 240, 230, 220, 210, 200, 190, 180, 170, 160,
+    ]);
+    expect(startup.thisStartup().sessionStallCount).toBe(15);
+
+    startup.setStallWatchActive(false);
+    clock += 60_000;
+    vi.advanceTimersByTime(60_000);
+    startup.setStallWatchActive(true);
+    idle(1000);
+    expect(startup.thisStartup().sessionStallCount).toBe(15);
+  });
+
+  test("costs one timer a few times a second when nothing stalls", async () => {
+    const startup = await load();
+    startup.finishStartup();
+    const before = vi.getTimerCount();
+    idle(1000);
+    expect(vi.getTimerCount()).toBe(before);
+    expect(startup.thisStartup().sessionStallCount).toBeUndefined();
   });
 });

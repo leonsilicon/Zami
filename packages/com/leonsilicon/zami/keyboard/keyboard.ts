@@ -11,6 +11,11 @@ export interface KeyPress {
   altKey: boolean;
   metaKey: boolean;
   repeat: boolean;
+  /**
+   * Whether a text input had focus when the key was pressed, by UIKit's account. React
+   * Native's own focus state hears of a tap that focused one a little later.
+   */
+  textInputFocused?: boolean;
 }
 
 interface ZamiKeyboardModule {

@@ -48,6 +48,17 @@ function save() {
     }
 }
 
+// Zami: a picker full of favourites learns many sizes at once, each of which stringified
+// and stored up to 500 entries; store them once, after the burst.
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function saveSoon() {
+    if (saveTimer !== null) return;
+    saveTimer = setTimeout(() => {
+        saveTimer = null;
+        save();
+    }, 500);
+}
+
 /** Remember the natural size of a loaded preview. */
 export function learnGifAspect(
     previewUrl: string,
@@ -57,7 +68,7 @@ export function learnGifAspect(
     const ratio = safeAspectRatio(width, height, "");
     if (!ratio || learned[previewUrl] === ratio) return;
     learned[previewUrl] = ratio;
-    save();
+    saveSoon();
 }
 
 /**

@@ -1,1 +1,20 @@
 export { installBlobPolyfill } from "#install";
+export {
+  blobSegments,
+  createObjectURLAsync,
+  extensionFor,
+  fileFromUri,
+  fileSegments,
+  isFileSegment,
+  isPartsBlob,
+  PartsFile,
+  partsSegments,
+  readSegments,
+  segmentsFile,
+  setFileIo,
+  wholeFileUri,
+  type FileFromUriOptions,
+  type FileIo,
+  type FileSegment,
+  type Segment,
+} from "#+files";

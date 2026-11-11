@@ -1,0 +1,173 @@
+diff --git a/lib/sync.js b/lib/sync.js
+index 554d5b252f1c07442819c6ceff244d9de42daa27..255f7c402d4f7f17cc9aff8fb0ca608dddaad4ef 100644
+--- a/lib/sync.js
++++ b/lib/sync.js
+@@ -77,6 +77,57 @@ export let SyncState = /*#__PURE__*/function (SyncState) {
+ // by power-levels. MSC2716 is supported in existing room versions but they
+ // should only have special meaning when the room creator sends them.
+ const MSC2716_ROOM_VERSIONS = ["org.matrix.msc2716v3"];
++
++// Zami: a /sync response (or the saved one replayed at launch) with thousands of rooms used to
++// be processed in one run of the JS thread: every room was created, then every room's events
++// were mapped and applied, in promise callbacks that never let a frame or a touch through.
++// Rooms now go a few at a time, and the event loop gets a turn (a macrotask) whenever
++// ZAMI_SLICE_MS of work has gone by. ZAMI_ROOMS_IN_FLIGHT rooms are processed concurrently, so
++// their asynchronous steps (the crypto store) still overlap.
++const ZAMI_SLICE_MS = 8;
++const ZAMI_ROOMS_IN_FLIGHT = 8;
++const zamiNow = () => globalThis.performance?.now?.() ?? Date.now();
++function zamiYielder() {
++  let start = zamiNow();
++  let gate = null;
++  return () => {
++    if (zamiNow() - start < ZAMI_SLICE_MS) return null;
++    gate ??= new Promise(resolve => setTimeout(() => {
++      gate = null;
++      start = zamiNow();
++      resolve();
++    }, 0));
++    return gate;
++  };
++}
++// Zami: `await Promise.all(items.map(fn))`, a slice at a time (see above). Every item is
++// processed even if one fails, and the first failure is thrown at the end.
++async function zamiForEachSliced(items, fn) {
++  const turn = zamiYielder();
++  let next = 0;
++  let failed = false;
++  let failure;
++  const worker = async () => {
++    while (next < items.length) {
++      const wait = turn();
++      if (wait) await wait;
++      if (next >= items.length) return;
++      const item = items[next++];
++      try {
++        await fn(item);
++      } catch (e) {
++        if (!failed) {
++          failed = true;
++          failure = e;
++        }
++      }
++    }
++  };
++  const workers = [];
++  for (let i = 0; i < Math.min(ZAMI_ROOMS_IN_FLIGHT, items.length); i++) workers.push(worker());
++  await Promise.all(workers);
++  if (failed) throw failure;
++}
+ function getFilterName(userId, suffix) {
+   // scope this on the user ID because people may login on many accounts
+   // and they all need to be stored!
+@@ -1049,23 +1100,25 @@ export class SyncApi {
+     let leaveRooms = [];
+     let knockRooms = [];
+     if (data.rooms) {
++      // Zami: creating thousands of Room objects is itself a long run: sliced too.
+       if (data.rooms.invite) {
+-        inviteRooms = this.mapSyncResponseToRoomArray(data.rooms.invite);
++        inviteRooms = await this.zamiMapSyncResponseToRoomArray(data.rooms.invite);
+       }
+       if (data.rooms.join) {
+-        joinRooms = this.mapSyncResponseToRoomArray(data.rooms.join);
++        joinRooms = await this.zamiMapSyncResponseToRoomArray(data.rooms.join);
+       }
+       if (data.rooms.leave) {
+-        leaveRooms = this.mapSyncResponseToRoomArray(data.rooms.leave);
++        leaveRooms = await this.zamiMapSyncResponseToRoomArray(data.rooms.leave);
+       }
+       if (data.rooms.knock) {
+-        knockRooms = this.mapSyncResponseToRoomArray(data.rooms.knock);
++        knockRooms = await this.zamiMapSyncResponseToRoomArray(data.rooms.knock);
+       }
+     }
+     this.notifEvents = [];
+ 
+     // Handle invites
+-    await Promise.all(inviteRooms.map(async inviteObj => {
++    // Zami: a slice at a time (see zamiForEachSliced).
++    await zamiForEachSliced(inviteRooms, async inviteObj => {
+       const room = inviteObj.room;
+       const stateEvents = this.mapSyncEventsFormat(inviteObj.invite_state, room);
+       await this.injectRoomEvents(room, stateEvents, undefined);
+@@ -1080,10 +1133,11 @@ export class SyncApi {
+       stateEvents.forEach(function (e) {
+         client.emit(ClientEvent.Event, e);
+       });
+-    }));
++    });
+ 
+     // Handle joins
+-    await Promise.all(joinRooms.map(async joinObj => {
++    // Zami: a slice at a time (see zamiForEachSliced).
++    await zamiForEachSliced(joinRooms, async joinObj => {
+       const room = joinObj.room;
+       const stateEvents = this.mapSyncEventsFormat(joinObj.state, room);
+       const stateAfterEvents = this.mapSyncEventsFormat(joinObj["org.matrix.msc4222.state_after"], room);
+@@ -1277,10 +1331,11 @@ export class SyncApi {
+       // And decrypt all events after the recorded read receipt to ensure an accurate
+       // notification count
+       room.decryptCriticalEvents();
+-    }));
++    });
+ 
+     // Handle leaves (e.g. kicked rooms)
+-    await Promise.all(leaveRooms.map(async leaveObj => {
++    // Zami: a slice at a time (see zamiForEachSliced).
++    await zamiForEachSliced(leaveRooms, async leaveObj => {
+       const room = leaveObj.room;
+       const {
+         timelineEvents,
+@@ -1307,10 +1362,11 @@ export class SyncApi {
+       accountDataEvents.forEach(function (e) {
+         client.emit(ClientEvent.Event, e);
+       });
+-    }));
++    });
+ 
+     // Handle knocks
+-    await Promise.all(knockRooms.map(async knockObj => {
++    // Zami: a slice at a time (see zamiForEachSliced).
++    await zamiForEachSliced(knockRooms, async knockObj => {
+       const room = knockObj.room;
+       const stateEvents = this.mapSyncEventsFormat(knockObj.knock_state, room);
+       await this.injectRoomEvents(room, stateEvents, undefined);
+@@ -1325,7 +1381,7 @@ export class SyncApi {
+       stateEvents.forEach(function (e) {
+         client.emit(ClientEvent.Event, e);
+       });
+-    }));
++    });
+ 
+     // update the notification timeline, if appropriate.
+     // we only do this for live events, as otherwise we can't order them sanely
+@@ -1447,6 +1503,28 @@ export class SyncApi {
+       });
+     });
+   }
++  // Zami: mapSyncResponseToRoomArray, a slice at a time (see zamiForEachSliced).
++  async zamiMapSyncResponseToRoomArray(obj) {
++    const client = this.client;
++    const turn = zamiYielder();
++    const rooms = [];
++    for (const roomId of Object.keys(obj)) {
++      if (unsafeProp(roomId)) continue;
++      const wait = turn();
++      if (wait) await wait;
++      let room = client.store.getRoom(roomId);
++      let isBrandNewRoom = false;
++      if (!room) {
++        room = this.createRoom(roomId);
++        isBrandNewRoom = true;
++      }
++      rooms.push(_objectSpread(_objectSpread({}, obj[roomId]), {}, {
++        room,
++        isBrandNewRoom
++      }));
++    }
++    return rooms;
++  }
+   mapSyncEventsFormat(obj, room, decrypt = true) {
+     if (!obj || !Array.isArray(obj.events)) {
+       return [];

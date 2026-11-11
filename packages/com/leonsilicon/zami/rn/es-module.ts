@@ -24,6 +24,9 @@ export interface ImportModuleOptions {
    *  and data: URLs are fetched and evaluated with the same options (each URL once);
    *  anything else rejects, as a browser does for a module loaded from a `blob:` URL. */
   load?: (specifier: string, referrer: string | undefined) => Promise<ModuleNamespace>;
+  /** An IndexedDB database to keep compiled modules in between launches (see compileCached).
+   *  Compiled modules are always kept for the rest of the run. */
+  compileCache?: string;
 }
 
 interface Patch {
@@ -227,6 +230,112 @@ export function compileModule(source: string): CompiledModule {
   };
 }
 
+// --- Compiled modules, kept by their source's hash ---
+//
+// Parsing a plugin bundle with acorn and rewriting it runs on the JS thread, and took long
+// for a large bundle at every launch. The result depends only on the source, so it is kept:
+// for the rest of the run in memory, and between launches in IndexedDB (`compileCache`).
+
+/** Changes whenever compileModule's output would, so older cached bodies aren't used. */
+const COMPILE_FORMAT = 1;
+const CACHE_STORE = "modules";
+/** Compiled modules kept between launches; the oldest go first. */
+const CACHE_LIMIT = 32;
+
+/** cyrb53, a 53-bit string hash. */
+function hash53(text: string, seed: number): number {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+/** A source's cache key: two hashes and its length, so a collision needs all three to match. */
+export function moduleSourceKey(source: string): string {
+  return `${COMPILE_FORMAT}:${source.length.toString(36)}:${hash53(source, 0).toString(36)}:${hash53(source, 1).toString(36)}`;
+}
+
+const compiledBodies = new Map<string, string>();
+
+function openCompileCache(name: string): Promise<IDBDatabase | null> {
+  const factory = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+  if (!factory) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const request = factory.open(name, 1);
+      request.onupgradeneeded = () =>
+        request.result.createObjectStore(CACHE_STORE).createIndex("at", "at");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function readCompiled(name: string, key: string): Promise<string | undefined> {
+  const db = await openCompileCache(name);
+  if (!db) return undefined;
+  try {
+    return await new Promise((resolve) => {
+      const request = db.transaction(CACHE_STORE, "readonly").objectStore(CACHE_STORE).get(key);
+      request.onsuccess = () => {
+        const body = (request.result as { body?: unknown } | undefined)?.body;
+        resolve(typeof body === "string" ? body : undefined);
+      };
+      request.onerror = () => resolve(undefined);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function writeCompiled(name: string, key: string, body: string): Promise<void> {
+  const db = await openCompileCache(name);
+  if (!db) return;
+  try {
+    await new Promise<void>((resolve) => {
+      const transaction = db.transaction(CACHE_STORE, "readwrite");
+      const store = transaction.objectStore(CACHE_STORE);
+      store.put({ body, at: Date.now() }, key);
+      const keys = store.index("at").getAllKeys();
+      keys.onsuccess = () => {
+        for (const old of keys.result.slice(0, Math.max(0, keys.result.length - CACHE_LIMIT)))
+          store.delete(old);
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = transaction.onabort = () => resolve();
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * compileModule's body for `source`, from this run's or (with `cacheName`) an earlier run's
+ * compile when there is one. A cache that can't be read or written only costs a compile.
+ */
+export async function compileCached(source: string, cacheName?: string): Promise<string> {
+  const key = moduleSourceKey(source);
+  let body = compiledBodies.get(key);
+  if (body !== undefined) return body;
+  if (cacheName) body = await readCompiled(cacheName, key).catch(() => undefined);
+  if (body === undefined) {
+    body = compileModule(source).body;
+    if (cacheName) void writeCompiled(cacheName, key, body).catch(() => {});
+  }
+  compiledBodies.set(key, body);
+  return body;
+}
+
 /** A module namespace object of getters over `exports`, plus `export *` modules' names. */
 function namespace(
   exports: readonly (readonly [string, () => unknown])[],
@@ -284,7 +393,7 @@ export async function importModule(
   source: string,
   options: ImportModuleOptions = {},
 ): Promise<ModuleNamespace> {
-  const { body } = compileModule(source);
+  const body = await compileCached(source, options.compileCache);
   const load = options.load ?? loadUrl(options);
   const url = options.url;
   const importer = (specifier: unknown) => {

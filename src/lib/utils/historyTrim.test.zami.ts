@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     HISTORY_TRIM_IDLE_MS,
     historyTrimCut,
+    mayCutHistory,
     mayTrimRoom,
 } from "./historyTrim";
 
@@ -52,5 +53,18 @@ describe("mayTrimRoom", () => {
 
     it("trims a room never opened this session", () => {
         expect(mayTrimRoom("!a", null, undefined, 0)).toBe(true);
+    });
+});
+
+// Zami: the sweep's cheap check before historyTrimCut.
+describe("mayCutHistory", () => {
+    it("rules out only rooms historyTrimCut could never cut", () => {
+        for (const length of [0, 50, 149, 150, 151, 400]) {
+            const all = Array(length).fill(true);
+            if (!mayCutHistory(length)) expect(historyTrimCut(all)).toBeNull();
+        }
+        expect(mayCutHistory(149)).toBe(false);
+        expect(historyTrimCut(Array(150).fill(true))).toBe(50);
+        expect(mayCutHistory(150)).toBe(true);
     });
 });

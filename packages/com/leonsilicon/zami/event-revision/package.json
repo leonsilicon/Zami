@@ -1,0 +1,23 @@
+{
+  "name": "@-/com.leonsilicon.zami.event-revision",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lets a rune reader follow one matrix-js-sdk event (its decryption, edits, send status, redaction) or one event's reactions, instead of a tick that every message row re-reads.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "matrix-js-sdk": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "matrix-js-sdk": "*"
+  }
+}

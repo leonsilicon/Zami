@@ -87,12 +87,50 @@ export function reloadLastLocationFromStorage(): void {
     applyDefaultSurface(roomsState.activeRoomId);
 }
 
+// Zami: the room lists are `$state.raw`, behind accessors on roomsState. They
+// are only ever replaced whole (refreshRooms, a space switch, an optimistic
+// leave, a /hierarchy answer), and a deep proxy made each read of a room in
+// lists of thousands a Proxy trap and a dependency, slow on Hermes. Replace
+// them; never change one in place.
+let rawSpaces = $state.raw<Room[]>([]);
+let rawOrphanRooms = $state.raw<Room[]>([]);
+let rawDirectRooms = $state.raw<Room[]>([]);
+let rawInvitedRooms = $state.raw<Room[]>([]);
+let rawKnockedRooms = $state.raw<Room[]>([]);
+let rawRoomsInSpace = $state.raw<Room[]>([]);
+let rawSpaceHierarchy = $state.raw<SpaceChildInfo[]>([]);
+
 export const roomsState = $state({
-    spaces: [] as Room[],
-    orphanRooms: [] as Room[],
-    directRooms: [] as Room[],
-    invitedRooms: [] as Room[],
-    knockedRooms: [] as Room[],
+    get spaces(): Room[] {
+        return rawSpaces;
+    },
+    set spaces(value: Room[]) {
+        rawSpaces = value;
+    },
+    get orphanRooms(): Room[] {
+        return rawOrphanRooms;
+    },
+    set orphanRooms(value: Room[]) {
+        rawOrphanRooms = value;
+    },
+    get directRooms(): Room[] {
+        return rawDirectRooms;
+    },
+    set directRooms(value: Room[]) {
+        rawDirectRooms = value;
+    },
+    get invitedRooms(): Room[] {
+        return rawInvitedRooms;
+    },
+    set invitedRooms(value: Room[]) {
+        rawInvitedRooms = value;
+    },
+    get knockedRooms(): Room[] {
+        return rawKnockedRooms;
+    },
+    set knockedRooms(value: Room[]) {
+        rawKnockedRooms = value;
+    },
     activeSpaceId: loadLastSpace() as string | null,
     activeRoomId: getLastRoom(loadLastSpace()) as string | null,
     showInbox: false,
@@ -102,8 +140,18 @@ export const roomsState = $state({
      * the space's first room. Cleared by any real navigation.
      */
     showSpaceHome: false,
-    roomsInSpace: [] as Room[],
-    spaceHierarchy: [] as SpaceChildInfo[],
+    get roomsInSpace(): Room[] {
+        return rawRoomsInSpace;
+    },
+    set roomsInSpace(value: Room[]) {
+        rawRoomsInSpace = value;
+    },
+    get spaceHierarchy(): SpaceChildInfo[] {
+        return rawSpaceHierarchy;
+    },
+    set spaceHierarchy(value: SpaceChildInfo[]) {
+        rawSpaceHierarchy = value;
+    },
     /**
      * Set while browsing a sub-space reached from inside another space: the
      * nearest *joined* ancestor (for the hierarchy-via-parent fallback and
@@ -302,16 +350,21 @@ export function resolveLandingSurface(): void {
         activeRoomIsLandable: roomsState.activeRoomId
             ? isRoomLandable(roomsState.activeRoomId)
             : false,
-        spaceRoomIds: spaceId
-            ? sidebarOrderedIds(getRoomsInSpace(spaceId))
-            : [],
+        // Zami: the two lists are getters, sorted only if read: "keep", nearly
+        // always the answer, never reads them, and this runs on every room-list
+        // rebuild.
+        get spaceRoomIds() {
+            return spaceId ? sidebarOrderedIds(getRoomsInSpace(spaceId)) : [];
+        },
         // The sidebar renders the DM section after the room groups, so Home's
         // order is the two lists sorted separately and concatenated — never one
         // sort over both, which would interleave a favourited DM into the rooms.
-        homeRoomIds: [
-            ...sidebarOrderedIds(roomsState.orphanRooms),
-            ...sidebarOrderedIds(roomsState.directRooms),
-        ],
+        get homeRoomIds() {
+            return [
+                ...sidebarOrderedIds(roomsState.orphanRooms),
+                ...sidebarOrderedIds(roomsState.directRooms),
+            ];
+        },
     });
 
     switch (target.kind) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { eventRevision } from "@-/com.leonsilicon.zami.event-revision";
 import { t } from "$lib/i18n";
 import type { MatrixEvent, Room } from "matrix-js-sdk";
 import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -13,7 +14,6 @@ import {
     getRoomDisplayName,
     getRoomIdForAlias,
 } from "$lib/matrix/client";
-import { messagesState } from "$lib/stores/messages.svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { eventPreviewText } from "$lib/utils/eventPreviewText";
 import type { EventPermalink } from "$lib/utils/matrixLinks";
@@ -77,9 +77,11 @@ export default function MessageEmbed({ link, currentRoomId, onOpen }: Props) {
     })();
     // Reads timelineTick: an encrypted message decrypts in place on the same
     // MatrixEvent, and the decryption bumps the tick (as for reply quotes).
+    // Zami: reads the linked message's own revision instead, which moves when
+    // it decrypts, is edited or redacted, and not for every other message.
     const text = useRune(() => {
-        void messagesState.timelineTick;
         if (!target) return null;
+        eventRevision(target);
         if (target.isRedacted()) return t("messageEmbed.deleted");
         return eventPreviewText(target);
     }, [target]);

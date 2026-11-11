@@ -13,6 +13,19 @@ import {
   partList,
 } from "#memory";
 import type { ObjectUrls } from "#object-urls";
+import {
+  PartsBlob,
+  PartsFile,
+  fileIo,
+  isPartsBlob,
+  isPartsFile,
+  partsSegments,
+  readSegments,
+  readSegmentsSync,
+  wholeFileUri,
+  type FileIo,
+  type Segment,
+} from "#parts";
 
 /** React Native's Blob: a handle to bytes its native modules hold. */
 export interface NativeBlob {
@@ -48,6 +61,7 @@ export interface NativeXMLHttpRequest {
   _headers?: Record<string, string>;
   send: (this: NativeXMLHttpRequest, body?: unknown) => void;
   setRequestHeader: (this: NativeXMLHttpRequest, name: string, value: string) => void;
+  addEventListener?: (this: NativeXMLHttpRequest, type: string, listener: () => void) => void;
 }
 
 /** The globals this patches: React Native's (and Expo's `URL`) in the app. */
@@ -65,6 +79,10 @@ export interface BlobHost {
 const DONE = 2;
 const decoder = new TextDecoder();
 const patched = new WeakSet<object>();
+/** The object URL store of the last patched host, for `createObjectURLAsync`. */
+let installedUrls: ObjectUrls | null = null;
+/** In-memory blobs from this size are written off the JS thread by `createObjectURLAsync`. */
+export const ASYNC_OBJECT_URL_MIN_BYTES = 1024 * 1024;
 
 function mixedParts(constructor: string): TypeError {
   return new TypeError(
@@ -84,18 +102,26 @@ function defineMethod(target: object, name: PropertyKey, value: unknown): void {
 export function patchBlobs(host: BlobHost, urls: ObjectUrls): void {
   if (patched.has(host)) return;
   patched.add(host);
+  installedUrls = urls;
   const { Blob: NativeBlob, File: NativeFile, FileReader } = host;
 
-  /** Whether `parts` make a native blob: some are, and the rest are strings. */
-  function isNativeBuild(parts: readonly unknown[], constructor: string): boolean {
+  /** What `parts` make: a native blob (some are, the rest are strings), a file-backed
+   *  one (some are), or else an in-memory one. */
+  function buildKind(
+    parts: readonly unknown[],
+    constructor: string,
+  ): "native" | "parts" | "memory" {
     let native = false;
     let memory = false;
+    let files = false;
     for (const part of parts) {
       if (part instanceof NativeBlob) native = true;
+      else if (isPartsBlob(part)) files = true;
       else if (isMemoryBlob(part) || isBufferSource(part)) memory = true;
     }
-    if (native && memory) throw mixedParts(constructor);
-    return native;
+    if (native && (memory || files)) throw mixedParts(constructor);
+    if (native) return "native";
+    return files ? "parts" : "memory";
   }
 
   // Plain functions, since one can return either kind. `Blob.prototype` is what both
@@ -103,22 +129,25 @@ export function patchBlobs(host: BlobHost, urls: ObjectUrls): void {
   // (whatwg-fetch's check) hold for both.
   function Blob(parts?: unknown, options?: unknown): object {
     const list = partList(parts, "Blob");
-    return isNativeBuild(list, "Blob")
-      ? new NativeBlob(list, options)
-      : new MemoryBlob(list, options);
+    const kind = buildKind(list, "Blob");
+    if (kind === "native") return new NativeBlob(list, options);
+    return kind === "parts" ? new PartsBlob(list, options) : new MemoryBlob(list, options);
   }
   Blob.prototype = BaseBlob.prototype;
   Object.setPrototypeOf(NativeBlob.prototype, BaseBlob.prototype);
 
   function File(parts: unknown, name: unknown, options?: unknown): object {
     const list = partList(parts, "File");
-    return isNativeBuild(list, "File")
-      ? new NativeFile(list, String(name), options)
+    const kind = buildKind(list, "File");
+    if (kind === "native") return new NativeFile(list, String(name), options);
+    return kind === "parts"
+      ? new PartsFile(list, name, options)
       : new MemoryFile(list, name, options);
   }
   File.prototype = MemoryFile.prototype;
   Object.defineProperty(File, Symbol.hasInstance, {
-    value: (value: unknown) => isMemoryFile(value) || value instanceof NativeFile,
+    value: (value: unknown) =>
+      isMemoryFile(value) || isPartsFile(value) || value instanceof NativeFile,
   });
   if (!Object.hasOwn(NativeFile.prototype, Symbol.toStringTag)) {
     Object.defineProperty(NativeFile.prototype, Symbol.toStringTag, {
@@ -165,6 +194,19 @@ export function patchBlobs(host: BlobHost, urls: ObjectUrls): void {
   }
 }
 
+/**
+ * `URL.createObjectURL(blob)`, but a big in-memory blob's file is written off the JS
+ * thread, and the URL comes once it's there. Revoke it with `URL.revokeObjectURL`.
+ */
+export async function createObjectURLAsync(blob: Blob): Promise<string> {
+  const bytes = memoryBytes(blob);
+  if (!bytes || bytes.byteLength < ASYNC_OBJECT_URL_MIN_BYTES || !installedUrls?.createAsync) {
+    return URL.createObjectURL(blob);
+  }
+  const named = isMemoryFile(blob) ? blob.name : undefined;
+  return installedUrls.createAsync(bytes, blob.type, named);
+}
+
 /** FileReader's reads of an in-memory blob: React Native's, with the bytes at hand. */
 function patchFileReader(proto: NativeFileReader): void {
   const { readAsArrayBuffer, readAsDataURL, readAsText } = proto;
@@ -189,50 +231,153 @@ function patchFileReader(proto: NativeFileReader): void {
     });
   }
 
-  proto.readAsArrayBuffer = function (blob) {
+  // A file-backed blob's bytes arrive from its files, after this returns.
+  function readParts(
+    reader: NativeFileReader,
+    method: string,
+    segments: readonly Segment[],
+    as: (bytes: Uint8Array<ArrayBuffer>) => unknown,
+  ): void {
+    const readId = reader._startRead(method);
+    const settle = (fill: () => void) => {
+      // Aborted, or another read started since.
+      if (readId !== reader._readId) return;
+      try {
+        fill();
+      } catch (error) {
+        reader._error = reader._toDOMException(error);
+      }
+      reader._setReadyState(DONE);
+    };
+    readSegments(segments).then(
+      (bytes) =>
+        settle(() => {
+          reader._result = as(bytes);
+        }),
+      (error: unknown) =>
+        settle(() => {
+          throw error;
+        }),
+    );
+  }
+
+  /** Reads an in-memory or file-backed blob; false for anything else. */
+  function readOwn(
+    reader: NativeFileReader,
+    method: string,
+    blob: unknown,
+    as: (bytes: Uint8Array<ArrayBuffer>) => unknown,
+  ): boolean {
     const bytes = memoryBytes(blob);
-    if (!bytes) return readAsArrayBuffer.call(this, blob);
-    readMemory(this, "readAsArrayBuffer", bytes, (held) => held.slice().buffer);
+    if (bytes) {
+      readMemory(reader, method, bytes, as);
+      return true;
+    }
+    const segments = partsSegments(blob);
+    if (!segments) return false;
+    readParts(reader, method, segments, as);
+    return true;
+  }
+
+  proto.readAsArrayBuffer = function (blob) {
+    if (!readOwn(this, "readAsArrayBuffer", blob, (held) => held.slice().buffer)) {
+      readAsArrayBuffer.call(this, blob);
+    }
   };
   proto.readAsDataURL = function (blob) {
-    const bytes = memoryBytes(blob);
-    if (!bytes) return readAsDataURL.call(this, blob);
-    const type = (blob as MemoryBlob).type || "application/octet-stream";
-    readMemory(this, "readAsDataURL", bytes, (held) => `data:${type};base64,${encodeBase64(held)}`);
+    const own = isMemoryBlob(blob) || isPartsBlob(blob);
+    const type = (own && blob.type) || "application/octet-stream";
+    const asUrl = (held: Uint8Array) => `data:${type};base64,${encodeBase64(held)}`;
+    if (!readOwn(this, "readAsDataURL", blob, asUrl)) readAsDataURL.call(this, blob);
   };
   proto.readAsText = function (blob, encoding) {
-    const bytes = memoryBytes(blob);
-    if (!bytes) return readAsText.call(this, blob, encoding);
-    readMemory(this, "readAsText", bytes, (held) => new TextDecoder(encoding).decode(held));
+    const asText = (held: Uint8Array) => new TextDecoder(encoding).decode(held);
+    if (!readOwn(this, "readAsText", blob, asText)) readAsText.call(this, blob, encoding);
   };
 }
 
+/** In-memory bodies from this size go through a file: React Native base64-encodes bytes in JS. */
+export const FILE_BODY_MIN_BYTES = 256 * 1024;
+
 /**
  * XMLHttpRequest sends an in-memory blob's bytes (React Native's sends a typed array as
- * base64). matrix-js-sdk uploads through it, and fetch (whatwg-fetch) sends through it.
+ * base64), and a file-backed blob that is all of one file from that file (`{ uri }`,
+ * which React Native's networking reads natively). matrix-js-sdk uploads through it, and
+ * fetch (whatwg-fetch) sends through it. A rebuilt file-backed blob, or a big in-memory
+ * one, is written to a temporary file off the JS thread first, and the request goes out
+ * once it's there.
  */
 function patchXMLHttpRequest(proto: NativeXMLHttpRequest): void {
   const { send } = proto;
   proto.send = function (body) {
     const bytes = memoryBytes(body);
-    if (!bytes) return send.call(this, body);
+    const segments = partsSegments(body);
+    if (!bytes && !segments) return send.call(this, body);
     // As a browser does: a blob's type is the Content-Type unless one was set.
-    const { type } = body as MemoryBlob;
+    const { type } = body as MemoryBlob | PartsBlob;
     if (type && this._headers && this._headers["content-type"] === undefined) {
       this.setRequestHeader("Content-Type", type);
     }
-    return send.call(this, bytes);
+    const uri = wholeFileUri(body);
+    if (uri !== undefined) return send.call(this, { uri });
+    const files = bodyFiles(bytes);
+    if (!files) return send.call(this, bytes ?? readSegmentsSync(segments ?? []));
+    sendThroughFile(this, send, files, segments ?? [{ bytes: bytes! }]);
   };
 }
 
-/** `URL.createObjectURL` of an in-memory blob gives `urls`' URL; native blobs keep theirs. */
+/** The file access to send a body through a temporary file, or null to send its bytes. */
+function bodyFiles(bytes: Uint8Array | undefined): FileIo | null {
+  if (bytes && bytes.byteLength < FILE_BODY_MIN_BYTES) return null;
+  try {
+    return fileIo();
+  } catch {
+    return null;
+  }
+}
+
+function sendThroughFile(
+  request: NativeXMLHttpRequest,
+  send: NativeXMLHttpRequest["send"],
+  files: FileIo,
+  segments: readonly Segment[],
+): void {
+  // React Native's own send runs once the file is there. An abort() before then leaves
+  // the request unopened, so that send throws and nothing goes out.
+  const sendNow = (body: unknown, cleanup?: () => void) => {
+    try {
+      send.call(request, body);
+    } catch {
+      cleanup?.();
+    }
+  };
+  files.write(segments).then(
+    (temp) => {
+      const remove = () => files.remove(temp);
+      request.addEventListener?.("loadend", remove);
+      sendNow({ uri: temp }, remove);
+    },
+    // No file: send the bytes, as before.
+    () => void readSegments(segments).then((held) => sendNow(held)),
+  );
+}
+
+/**
+ * `URL.createObjectURL` of an in-memory blob gives `urls`' URL; native blobs keep theirs.
+ * A file-backed blob that is all of one file (a picked file) gives that file's URI, with
+ * nothing copied (revoking it does nothing); a rebuilt one is read and written out.
+ */
 function patchObjectUrls(url: BlobHost["URL"], urls: ObjectUrls): void {
   const { createObjectURL, revokeObjectURL } = url;
   url.createObjectURL = (object) => {
-    const bytes = memoryBytes(object);
+    const whole = wholeFileUri(object);
+    if (whole !== undefined) return whole;
+    const segments = partsSegments(object);
+    const bytes = memoryBytes(object) ?? (segments && readSegmentsSync(segments));
     if (!bytes) return createObjectURL.call(url, object);
     const { type } = object as MemoryBlob;
-    return urls.create(bytes, type, isMemoryFile(object) ? object.name : undefined);
+    const named = isMemoryFile(object) || isPartsFile(object);
+    return urls.create(bytes, type, named ? object.name : undefined);
   };
   url.revokeObjectURL = (objectUrl) => {
     if (!urls.revoke(String(objectUrl))) revokeObjectURL.call(url, objectUrl);

@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.leonsilicon.zami'
+version = '0.0.0'
+
+android {
+  namespace "com.leonsilicon.zami.webcrypto"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.0"
+  }
+}
+
+dependencies {
+  // android/src/test: the computations against known answers, on the JVM's providers.
+  testImplementation "junit:junit:4.13.2"
+}

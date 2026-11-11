@@ -1,6 +1,6 @@
 import { keepFocus, useKeyScope } from "@-/com.leonsilicon.zami.browser";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import {
     FlatList,
     Pressable,
@@ -57,12 +57,25 @@ export default function QuickSwitcher({ onClose }: Props) {
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
 
     // Built once per open: the dialog is short-lived.
+    // Zami: findSpaceForRoom and getRoomUnreadInfo are lookups in the room
+    // index now (client.ts), and each space's name is read once rather than
+    // per room, so this is one quick pass even over thousands of rooms.
     const [entries] = useState((): Entry[] => {
         void roomsState.unreadTick;
+        const spaceNames = new Map<string, string | null>();
+        const whereOf = (spaceId: string | null): string | null => {
+            if (!spaceId) return null;
+            let name = spaceNames.get(spaceId);
+            if (name === undefined) {
+                const spaceRoom = getRoom(spaceId);
+                name = spaceRoom ? getRoomDisplayName(spaceRoom) : null;
+                spaceNames.set(spaceId, name);
+            }
+            return name;
+        };
         return getRooms().map((room) => {
             const space = room.isSpaceRoom();
             const spaceId = space ? null : findSpaceForRoom(room.roomId);
-            const spaceRoom = spaceId ? getRoom(spaceId) : null;
             const info = space
                 ? { unread: false, highlight: 0 }
                 : getRoomUnreadInfo(room);
@@ -70,15 +83,18 @@ export default function QuickSwitcher({ onClose }: Props) {
                 room,
                 name: getRoomDisplayName(room),
                 space,
-                where: spaceRoom ? getRoomDisplayName(spaceRoom) : null,
+                where: whereOf(spaceId),
                 unread: info.unread,
                 mention: info.highlight > 0,
             };
         });
     });
 
+    // Zami: scoring and sorting every room trails the typing rather than
+    // holding up each keystroke (useDeferredValue).
+    const deferredQuery = useDeferredValue(query);
     const results = useMemo((): Entry[] => {
-        const q = query.trim();
+        const q = deferredQuery.trim();
         if (!q) {
             const byId = new Map(entries.map((e) => [e.room.roomId, e]));
             const recent = recentRooms()
@@ -102,7 +118,7 @@ export default function QuickSwitcher({ onClose }: Props) {
             )
             .slice(0, MAX_RESULTS)
             .map((x) => x.e);
-    }, [query, entries, activeRoomId]);
+    }, [deferredQuery, entries, activeRoomId]);
 
     // Zami: `selected = 0` whenever the query changes is done where it
     // changes (onChangeText below). Focusing the input on mount is its
@@ -181,7 +197,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                     placeholderTextColorClassName="accent-discord-textMuted"
                     className="w-full px-3 py-2.5 rounded bg-discord-backgroundTertiary text-discord-textPrimary text-base border-2 border-transparent focus:border-discord-accent"
                 />
-                {!query.trim() && results.length > 0 ? (
+                {!deferredQuery.trim() && results.length > 0 ? (
                     <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
                         {t("quickSwitcher.recentAndUnread")}
                     </Text>

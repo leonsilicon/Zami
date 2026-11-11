@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["ZamiQrModule"]
+  },
+  "android": {
+    "modules": ["com.leonsilicon.zami.camera.ZamiQrModule"]
+  }
+}

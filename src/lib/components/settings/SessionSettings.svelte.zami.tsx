@@ -1,7 +1,7 @@
 import { openLink } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import {
     deleteOwnDevice,
@@ -21,7 +21,8 @@ import {
 import {
     isCryptoAvailable,
     getOwnDeviceKeyInfo,
-    getDeviceTrust,
+    readDeviceTrust,
+    forgetDeviceTrust,
     applyVerifiedOnlySending,
     applyDeviceIsolation,
 } from "$lib/matrix/crypto";
@@ -82,6 +83,28 @@ function Badge({
 
 const passwordInputClass =
     "flex-1 bg-discord-backgroundDark text-discord-textPrimary text-sm rounded px-3 py-1.5 outline-none";
+
+// Zami: a row of the session list draws again only when one of `deps` changed
+// (what the row shows, and the state its buttons read), not on every change to
+// the screen's state: a keystroke in one row's rename or password field doesn't
+// redraw every session.
+const DeviceRowMemo = memo(
+    function DeviceRowMemo({
+        render,
+    }: {
+        deps: readonly unknown[];
+        render: () => ReactNode;
+    }) {
+        return render();
+    },
+    (a, b) =>
+        a.deps.length === b.deps.length &&
+        a.deps.every((dep, i) => Object.is(dep, b.deps[i])),
+);
+
+function deviceKey(device: DeviceInfo): string {
+    return device.deviceId;
+}
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead.
@@ -238,19 +261,37 @@ export default function SessionSettings() {
         applyDeviceIsolation(value);
     }
 
+    // Zami: the lookups are cached until a crypto event says this account's
+    // devices or trust changed, and otherwise wait their turn on the crypto
+    // queue (readDeviceTrust): every device at once, on every security tick,
+    // froze the app. The ones not started yet are dropped when the screen
+    // closes.
+    const trustLookups = useRef<AbortController | null>(null);
+    useEffect(() => {
+        const lookups = new AbortController();
+        trustLookups.current = lookups;
+        return () => lookups.abort();
+    }, []);
+
     async function loadTrust() {
         if (!isCryptoAvailable()) return;
         const userId = getOwnUserId();
         if (!userId) return;
+        const signal = trustLookups.current?.signal;
         const entries = await Promise.all(
             devicesRef.current.map(
                 async (device) =>
                     [
                         device.deviceId,
-                        await getDeviceTrust(userId, device.deviceId),
+                        await readDeviceTrust(
+                            userId,
+                            device.deviceId,
+                            signal,
+                        ).catch(() => null),
                     ] as const,
             ),
         );
+        if (signal?.aborted) return;
         setTrust(Object.fromEntries(entries));
     }
 
@@ -300,6 +341,11 @@ export default function SessionSettings() {
                 securityTick !== lastSeenSecurityTick.current) &&
             loaded
         ) {
+            // Zami: a finished verification changes trust without a crypto
+            // event the cache hears about.
+            const ownUserId = getOwnUserId();
+            if (tick !== lastSeenTick.current && ownUserId)
+                forgetDeviceTrust([ownUserId]);
             lastSeenTick.current = tick;
             lastSeenSecurityTick.current = securityTick;
             void loadTrust();
@@ -730,9 +776,41 @@ export default function SessionSettings() {
                         {t("sessionSettings.noOtherSessionsYouReOnly")}
                     </Text>
                 ) : (
-                    <View className="gap-2">
-                        {others.map((device) => deviceRow(device, false))}
-                    </View>
+                    // Zami: a FlatList, which mounts a long list a batch at a
+                    // time; it sits in the settings panel's ScrollView, so it
+                    // doesn't scroll itself. Each row is memoized on what it
+                    // reads (DeviceRowMemo).
+                    <FlatList
+                        data={others}
+                        keyExtractor={deviceKey}
+                        scrollEnabled={false}
+                        contentContainerClassName="gap-2"
+                        renderItem={({ item: device }) => {
+                            const id = device.deviceId;
+                            const renaming = renamingId === id;
+                            const prompting = passwordId === id;
+                            return (
+                                <DeviceRowMemo
+                                    deps={[
+                                        device,
+                                        trust[id],
+                                        cryptoActive,
+                                        fetchedAt,
+                                        renaming,
+                                        renaming ? renameValue : null,
+                                        renaming ? renameSaving : null,
+                                        confirmId === id,
+                                        prompting,
+                                        prompting ? password : null,
+                                        signOutBusy,
+                                        oauthSession,
+                                        sessionsUrl,
+                                    ]}
+                                    render={() => deviceRow(device, false)}
+                                />
+                            );
+                        }}
+                    />
                 )}
             </View>
         </View>
