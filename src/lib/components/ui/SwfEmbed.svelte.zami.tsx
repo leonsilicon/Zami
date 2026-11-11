@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Pressable, Text } from "react-native";
 import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
-import FlashEmbed from "./FlashEmbed.svelte";
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const FlashEmbed = lazyComponent(
+    () =>
+        require("./FlashEmbed.svelte") as typeof import("./FlashEmbed.svelte"),
+);
 
 interface Props {
     getSrc: () => Promise<string>;
@@ -31,7 +37,7 @@ export default function SwfEmbed({ getSrc }: Props) {
             accessibilityLabel={t("swfEmbed.adobeFlash")}
             accessibilityState={{ disabled: loading, busy: loading }}
             onPress={activate}
-            className="flex items-center gap-3 mt-1 w-full max-w-sm aspect-video rounded-lg bg-black/80 hover:bg-black/60 transition-colors justify-center flex-col"
+            className="flex items-center gap-3 mt-1 w-full max-w-2xl aspect-video rounded-lg bg-black/80 hover:bg-black/60 transition-colors justify-center flex-col"
             disabled={loading}
         >
             {loading ? (

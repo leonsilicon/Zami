@@ -5,7 +5,12 @@
 #     the copied Zami files;
 #  3. Claude (Opus 5.5) migrates what that can't: merge conflicts, upstream changes to
 #     translated (Svelte → React Native) components, and components upstream added;
-#  4. opens or updates a pull request, which zami-ci.yml checks.
+#  4. Claude also goes through everything else upstream changed and ports it to wherever
+#     Zami implements that behavior, since a clean text merge into a copy (or a file with
+#     no Zami version at all) doesn't make the app behave like upstream;
+#  5. opens or updates a pull request, which zami-ci.yml checks.
+#
+# A run Claude doesn't finish still pushes what it did, and the next run continues it.
 #
 # Secrets: ZAMI_BOT_TOKEN (fine-grained PAT on this repo: Contents, Pull requests,
 # Workflows and Actions read/write; GITHUB_TOKEN can't push upstream's workflow-file
@@ -17,6 +22,10 @@ on:
   schedule:
     - cron: "23 */6 * * *"
   workflow_dispatch:
+    inputs:
+      since:
+        description: Also review upstream's changes since this commit (optional, for a range that's already merged)
+        required: false
 
 permissions:
   contents: read
@@ -60,18 +69,19 @@ jobs:
           fi
           previous=$(git merge-base HEAD upstream/master)
           latest=$(git rev-parse upstream/master)
-          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          # Review everything that hasn't reached trunk, so a run that stopped partway
+          # is covered by the next one.
+          echo "since=$(git merge-base origin/trunk upstream/master)" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           if [ "$previous" = "$latest" ]; then
-            echo "Already synced with upstream ${latest:0:10}."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already merged upstream ${latest:0:10}."
+            echo "merged=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git merge --no-ff --no-edit -m "Merge upstream Zam ${latest:0:10}" upstream/master
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
 
-      - if: steps.merge.outputs.changed == 'true'
-        uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: "26"
           run-install: true
@@ -79,14 +89,28 @@ jobs:
 
       - name: Sync Zami files
         id: sync
-        if: steps.merge.outputs.changed == 'true'
+        env:
+          MERGED: ${{ steps.merge.outputs.merged }}
+          SINCE_INPUT: ${{ inputs.since }}
+          SINCE: ${{ inputs.since || steps.merge.outputs.since }}
         run: |
-          vpx _zami sync --since "${{ steps.merge.outputs.previous }}" --worklist node_modules/.cache/zami/worklist.json --summary node_modules/.cache/zami/summary.md
-          count=$(node -e 'const w=require("./node_modules/.cache/zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
-          echo "work=$count" >> "$GITHUB_OUTPUT"
+          vpx _zami sync --since "$SINCE" --worklist node_modules/.cache/zami/worklist.json --summary node_modules/.cache/zami/summary.md
+          work=$(node -e 'const w=require("./node_modules/.cache/zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
+          # Claude reviews every upstream change, so it runs whenever upstream moved, not
+          # only when the sync flagged a file. `work` is what an unfinished run left behind.
+          if [ "$MERGED" = "true" ] || [ "$work" != "0" ] || [ -n "$SINCE_INPUT" ]; then
+            echo "migrate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing to port."
+            echo "migrate=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Migrate with Claude
-        if: steps.merge.outputs.changed == 'true' && steps.sync.outputs.work != '0'
+        id: claude
+        if: steps.sync.outputs.migrate == 'true'
+        # Keep what Claude got done when it fails or runs out of time: the next run resumes it.
+        continue-on-error: true
+        timeout-minutes: 105
         uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -101,25 +125,35 @@ jobs:
 
       - name: Check
         id: check
-        if: steps.merge.outputs.changed == 'true'
+        if: steps.sync.outputs.migrate == 'true'
         run: |
           vp fmt
           if vpx _zami check > node_modules/.cache/zami/check.txt 2>&1; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
           cat node_modules/.cache/zami/check.txt
 
       - name: Push and open the pull request
-        if: steps.merge.outputs.changed == 'true'
+        if: steps.sync.outputs.migrate == 'true'
         env:
           GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
           LATEST: ${{ steps.merge.outputs.latest }}
           CHECK_OK: ${{ steps.check.outputs.ok }}
+          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
         run: |
           git add -A
           git diff --cached --quiet || git commit -q -m "Sync Zami files with upstream Zam ${LATEST:0:10}"
+          if [ "$(git rev-list --count origin/trunk..HEAD)" = "0" ]; then
+            echo "Claude found nothing to change, so there's nothing to open a pull request for."
+            exit 0
+          fi
           git push origin "HEAD:$BRANCH"
+          # `_zami done` is only a claim: flag translations it was said of that didn't change.
+          unchanged=$(node -e 'for (const i of require("./node_modules/.cache/zami/worklist.json").work) if (i.kind === "migrate") console.log(i.zamiPath)' |
+            while read -r path; do if git diff --quiet origin/trunk -- "$path"; then echo "- \`$path\`"; fi; done)
           {
             cat node_modules/.cache/zami/summary.md
             if [ -f node_modules/.cache/zami/report.md ]; then printf '\n## Claude'"'"'s migration report\n\n'; cat node_modules/.cache/zami/report.md; fi
+            if [ "$CLAUDE_OUTCOME" != "success" ]; then printf '\n## Claude did not finish\n\nThis branch has what it got done. The next scheduled run continues it.\n'; fi
+            if [ -n "$unchanged" ]; then printf '\n## Translations that did not change\n\nUpstream changed these components, but their translations are the same. Claude'"'"'s report should say why.\n\n%s\n' "$unchanged"; fi
             if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 node_modules/.cache/zami/check.txt; printf '```\n'; fi
           } > "$RUNNER_TEMP/body.md"
           if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then

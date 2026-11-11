@@ -1,3 +1,4 @@
+import { finishStartup, markStartup } from "@-/com.leonsilicon.zami.startup";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useRef, useState } from "react";
 import { t } from "$lib/i18n";
@@ -318,7 +319,12 @@ export default function Page() {
         // The synchronous `restoring` flag already decided splash-vs-login for
         // the first paint; here we run the actual async restore when it applies.
         const stored = loadStoredSession();
-        if (!restoring || !stored) return;
+        // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+        if (!restoring || !stored) {
+            finishStartup("Sign-in screen");
+            return;
+        }
+        markStartup("Restoring session");
         const attempt = beginStartup();
         (async () => {
             try {
@@ -337,6 +343,10 @@ export default function Page() {
                 );
                 await beginSync(attempt);
             } catch (err) {
+                finishStartup(
+                    "Restore failed",
+                    err instanceof Error ? err.name : undefined,
+                );
                 // The device was signed out (its encryption data was lost):
                 // back to login like an expired session, saying why.
                 if (err instanceof CryptoStoreLostError) {
@@ -368,6 +378,7 @@ export default function Page() {
             }
             // Sync is running: only NOW does the session become observable and
             // AppShell mount in place — NO goto.
+            markStartup("Showing the chats");
             commitStartup(attempt, () => {
                 auth.userId = stored.userId;
                 auth.homeserverUrl = stored.homeserverUrl;

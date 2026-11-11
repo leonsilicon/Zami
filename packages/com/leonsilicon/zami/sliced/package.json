@@ -1,0 +1,17 @@
+{
+  "name": "@-/com.leonsilicon.zami.sliced",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Long loops of Zam's code cut into slices that give the event loop a turn every few milliseconds: the local message search, WAV encoding, and a slicer for the rest.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "spessasynth_core": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

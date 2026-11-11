@@ -17,7 +17,7 @@ import {
     setOwnProfileField,
     uploadContent,
 } from "$lib/matrix/client";
-import { Smile } from "lucide-svelte";
+import { Smile, X } from "lucide-svelte";
 import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import { auth } from "$lib/stores/auth.svelte";
@@ -711,7 +711,7 @@ export default function ProfileFieldsEditor({
                                 className={smallButtonClass}
                                 onPress={clearColour}
                             >
-                                <Text className={smallButtonTextClass}>✕</Text>
+                                <X size={14} className={smallButtonTextClass} />
                             </Pressable>
                         </View>
                     ) : (
@@ -779,9 +779,10 @@ export default function ProfileFieldsEditor({
                                     className={`justify-center ${smallButtonClass}`}
                                     onPress={() => removeConnection(index)}
                                 >
-                                    <Text className={smallButtonTextClass}>
-                                        ✕
-                                    </Text>
+                                    <X
+                                        size={14}
+                                        className={smallButtonTextClass}
+                                    />
                                 </Pressable>
                             </View>
                         ))}

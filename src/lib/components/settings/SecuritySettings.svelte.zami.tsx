@@ -1,3 +1,4 @@
+import { Check } from "lucide-svelte";
 import { Checkbox, openLink } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
@@ -1021,11 +1022,19 @@ export default function SecuritySettings() {
                                 }}
                                 className="self-start px-3 py-1.5 bg-discord-messageHover rounded"
                             >
-                                <Text className="text-discord-textPrimary text-xs">
-                                    {copied
-                                        ? t("securitySettings.copied")
-                                        : t("securitySettings.copyKey")}
-                                </Text>
+                                <View className="flex-row items-center justify-center gap-1">
+                                    {copied ? (
+                                        <Check
+                                            size={14}
+                                            className="text-discord-textPrimary"
+                                        />
+                                    ) : null}
+                                    <Text className="text-discord-textPrimary text-xs">
+                                        {copied
+                                            ? t("securitySettings.copied")
+                                            : t("securitySettings.copyKey")}
+                                    </Text>
+                                </View>
                             </Pressable>
                             {keyHasPassphrase ? (
                                 <Text className="text-xs text-discord-textMuted">

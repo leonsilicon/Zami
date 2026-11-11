@@ -13,6 +13,7 @@ export {
 export { Html, openLink, type HtmlProps } from "#html";
 export type { HtmlElement } from "#html-tree";
 export { Image, mediaSource, setMediaHeaders } from "#image";
+export { lazyComponent } from "#lazy";
 export {
   notificationPermission,
   requestNotificationPermission,

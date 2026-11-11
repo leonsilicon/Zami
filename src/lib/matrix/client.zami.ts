@@ -49,6 +49,8 @@ import type {
 import { buildFeatureSupportMap } from "matrix-js-sdk/lib/feature";
 import { VerificationMethod } from "matrix-js-sdk/lib/types";
 import { readScoped, writeScoped } from "$lib/utils/scopedStorage";
+import { createSlicedQueue } from "@-/com.leonsilicon.zami.scheduler";
+import { finishStartup, markStartup } from "@-/com.leonsilicon.zami.startup";
 import {
     shouldKickSync,
     watchdogOverdueMs,
@@ -104,6 +106,11 @@ import {
 } from "$lib/utils/customization";
 import { parseMarkdown } from "$lib/utils/markdown";
 import { preloadEmojiPacks } from "$lib/utils/emojiPreload";
+// Zami: the pickers' packs are rebuilt only when pack state changes (see below).
+import {
+    clientRevision,
+    createKeyedMemo,
+} from "@-/com.leonsilicon.zami.incremental";
 import {
     applyPackMeta,
     EMOTE_ROOMS_TYPE,
@@ -138,15 +145,19 @@ import {
 import { resolveDisplayName } from "$lib/utils/displayName";
 import { nestedSpaceIds, topLevelSpaceOf } from "$lib/utils/spaceTree";
 import {
-    buildSnapshot,
     deleteSnapshot,
     loadSnapshot,
+    loadSnapshotRest,
+    splitForFirstScreen,
+    type FirstScreen,
     materializeSnapshot,
-    saveSnapshot,
+    saveClientSnapshot,
     snapshotKey,
     type MaterializedCache,
     type RoomListSnapshot,
 } from "./roomListCache";
+// Zami: the SDK's sync store, saved and restored a room at a time.
+import { SlicedIndexedDBStore } from "@-/com.leonsilicon.zami.persist";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import { forgetSignInPassword } from "$lib/stores/onboarding.svelte";
 import {
@@ -161,7 +172,7 @@ import {
     supportsPasswordUia,
     type DeviceInfo,
 } from "$lib/utils/deviceSessions";
-import { receiptTypeForSetting } from "$lib/utils/readReceipts";
+import { readPositions, receiptTypeForSetting } from "$lib/utils/readReceipts";
 import { computeEditMentions, type Mentions } from "$lib/utils/editMentions";
 import { buildReplyContent } from "$lib/utils/replyContent";
 import {
@@ -213,7 +224,7 @@ import {
 } from "$lib/utils/threadName";
 import type { ThreadInfo } from "$lib/utils/threadList";
 import { addOrderHints, placeAfterHints } from "./orderHint";
-import { historyTrimCut } from "$lib/utils/historyTrim";
+import { historyTrimCut, mayCutHistory } from "$lib/utils/historyTrim";
 import { rebuildLiveTimeline } from "./timelineRebuild";
 import {
     tagUpdatesForToggle,
@@ -251,6 +262,11 @@ import { matrixToUrl } from "../utils/matrixLinks";
 import { extractSubspaceChildren } from "$lib/utils/spaceHierarchy";
 import { collectSpaceDescendantRoomIds } from "$lib/utils/spaceDescendants";
 import { mapWithConcurrency } from "$lib/utils/async";
+import {
+    createFanout,
+    loadMembersInSlices,
+    type Fanout,
+} from "@-/com.leonsilicon.zami.timeline";
 import { createBoundedIdMap } from "$lib/utils/notifyDecrypted";
 import { shouldPrimePaginationToken } from "$lib/utils/roomStateHealth";
 import {
@@ -535,6 +551,85 @@ function handleTokenRefresh(
     }
 }
 
+/** Zami: whether the chats (AppShell) are on screen; see noteChatsOnScreen. */
+let chatsOnScreen = false;
+let chatsDrawnWaiters: (() => void)[] = [];
+// How long the saved sync waits for the chats to be drawn before going ahead.
+const CHATS_DRAWN_WAIT_MS = 2000;
+
+/**
+ * Zami: AppShell reports when it has drawn its first frame, and when it goes
+ * away. Until then, restoring a session holds the SDK's replay of the saved
+ * sync back (see deferSavedSyncUntilDrawn).
+ */
+export function noteChatsOnScreen(onScreen: boolean): void {
+    chatsOnScreen = onScreen;
+    if (!onScreen) return;
+    const waiters = chatsDrawnWaiters;
+    chatsDrawnWaiters = [];
+    for (const resolve of waiters) resolve();
+}
+
+/**
+ * Zami: start replaying the saved sync only once the chats are on screen.
+ * Replaying it rebuilds every room in one long run of the JS thread, and the
+ * session is ready (and AppShell rendered from the saved room list) before it,
+ * so it used to keep that first frame, and the splash, up for seconds on a
+ * large account. Waits at most CHATS_DRAWN_WAIT_MS, in case nothing draws.
+ */
+function deferSavedSyncUntilDrawn(client: MatrixClient): void {
+    const store = client.store as {
+        getSavedSync?: (...args: unknown[]) => Promise<unknown>;
+    };
+    if (typeof store.getSavedSync !== "function") return;
+    const getSavedSync = store.getSavedSync;
+    store.getSavedSync = (...args: unknown[]) => {
+        store.getSavedSync = getSavedSync;
+        if (chatsOnScreen) return getSavedSync(...args);
+        return new Promise<void>((resolve) => {
+            chatsDrawnWaiters.push(resolve);
+            setTimeout(resolve, CHATS_DRAWN_WAIT_MS);
+        }).then(() => getSavedSync(...args));
+    };
+}
+
+/** Zami: how long one turn of queued decryption may hold the JS thread. */
+const DECRYPT_SLICE_MS = 8;
+
+/** Zami: the current client's unqueued decryption, for events on screen. */
+let decryptNow: {
+    client: MatrixClient;
+    decrypt: (event: MatrixEvent) => Promise<void>;
+} | null = null;
+
+/**
+ * Zami: run decryptions a few milliseconds at a time, between turns of the
+ * event loop, newest message first (@-/com.leonsilicon.zami.scheduler).
+ * Restoring a large account asks for thousands at once (the SDK decrypts every
+ * message past each room's read receipt, for accurate unread counts), and each
+ * one runs through the crypto engine's WebAssembly and back through
+ * microtasks: together they held the JS thread for many seconds without a frame
+ * drawn. Newest first, so each room's preview and anything that just arrived
+ * go ahead of old unread messages. Events already decrypted, failed or in
+ * flight answer at once, as before; decryptForDisplay skips the queue.
+ */
+function sliceDecryption(client: MatrixClient): void {
+    if (typeof client.decryptEventIfNeeded !== "function") return;
+    const decrypt = client.decryptEventIfNeeded.bind(client);
+    decryptNow = { client, decrypt: (event) => decrypt(event) };
+    // The shared crypto queue (@-/com.leonsilicon.zami.crypto-work's
+    // cryptoQueue): retries, trust lookups and key-request answers wait their
+    // turn in it too.
+    const queue = createSlicedQueue({
+        sliceMs: DECRYPT_SLICE_MS,
+        name: "crypto",
+    });
+    client.decryptEventIfNeeded = (event, options) => {
+        if (!event.shouldAttemptDecryption()) return decrypt(event, options);
+        return queue.add(() => decrypt(event, options), event.getTs());
+    };
+}
+
 async function createAuthenticatedClient(opts: {
     baseUrl: string;
     accessToken: string;
@@ -581,12 +676,20 @@ async function createAuthenticatedClient(opts: {
     pendingFollowUps.reset();
 
     const indexedDB = getIndexedDBFactory();
+    // Zami: a room per record, saved and read back in slices: the SDK's store
+    // rewrote (and at launch read) the whole account at once on the JS thread.
     const store = indexedDB
-        ? new IndexedDBStore({
-              indexedDB,
-              localStorage: getLocalStorage(),
-              dbName: getSyncDbName(opts.userId, opts.deviceId),
-          })
+        ? new SlicedIndexedDBStore(
+              {
+                  indexedDB,
+                  localStorage: getLocalStorage(),
+                  dbName: getSyncDbName(opts.userId, opts.deviceId),
+              },
+              {
+                  onSaveError: (err) =>
+                      reportStorageError(err, { fromIndexedDB: true }),
+              },
+          )
         : null;
 
     // Offer SAS (emoji) AND QR verification. Set at createClient time so the
@@ -638,6 +741,8 @@ async function createAuthenticatedClient(opts: {
     if (store) {
         resetSyncStoreFallback();
         try {
+            // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+            markStartup("Opening the message cache");
             await store.startup();
             setMatrixStore(store);
         } catch (err) {
@@ -653,11 +758,13 @@ async function createAuthenticatedClient(opts: {
 
     addOrderHints(client, bottomEventId, () => settingsState.orderHints);
     installClient(client);
+    sliceDecryption(client);
 
     // Initialise E2EE before the caller starts sync, so crypto is ready when
     // to-device / m.room.encrypted events arrive. Never throws — a crypto-init
     // failure degrades gracefully (unencrypted rooms keep working; encrypted
     // rooms render UTD placeholders).
+    markStartup("Opening the encryption store");
     await initCrypto(client, opts.userId, opts.deviceId);
 
     // A fresh crypto store under a device the server already has keys for:
@@ -680,6 +787,7 @@ async function createAuthenticatedClient(opts: {
     // kept every launch on the splash for a round trip, or as long as a bad
     // connection hangs. If the server does disagree, the session ends the way
     // an expired one does.
+    markStartup("Checking device keys");
     if (await ownDeviceKeyMatchesRecord(client)) {
         void ownDeviceKeysReplaced(client)
             .then(async (replaced) => {
@@ -1483,6 +1591,19 @@ export async function startSync(
                 (state === "PREPARED" || state === "SYNCING")
             )
                 noteLiveSyncResponse();
+            // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+            if (state === "PREPARED")
+                markStartup(
+                    data?.fromCache
+                        ? "Processed the saved sync"
+                        : "First sync done",
+                    `${client.getRooms().length} rooms`,
+                );
+            if (!data?.fromCache && isHealthySyncState(state))
+                finishStartup(
+                    "Up to date",
+                    `${client.getRooms().length} rooms`,
+                );
             onStateChange(state);
         },
     );
@@ -1554,7 +1675,10 @@ export async function startSync(
             );
         },
     );
-    client.on(RoomEvent.Timeline as never, onTimelineMember as never);
+    // Zami: through the client's shared Timeline listener (clientTimeline).
+    const offTimelineMember = clientTimeline(client).add((_facts, ...args) =>
+        onTimelineMember(...(args as Parameters<typeof onTimelineMember>)),
+    );
     if (onLoggedOut) client.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
     let disposed = false;
@@ -1567,7 +1691,7 @@ export async function startSync(
         client.off(ClientEvent.AccountData, onPushRules as never);
         client.off(ClientEvent.Room as never, onRoom as never);
         client.off(RoomStateEvent.Events, onMemberState);
-        client.off(RoomEvent.Timeline as never, onTimelineMember as never);
+        offTimelineMember();
         if (onLoggedOut) client.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         document.removeEventListener("visibilitychange", onHidden);
         document.removeEventListener("visibilitychange", onVisibleKick);
@@ -1627,6 +1751,7 @@ export async function startSync(
     }, 10_000);
 
     // Paint the last known room list while sync catches up.
+    markStartup("Loading saved chats");
     await hydrateRoomListCache(client);
     // A hidden page may never come back (mobile kills it): save on the way out.
     const onHidden = () => {
@@ -1644,6 +1769,7 @@ export async function startSync(
     setSyncHeldForCrypto(false);
 
     try {
+        markStartup("Starting sync");
         const slidingSync = await buildSlidingSync(client, {
             keepToDeviceOnServer: cryptoDown,
             onFallback: onSlidingSyncFallback,
@@ -1672,6 +1798,7 @@ export async function startSync(
             return dispose;
         }
         await serveServerVersionsFromCache(client);
+        deferSavedSyncUntilDrawn(client);
         await client.startClient({
             slidingSync: slidingSync,
             initialSyncLimit: 8,
@@ -2088,9 +2215,12 @@ export function markRoomPendingArrival(roomId: string): void {
 }
 
 export function getRooms(): Room[] {
-    return listRooms().filter(
+    // Zami: kept until the room set changes (see "Zami: room index"): building
+    // it walks every room, and it is read on every sync. Read-only.
+    syncRoomIndex();
+    return (joinedRoomsCache ??= listRooms().filter(
         (r) => r.getMyMembership() === "join" && !pendingLeaves.has(r.roomId),
-    );
+    ));
 }
 
 /**
@@ -2174,12 +2304,17 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     const userId = client.getUserId();
     const deviceId = client.getDeviceId();
     if (!userId || !deviceId) return;
-    const snapshot = await loadSnapshot(snapshotKey(userId, deviceId));
+    const key = snapshotKey(userId, deviceId);
+    const snapshot = await loadSnapshot(key);
     if (!snapshot || matrixClient !== client || roomListComplete) return;
     // Zami: only the rooms the first screen can show are built before it
     // paints, or every launch of an account with thousands of rooms would wait
-    // on all of them. The rest follow in the background.
-    const [firstRooms, otherRooms] = splitForFirstPaint(snapshot.rooms);
+    // on all of them. The rest follow in the background, if still needed
+    // (saveSnapshot keeps them apart; a snapshot saved before that has them all).
+    const [firstRooms, otherRooms] = splitForFirstScreen(
+        snapshot.rooms,
+        firstScreenOf(userId),
+    );
     roomListCache = materializeSnapshot(client, {
         ...snapshot,
         rooms: firstRooms,
@@ -2191,29 +2326,50 @@ async function hydrateRoomListCache(client: MatrixClient): Promise<void> {
     // "unable to decrypt" everywhere. Never awaited: no key means the
     // placeholder is the correct rendering anyway.
     void decryptCachedEvents(client, roomListCache);
-    void materializeRemainingRooms(client, roomListCache, snapshot, otherRooms);
+    void materializeRemainingRooms(
+        client,
+        roomListCache,
+        snapshot,
+        otherRooms,
+        key,
+    );
 }
 
-/** Zami: how many cached rooms are built before the app first paints. */
-const FIRST_PAINT_ROOMS = 50;
+/**
+ * Zami: where the app will open, read from what the rooms store saves
+ * (rooms.svelte.ts: its last space and each space's last room), so that the
+ * saved room list's first part has everything that screen shows.
+ */
+function firstScreenOf(userId: string): FirstScreen {
+    let lastRooms: unknown = null;
+    try {
+        lastRooms = JSON.parse(
+            readScoped("matrix_last_room_by_space", userId) ?? "null",
+        );
+    } catch {
+        // Unreadable: the first screen falls back to the most recent rooms.
+    }
+    return {
+        roomIds: new Set(
+            lastRooms && typeof lastRooms === "object"
+                ? Object.values(lastRooms).filter(
+                      (id): id is string => typeof id === "string",
+                  )
+                : [],
+        ),
+        spaceId: readScoped("matrix_last_space", userId),
+    };
+}
 
 /** Zami: how long one background slice of room building may hold the JS thread. */
 const ROOM_BUILD_SLICE_MS = 8;
 
-/** Zami: the rooms active most recently, then the rest. */
-function splitForFirstPaint(
-    rooms: RoomListSnapshot["rooms"],
-): [RoomListSnapshot["rooms"], RoomListSnapshot["rooms"]] {
-    const lastActivity = (room: RoomListSnapshot["rooms"][number]): number =>
-        room.timeline?.[room.timeline.length - 1]?.origin_server_ts ?? 0;
-    const byRecency = [...rooms].sort(
-        (a, b) => lastActivity(b) - lastActivity(a),
-    );
-    return [
-        byRecency.slice(0, FIRST_PAINT_ROOMS),
-        byRecency.slice(FIRST_PAINT_ROOMS),
-    ];
-}
+/**
+ * Zami: how long after the chats are drawn to wait before reading the rest of
+ * the saved room list. Usually sync has replaced it by then (classic sync as
+ * soon as the saved sync is replayed), and the read is skipped.
+ */
+const REST_OF_ROOM_LIST_DELAY_MS = 3000;
 
 /**
  * Zami: add the rest of a snapshot's rooms to the cache a few at a time,
@@ -2224,8 +2380,22 @@ async function materializeRemainingRooms(
     client: MatrixClient,
     cache: MaterializedCache,
     snapshot: RoomListSnapshot,
-    rooms: RoomListSnapshot["rooms"],
+    otherRooms: RoomListSnapshot["rooms"],
+    key: string,
 ): Promise<void> {
+    await new Promise<void>((resolve) => {
+        if (chatsOnScreen) return resolve();
+        chatsDrawnWaiters.push(resolve);
+        setTimeout(resolve, CHATS_DRAWN_WAIT_MS);
+    });
+    await new Promise((resolve) =>
+        setTimeout(resolve, REST_OF_ROOM_LIST_DELAY_MS),
+    );
+    if (roomListCache !== cache || matrixClient !== client) return;
+    const shown = new Set(cache.rooms.keys());
+    const rooms = [...otherRooms, ...(await loadSnapshotRest(key))].filter(
+        (room) => !shown.has(room.roomId),
+    );
     if (rooms.length === 0) return;
     const built = new Map<string, Room>();
     let next = 0;
@@ -2255,13 +2425,19 @@ async function decryptCachedEvents(
     cache: Pick<MaterializedCache, "rooms">,
 ): Promise<void> {
     for (const room of cache.rooms.values()) {
-        for (const ev of room.getLiveTimeline().getEvents()) {
-            if (!ev.isEncrypted()) continue;
-            try {
-                await client.decryptEventIfNeeded(ev);
-            } catch {
-                // Keys are gone or the event is for another session: leave it.
-            }
+        // Zami: only the newest, for the room list's preview. Live sync replaces
+        // these rooms within moments, and a cached room that is opened decrypts
+        // what it shows (decryptForDisplay); decrypting every cached message
+        // up front was thousands of decryptions per launch for a large account.
+        const events = room.getLiveTimeline().getEvents();
+        let newest: MatrixEvent | undefined;
+        for (let i = events.length - 1; i >= 0 && !newest; i--)
+            if (events[i]!.isEncrypted()) newest = events[i];
+        if (!newest) continue;
+        try {
+            await client.decryptEventIfNeeded(newest);
+        } catch {
+            // Keys are gone or the event is for another session: leave it.
         }
     }
 }
@@ -2292,9 +2468,14 @@ async function saveRoomListSnapshot(
     // reports Complete, so an empty list here means no joined rooms. Keeping
     // the old snapshot instead would bring left rooms back on the next
     // offline start.
-    await saveSnapshot(snapshotKey(userId, deviceId), {
-        ...buildSnapshot(client),
+    // Zami: a room at a time, writing only the rooms that changed (see
+    // saveClientSnapshot): building and writing the whole list at once froze
+    // the app for seconds with thousands of rooms.
+    await saveClientSnapshot(client, snapshotKey(userId, deviceId), {
         hierarchies: Object.fromEntries(hierarchyCache),
+        // Zami: see splitForFirstScreen.
+        firstScreen: firstScreenOf(userId),
+        isCurrent: () => matrixClient === client,
     });
 }
 
@@ -2368,8 +2549,316 @@ export function roomTypeIsKnown(room: Room): boolean {
         ?.getStateEvents("m.room.create", "");
 }
 
+// ── Zami: room index ───────────────────────────────────────────────────────
+//
+// Zam derives the joined rooms, the spaces, each room's parent spaces and
+// every unread badge from scratch on each read, and they are read on every
+// sync by every row and badge on screen: on an account with thousands of
+// rooms, many whole passes over all of them per sync. These keep the answers
+// until the SDK reports a change that can move them
+// (@-/com.leonsilicon.zami.room-index):
+//
+// - the room set and the spaces' structure: a room added, deleted or changing
+//   membership, a space's child list, a room's type (m.room.create), m.direct,
+//   a pending leave, the saved room list (roomListCache.ts) and dismissed
+//   invites. `bumpRoomStructure` drops everything built from them.
+// - one room's unread state: its timeline, receipts, decryption, redactions,
+//   local echoes and server counts. Only that room is computed again.
+//
+// `getRoomListGenerations` tells the app shell whether anything its room list
+// shows changed since it last looked, so it rebuilds the list only then.
+// (Imported here rather than at the top, to keep this change in one place.)
+import {
+    createRoomMemo,
+    createUnreadRollups,
+    hasUnreadEvents,
+    indexParents,
+    spaceReach,
+    type UnreadGroup,
+    type UnreadScanReader,
+} from "@-/com.leonsilicon.zami.room-index";
+
+let indexedClient: MatrixClient | null = null;
+let detachRoomIndex: (() => void) | null = null;
+let structureGeneration = 0;
+let roomDataGeneration = 0;
+// The inputs no SDK event reports, as the caches were last built from.
+let indexedRoomListCache: MaterializedCache | null = null;
+let indexedRoomListCacheSize = 0;
+let indexedPendingLeaves = "";
+let indexedDismissedInvites: unknown = null;
+
+let joinedRoomsCache: Room[] | null = null;
+let spacesCache: Room[] | null = null;
+let parentSpacesIndex: Map<string, string[]> | null = null;
+let nestedSpacesCache: Set<string> | null = null;
+const roomsInSpaceCache = new Map<string, Room[]>();
+const spaceReachCache = new Map<string, string[]>();
+let directRoomIdsCache: { event: MatrixEvent; ids: Set<string> } | null = null;
+const NO_PARENT_SPACES: readonly string[] = [];
+/** Not a room id, so it can't name a space's group. */
+const HOME_UNREAD_GROUP = "\0home";
+
+// The user the unread scan reads for; set before each read of the memo.
+let unreadScanUserId = "";
+const unreadEventReader: UnreadScanReader<MatrixEvent> = {
+    id: (event) => event.getId() ?? "",
+    ts: (event) => event.getTs(),
+    fromMe: (event) => event.getSender() === unreadScanUserId,
+    isNotification: (event) => isNotificationEvent(event),
+};
+const unreadTimelineMemo = createRoomMemo<Room, boolean>({
+    idOf: (room) => room.roomId,
+    fingerprintSize: 7,
+    fingerprint(room, out) {
+        const timeline = room.getLiveTimeline();
+        const events = timeline.getEvents();
+        out[0] = unreadScanUserId;
+        out[1] = timeline;
+        out[2] = events.length;
+        out[3] = events[events.length - 1];
+        out[4] = events[0];
+        out[5] = room.getReadReceiptForUserId(unreadScanUserId);
+        out[6] = room.getReadReceiptForUserId(
+            unreadScanUserId,
+            false,
+            "m.read.private" as any,
+        );
+    },
+    compute: (room) => computeTimelineUnread(room, unreadScanUserId),
+});
+const unreadCountedListeners = new Set<() => void>();
+const unreadRollups = createUnreadRollups({
+    flags(roomId) {
+        const room = lookupRoom(roomId);
+        if (!room) return null;
+        watchUnreadCounts(room);
+        const info = getRoomUnreadInfo(room);
+        return { unread: info.unread, highlight: info.highlight > 0 };
+    },
+    // The first read of Home on an account with thousands of rooms, or one
+    // after a saved sync touched them all, counts 8 ms per turn of the event
+    // loop rather than all at once; onUnreadGroupsCounted says when it's done.
+    sliceMs: 8,
+    onCounted() {
+        for (const callback of unreadCountedListeners) callback();
+    },
+});
+// Rooms whose server counts the roll-ups follow (the client doesn't re-emit
+// RoomEvent.UnreadNotifications), for the client the index is attached to.
+let watchedRooms = new Map<Room, () => void>();
+
+function watchUnreadCounts(room: Room): void {
+    if (watchedRooms.has(room) || matrixClient?.getRoom(room.roomId) !== room)
+        return;
+    const onCounts = () => unreadRollups.changed(room.roomId);
+    watchedRooms.set(room, onCounts);
+    room.on(RoomEvent.UnreadNotifications, onCounts);
+}
+
+function bumpRoomStructure(): void {
+    structureGeneration++;
+    roomDataGeneration++;
+    joinedRoomsCache = null;
+    spacesCache = null;
+    parentSpacesIndex = null;
+    nestedSpacesCache = null;
+    roomsInSpaceCache.clear();
+    spaceReachCache.clear();
+    unreadRollups.invalidateStructure();
+}
+
+/** Brings the caches up to date with the client, and with the inputs no event reports. */
+function syncRoomIndex(): void {
+    if (indexedClient !== matrixClient) attachRoomIndex(matrixClient);
+    const cache = roomListCache;
+    const cacheSize = cache?.rooms.size ?? 0;
+    const pending =
+        pendingLeaves.size === 0 ? "" : [...pendingLeaves].sort().join(" ");
+    if (
+        cache !== indexedRoomListCache ||
+        cacheSize !== indexedRoomListCacheSize ||
+        pending !== indexedPendingLeaves ||
+        dismissedInvitesCache !== indexedDismissedInvites
+    ) {
+        indexedRoomListCache = cache;
+        indexedRoomListCacheSize = cacheSize;
+        indexedPendingLeaves = pending;
+        indexedDismissedInvites = dismissedInvitesCache;
+        bumpRoomStructure();
+    }
+}
+
+function attachRoomIndex(client: MatrixClient | null): void {
+    detachRoomIndex?.();
+    detachRoomIndex = null;
+    indexedClient = client;
+    unreadTimelineMemo.invalidateAll();
+    unreadRollups.invalidateAll();
+    spaceChildCache.clear();
+    directRoomIdsCache = null;
+    bumpRoomStructure();
+    if (!client || typeof client.on !== "function") return;
+
+    const unreadChanged = (roomId: string | null | undefined) => {
+        if (!roomId) return;
+        unreadTimelineMemo.invalidate(roomId);
+        unreadRollups.changed(roomId);
+    };
+    const onRoomUnread = (_event: unknown, room: Room | undefined) =>
+        unreadChanged(room?.roomId);
+    const onTimeline = (event: MatrixEvent, room: Room | undefined) =>
+        unreadChanged(room?.roomId ?? event.getRoomId());
+    const onTimelineReset = (room: Room | undefined) => {
+        roomDataGeneration++;
+        unreadChanged(room?.roomId);
+    };
+    const onDecrypted = (event: MatrixEvent) =>
+        unreadChanged(event.getRoomId());
+    const onRedaction = (_event: MatrixEvent, room: Room | undefined) => {
+        roomDataGeneration++;
+        unreadChanged(room?.roomId);
+        // A redacted m.space.child keeps its event id, with no state event.
+        if (room?.isSpaceRoom()) {
+            spaceChildCache.delete(room.roomId);
+            bumpRoomStructure();
+        }
+    };
+    const onMembership = (room: Room) => {
+        unreadChanged(room.roomId);
+        bumpRoomStructure();
+    };
+    const onRoom = (room: Room) => {
+        watchUnreadCounts(room);
+        unreadChanged(room.roomId);
+        bumpRoomStructure();
+    };
+    const onDeleteRoom = (roomId: string) => {
+        unreadChanged(roomId);
+        bumpRoomStructure();
+    };
+    const onState = (event: MatrixEvent) => {
+        roomDataGeneration++;
+        const type = event.getType();
+        if (type === "m.space.child") {
+            const roomId = event.getRoomId();
+            if (roomId) spaceChildCache.delete(roomId);
+            bumpRoomStructure();
+        } else if (type === "m.space.parent" || type === "m.room.create") {
+            bumpRoomStructure();
+        }
+    };
+    const onRoomData = () => {
+        roomDataGeneration++;
+    };
+    const onAccountData = (event: MatrixEvent) => {
+        const type = event.getType();
+        if (type === EventType.Direct) bumpRoomStructure();
+        // Republished every 30 s by any device in use; nothing lists it.
+        else if (type !== ACTIVE_SESSION_KEY) roomDataGeneration++;
+    };
+    const listeners: [string, (...args: any[]) => void][] = [
+        [RoomEvent.Timeline, onTimeline],
+        [RoomEvent.TimelineReset, onTimelineReset],
+        [RoomEvent.Receipt, onRoomUnread],
+        [RoomEvent.LocalEchoUpdated, onRoomUnread],
+        [RoomEvent.Redaction, onRedaction],
+        [MatrixEventEvent.Decrypted, onDecrypted],
+        [RoomEvent.MyMembership, onMembership],
+        [ClientEvent.Room, onRoom],
+        [ClientEvent.DeleteRoom, onDeleteRoom],
+        [RoomStateEvent.Events, onState],
+        [RoomEvent.Name, onRoomData],
+        [RoomEvent.Tags, onRoomData],
+        [RoomEvent.AccountData, onRoomData],
+        [ClientEvent.AccountData, onAccountData],
+    ];
+    for (const [name, listener] of listeners)
+        client.on(name as never, listener as never);
+    const watched = (watchedRooms = new Map());
+    for (const room of client.getRooms?.() ?? []) watchUnreadCounts(room);
+    detachRoomIndex = () => {
+        for (const [name, listener] of listeners)
+            client.off(name as never, listener as never);
+        for (const [room, onCounts] of watched)
+            room.off(RoomEvent.UnreadNotifications, onCounts);
+        watched.clear();
+    };
+}
+
+/**
+ * Zami: counters that move when something the room list shows may have
+ * changed. `structure`: the room set or the spaces' structure (the buckets of
+ * getRoomClassification). `data`: that, or a room's state, name, tags or
+ * account data, which the list renders in place (roomsTick). The app shell
+ * rebuilds the room list, and bumps roomsTick, only when one moved.
+ */
+export function getRoomListGenerations(): { structure: number; data: number } {
+    syncRoomIndex();
+    return { structure: structureGeneration, data: roomDataGeneration };
+}
+
+/**
+ * Zami: unread counts over a space's own rooms (getRoomsInSpace), kept
+ * current as rooms change; for the space rail's badges. `members` is the
+ * room ids counted. See getSpaceUnreadReach for the spaces below it.
+ */
+export function getSpaceUnreadGroup(spaceId: string): UnreadGroup {
+    syncRoomIndex();
+    return unreadRollups.group(spaceId, () =>
+        getRoomsInSpace(spaceId).map((r) => r.roomId),
+    );
+}
+
+/**
+ * Zami: called when the unread groups have counted the rooms they left for
+ * later (a large first count), so their badges read them again.
+ */
+export function onUnreadGroupsCounted(callback: () => void): () => void {
+    unreadCountedListeners.add(callback);
+    return () => unreadCountedListeners.delete(callback);
+}
+
+/** Zami: as getSpaceUnreadGroup, over Home's rooms and DMs. */
+export function getHomeUnreadGroup(): UnreadGroup {
+    syncRoomIndex();
+    return unreadRollups.group(HOME_UNREAD_GROUP, () =>
+        [...getOrphanRooms(), ...getDirectRooms()].map((r) => r.roomId),
+    );
+}
+
+/**
+ * Zami: the space and every space below it (a child that is a space room,
+ * joined or not), each once: what the space's unread badge covers.
+ */
+export function getSpaceUnreadReach(spaceId: string): readonly string[] {
+    syncRoomIndex();
+    let reach = spaceReachCache.get(spaceId);
+    if (!reach) {
+        reach = spaceReach(spaceId, (id) =>
+            getSpaceChildIds(id).filter(
+                (childId) => lookupRoom(childId)?.isSpaceRoom() ?? false,
+            ),
+        );
+        spaceReachCache.set(spaceId, reach);
+    }
+    return reach;
+}
+
+/** Zami: the joined spaces whose child list names this room (see "Zami: room index"). */
+function parentSpacesOf(roomId: string): readonly string[] {
+    syncRoomIndex();
+    parentSpacesIndex ??= indexParents(
+        getSpaces().map((s) => s.roomId),
+        getSpaceChildIds,
+    );
+    return parentSpacesIndex.get(roomId) ?? NO_PARENT_SPACES;
+}
+
 export function getSpaces(): Room[] {
-    return getRooms().filter((r) => r.isSpaceRoom());
+    // Zami: kept until the room set changes (see "Zami: room index"). Read-only.
+    syncRoomIndex();
+    return (spacesCache ??= getRooms().filter((r) => r.isSpaceRoom()));
 }
 
 // `m.space.child` ordering is recomputed constantly — SpaceSidebar's unread
@@ -2379,7 +2868,14 @@ export function getSpaces(): Room[] {
 // re-ordered or re-via'd child always arrives as a NEW event with a new id.
 // The ONE in-place mutation the SDK performs is redaction, which keeps the id
 // and empties the content — signatureOf() marks that case explicitly.
-const spaceChildCache = new Map<string, { signature: string; ids: string[] }>();
+// Zami: also the room and state object it was read from. While both are the
+// same the entry stands without signing again (the room index drops it on an
+// m.space.child event or a redaction): getStateEvents copies the whole child
+// list, so even checking the signature cost a pass over it per call.
+const spaceChildCache = new Map<
+    string,
+    { signature: string; ids: string[]; space?: Room; state?: unknown }
+>();
 
 function spaceChildEvents(spaceId: string) {
     const space = lookupRoom(spaceId);
@@ -2416,19 +2912,41 @@ function signatureOf(events: MatrixEvent[]): string {
  * "not cacheable"; callers use it to decide whether derived data went stale.
  */
 export function getSpaceChildSignature(spaceId: string): string {
+    // Zami: from getSpaceChildIds' entry while it holds (see spaceChildCache).
+    const fresh = freshSpaceChildEntry(spaceId);
+    if (fresh) return fresh.signature;
     const arr = spaceChildEvents(spaceId);
     if (!arr) return "";
     return signatureOf(arr);
 }
 
+/** Zami: the cache entry, while the space and its state are what it was read from. */
+function freshSpaceChildEntry(spaceId: string) {
+    syncRoomIndex();
+    const cached = spaceChildCache.get(spaceId);
+    if (!cached?.space) return null;
+    const space = lookupRoom(spaceId);
+    if (space !== cached.space) return null;
+    const state = space.getLiveTimeline().getState(EventTimeline.FORWARDS);
+    return state === cached.state ? cached : null;
+}
+
 export function getSpaceChildIds(spaceId: string): string[] {
+    // Zami: see spaceChildCache.
+    const fresh = freshSpaceChildEntry(spaceId);
+    if (fresh) return fresh.ids;
     const arr = spaceChildEvents(spaceId);
     if (!arr) return [];
+    const space = lookupRoom(spaceId)!;
+    const state = space.getLiveTimeline().getState(EventTimeline.FORWARDS);
 
     const signature = signatureOf(arr);
     if (signature) {
         const cached = spaceChildCache.get(spaceId);
-        if (cached && cached.signature === signature) return cached.ids;
+        if (cached && cached.signature === signature) {
+            spaceChildCache.set(spaceId, { ...cached, space, state });
+            return cached.ids;
+        }
     }
 
     const descriptors: SpaceChildDescriptor[] = arr.map((e) => {
@@ -2442,7 +2960,8 @@ export function getSpaceChildIds(spaceId: string): string[] {
     });
     const ids = sortSpaceChildIds(descriptors);
     // Callers treat this as read-only (verified at every call site).
-    if (signature) spaceChildCache.set(spaceId, { signature, ids });
+    if (signature)
+        spaceChildCache.set(spaceId, { signature, ids, space, state });
     return ids;
 }
 
@@ -2466,27 +2985,29 @@ export function findSpaceForRoom(roomId: string): string | null {
 
 /** Joined spaces that live under another joined space (see utils/spaceTree). */
 export function getNestedSpaceIds(): Set<string> {
+    // Zami: kept until the spaces change (see "Zami: room index"). Read-only.
+    syncRoomIndex();
+    if (nestedSpacesCache) return nestedSpacesCache;
     const joined = getSpaces()
         .filter((s) => s.getMyMembership() === "join")
         .map((s) => s.roomId);
-    return nestedSpaceIds(joined, getSpaceChildIds);
+    return (nestedSpacesCache = nestedSpaceIds(joined, getSpaceChildIds));
 }
 
 /** Joined spaces whose m.space.child list includes this room (DIRECT parents only). */
 export function getDirectParentSpaceIds(roomId: string): string[] {
-    const result: string[] = [];
-    for (const space of getSpaces()) {
-        if (space.getMyMembership() !== "join") continue;
-        if (getSpaceChildIds(space.roomId).includes(roomId)) {
-            result.push(space.roomId);
-        }
-    }
-    return result;
+    // Zami: from the index of every child's parents, instead of a pass over
+    // every space's child list per call (getSpaces() is join-filtered).
+    return [...parentSpacesOf(roomId)];
 }
 
 export function getRoomsInSpace(spaceId: string): Room[] {
+    // Zami: kept until the spaces change (see "Zami: room index"). Read-only.
+    syncRoomIndex();
+    const kept = roomsInSpaceCache.get(spaceId);
+    if (kept) return kept;
     const childIds = getSpaceChildIds(spaceId);
-    return childIds
+    const rooms = childIds
         .map((id) => lookupRoom(id))
         .filter(
             (r): r is Room =>
@@ -2495,13 +3016,20 @@ export function getRoomsInSpace(spaceId: string): Room[] {
                 r.getMyMembership() === "join" &&
                 !pendingLeaves.has(r.roomId),
         );
+    roomsInSpaceCache.set(spaceId, rooms);
+    return rooms;
 }
 
 export function getDirectRoomIds(): Set<string> {
     const directEvent = lookupAccountData(EventType.Direct);
     if (!directEvent) return new Set();
+    // Zami: kept per m.direct event, which a change replaces. Read-only.
+    if (directRoomIdsCache?.event === directEvent)
+        return directRoomIdsCache.ids;
     const content = directEvent.getContent() as Record<string, string[]>;
-    return new Set(Object.values(content).flat());
+    const ids = new Set(Object.values(content).flat());
+    directRoomIdsCache = { event: directEvent, ids };
+    return ids;
 }
 
 export function getOrphanRooms(): Room[] {
@@ -2770,8 +3298,19 @@ function bottomEventId(room: Room): string | undefined {
     return undefined;
 }
 
-function isRenderableTimelineEvent(e: MatrixEvent): boolean {
+export function isRenderableTimelineEvent(e: MatrixEvent): boolean {
     if (settingsState.showAllEvents) return true;
+    return isRenderableMessageEvent(e);
+}
+
+/** Zami: isRenderableTimelineEvent for filtering a whole list: the setting is
+ *  read once, not through its $state proxy per event. */
+function renderableTimelineFilter(): (e: MatrixEvent) => boolean {
+    return settingsState.showAllEvents ? () => true : isRenderableMessageEvent;
+}
+
+/** Zami: isRenderableTimelineEvent with "show all events" off. */
+function isRenderableMessageEvent(e: MatrixEvent): boolean {
     if (e.isRedacted()) return false;
     // By relation, not type: an undecryptable name is no message to placehold.
     if (e.isRelation(THREAD_NAME_REL_TYPE)) return false;
@@ -2897,21 +3436,117 @@ function liveChainEvents(room: Room): MatrixEvent[] {
  * event already decrypted, failed or in flight; the result lands through
  * MatrixEventEvent.Decrypted like any other late decryption.
  */
-function decryptForDisplay(events: MatrixEvent[]): void {
+function decryptForDisplay(
+    events: MatrixEvent[],
+    newest = events.length,
+): void {
     if (!matrixClient) return;
-    for (const e of events) {
-        if (e.shouldAttemptDecryption())
-            void matrixClient.decryptEventIfNeeded(e);
+    // Zami: on screen, so ahead of the queued backlog (see sliceDecryption),
+    // but in a sliced queue of their own, newest first: a page of them
+    // decrypted at once was one unbroken chain on the JS thread. Only the
+    // `newest` of them: the rest join the backlog.
+    const client = matrixClient;
+    const decrypt =
+        decryptNow?.client === client
+            ? decryptNow.decrypt
+            : client.decryptEventIfNeeded.bind(client);
+    const from = events.length - newest;
+    for (const [i, e] of events.entries()) {
+        if (!e.shouldAttemptDecryption()) continue;
+        const decrypted =
+            i >= from
+                ? queueForDisplay(client, e, decrypt)
+                : client.decryptEventIfNeeded(e);
+        // Zami: the client re-emits Decrypted only for the events it mapped
+        // itself, not for a saved room's (roomListCache), which stayed "Unable to
+        // decrypt" on screen until live sync replaced the room.
+        const roomId = e.getRoomId();
+        if (roomId && isRoomCachedOnly(roomId)) {
+            const notify = () => notifyCachedDecrypted(e, roomId);
+            void decrypted.then(notify, notify);
+        }
     }
+}
+
+/** Zami: decryptForDisplay's queue, and the events waiting in it. */
+let displayDecryption: {
+    client: MatrixClient;
+    queue: ReturnType<typeof createSlicedQueue>;
+    waiting: WeakMap<MatrixEvent, Promise<void>>;
+} | null = null;
+
+function queueForDisplay(
+    client: MatrixClient,
+    event: MatrixEvent,
+    decrypt: (event: MatrixEvent) => Promise<void>,
+): Promise<void> {
+    if (displayDecryption?.client !== client) {
+        // The first turn after a pause starts at once, as these did before
+        // they were queued: a long chain of microtasks (the saved sync's
+        // replay at launch) can hold a timer back for seconds, and the room
+        // the user opened with it. The turns after it wait for the event loop.
+        let lastTurn = -Infinity;
+        displayDecryption = {
+            client,
+            queue: createSlicedQueue({
+                sliceMs: DECRYPT_SLICE_MS,
+                schedule: (run) => {
+                    const turn = () => {
+                        lastTurn = performance.now();
+                        run();
+                    };
+                    if (performance.now() - lastTurn < 4 * DECRYPT_SLICE_MS)
+                        setTimeout(turn, 0);
+                    else queueMicrotask(turn);
+                },
+            }),
+            waiting: new WeakMap(),
+        };
+    }
+    const { queue, waiting } = displayDecryption;
+    let queued = waiting.get(event);
+    if (!queued) {
+        queued = queue.add(() => {
+            waiting.delete(event);
+            return decrypt(event);
+        }, event.getTs());
+        waiting.set(event, queued);
+    }
+    return queued;
+}
+
+/** Zami: the newest events of a room's timeline getTimelineMessages decrypts
+ *  for display: what the room opens on. MessageArea asks for the rest as they
+ *  come near the screen (decryptEventsForDisplay). */
+const DISPLAY_DECRYPT_NEWEST = 60;
+
+/** Zami: decrypt `events` (rows near the screen) ahead of the backlog. */
+export function decryptEventsForDisplay(events: MatrixEvent[]): void {
+    decryptForDisplay(events);
+}
+
+/** Zami: onEventDecrypted's callbacks, for events of saved rooms (above). */
+const cachedDecryptedCallbacks = new Set<
+    (event: MatrixEvent, room: Room) => void
+>();
+/**
+ * Zami: tell onEventDecrypted's callbacks. Right away, not batched on a timer:
+ * a launch replays the saved sync right after the first frame, and that one
+ * long chain of microtasks would hold a timer, and the room, back for seconds.
+ * React batches the re-reads a room's messages cause into one render anyway.
+ */
+function notifyCachedDecrypted(event: MatrixEvent, roomId: string): void {
+    const room = roomListCache?.rooms.get(roomId);
+    if (!room) return;
+    for (const callback of cachedDecryptedCallbacks) callback(event, room);
 }
 
 export function getTimelineMessages(room: Room): MatrixEvent[] {
     pruneDeliveredEchoes(room);
     const chain = liveChainEvents(room);
-    decryptForDisplay(chain);
-    const rendered = collapseCallEvents(
-        chain.filter(isRenderableTimelineEvent),
-    );
+    decryptForDisplay(chain, DISPLAY_DECRYPT_NEWEST);
+    const isRenderable = renderableTimelineFilter();
+    const rendered = collapseCallEvents(chain.filter(isRenderable));
     const timeline = settingsState.orderHints
         ? placeAfterHints(rendered)
         : rendered;
@@ -2925,7 +3560,7 @@ export function getTimelineMessages(room: Room): MatrixEvent[] {
         .getPendingEvents()
         .filter(
             (e) =>
-                isRenderableTimelineEvent(e) &&
+                isRenderable(e) &&
                 e.status !== EventStatus.CANCELLED &&
                 !timelineIds.has(e.getId()),
         );
@@ -2947,11 +3582,19 @@ export async function trimRoomHistory(
     const owner = captureOwnership(matrixClient, clientGeneration);
     const room = owner.client.getRoom(roomId);
     if (!room) return false;
+    // Zami: the sweep visits every room, and most hold too few events to cut:
+    // counting them is cheap, building their rendered list isn't.
+    let count = 0;
+    for (const tl of liveTimelineChain(room)) count += tl.getEvents().length;
+    if (!mayCutHistory(count)) return false;
     const chain = liveChainEvents(room);
+    // Zami: "show all events" read once for the room, not per event (a
+    // settings proxy read on Hermes): with it on, everything renders.
     const shown = new Set(
-        collapseCallEvents(chain.filter(isRenderableTimelineEvent)).map((e) =>
-            e.getId(),
-        ),
+        (settingsState.showAllEvents
+            ? chain
+            : collapseCallEvents(chain.filter(isRenderableTimelineEvent))
+        ).map((e) => e.getId()),
     );
     const cut = historyTrimCut(chain.map((e) => shown.has(e.getId())));
     if (cut === null) return false;
@@ -3161,17 +3804,24 @@ export async function paginateThreadBack(
 // RoomEvent.Timeline up through the Thread -> Room -> client, whereas
 // ThreadEvent.* is NOT bridged to the client re-emitter (so binding it here
 // would silently never fire).
-export function onThreadEvent(callback: () => void): () => void {
+// Zami: the callback gets the event and its room, so a panel can skip other
+// rooms' (the clientTimeline listener).
+export function onThreadEvent(
+    callback: (event: MatrixEvent, room: Room | undefined) => void,
+): () => void {
     if (!matrixClient) return () => {};
-    const handler = (event: MatrixEvent) => {
+    const handler = (
+        facts: TimelineFacts,
+        event: MatrixEvent,
+        room: Room | undefined,
+    ) => {
         const isThread = eventThreadRoot(event) !== null;
-        const relType = event.getContent()?.["m.relates_to"]?.rel_type;
+        const relType = facts.relType;
         const isEdit = relType === "m.replace";
-        const isRedaction = event.getType() === "m.room.redaction";
-        if (isThread || isEdit || isRedaction) callback();
+        const isRedaction = facts.type === "m.room.redaction";
+        if (isThread || isEdit || isRedaction) callback(event, room);
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
-    return () => matrixClient?.off(RoomEvent.Timeline, handler as never);
+    return clientTimeline(matrixClient).add(handler);
 }
 
 /** Plain body text of an event's content, or "" when absent/non-string. */
@@ -3650,14 +4300,19 @@ export function onThreadNameChange(callback: () => void): () => void {
             .then(() => applyThreadNameEvent(event))
             .catch(() => {});
     };
-    client?.on(RoomEvent.Timeline, onTimeline as never);
+    // Zami: through the client's shared Timeline listener (clientTimeline).
+    const offTimeline = client
+        ? clientTimeline(client).add((_facts, ...args) =>
+              onTimeline(args[0], args[1], args[2], args[3] as boolean),
+          )
+        : () => {};
     client?.on(
         MatrixEventEvent.Decrypted as never,
         applyThreadNameEvent as never,
     );
     return () => {
         threadNameListeners.delete(callback);
-        client?.off(RoomEvent.Timeline, onTimeline as never);
+        offTimeline();
         client?.off(
             MatrixEventEvent.Decrypted as never,
             applyThreadNameEvent as never,
@@ -3797,6 +4452,39 @@ export function clearReadThreadCounts(room: Room): boolean {
         changed = true;
     }
     return changed;
+}
+
+/**
+ * Zami: rooms where one of the user's own read receipts changed (from any of
+ * their devices, or this one's local echo). Unread state, thread counts and
+ * read notifications follow our receipts only, so the app shell redoes them
+ * for these rooms rather than for every room on anyone's receipt, which on a
+ * bridge account is nearly every sync.
+ */
+export function onOwnReceipt(callback: (room: Room) => void): () => void {
+    if (!matrixClient) return () => {};
+    const client = matrixClient;
+    const handler = (event: MatrixEvent, room: Room | undefined) => {
+        const userId = client.getUserId();
+        if (room && userId && receiptNamesUser(event, userId)) callback(room);
+    };
+    client.on(RoomEvent.Receipt as never, handler as never);
+    return () => client.off(RoomEvent.Receipt as never, handler as never);
+}
+
+/** Whether an m.receipt event carries a receipt of `userId`'s (`{eventId: {type: {userId: …}}}`). */
+function receiptNamesUser(event: MatrixEvent, userId: string): boolean {
+    const content = event.getContent() as Record<string, unknown>;
+    for (const eventId in content) {
+        const byType = content[eventId];
+        if (!byType || typeof byType !== "object") continue;
+        for (const type in byType as Record<string, unknown>) {
+            const byUser = (byType as Record<string, unknown>)[type];
+            if (byUser && typeof byUser === "object" && userId in byUser)
+                return true;
+        }
+    }
+    return false;
 }
 
 /** Share a static location as an m.location event (MSC3488). */
@@ -5018,6 +5706,12 @@ export async function loadRoomMembersIfNeeded(room: Room): Promise<void> {
             if (store && stored) {
                 await store.clearOutOfBandMembers(room.roomId).catch(() => {});
             }
+            // Zami: the SDK's load, but applying the members a slice at a
+            // time and not writing them to the sync store (C7): for a room
+            // of thousands it built and applied every member in one go, then
+            // wrote a record per member that each later launch read back
+            // whole, only for this load to drop and fetch them again.
+            sliceMemberLoads(room);
             await room.loadMembersIfNeeded();
         })();
         freshMemberLoads.set(room, load);
@@ -5025,6 +5719,33 @@ export async function loadRoomMembersIfNeeded(room: Room): Promise<void> {
         load.catch(() => freshMemberLoads.delete(room));
     }
     await load;
+}
+
+/**
+ * Zami: route the room's member loads, the SDK's own included (encrypting a
+ * message loads them), through loadMembersInSlices. Idempotent.
+ */
+function sliceMemberLoads(room: Room): void {
+    if (slicedMemberRooms.has(room)) return;
+    slicedMemberRooms.add(room);
+    room.loadMembersIfNeeded = () =>
+        loadMembersInSlices(room as never, {
+            mapEvent: (raw) => room.client.getEventMapper()(raw as never),
+        });
+}
+const slicedMemberRooms = new WeakSet<Room>();
+
+/**
+ * Zami: rooms up to this many members load their whole member list when
+ * opened (so every sender has a name); larger ones only when the member list
+ * or a mention search asks for it (C7).
+ */
+const MEMBER_LOAD_ON_OPEN_LIMIT = 300;
+
+/** Zami: whether opening `room` should load its full member list. */
+export function shouldLoadMembersOnOpen(room: Room): boolean {
+    sliceMemberLoads(room);
+    return room.getJoinedMemberCount() <= MEMBER_LOAD_ON_OPEN_LIMIT;
 }
 
 export function getRoomTopic(room: Room): string | null {
@@ -5095,46 +5816,62 @@ export function getRoomUnreadInfo(room: Room): {
 
     if (getUnreadCount(room) >= 1) return { unread: true, highlight };
 
+    // Zami: the timeline's answer is kept per room until the room changes
+    // (see "Zami: room index"): every row and badge asks on every sync.
+    syncRoomIndex();
+    unreadScanUserId = userId;
+    return { unread: unreadTimelineMemo.get(room), highlight };
+}
+
+/**
+ * Zami: getRoomUnreadInfo's timeline half: Zam's hasUnreadMessages, reading the
+ * live timeline backwards in place (hasUnreadEvents) rather than mapping every
+ * loaded event into a new object first.
+ */
+function computeTimelineUnread(room: Room, userId: string): boolean {
     // getEventReadUpTo returns null when the receipt points at an event that
     // isn't loaded (the SDK rejects it via receiptPointsAtConsistentEvent);
     // hasUnreadMessages then goes by the receipts' own timestamps.
-    const receipts = [
-        room.getReadReceiptForUserId(userId),
-        room.getReadReceiptForUserId(userId, false, "m.read.private" as any),
-    ].filter((r) => r !== null);
-    const unread = hasUnreadMessages({
-        events: room
-            .getLiveTimeline()
-            .getEvents()
-            .map((event) => ({
-                id: event.getId() ?? "",
-                ts: event.getTs(),
-                fromMe: event.getSender() === userId,
-                isNotification: isNotificationEvent(event),
-            })),
-        readUpToId: room.getEventReadUpTo(userId),
-        receiptTs: receipts.length
+    const readUpToId = room.getEventReadUpTo(userId);
+    let receiptTs: number | null = null;
+    if (!readUpToId) {
+        const receipts = [
+            room.getReadReceiptForUserId(userId),
+            room.getReadReceiptForUserId(
+                userId,
+                false,
+                "m.read.private" as any,
+            ),
+        ].filter((r) => r !== null);
+        receiptTs = receipts.length
             ? Math.max(...receipts.map((r) => r.data?.ts ?? 0))
-            : null,
-    });
-    return { unread, highlight };
+            : null;
+    }
+    return hasUnreadEvents(
+        room.getLiveTimeline().getEvents(),
+        readUpToId,
+        receiptTs,
+        unreadEventReader,
+    );
 }
 
 export function onTimelineEvent(
     callback: (event: MatrixEvent, room: Room, isLiveAppend: boolean) => void,
 ): () => void {
     if (!matrixClient) return () => {};
+    // Zami: classifies the event once for every subscriber (clientTimeline).
     const handler = (
+        facts: TimelineFacts,
         event: MatrixEvent,
         room: Room | undefined,
         toStartOfTimeline?: boolean,
         removed?: boolean,
         data?: { liveEvent?: boolean },
-    ) => {
+    ): [MatrixEvent, Room, boolean] | null => {
         // Ignore scroll-up backfill (toStartOfTimeline) and event removals —
         // neither is a new message. Without this, scroll-up backfill would be
         // treated as new messages and drive false unread bumps/notifications.
-        if (toStartOfTimeline || removed) return;
+        if (toStartOfTimeline || removed) return null;
         // `data.liveEvent === false` covers two very different cases:
         //   1. events appended live to the tail (liveEvent === true)
         //   2. events INSERTED into the middle of the live timeline via
@@ -5147,29 +5884,102 @@ export function onTimelineEvent(
         // re-read. Forward both; `isLiveAppend` tells consumers which it is so
         // the display can re-read (correct ordering) rather than append.
         const isLiveAppend = data?.liveEvent === true;
-        const isReplacement =
-            event.getContent()?.["m.relates_to"]?.rel_type === "m.replace";
-        const isMainTimeline = belongsToMainTimeline({
-            relatesTo: event.getOriginalContent()?.["m.relates_to"],
-            eventId: event.getId() ?? "",
-        });
+        const isReplacement = facts.relType === "m.replace";
+        const isMainTimeline = facts.isMainTimeline;
         if (
             room &&
             (settingsState.showAllEvents ||
                 (!isReplacement &&
                     isMainTimeline &&
-                    (event.getType() === "m.room.message" ||
-                        event.getType() === "m.sticker" ||
-                        isFileOfferEventType(event.getType()) ||
-                        isPollStartEventType(event.getType())) &&
+                    (facts.type === "m.room.message" ||
+                        facts.type === "m.sticker" ||
+                        isFileOfferEventType(facts.type) ||
+                        isPollStartEventType(facts.type)) &&
                     !event.isRedacted()))
         ) {
-            callback(event, room, isLiveAppend);
+            return [event, room, isLiveAppend];
         }
+        return null;
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
-    return () => matrixClient?.off(RoomEvent.Timeline, handler as never);
+    return clientTimeline(matrixClient).addClassified(
+        handler,
+        callback,
+        TIMELINE_EVENT,
+    );
 }
+
+// ── Zami: one RoomEvent.Timeline listener per client ──
+// About a dozen subscribers below each read every timeline event's type and
+// relation again, the thousands a launch replays from the saved sync among
+// them. They share one listener instead (@-/com.leonsilicon.zami.timeline's
+// fanout): an event's facts are worked out once, when first asked, and each
+// kind of subscriber classifies it once however many of that kind there are.
+
+type TimelineArgs = [
+    event: MatrixEvent,
+    room: Room | undefined,
+    toStartOfTimeline: boolean | undefined,
+    removed: boolean | undefined,
+    data: { liveEvent?: boolean; timeline?: EventTimeline } | undefined,
+];
+
+/** Zami: what the Timeline subscribers read of an event, once each. */
+class TimelineFacts {
+    readonly event: MatrixEvent;
+    private cachedType: string | undefined;
+    private cachedRelType: string | null | undefined;
+    private cachedMainTimeline: boolean | undefined;
+    constructor(event: MatrixEvent) {
+        this.event = event;
+    }
+    get type(): string {
+        return (this.cachedType ??= this.event.getType());
+    }
+    /** The rel_type of the (current) content's m.relates_to. */
+    get relType(): string | null {
+        if (this.cachedRelType === undefined)
+            this.cachedRelType =
+                this.event.getContent()?.["m.relates_to"]?.rel_type ?? null;
+        return this.cachedRelType;
+    }
+    /** Not a thread reply, by the original content (belongsToMainTimeline). */
+    get isMainTimeline(): boolean {
+        return (this.cachedMainTimeline ??= belongsToMainTimeline({
+            relatesTo: this.event.getOriginalContent()?.["m.relates_to"],
+            eventId: this.event.getId() ?? "",
+        }));
+    }
+}
+
+const timelineFanouts = new WeakMap<
+    MatrixClient,
+    Fanout<TimelineArgs, TimelineFacts>
+>();
+
+/** Zami: `client.on(RoomEvent.Timeline, …)` through the client's fanout. */
+function clientTimeline(
+    client: MatrixClient,
+): Fanout<TimelineArgs, TimelineFacts> {
+    let fanout = timelineFanouts.get(client);
+    if (!fanout) {
+        fanout = createFanout<TimelineArgs, TimelineFacts>({
+            facts: (event) => new TimelineFacts(event),
+            attach: (emit) =>
+                client.on(RoomEvent.Timeline as never, emit as never),
+            detach: (emit) =>
+                client.off(RoomEvent.Timeline as never, emit as never),
+        });
+        timelineFanouts.set(client, fanout);
+    }
+    return fanout;
+}
+
+/** Zami: each kind of shared Timeline subscriber below, by name. */
+const TIMELINE_EVENT = "timelineEvent";
+const THREAD_REPLY_EVENT = "threadReplyEvent";
+const EDIT_EVENT = "editEvent";
+const REACTION_EVENT = "reactionEvent";
+const POLL_EVENT = "pollEvent";
 
 /**
  * Live thread-REPLY events — the complement of `onTimelineEvent`, which filters
@@ -5183,34 +5993,36 @@ export function onThreadReplyEvent(
     callback: (event: MatrixEvent, room: Room, isLiveAppend: boolean) => void,
 ): () => void {
     if (!matrixClient) return () => {};
+    // Zami: classifies the event once for every subscriber (clientTimeline).
     const handler = (
+        facts: TimelineFacts,
         event: MatrixEvent,
         room: Room | undefined,
         toStartOfTimeline?: boolean,
         removed?: boolean,
         data?: { liveEvent?: boolean },
-    ) => {
-        if (toStartOfTimeline || removed || !room) return;
+    ): [MatrixEvent, Room, boolean] | null => {
+        if (toStartOfTimeline || removed || !room) return null;
         const isLiveAppend = data?.liveEvent === true;
         // Only diverted thread replies (exactly the events onTimelineEvent excludes).
-        const isMainTimeline = belongsToMainTimeline({
-            relatesTo: event.getOriginalContent()?.["m.relates_to"],
-            eventId: event.getId() ?? "",
-        });
-        if (isMainTimeline) return;
-        const isReplacement =
-            event.getContent()?.["m.relates_to"]?.rel_type === "m.replace";
-        const type = event.getType();
+        const isMainTimeline = facts.isMainTimeline;
+        if (isMainTimeline) return null;
+        const isReplacement = facts.relType === "m.replace";
+        const type = facts.type;
         const isMessage =
             type === "m.room.message" ||
             type === "m.sticker" ||
             isPollStartEventType(type);
         if (!isReplacement && isMessage && !event.isRedacted()) {
-            callback(event, room, isLiveAppend);
+            return [event, room, isLiveAppend];
         }
+        return null;
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
-    return () => matrixClient?.off(RoomEvent.Timeline, handler as never);
+    return clientTimeline(matrixClient).addClassified(
+        handler,
+        callback,
+        THREAD_REPLY_EVENT,
+    );
 }
 
 export function onLocalEchoUpdated(callback: (room: Room) => void): () => void {
@@ -5227,14 +6039,20 @@ export function onEditEvent(
     callback: (event: MatrixEvent, room: Room) => void,
 ): () => void {
     if (!matrixClient) return () => {};
-    const handler = (event: MatrixEvent, room: Room | undefined) => {
+    // Zami: classifies the event once for every subscriber (clientTimeline).
+    const handler = (
+        facts: TimelineFacts,
+        event: MatrixEvent,
+        room: Room | undefined,
+    ): [MatrixEvent, Room] | null => {
         if (
             room &&
-            event.getType() === "m.room.message" &&
-            event.getContent()?.["m.relates_to"]?.rel_type === "m.replace"
+            facts.type === "m.room.message" &&
+            facts.relType === "m.replace"
         ) {
-            callback(event, room);
+            return [event, room];
         }
+        return null;
     };
     // The Timeline check above misses encrypted edits (they arrive as
     // m.room.encrypted with the relation inside the ciphertext) and edits the
@@ -5246,10 +6064,14 @@ export function onEditEvent(
         const room = roomId ? matrixClient?.getRoom(roomId) : null;
         if (room) callback(target, room);
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
+    const offTimeline = clientTimeline(matrixClient).addClassified(
+        handler,
+        callback,
+        EDIT_EVENT,
+    );
     matrixClient.on(MatrixEventEvent.Replaced as never, onReplaced as never);
     return () => {
-        matrixClient?.off(RoomEvent.Timeline, handler as never);
+        offTimeline();
         matrixClient?.off(
             MatrixEventEvent.Replaced as never,
             onReplaced as never,
@@ -5834,7 +6656,14 @@ export function notifyRoomUpdate(): void {
 
 export function onRoomUpdate(callback: () => void): () => void {
     if (!matrixClient) return () => {};
-    roomUpdateSubscribers.add(callback);
+    // Zami: a direct call (notifyRoomUpdate, a dismissed invite, the rest of
+    // the saved room list arriving) asks for a full rebuild, whatever the room
+    // index saw (see getRoomListGenerations).
+    const rebuild = () => {
+        bumpRoomStructure();
+        callback();
+    };
+    roomUpdateSubscribers.add(rebuild);
     const syncHandler = (state: string) => {
         if (state === "PREPARED" || state === "SYNCING") callback();
     };
@@ -5842,7 +6671,7 @@ export function onRoomUpdate(callback: () => void): () => void {
     matrixClient.on("Room.myMembership" as never, callback as never);
     matrixClient.on(RoomEvent.Tags as never, callback as never);
     return () => {
-        roomUpdateSubscribers.delete(callback);
+        roomUpdateSubscribers.delete(rebuild);
         matrixClient?.off(ClientEvent.Sync, syncHandler as never);
         matrixClient?.off("Room.myMembership" as never, callback as never);
         matrixClient?.off(RoomEvent.Tags as never, callback as never);
@@ -6250,13 +7079,15 @@ export function getReceiptsForEvent(
  * Read receipts per displayed event. A receipt on an event the timeline hides
  * (state, an edit, a reaction) shows on the displayed event just above it,
  * not nowhere, so a reader never vanishes because their client receipted a
- * hidden event. Events outside the live timeline (a jump-to-message window)
- * keep only their own receipts.
+ * hidden event. In the live timeline a user sits at the later of their stored
+ * receipt and their own newest event (see readPositions). Events outside the
+ * live timeline (a jump-to-message window) keep only their own receipts.
  */
 export function getReceiptsByDisplayedEvent(
     room: Room,
     displayed: MatrixEvent[],
 ): Map<string, ReadReceiptInfo[]> {
+    const myId = matrixClient?.getUserId();
     const shown = new Set(displayed.map((e) => e.getId()));
     const result = new Map<string, ReadReceiptInfo[]>();
     const add = (id: string, found: ReadReceiptInfo[]) => {
@@ -6266,16 +7097,49 @@ export function getReceiptsByDisplayedEvent(
             if (!have.some((h) => h.userId === r.userId)) have.push(r);
         result.set(id, have);
     };
-    let current: string | undefined;
+    const all = room
+        .getLiveTimeline()
+        .getEvents()
+        .filter((e) => e.getId());
+    // Zami: from the oldest displayed event on. A position before it rolls up
+    // to no displayed event and is dropped below anyway, so this changes
+    // nothing, but it lets MessageArea pass only the rows near the screen and
+    // pay for those, not for the whole timeline's receipts and names.
+    const first = all.findIndex((e) => shown.has(e.getId()));
+    const live = first < 0 ? [] : first === 0 ? all : all.slice(first);
+    const receipts = live.map((e) => getReceiptsForEvent(room, e));
+    const positions = readPositions(
+        live.map((e, i) => ({
+            sender: e.getSender() ?? null,
+            isRedaction: e.getType() === EventType.RoomRedaction,
+            readers: receipts[i].map((r) => r.userId),
+        })),
+    );
+    // Displayed event each live index rolls up to: itself, or the nearest
+    // displayed event above it.
+    const displayedAt: (string | undefined)[] = [];
     const walked = new Set<string>();
-    for (const e of room.getLiveTimeline().getEvents()) {
-        const id = e.getId();
-        if (!id) continue;
+    let current: string | undefined;
+    live.forEach((e, i) => {
+        const id = e.getId()!;
         if (shown.has(id)) {
             current = id;
             walked.add(id);
         }
-        if (current) add(current, getReceiptsForEvent(room, e));
+        displayedAt[i] = current;
+    });
+    for (const [userId, i] of positions) {
+        const at = displayedAt[i];
+        if (!at || userId === myId) continue;
+        const stored = receipts[i].find((r) => r.userId === userId);
+        add(at, [
+            stored ?? {
+                userId,
+                avatarUrl: getMemberAvatar(room, userId),
+                name: getMemberName(room, userId),
+                ts: live[i].getTs(),
+            },
+        ]);
     }
     for (const e of displayed) {
         const id = e.getId();
@@ -6305,12 +7169,28 @@ export function onTypingEvent(
 ): () => void {
     if (!matrixClient) return () => {};
     const myId = matrixClient.getUserId();
-    const handler = (_event: unknown, member: RoomMember) => {
+    // Zami: the m.typing event lists who is typing; the SDK sets it on every
+    // member of the room and emits once per member it changed. So read the
+    // list from the event (only members, as the SDK applies it to them), once
+    // per event, not by filtering every member each time.
+    let lastEvent: unknown = null;
+    const handler = (event: MatrixEvent | undefined, member: RoomMember) => {
         if (member.roomId !== room.roomId) return;
-        const typing = room
-            .getMembers()
-            .filter((m) => m.typing && m.userId !== myId)
-            .map((m) => m.userId);
+        const userIds = event?.getContent?.()?.user_ids;
+        if (!Array.isArray(userIds)) {
+            const typing = room
+                .getMembers()
+                .filter((m) => m.typing && m.userId !== myId)
+                .map((m) => m.userId);
+            callback(typing);
+            return;
+        }
+        if (event === lastEvent) return;
+        lastEvent = event;
+        const typing = userIds.filter(
+            (id): id is string =>
+                typeof id === "string" && id !== myId && !!room.getMember(id),
+        );
         callback(typing);
     };
     matrixClient.on(RoomMemberEvent.Typing as never, handler as never);
@@ -8048,10 +8928,9 @@ export function getParentSpaceIds(roomId: string): string[] {
             if (parentId) add(parentId);
         }
 
-        for (const space of getSpaces()) {
-            if (!getSpaceChildIds(space.roomId).includes(childId)) continue;
-            add(space.roomId);
-        }
+        // Zami: from the index of every child's parents (see "Zami: room
+        // index"), rather than every space's child list at every level.
+        for (const spaceId of parentSpacesOf(childId)) add(spaceId);
     }
 
     visit(roomId);
@@ -8785,7 +9664,7 @@ function uniquePacks<T extends { id: string }>(packs: T[]): T[] {
 }
 
 // Returns custom emoji packs (emoticons only): user pack first, then active space.
-export function getCustomEmojiPacks(
+function buildCustomEmojiPacks(
     activeSpaceId: string | null,
     _spaces: Room[],
     room?: Room | null,
@@ -8817,6 +9696,47 @@ export function getCustomEmojiPacks(
     return uniquePacks(packs);
 }
 
+// Zami: the emoji picker asks again on every sync (roomsTick), and building the
+// packs walks every image of every pack in reach. Reuse the last result, the
+// same array, until a pack, a space link, a room or the account's packs change.
+// Callers must not mutate it.
+const IMAGE_PACK_STATE = {
+    stateTypes: [
+        ROOM_PACK_TYPE,
+        LEGACY_ROOM_PACK_TYPE,
+        "m.space.child",
+        "m.space.parent",
+        "m.room.avatar",
+        "m.room.power_levels",
+        "m.room.create",
+    ],
+    accountDataTypes: [
+        "im.ponies.user_emotes",
+        EMOTE_ROOMS_TYPE,
+        LEGACY_EMOTE_ROOMS_TYPE,
+    ],
+    rooms: true,
+};
+const customEmojiPacksMemo = createKeyedMemo<CustomEmojiPack[]>();
+const customStickerPacksMemo = createKeyedMemo<CustomStickerPack[]>();
+
+/** Grows whenever anything the custom packs are built from may have changed. */
+export function imagePackRevision(): number {
+    return matrixClient ? clientRevision(matrixClient, IMAGE_PACK_STATE) : 0;
+}
+
+export function getCustomEmojiPacks(
+    activeSpaceId: string | null,
+    spaces: Room[],
+    room?: Room | null,
+): CustomEmojiPack[] {
+    if (!matrixClient) return [];
+    return customEmojiPacksMemo(
+        [matrixClient, imagePackRevision(), activeSpaceId, room ?? null],
+        () => buildCustomEmojiPacks(activeSpaceId, spaces, room),
+    );
+}
+
 // Warm this room's custom emoji images in the background on room open. Custom
 // emoji are authed media with no browser cache and (for a remote pack) a
 // per-image federated fetch of ~1s the first time — so a fresh emoji-heavy room
@@ -8840,7 +9760,7 @@ export function preloadRoomEmoji(
 }
 
 // Returns custom sticker packs: user pack first, then active space.
-export function getCustomStickerPacks(
+function buildCustomStickerPacks(
     activeSpaceId: string | null,
     room?: Room | null,
 ): CustomStickerPack[] {
@@ -8868,6 +9788,18 @@ export function getCustomStickerPacks(
     }
 
     return uniquePacks(packs);
+}
+
+// Zami: as getCustomEmojiPacks, the same array until pack state changes.
+export function getCustomStickerPacks(
+    activeSpaceId: string | null,
+    room?: Room | null,
+): CustomStickerPack[] {
+    if (!matrixClient) return [];
+    return customStickerPacksMemo(
+        [matrixClient, imagePackRevision(), activeSpaceId, room ?? null],
+        () => buildCustomStickerPacks(activeSpaceId, room),
+    );
 }
 
 // Flat list of all custom emojis (emoticons only) — used at send time to resolve shortcodes.
@@ -8919,6 +9851,10 @@ export function isRoomCreator(room: Room, userId: string): boolean {
     const state = room.getLiveTimeline().getState(EventTimeline.FORWARDS);
     const create = state?.getStateEvents("m.room.create", "");
     if (!create) return roomCreatorCache.get(room.roomId)?.has(userId) ?? false;
+    // Zami: ranking a member list asks this for every member; build the set
+    // once per create event.
+    const known = creatorsByCreateEvent.get(create);
+    if (known) return known.has(userId);
     const creators = new Set<string>();
     const sender = create.getSender();
     if (sender) creators.add(sender);
@@ -8926,8 +9862,12 @@ export function isRoomCreator(room: Room, userId: string): boolean {
         (create.getContent()?.additional_creators as string[]) ?? [];
     for (const id of additional) creators.add(id);
     roomCreatorCache.set(room.roomId, creators);
+    creatorsByCreateEvent.set(create, creators);
     return creators.has(userId);
 }
+
+/** Zami: the creators read from each `m.room.create` event (isRoomCreator). */
+const creatorsByCreateEvent = new WeakMap<MatrixEvent, Set<string>>();
 
 /**
  * Creators seen in each room's `m.room.create`, so a just-joined room whose
@@ -9680,13 +10620,22 @@ export function onReactionEvent(
     callback: (event: MatrixEvent, room: Room) => void,
 ): () => void {
     if (!matrixClient) return () => {};
-    const handler = (event: MatrixEvent, room: Room | undefined) => {
-        if (room && event.getType() === "m.reaction") {
-            callback(event, room);
+    // Zami: classifies the event once for every subscriber (clientTimeline).
+    const handler = (
+        facts: TimelineFacts,
+        event: MatrixEvent,
+        room: Room | undefined,
+    ): [MatrixEvent, Room] | null => {
+        if (room && facts.type === "m.reaction") {
+            return [event, room];
         }
+        return null;
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
-    return () => matrixClient?.off(RoomEvent.Timeline, handler as never);
+    return clientTimeline(matrixClient).addClassified(
+        handler,
+        callback,
+        REACTION_EVENT,
+    );
 }
 
 /**
@@ -9710,11 +10659,15 @@ export function onEventDecrypted(
         if (room) callback(event, room);
     };
     matrixClient.on(MatrixEventEvent.Decrypted as never, handler as never);
-    return () =>
+    // Zami: and the saved rooms' (see decryptForDisplay).
+    cachedDecryptedCallbacks.add(callback);
+    return () => {
+        cachedDecryptedCallbacks.delete(callback);
         matrixClient?.off(
             MatrixEventEvent.Decrypted as never,
             handler as never,
         );
+    };
 }
 
 export interface DecryptedTimelineMeta {
@@ -9837,10 +10790,13 @@ export function onDecryptedTimelineEvent(
         callback(event, room, { ...meta, threadRootId });
     };
 
-    matrixClient.on(RoomEvent.Timeline, onTimeline as never);
+    // Zami: through the client's shared Timeline listener (clientTimeline).
+    const offTimeline = clientTimeline(matrixClient).add((_facts, ...args) =>
+        onTimeline(...args),
+    );
     matrixClient.on(MatrixEventEvent.Decrypted as never, onDecrypted as never);
     return () => {
-        matrixClient?.off(RoomEvent.Timeline, onTimeline as never);
+        offTimeline();
         matrixClient?.off(
             MatrixEventEvent.Decrypted as never,
             onDecrypted as never,
@@ -10126,16 +11082,25 @@ export function onPollEvent(
     callback: (event: MatrixEvent, room: Room) => void,
 ): () => void {
     if (!matrixClient) return () => {};
-    const handler = (event: MatrixEvent, room: Room | undefined) => {
+    // Zami: classifies the event once for every subscriber (clientTimeline).
+    const handler = (
+        facts: TimelineFacts,
+        event: MatrixEvent,
+        room: Room | undefined,
+    ): [MatrixEvent, Room] | null => {
         if (
             room &&
-            affectsPollView(event.getType(), event.getRelation()?.rel_type)
+            affectsPollView(facts.type, event.getRelation()?.rel_type)
         ) {
-            callback(event, room);
+            return [event, room];
         }
+        return null;
     };
-    matrixClient.on(RoomEvent.Timeline, handler as never);
-    return () => matrixClient?.off(RoomEvent.Timeline, handler as never);
+    return clientTimeline(matrixClient).addClassified(
+        handler,
+        callback,
+        POLL_EVENT,
+    );
 }
 
 export function onRedactionEvent(
@@ -10147,7 +11112,11 @@ export function onRedactionEvent(
     return () => room.off(RoomEvent.Redaction as never, handler as never);
 }
 
-export function onReceiptEvent(room: Room, callback: () => void): () => void {
+// Zami: the callback gets the m.receipt event, as the SDK passes it.
+export function onReceiptEvent(
+    room: Room,
+    callback: (event?: MatrixEvent) => void,
+): () => void {
     room.on(RoomEvent.Receipt as never, callback as never);
     return () => room.off(RoomEvent.Receipt as never, callback as never);
 }
@@ -10342,13 +11311,34 @@ export function getDMPartnerId(room: Room): string {
         ?.getAccountData(EventType.Direct)
         ?.getContent() as Record<string, string[]> | undefined;
     if (direct) {
-        for (const [userId, roomIds] of Object.entries(direct)) {
-            if (Array.isArray(roomIds) && roomIds.includes(room.roomId)) {
-                return userId;
-            }
-        }
+        // Zami: a lookup in a room → user index of `m.direct` instead of a
+        // scan of the whole map: every DM row calls this on every tick, and
+        // a bridge account's `m.direct` lists thousands of rooms.
+        const userId = dmPartnersByRoom(direct).get(room.roomId);
+        if (userId !== undefined) return userId;
     }
     return room.guessDMUserId();
+}
+
+// Zami: `getDMPartnerId`'s index, rebuilt once per `m.direct` content (each
+// account-data event, or another account, brings a new object). The first
+// user listing a room wins, as the scan's `Object.entries` order did.
+let dmPartnerIndex: {
+    direct: Record<string, string[]>;
+    byRoom: Map<string, string>;
+} | null = null;
+function dmPartnersByRoom(
+    direct: Record<string, string[]>,
+): Map<string, string> {
+    if (dmPartnerIndex?.direct === direct) return dmPartnerIndex.byRoom;
+    const byRoom = new Map<string, string>();
+    for (const [userId, roomIds] of Object.entries(direct)) {
+        if (!Array.isArray(roomIds)) continue;
+        for (const roomId of roomIds)
+            if (!byRoom.has(roomId)) byRoom.set(roomId, userId);
+    }
+    dmPartnerIndex = { direct, byRoom };
+    return byRoom;
 }
 
 export interface MutualRoomInfo {
@@ -10397,10 +11387,17 @@ export interface VoiceMembership {
 export function selfHasActiveCall(): boolean {
     const me = matrixClient?.getUserId();
     if (!matrixClient || !me) return false;
+    // Zami: only rooms whose session the MatrixRTC manager already holds (every
+    // room that has had call members since it started). getRoomCallMemberships
+    // would create a session, with its room listeners, for every room asked
+    // about: thousands on a bridge account.
+    const manager = matrixClient.matrixRTC;
     return matrixClient
         .getRooms()
         .some((room) =>
-            getRoomCallMemberships(room).some((m) => m.userId === me),
+            manager
+                .getActiveRoomSession(room)
+                ?.memberships.some((m) => !m.isExpired() && m.userId === me),
         );
 }
 
@@ -10499,6 +11496,29 @@ export function getRoomCallMemberships(room: Room): VoiceMembership[] {
         }));
 }
 
+/**
+ * Zami: the rooms with a call in progress, and how many people (not devices)
+ * are in each, for the room list: every row reads its own entry instead of
+ * fetching its room's session and building a roster on each voiceTick. Reads
+ * only the sessions the MatrixRTC manager already holds (every room it has
+ * seen a call in): `getRoomSession` would create one, with three room
+ * listeners, for each room asked about.
+ */
+export function getCallParticipantCounts(): Map<string, number> {
+    const counts = new Map<string, number>();
+    if (!matrixClient) return counts;
+    const manager = matrixClient.matrixRTC;
+    for (const room of matrixClient.getRooms()) {
+        const session = manager.getActiveRoomSession(room);
+        if (!session?.memberships.length) continue;
+        const users = new Set<string>();
+        for (const m of session.memberships)
+            if (!m.isExpired()) users.add(m.userId);
+        if (users.size > 0) counts.set(room.roomId, users.size);
+    }
+    return counts;
+}
+
 /** Fold call summaries from a set of ALREADY renderable-filtered events, keyed
  *  by the anchor event that renders each call's card. Liveness comes from the
  *  room's current MatrixRTC memberships, so a finished call reads as "answered"
@@ -10530,10 +11550,29 @@ function callSummaryMap(
 
 /** Call summaries for the live timeline, keyed by anchor event id. */
 export function getCallSummaries(room: Room): Map<string, CallSummary> {
+    // Zami: call events first (callSummaryMap folds only those), so the
+    // renderable check and its settings read run on a few events, not the
+    // whole timeline.
+    const isRenderable = renderableTimelineFilter();
     return callSummaryMap(
         room,
-        liveChainEvents(room).filter(isRenderableTimelineEvent),
+        liveChainEvents(room).filter(
+            (e) => isCallEventType(e.getType()) && isRenderable(e),
+        ),
     );
+}
+
+/**
+ * Zami: fires when a call event (a ring, a join or a leave) reaches one of
+ * `room`'s timelines, so an open room re-folds its call summaries then rather
+ * than on every timeline write in any room.
+ */
+export function onCallEvent(room: Room, callback: () => void): () => void {
+    const handler = (event: MatrixEvent) => {
+        if (isCallEventType(event.getType())) callback();
+    };
+    room.on(RoomEvent.Timeline as never, handler as never);
+    return () => room.off(RoomEvent.Timeline as never, handler as never);
 }
 
 /** Call summaries for a jump-to-message context window, keyed by anchor event
@@ -10542,9 +11581,12 @@ export function getContextCallSummaries(
     room: Room,
     window: TimelineWindow,
 ): Map<string, CallSummary> {
+    const isRenderable = renderableTimelineFilter();
     return callSummaryMap(
         room,
-        window.getEvents().filter(isRenderableTimelineEvent),
+        window
+            .getEvents()
+            .filter((e) => isCallEventType(e.getType()) && isRenderable(e)),
     );
 }
 
@@ -10593,8 +11635,13 @@ export function onVoiceSessionsChanged(cb: () => void): () => void {
     // post-sync), and a call already in progress when a subscriber arrives may
     // have emitted `session_started` before that subscriber's phase. Idempotent
     // via the subscribedVoiceSessions WeakSet, so per-subscribe is cheap.
+    // Zami: only the sessions the manager already holds. A room with a call has
+    // one (the manager creates it on start or on the first call event), and a
+    // later call arrives as `session_started`; getRoomSession would create and
+    // keep a session, with three room listeners, for every room.
     for (const room of matrixClient.getRooms()) {
-        watchVoiceSession(manager.getRoomSession(room) as never);
+        const session = manager.getActiveRoomSession(room);
+        if (session) watchVoiceSession(session as never);
     }
     return () => {
         voiceSessionSubscribers.delete(cb);

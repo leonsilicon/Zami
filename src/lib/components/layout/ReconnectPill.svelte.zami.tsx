@@ -12,9 +12,18 @@ interface Props {
 export default function ReconnectPill({ syncState }: Props) {
     const insets = useSafeAreaInsets();
 
-    const status = syncStateLabel(syncState);
+    // Zami: auth.syncState starts as "STOPPED" and stays so until the client
+    // reports its first state, which comes after the saved sync is replayed.
+    // The replay no longer blocks the screen, so the pill can show during it:
+    // that's "Connecting…", not "Offline".
+    const [started, setStarted] = useState(syncState !== "STOPPED");
+    useEffect(() => {
+        if (syncState !== "STOPPED") setStarted(true);
+    }, [syncState]);
+    const shownState = started ? syncState : null;
+    const status = syncStateLabel(shownState);
     const disconnected = status.tone !== "ok";
-    const offline = syncState === "STOPPED";
+    const offline = shownState === "STOPPED";
 
     // Debounce: only surface the pill once a disconnect has PERSISTED, so a
     // brief transient RECONNECTING/CATCHUP blip (normal on any sync) never

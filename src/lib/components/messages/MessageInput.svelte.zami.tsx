@@ -9,7 +9,9 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
 import {
+    memo,
     useCallback,
+    useDeferredValue,
     useEffect,
     useEffectEvent,
     useImperativeHandle,
@@ -17,6 +19,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type ReactNode,
     type Ref,
     type RefObject,
 } from "react";
@@ -31,6 +34,7 @@ import {
     useWindowDimensions,
     type HostInstance,
     type TextInputInstance,
+    type TextInputProps,
 } from "react-native";
 import { useKeyboardState } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -49,9 +53,15 @@ import {
     useInputKeys,
 } from "@-/com.leonsilicon.zami.browser";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    createValueStore,
+    MemberIndex,
+    useValueStore,
+    type ValueStore,
+} from "@-/com.leonsilicon.zami.timeline";
 import { t } from "$lib/i18n";
 import { keybindsState, pickerForKey } from "$lib/stores/keybinds.svelte";
-import type { MatrixEvent, Room } from "matrix-js-sdk";
+import type { MatrixEvent, Room, RoomMember } from "matrix-js-sdk";
 import {
     sendTextMessage,
     sendFormattedMessage,
@@ -190,7 +200,7 @@ import {
 } from "$lib/stores/toasts.svelte";
 import { offerFile } from "$lib/matrix/fileTransfer";
 import { isFileTooLargeError } from "$lib/utils/uploadLimits";
-import { discardRoomSession } from "$lib/matrix/crypto";
+import { discardRoomSession, prepareToSend } from "$lib/matrix/crypto";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import {
     Loader2,
@@ -440,6 +450,228 @@ function QueuedVideoPreview({
     );
 }
 
+// Zami: what keeps typing from re-rendering this whole component (B5).
+// The draft lives in a value store that only the editor (ComposerEditor)
+// reads as it changes, and each suggestion list's query in one only that list
+// (SuggestionsView) reads; the composer re-renders only when the draft turns
+// empty or not, or a list opens or closes.
+
+/** Zami: `useCallback` for callbacks whose closures change every render: one
+ *  identity, always calling the latest, so the memo'd editor skips renders. */
+function useStableCallback<A extends unknown[], R>(
+    fn: (...args: A) => R,
+): (...args: A) => R {
+    const latest = useRef(fn);
+    useLayoutEffect(() => {
+        latest.current = fn;
+    });
+    return useCallback((...args: A) => latest.current(...args), []);
+}
+
+/** Zami: an autocomplete list's query (null: closed) and highlighted row. */
+interface SuggestionState {
+    query: string | null;
+    selected: number;
+}
+const SUGGESTIONS_CLOSED: SuggestionState = { query: null, selected: 0 };
+
+/** Zami: an autocomplete list (see useSuggestions). */
+interface Suggestions<C> {
+    store: ValueStore<SuggestionState>;
+    /** A query's candidates, remembered for the latest query. */
+    candidatesOf: (query: string | null) => C[];
+    /** Whether the list shows (for rendering). */
+    open: boolean;
+    query: () => string | null;
+    setQuery: (query: string | null) => void;
+    /** Whether the list shows now (for handlers). */
+    isOpen: () => boolean;
+    candidates: () => C[];
+    selectedIndex: () => number;
+    setSelected: (index: number) => void;
+    /** Move the highlight, wrapping around. */
+    move: (by: number) => void;
+}
+
+/**
+ * Zami: an autocomplete list held outside React state, so typing its query
+ * re-renders only the list, not the composer. `of` turns a query into the
+ * list's candidates. As upstream, a highlighted row past the end of a list
+ * that shrank is the first.
+ */
+function useSuggestions<C>(of: (query: string) => C[]): Suggestions<C> {
+    const [store] = useState(() => createValueStore(SUGGESTIONS_CLOSED));
+    const memo = useRef<{
+        of: (query: string) => C[];
+        query: string;
+        candidates: C[];
+    } | null>(null);
+    const candidatesOf = useCallback(
+        (query: string | null): C[] => {
+            if (query === null) return [];
+            const last = memo.current;
+            if (last && last.of === of && last.query === query)
+                return last.candidates;
+            const candidates = of(query);
+            memo.current = { of, query, candidates };
+            return candidates;
+        },
+        [of],
+    );
+    const open = useValueStore(
+        store,
+        useCallback(
+            (state: SuggestionState) => candidatesOf(state.query).length > 0,
+            [candidatesOf],
+        ),
+    );
+    return useMemo(() => {
+        const candidates = () => candidatesOf(store.get().query);
+        const selectedIndex = () => {
+            const { selected } = store.get();
+            return selected < candidates().length ? selected : 0;
+        };
+        return {
+            store,
+            candidatesOf,
+            open,
+            query: () => store.get().query,
+            setQuery: (query) => {
+                const state = store.get();
+                if (state.query === query) return;
+                // As upstream's clamp: a list that shrank past the
+                // highlighted row starts over at the first.
+                const selected =
+                    state.selected < candidatesOf(query).length
+                        ? state.selected
+                        : 0;
+                store.set({ query, selected });
+            },
+            isOpen: () => candidates().length > 0,
+            candidates,
+            selectedIndex,
+            setSelected: (selected) => {
+                const state = store.get();
+                if (state.selected !== selected)
+                    store.set({ query: state.query, selected });
+            },
+            move: (by) => {
+                const n = candidates().length;
+                if (n === 0) return;
+                const selected = (selectedIndex() + by + n) % n;
+                store.set({ query: store.get().query, selected });
+            },
+        };
+    }, [store, candidatesOf, open]);
+}
+
+const sameSuggestionState = (a: SuggestionState, b: SuggestionState) =>
+    a.query === b.query && a.selected === b.selected;
+const wholeState = (state: SuggestionState) => state;
+
+/**
+ * Zami: a suggestion list as its query changes (upstream's `{#if query !==
+ * null && candidates.length > 0}` around it). A new query's candidates are
+ * worked out at a lower priority than the typing (useDeferredValue); a closed
+ * list hides at once.
+ */
+function SuggestionsView<C>({
+    suggestions,
+    children,
+}: {
+    suggestions: Suggestions<C>;
+    children: (candidates: C[], selectedIdx: number) => ReactNode;
+}) {
+    const state = useValueStore(
+        suggestions.store,
+        wholeState,
+        sameSuggestionState,
+    );
+    const deferred = useDeferredValue(state.query);
+    const query = state.query === null ? null : (deferred ?? state.query);
+    const candidates = suggestions.candidatesOf(query);
+    if (candidates.length === 0) return null;
+    return (
+        <>
+            {children(
+                candidates,
+                state.selected < candidates.length ? state.selected : 0,
+            )}
+        </>
+    );
+}
+
+const wholeText = (text: string) => text;
+
+/**
+ * Zami: the composer's TextInput and its decorated text (composerRuns, from
+ * `decorate`): the only part of the composer that re-renders per keystroke.
+ * Memo'd: the composer passes stable callbacks. A member's name changing
+ * (roomsTick) can change which `@words` are mentions.
+ */
+const ComposerEditor = memo(function ComposerEditor({
+    textStore,
+    decorate,
+    ref,
+    ...input
+}: Omit<TextInputProps, "children"> & {
+    textStore: ValueStore<string>;
+    decorate: (plain: string) => string;
+    ref: Ref<TextInputInstance>;
+}) {
+    const text = useValueStore(textStore, wholeText);
+    const roomsTick = useRune(() => roomsState.roomsTick);
+    const runs = useMemo(
+        () => (void roomsTick, composerRuns(decorate(text), text)),
+        [text, decorate, roomsTick],
+    );
+    return (
+        <TextInput ref={ref} {...input}>
+            {text !== "" ? (
+                <Text>
+                    {runs.map((run, i) =>
+                        run.marks.length === 0 ? (
+                            run.text
+                        ) : (
+                            <Text
+                                key={i}
+                                className={run.marks
+                                    .map((mark) => DECORATIONS[mark] ?? "")
+                                    .join(" ")}
+                                style={
+                                    run.marks.includes("code")
+                                        ? styles.mono
+                                        : undefined
+                                }
+                            >
+                                {run.text}
+                            </Text>
+                        ),
+                    )}
+                </Text>
+            ) : null}
+        </TextInput>
+    );
+});
+
+/** Zami: whether two lists of custom emotes are the same emotes. */
+function sameCustomEmojis(a: CustomEmoji[], b: CustomEmoji[]): boolean {
+    return (
+        a.length === b.length &&
+        a.every(
+            (e, i) =>
+                e.shortcode === b[i].shortcode &&
+                e.mxcUrl === b[i].mxcUrl &&
+                e.url === b[i].url &&
+                e.source === b[i].source &&
+                e.body === b[i].body,
+        )
+    );
+}
+
+const isEmptyText = (text: string) => text === "";
+const isBlankText = (text: string) => text.trim().length === 0;
+
 export default function MessageInput({
     roomId,
     roomName,
@@ -463,7 +695,8 @@ export default function MessageInput({
     // Zami: whether the user types on a hardware keyboard, whose Enter sends.
     const hardwareKeyboard = useHardwareKeyboard();
     const spellCheckEnabled = useRune(() => settingsState.spellCheckEnabled);
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // Zami: read where it's used (the reply target's name, the editor's
+    // mentions), so a sync doesn't re-render the whole composer.
     const windowSize = useWindowDimensions();
     const insets = useSafeAreaInsets();
 
@@ -501,7 +734,20 @@ export default function MessageInput({
         });
     }
 
-    const [text, setText, textRef] = useLiveState("");
+    // Zami: the draft, outside React state (see ComposerEditor): this
+    // component reads only whether it's empty or blank.
+    const [textStore] = useState(() => createValueStore(""));
+    const textRef = useMemo(
+        () => ({
+            get current() {
+                return textStore.get();
+            },
+        }),
+        [textStore],
+    );
+    const setText = textStore.set;
+    const textEmpty = useValueStore(textStore, isEmptyText);
+    const textBlank = useValueStore(textStore, isBlankText);
     const [isSending, setIsSending, isSendingRef] = useLiveState(false);
     // In-flight attachment send, scoped to the room the send targeted so a
     // room switch mid-upload doesn't show room A's "sending" note in room B.
@@ -698,11 +944,9 @@ export default function MessageInput({
     const lastTypingSentAt = useRef(0);
 
     // Mention autocomplete
-    const [mentionQuery, setMentionQuery, mentionQueryRef] = useLiveState<
-        string | null
-    >(null); // null = picker closed
+    // Zami: its query (null = picker closed) and highlighted row are the
+    // `mention` suggestions below (useSuggestions).
     const mentionStart = useRef(0); // index of the @ in `text`
-    const [mentionSelectedIdx, setMentionSelectedIdx] = useState(0);
     // Map of displayName → userId for mentions inserted in the current message
     const [pendingMentions, setPendingMentions, pendingMentionsRef] =
         useLiveState(new Map<string, string>());
@@ -712,34 +956,52 @@ export default function MessageInput({
     // ghost or quiet member is missing from @-autocomplete until we ask the SDK
     // to load the rest. Idempotent: loadMembersIfNeeded no-ops once loaded.
     const [memberTick, setMemberTick] = useState(0);
+
+    // Zami: the room's members with their ids and names lowercased once, for
+    // the mention search and for deciding which `@words` are mentions: each
+    // lowercased every member per keystroke (and per `@word`). Rebuilt when
+    // the members may have changed (a sync, the full list loaded).
+    const memberIndexCache = useRef<{
+        room: Room;
+        key: string;
+        index: MemberIndex<RoomMember>;
+    } | null>(null);
+    const memberTickRef = useRef(memberTick);
+    useLayoutEffect(() => {
+        memberTickRef.current = memberTick;
+    });
+    function memberIndexOf(r: Room): MemberIndex<RoomMember> {
+        const key = `${roomsState.roomsTick}:${memberTickRef.current}`;
+        const cached = memberIndexCache.current;
+        if (cached && cached.room === r && cached.key === key)
+            return cached.index;
+        const index = new MemberIndex(getRoomMembers(r));
+        memberIndexCache.current = { room: r, key, index };
+        return index;
+    }
+
+    const mention = useSuggestions(
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- memberTick re-reads the members.
+        useCallback(
+            (query: string) =>
+                room
+                    ? memberIndexOf(room).search(query, getOwnUserId(), 8)
+                    : [],
+            [memberTick, room],
+        ),
+    );
+    // Zami: once when the picker opens, not per keystroke of its query.
+    const mentionActive = useValueStore(
+        mention.store,
+        (state) => state.query !== null,
+    );
     useEffect(() => {
-        if (mentionQuery === null || !room) return;
+        if (!mentionActive || !room) return;
         const r = room;
         loadRoomMembersIfNeeded(r)
             .then(() => setMemberTick((n) => n + 1))
             .catch(() => {});
-    }, [mentionQuery, room]);
-
-    const mentionCandidates = useMemo(() => {
-        void memberTick;
-        if (mentionQuery === null || !room) return [];
-        const q = mentionQuery.toLowerCase();
-        const ownId = getOwnUserId();
-        return getRoomMembers(room)
-            .filter((m) => m.userId !== ownId)
-            .filter(
-                (m) =>
-                    m.userId.toLowerCase().includes(q) ||
-                    (m.rawDisplayName ?? "").toLowerCase().includes(q),
-            )
-            .slice(0, 8);
-    }, [memberTick, mentionQuery, room]);
-
-    useEffect(() => {
-        // Clamp selection when candidate list changes
-        if (mentionSelectedIdx >= mentionCandidates.length)
-            setMentionSelectedIdx(0);
-    }, [mentionSelectedIdx, mentionCandidates.length]);
+    }, [mentionActive, room]);
 
     // Zami: getComposerText() is onChangeText's text (see syncFromEditor).
 
@@ -764,10 +1026,10 @@ export default function MessageInput({
         const before = textRef.current.slice(0, pos);
         const match = before.match(/@(\S*)$/);
         if (match) {
-            setMentionQuery(match[1]);
+            mention.setQuery(match[1]);
             mentionStart.current = pos - match[0].length;
         } else {
-            setMentionQuery(null);
+            mention.setQuery(null);
         }
     }
 
@@ -782,12 +1044,9 @@ export default function MessageInput({
         const { room } = live.current;
         const name = member.rawDisplayName?.trim();
         if (name && room) {
-            const sharing = getRoomMembers(room).filter(
-                (m) =>
-                    (m.rawDisplayName ?? "").trim().toLowerCase() ===
-                    name.toLowerCase(),
-            );
-            if (sharing.length <= 1) return name;
+            // Zami: counted in the member index.
+            const sharing = memberIndexOf(room).countSharingName(name);
+            if (sharing <= 1) return name;
         } else if (name) {
             return name;
         }
@@ -806,7 +1065,7 @@ export default function MessageInput({
         const inserted = insertMention({
             text: textRef.current,
             mentionStart: mentionStart.current,
-            queryLength: mentionQueryRef.current?.length ?? 0,
+            queryLength: mention.query()?.length ?? 0,
             label,
         });
         setText(inserted.text);
@@ -818,37 +1077,33 @@ export default function MessageInput({
                 ["@" + label, member.userId],
             ]),
         );
-        setMentionQuery(null);
+        mention.setQuery(null);
         renderComposer(inserted.caret);
         textareaEl.current?.focus();
     }
 
     // Emoji autocomplete
-    const [emojiQuery, setEmojiQuery, emojiQueryRef] = useLiveState<
-        string | null
-    >(null);
+    // Zami: its query and highlighted row are the `emoji` suggestions.
     const emojiStart = useRef(0);
-    const [emojiSelectedIdx, setEmojiSelectedIdx] = useState(0);
 
+    // Zami: a new list each read; the same emotes render (and decorate) the
+    // same, so only a change re-renders the composer.
     const customEmojis = useRune(
         () => getCustomEmojis(room, roomsState.activeSpaceId),
         [room],
+        { isEqual: sameCustomEmojis },
     );
-    const emojiCandidates = useMemo(
-        (): EmojiCandidate[] =>
-            emojiQuery === null
-                ? []
-                : rankEmojiCandidates(emojiQuery, customEmojis),
-        [emojiQuery, customEmojis],
+    const emoji = useSuggestions(
+        useCallback(
+            (query: string): EmojiCandidate[] =>
+                rankEmojiCandidates(query, customEmojis),
+            [customEmojis],
+        ),
     );
-
-    useEffect(() => {
-        if (emojiSelectedIdx >= emojiCandidates.length) setEmojiSelectedIdx(0);
-    }, [emojiSelectedIdx, emojiCandidates.length]);
 
     // Slash-command autocomplete
-    const [slashQuery, setSlashQuery] = useState<string | null>(null); // null = popup closed
-    const [slashSelectedIdx, setSlashSelectedIdx] = useState(0);
+    // Zami: its query (null = popup closed) and highlighted row are the
+    // `slash` suggestions below.
 
     // Plugin-contributed slash commands, adapted to SlashCommand and re-derived
     // whenever the registry mutates (enable/disable). void the tick so the
@@ -871,24 +1126,17 @@ export default function MessageInput({
     // Zami: each plugin button's view, which its onClick gets as its anchor.
     const pluginButtonEls = useRef(new Map<number, HostInstance>());
 
-    const slashCandidates = useMemo(
-        (): SlashCommand[] =>
-            slashQuery === null
-                ? []
-                : matchSlashCommands(slashQuery, pluginSlashCommands),
-        [slashQuery, pluginSlashCommands],
+    const slash = useSuggestions(
+        useCallback(
+            (query: string): SlashCommand[] =>
+                matchSlashCommands(query, pluginSlashCommands),
+            [pluginSlashCommands],
+        ),
     );
-
-    useEffect(() => {
-        if (slashSelectedIdx >= slashCandidates.length) setSlashSelectedIdx(0);
-    }, [slashSelectedIdx, slashCandidates.length]);
 
     // True while any suggestion list (mention/emoji/slash) is actually showing.
     // Bound out so the parent hides the "jump to present" pill under it.
-    const anyAutocompleteOpen =
-        (mentionQuery !== null && mentionCandidates.length > 0) ||
-        (emojiQuery !== null && emojiCandidates.length > 0) ||
-        (slashQuery !== null && slashCandidates.length > 0);
+    const anyAutocompleteOpen = mention.open || emoji.open || slash.open;
     useEffect(() => {
         if (autocompleteOpen !== anyAutocompleteOpen)
             onAutocompleteOpenChange?.(anyAutocompleteOpen);
@@ -900,27 +1148,27 @@ export default function MessageInput({
         // command name, no space yet) and nothing is queued — never for a
         // mid-message slash or a pending caption.
         if (getFileQueue(live.current.effComposerKey).length > 0) {
-            setSlashQuery(null);
+            slash.setQuery(null);
             return;
         }
         const match = textRef.current.match(/^\/(\w*)$/);
-        setSlashQuery(match ? match[1] : null);
+        slash.setQuery(match ? match[1] : null);
     }
 
     function commitSlashCommand(command: SlashCommand) {
         setComposerText(`/${command.name} `);
-        setSlashQuery(null);
+        slash.setQuery(null);
         textareaEl.current?.focus();
     }
 
     function detectEmojiQuery() {
         const q = findEmojiQuery(textRef.current, getCaretOffset());
-        setEmojiQuery(q?.query ?? null);
+        emoji.setQuery(q?.query ?? null);
         emojiStart.current = q?.start ?? 0;
     }
 
     function commitEmoji(candidate: EmojiCandidate) {
-        const query = emojiQueryRef.current;
+        const query = emoji.query();
         if (query === null) return;
         const next = applyEmojiCandidate(
             textRef.current,
@@ -930,7 +1178,7 @@ export default function MessageInput({
         setText(next.text);
         renderComposer(next.caret);
         textareaEl.current?.focus();
-        setEmojiQuery(null);
+        emoji.setQuery(null);
     }
 
     // Subscribe to typing events for the current room
@@ -1032,9 +1280,7 @@ export default function MessageInput({
     // Mirrors the send button's own disabled condition so the button can go
     // accent-coloured the moment the message becomes sendable.
     const canSend =
-        (text.trim().length > 0 || fileQueue.length > 0) &&
-        !isSending &&
-        !disabled;
+        (!textBlank || fileQueue.length > 0) && !isSending && !disabled;
     const textareaFocusedBeforePicker = useRef(false);
 
     // Track keyboard height on mobile so pickers stay above it
@@ -1071,12 +1317,13 @@ export default function MessageInput({
     // roomsTick so a late member load / display-name change re-resolves the
     // name — a live Room mutation in place won't otherwise re-run this and
     // the preview would be stuck on the raw @mxid.
-    const replyTargetName = useMemo(() => {
-        void roomsTick;
+    // Zami: a rune read, so only a change of the name re-renders.
+    const replyTargetName = useRune(() => {
+        void roomsState.roomsTick;
         if (!replyToEvent) return null;
         const sender = replyToEvent.getSender() ?? "";
         return room ? getMemberName(room, sender) : sender;
-    }, [roomsTick, replyToEvent, room]);
+    }, [replyToEvent, room]);
     const composerPlaceholder = noSendPermission
         ? t("messageInput.noPermissionToSend")
         : disabled
@@ -1112,14 +1359,10 @@ export default function MessageInput({
         if (!token.startsWith("@") || token.length < 2) return false;
         // Keys include the leading "@" (e.g. "@alice" or "@alice:hs").
         if (pendingMentions.has(token)) return true;
-        const name = token.slice(1).replace(/[.,!?;:]$/, "");
         if (!room) return false;
-        return getRoomMembers(room).some(
-            (m) =>
-                m.userId === token ||
-                m.userId.toLowerCase().includes(name.toLowerCase()) ||
-                (m.rawDisplayName ?? "").toLowerCase() === name.toLowerCase(),
-        );
+        // Zami: the member index's match (as upstream's scan), remembered per
+        // token.
+        return memberIndexOf(room).matchesToken(token);
     }
 
     function decorateInline(plain: string): string {
@@ -1134,11 +1377,12 @@ export default function MessageInput({
     }
 
     // Zami: renderComposer's redraw (`innerHTML = decorateInline(text)`) is the
-    // TextInput's children, derived from the model on every render.
-    const runs = useMemo(
-        () => composerRuns(decorateInline(text), text),
+    // TextInput's children, derived from the model on every render (by
+    // ComposerEditor, which re-renders on its own as the draft changes).
+    const decorate = useCallback(
+        (plain: string) => decorateInline(plain),
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- decorateInline reads these.
-        [text, customEmojis, pendingMentions, room, memberTick, roomsTick],
+        [customEmojis, pendingMentions, room, memberTick],
     );
 
     // Zami: what's left of renderComposer is placing the caret, once the text
@@ -1319,8 +1563,8 @@ export default function MessageInput({
             try {
                 await command.pluginRun({ roomId, arg });
                 setText("");
-                setSlashQuery(null);
-                setMentionQuery(null);
+                slash.setQuery(null);
+                mention.setQuery(null);
                 setPendingMentions(new Map());
                 clearDraft(live.current.effComposerKey);
                 renderComposer(0);
@@ -1343,8 +1587,8 @@ export default function MessageInput({
             try {
                 await runSlashAction(command, arg);
                 setText("");
-                setSlashQuery(null);
-                setMentionQuery(null);
+                slash.setQuery(null);
+                mention.setQuery(null);
                 setPendingMentions(new Map());
                 clearDraft(live.current.effComposerKey);
                 renderComposer(0);
@@ -1363,7 +1607,7 @@ export default function MessageInput({
         // "/poll" text out of the composer first.
         if (command.kind === "dialog") {
             setText("");
-            setSlashQuery(null);
+            slash.setQuery(null);
             clearDraft(effComposerKey);
             renderComposer(0);
             if (command.name === "poll") openCreatePollDialog(roomId);
@@ -1401,9 +1645,9 @@ export default function MessageInput({
 
         setIsSending(true);
         setText("");
-        setMentionQuery(null);
-        setEmojiQuery(null);
-        setSlashQuery(null);
+        mention.setQuery(null);
+        emoji.setQuery(null);
+        slash.setQuery(null);
         setPendingMentions(new Map());
         clearDraft(effComposerKey);
         renderComposer(0);
@@ -1527,8 +1771,8 @@ export default function MessageInput({
         )
             return;
         setText("");
-        setMentionQuery(null);
-        setEmojiQuery(null);
+        mention.setQuery(null);
+        emoji.setQuery(null);
         setPendingMentions(new Map());
         renderComposer(0);
     }
@@ -1986,22 +2230,18 @@ export default function MessageInput({
         }
 
         // Slash-command picker navigation
-        if (slashQuery !== null && slashCandidates.length > 0) {
+        // Zami: the lists' state is read from their stores (useSuggestions).
+        if (slash.isOpen()) {
             if (e.key === "ArrowUp") {
                 e.preventDefault();
                 holdCaret();
-                setSlashSelectedIdx(
-                    (slashSelectedIdx - 1 + slashCandidates.length) %
-                        slashCandidates.length,
-                );
+                slash.move(-1);
                 return;
             }
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 holdCaret();
-                setSlashSelectedIdx(
-                    (slashSelectedIdx + 1) % slashCandidates.length,
-                );
+                slash.move(1);
                 return;
             }
             if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
@@ -2012,28 +2252,23 @@ export default function MessageInput({
                 return;
             }
             if (e.key === "Escape") {
-                setSlashQuery(null);
+                slash.setQuery(null);
                 return;
             }
         }
 
         // Mention picker navigation
-        if (mentionQuery !== null && mentionCandidates.length > 0) {
+        if (mention.isOpen()) {
             if (e.key === "ArrowUp") {
                 e.preventDefault();
                 holdCaret();
-                setMentionSelectedIdx(
-                    (mentionSelectedIdx - 1 + mentionCandidates.length) %
-                        mentionCandidates.length,
-                );
+                mention.move(-1);
                 return;
             }
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 holdCaret();
-                setMentionSelectedIdx(
-                    (mentionSelectedIdx + 1) % mentionCandidates.length,
-                );
+                mention.move(1);
                 return;
             }
             if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
@@ -2044,28 +2279,23 @@ export default function MessageInput({
                 return;
             }
             if (e.key === "Escape") {
-                setMentionQuery(null);
+                mention.setQuery(null);
                 return;
             }
         }
 
         // Emoji picker navigation
-        if (emojiQuery !== null && emojiCandidates.length > 0) {
+        if (emoji.isOpen()) {
             if (e.key === "ArrowUp") {
                 e.preventDefault();
                 holdCaret();
-                setEmojiSelectedIdx(
-                    (emojiSelectedIdx - 1 + emojiCandidates.length) %
-                        emojiCandidates.length,
-                );
+                emoji.move(-1);
                 return;
             }
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 holdCaret();
-                setEmojiSelectedIdx(
-                    (emojiSelectedIdx + 1) % emojiCandidates.length,
-                );
+                emoji.move(1);
                 return;
             }
             if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
@@ -2076,7 +2306,7 @@ export default function MessageInput({
                 return;
             }
             if (e.key === "Escape") {
-                setEmojiQuery(null);
+                emoji.setQuery(null);
                 return;
             }
         }
@@ -2097,7 +2327,7 @@ export default function MessageInput({
         // centrally in AppShell.
         if (
             e.key === "ArrowUp" &&
-            !text &&
+            !textRef.current &&
             !e.altKey &&
             !e.ctrlKey &&
             !e.metaKey &&
@@ -2114,20 +2344,20 @@ export default function MessageInput({
     /** The suggestion lists' Enter/Tab: pick the highlighted entry. */
     function pickSuggestion(): boolean {
         // Slash-command picker navigation
-        if (slashQuery !== null && slashCandidates.length > 0) {
-            const command = slashCandidates[slashSelectedIdx];
+        if (slash.isOpen()) {
+            const command = slash.candidates()[slash.selectedIndex()];
             if (command) commitSlashCommand(command);
             return true;
         }
         // Mention picker navigation
-        if (mentionQuery !== null && mentionCandidates.length > 0) {
-            const member = mentionCandidates[mentionSelectedIdx];
+        if (mention.isOpen()) {
+            const member = mention.candidates()[mention.selectedIndex()];
             if (member) commitMention(member);
             return true;
         }
         // Emoji picker navigation
-        if (emojiQuery !== null && emojiCandidates.length > 0) {
-            const candidate = emojiCandidates[emojiSelectedIdx];
+        if (emoji.isOpen()) {
+            const candidate = emoji.candidates()[emoji.selectedIndex()];
             if (candidate) commitEmoji(candidate);
             return true;
         }
@@ -2159,16 +2389,16 @@ export default function MessageInput({
     }
 
     function onEscape() {
-        if (slashQuery !== null && slashCandidates.length > 0) {
-            setSlashQuery(null);
+        if (slash.isOpen()) {
+            slash.setQuery(null);
             return;
         }
-        if (mentionQuery !== null && mentionCandidates.length > 0) {
-            setMentionQuery(null);
+        if (mention.isOpen()) {
+            mention.setQuery(null);
             return;
         }
-        if (emojiQuery !== null && emojiCandidates.length > 0) {
-            setEmojiQuery(null);
+        if (emoji.isOpen()) {
+            emoji.setQuery(null);
             return;
         }
         // Picker dismissal is handled centrally (+page Escape/back). Here we
@@ -2354,6 +2584,13 @@ export default function MessageInput({
             if (now - lastTypingSentAt.current >= 20_000) {
                 lastTypingSentAt.current = now;
                 sendTyping(room.roomId, true);
+                // Zami: share the room key while the user writes (Element's
+                // prepareToEncrypt), so sending in a large encrypted room
+                // doesn't do it inside sendMessage. Throttled per room.
+                void prepareToSend(room.roomId, {
+                    delayMs: 0,
+                    composing: true,
+                });
             }
             // Idle-stop timer (UX): stop showing typing ~5s after the user
             // pauses. Separate from the wire timeout above.
@@ -2414,6 +2651,16 @@ export default function MessageInput({
     const paddingBottom =
         (windowSize.width >= 768 ? 8 : 16) +
         (keyboardHeight > 0 ? 0 : insets.bottom);
+
+    // Zami: the editor's handlers, stable so it re-renders only for the text.
+    const onChangeText = useStableCallback(syncFromEditor);
+    const onEditorSelectionChange = useStableCallback(
+        (e: { nativeEvent: { selection: { start: number; end: number } } }) =>
+            onSelectionChange(e.nativeEvent.selection),
+    );
+    const onEditorSubmitEditing = useStableCallback(onSubmitEditing);
+    const onEditorFocus = useCallback(() => setFocused(true), []);
+    const onEditorBlur = useCallback(() => setFocused(false), []);
 
     // Zami: both of upstream's "+" menus (touch and desktop) take these props.
     function renderComposerActionsMenu() {
@@ -2636,100 +2883,110 @@ export default function MessageInput({
                 />
             )}
             {/* Emoji autocomplete picker */}
-            {emojiQuery !== null && emojiCandidates.length > 0 && (
-                <EmojiSuggestions
-                    class="mb-1"
-                    candidates={emojiCandidates}
-                    selectedIdx={emojiSelectedIdx}
-                    onSelectedIdxChange={setEmojiSelectedIdx}
-                    onPick={commitEmoji}
-                />
-            )}
+            {/* Zami: each list re-renders on its own as its query changes
+                (SuggestionsView). */}
+            <SuggestionsView suggestions={emoji}>
+                {(emojiCandidates, emojiSelectedIdx) => (
+                    <EmojiSuggestions
+                        class="mb-1"
+                        candidates={emojiCandidates}
+                        selectedIdx={emojiSelectedIdx}
+                        onSelectedIdxChange={emoji.setSelected}
+                        onPick={commitEmoji}
+                    />
+                )}
+            </SuggestionsView>
 
             {/* Mention autocomplete picker */}
-            {mentionQuery !== null && mentionCandidates.length > 0 && (
-                <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
-                    {mentionCandidates.map((member, i) => (
-                        <Pressable
-                            // Upstream's `{#each}` is unkeyed: by index.
-                            key={i}
-                            accessibilityRole="button"
-                            // Zami: `onpointerdown` → `onPressIn`, committing
-                            // before the press ends as upstream does. Not
-                            // ported: suppressNextClick(), since React Native
-                            // retargets no trailing click.
-                            onPressIn={() => commitMention(member)}
-                            onHoverIn={() => setMentionSelectedIdx(i)}
-                            className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
-                                i === mentionSelectedIdx
-                                    ? "bg-discord-messageHover"
-                                    : ""
-                            }`}
-                        >
-                            <Avatar
-                                src={getMemberAvatar(room!, member.userId)}
-                                name={member.rawDisplayName || member.userId}
-                                id={member.userId}
-                                size={24}
-                            />
-                            <Text
-                                numberOfLines={1}
-                                className="flex-shrink text-sm text-discord-textPrimary font-medium truncate"
+            <SuggestionsView suggestions={mention}>
+                {(mentionCandidates, mentionSelectedIdx) => (
+                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                        {mentionCandidates.map((member, i) => (
+                            <Pressable
+                                // Upstream's `{#each}` is unkeyed: by index.
+                                key={i}
+                                accessibilityRole="button"
+                                // Zami: `onpointerdown` → `onPressIn`, committing
+                                // before the press ends as upstream does. Not
+                                // ported: suppressNextClick(), since React Native
+                                // retargets no trailing click.
+                                onPressIn={() => commitMention(member)}
+                                onHoverIn={() => mention.setSelected(i)}
+                                className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
+                                    i === mentionSelectedIdx
+                                        ? "bg-discord-messageHover"
+                                        : ""
+                                }`}
                             >
-                                {member.rawDisplayName || member.userId}
-                            </Text>
-                            <Text
-                                numberOfLines={1}
-                                className="flex-shrink text-xs text-discord-textMuted truncate"
-                            >
-                                {member.userId}
-                            </Text>
-                        </Pressable>
-                    ))}
-                </View>
-            )}
+                                <Avatar
+                                    src={getMemberAvatar(room!, member.userId)}
+                                    name={
+                                        member.rawDisplayName || member.userId
+                                    }
+                                    id={member.userId}
+                                    size={24}
+                                />
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-shrink text-sm text-discord-textPrimary font-medium truncate"
+                                >
+                                    {member.rawDisplayName || member.userId}
+                                </Text>
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-shrink text-xs text-discord-textMuted truncate"
+                                >
+                                    {member.userId}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
+            </SuggestionsView>
 
             {/* Slash-command autocomplete picker */}
-            {slashQuery !== null && slashCandidates.length > 0 && (
-                <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
-                    {slashCandidates.map((command, i) => (
-                        <Pressable
-                            key={i}
-                            accessibilityRole="button"
-                            // See the mention picker: committed on the press's
-                            // start.
-                            onPressIn={() => commitSlashCommand(command)}
-                            onHoverIn={() => setSlashSelectedIdx(i)}
-                            className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
-                                i === slashSelectedIdx
-                                    ? "bg-discord-messageHover"
-                                    : ""
-                            }`}
-                        >
-                            <Text
-                                style={styles.mono}
-                                className="text-sm text-discord-textPrimary flex-shrink-0"
+            <SuggestionsView suggestions={slash}>
+                {(slashCandidates, slashSelectedIdx) => (
+                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                        {slashCandidates.map((command, i) => (
+                            <Pressable
+                                key={i}
+                                accessibilityRole="button"
+                                // See the mention picker: committed on the press's
+                                // start.
+                                onPressIn={() => commitSlashCommand(command)}
+                                onHoverIn={() => slash.setSelected(i)}
+                                className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
+                                    i === slashSelectedIdx
+                                        ? "bg-discord-messageHover"
+                                        : ""
+                                }`}
                             >
-                                /{command.name}
-                            </Text>
-                            {command.argHint && (
                                 <Text
                                     style={styles.mono}
-                                    className="text-xs text-discord-textMuted flex-shrink-0"
+                                    className="text-sm text-discord-textPrimary flex-shrink-0"
                                 >
-                                    {command.argHint}
+                                    /{command.name}
                                 </Text>
-                            )}
-                            <Text
-                                numberOfLines={1}
-                                className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
-                            >
-                                {command.description}
-                            </Text>
-                        </Pressable>
-                    ))}
-                </View>
-            )}
+                                {command.argHint && (
+                                    <Text
+                                        style={styles.mono}
+                                        className="text-xs text-discord-textMuted flex-shrink-0"
+                                    >
+                                        {command.argHint}
+                                    </Text>
+                                )}
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
+                                >
+                                    {command.description}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
+            </SuggestionsView>
 
             {/* Armed "create thread" banner: mirrors the reply banner pattern */}
             {createThreadArmed && !isThread && (
@@ -2861,7 +3118,7 @@ export default function MessageInput({
                             as one line that ellipsizes: a long room name must never
                             wrap and grow the composer (a TextInput's own
                             placeholder would). */}
-                        {text === "" && (
+                        {textEmpty && (
                             <View
                                 pointerEvents="none"
                                 className="absolute inset-x-0 top-0 py-[6px]"
@@ -2874,21 +3131,23 @@ export default function MessageInput({
                                 </Text>
                             </View>
                         )}
-                        <TextInput
+                        {/* Zami: the TextInput and its decorated text, which
+                            re-render on their own per keystroke. */}
+                        <ComposerEditor
                             ref={textareaEl}
+                            textStore={textStore}
+                            decorate={decorate}
                             multiline
-                            onChangeText={syncFromEditor}
-                            onSelectionChange={(e) =>
-                                onSelectionChange(e.nativeEvent.selection)
-                            }
+                            onChangeText={onChangeText}
+                            onSelectionChange={onEditorSelectionChange}
                             submitBehavior={
                                 isMobile && !hardwareKeyboard
                                     ? "newline"
                                     : "submit"
                             }
-                            onSubmitEditing={onSubmitEditing}
-                            onFocus={() => setFocused(true)}
-                            onBlur={() => setFocused(false)}
+                            onSubmitEditing={onEditorSubmitEditing}
+                            onFocus={onEditorFocus}
+                            onBlur={onEditorBlur}
                             accessibilityLabel={composerPlaceholder}
                             editable={!disabled}
                             autoCapitalize="sentences"
@@ -2901,35 +3160,7 @@ export default function MessageInput({
                             // line upstream's `leading-relaxed` gives it, as
                             // padding around the TextInput's own line.
                             className="w-full min-h-[32px] max-h-48 bg-transparent text-discord-textPrimary text-[16px] py-[6px]"
-                        >
-                            {text !== "" ? (
-                                <Text>
-                                    {runs.map((run, i) =>
-                                        run.marks.length === 0 ? (
-                                            run.text
-                                        ) : (
-                                            <Text
-                                                key={i}
-                                                className={run.marks
-                                                    .map(
-                                                        (mark) =>
-                                                            DECORATIONS[mark] ??
-                                                            "",
-                                                    )
-                                                    .join(" ")}
-                                                style={
-                                                    run.marks.includes("code")
-                                                        ? styles.mono
-                                                        : undefined
-                                                }
-                                            >
-                                                {run.text}
-                                            </Text>
-                                        ),
-                                    )}
-                                </Text>
-                            ) : null}
-                        </TextInput>
+                        />
                     </View>
 
                     {/* GIF picker button */}
@@ -3174,7 +3405,7 @@ export default function MessageInput({
                         accessibilityLabel={t("messageInput.sendMessage")}
                         onPress={() => void send()}
                         disabled={
-                            (!text.trim() && fileQueue.length === 0) ||
+                            (textBlank && fileQueue.length === 0) ||
                             isSending ||
                             disabled
                         }

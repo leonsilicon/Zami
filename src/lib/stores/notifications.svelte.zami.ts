@@ -32,26 +32,55 @@ function loadFromStorage(): Record<string, LoudNotification[]> {
     }
 }
 
-function persist(byRoom: Record<string, LoudNotification[]>): void {
-    writeScoped(STORAGE_KEY, auth.userId, JSON.stringify(byRoom));
+function persist(
+    byRoom: Record<string, LoudNotification[]>,
+    userId = auth.userId,
+): void {
+    writeScoped(STORAGE_KEY, userId, JSON.stringify(byRoom));
 }
 
-export const notificationsState = $state({
+// Zami: the map isn't a deep $state proxy (every read of it went through proxy traps, and
+// every entry became reactive): every reader reads `tick` first, and every change bumps it.
+class NotificationsState {
     // Populated by reloadNotificationsFromStorage() once auth is known —
     // module init runs before the active account is established.
-    byRoom: {} as Record<string, LoudNotification[]>,
-    tick: 0,
-});
+    byRoom = $state.raw<Record<string, LoudNotification[]>>({});
+    tick = $state(0);
+}
+export const notificationsState = new NotificationsState();
+
+// Zami: the whole map is stringified and stored once per burst of changes (a catch-up sync
+// can notify for hundreds of events), not once per notifying event, and right away when the
+// app is hidden or the account changes.
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistUserId: string | null = null;
+function flushPersist(): void {
+    if (persistTimer === null) return;
+    clearTimeout(persistTimer);
+    persistTimer = null;
+    persist(notificationsState.byRoom, persistUserId);
+}
+function schedulePersist(): void {
+    if (persistTimer !== null) return;
+    persistUserId = auth.userId;
+    persistTimer = setTimeout(flushPersist, 1000);
+}
+if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") flushPersist();
+    });
+}
 
 /** (Re)load the active account's persisted notifications. App-boot call. */
 export function reloadNotificationsFromStorage(): void {
+    flushPersist(); // Zami: the previous account's pending changes, under its own key.
     notificationsState.byRoom = loadFromStorage();
     notificationsState.tick++;
 }
 
 function bump() {
     notificationsState.tick++;
-    persist(notificationsState.byRoom);
+    schedulePersist(); // Zami: was persist(notificationsState.byRoom), per change.
 }
 
 export function markNotification(n: LoudNotification): void {

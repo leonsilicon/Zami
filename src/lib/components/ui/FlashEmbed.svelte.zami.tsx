@@ -1,5 +1,22 @@
+import { clampSize, RESIZE_STEP_PX } from "$lib/actions/resizeHandle";
+import {
+    clearSavedFlashSize,
+    readSavedFlashSize,
+    readSavedFlashVolume,
+    writeSavedFlashSize,
+    writeSavedFlashVolume,
+    type FlashSize,
+} from "$lib/utils/flashPrefs";
+import { Grip } from "lucide-svelte";
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Dimensions, Pressable, View } from "react-native";
+import {
+    Dimensions,
+    I18nManager,
+    PanResponder,
+    Pressable,
+    View,
+    useWindowDimensions,
+} from "react-native";
 import {
     FlashSandbox,
     provideRuffleWasm,
@@ -43,6 +60,11 @@ export default function FlashEmbed({ src }: Props) {
         const onmessage = async (msg: Record<string, unknown>) => {
             if (msg.type === "ready") {
                 setPort(target);
+                const volume = readSavedFlashVolume();
+                if (volume !== null)
+                    target.postMessage({ type: "volume", value: volume });
+            } else if (msg.type === "volume") {
+                writeSavedFlashVolume(msg.value);
             } else if (
                 msg.type === "wasm" &&
                 Number.isInteger(msg.id) &&
@@ -92,6 +114,73 @@ export default function FlashEmbed({ src }: Props) {
     }, [src]);
 
     const wrapperEl = useRef<ComponentRef<typeof View>>(null);
+    const viewport = useWindowDimensions();
+    const [parentWidth, setParentWidth] = useState(viewport.width);
+    const [size, setSize] = useState<FlashSize | null>(readSavedFlashSize);
+    const [dragging, setDragging] = useState(false);
+    const current = useRef({ size, parentWidth, height: viewport.height });
+    useEffect(() => {
+        current.current = { size, parentWidth, height: viewport.height };
+    });
+    const drag = useRef<{ w: number; h: number } | null>(null);
+    const pendingSize = useRef<FlashSize | null>(null);
+    const lastTap = useRef(0);
+    function resize(w: number, h: number): FlashSize {
+        const next = clampSize(w, h, {
+            minW: 240,
+            minH: 135,
+            maxW: current.current.parentWidth,
+            maxH: current.current.height * 0.9,
+        });
+        const rounded = { w: Math.round(next.w), h: Math.round(next.h) };
+        pendingSize.current = rounded;
+        setSize(rounded);
+        return rounded;
+    }
+    function resetSize() {
+        setSize(null);
+        clearSavedFlashSize();
+    }
+    // Zami: touch drag and VoiceOver steps in place of pointer capture/keys.
+    const [grip] = useState(() =>
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onPanResponderGrant: () => {
+                const c = current.current;
+                drag.current = c.size ?? {
+                    w: Math.min(c.parentWidth, 672),
+                    h: (Math.min(c.parentWidth, 672) * 9) / 16,
+                };
+                pendingSize.current = null;
+                setDragging(true);
+            },
+            onPanResponderMove: (_event, gesture) => {
+                if (drag.current)
+                    resize(
+                        drag.current.w +
+                            gesture.dx * (I18nManager.isRTL ? -1 : 1),
+                        drag.current.h + gesture.dy,
+                    );
+            },
+            onPanResponderRelease: () => {
+                if (pendingSize.current)
+                    writeSavedFlashSize(pendingSize.current);
+                else {
+                    const now = Date.now();
+                    if (now - lastTap.current < 300) resetSize();
+                    lastTap.current = now;
+                }
+                drag.current = null;
+                setDragging(false);
+            },
+            onPanResponderTerminate: () => {
+                if (pendingSize.current)
+                    writeSavedFlashSize(pendingSize.current);
+                drag.current = null;
+                setDragging(false);
+            },
+        }),
+    );
 
     useEffect(() => {
         if (!wrapperEl.current || !port) return;
@@ -121,40 +210,85 @@ export default function FlashEmbed({ src }: Props) {
 
     return (
         <View
-            ref={wrapperEl}
-            className="relative w-full max-w-sm mt-1 group/flash"
+            className="w-full mt-1"
+            onLayout={(e) => setParentWidth(e.nativeEvent.layout.width)}
         >
-            {/* No storage, network, windows or navigation: see
+            <View
+                ref={wrapperEl}
+                className={`relative w-full ${size ? "" : "max-w-2xl aspect-video"}`}
+                style={
+                    size
+                        ? {
+                              width: Math.min(size.w, parentWidth),
+                              height: Math.min(size.h, viewport.height * 0.9),
+                          }
+                        : undefined
+                }
+            >
+                {/* No storage, network, windows or navigation: see
                 @-/com.leonsilicon.zami.flash's FlashSandbox. */}
-            {navigatedAway ? (
-                <View className="w-full aspect-video rounded-lg bg-black" />
-            ) : (
-                <FlashSandbox
-                    ref={frame}
-                    onLoad={() => frameEvents.current?.load()}
-                    onMessage={(msg) => frameEvents.current?.message(msg)}
-                    // Zami: a navigation is refused before it happens, so it's
-                    // reported rather than seen as a second load.
-                    onNavigate={() => setNavigatedAway(true)}
-                    accessibilityLabel={t("swfEmbed.adobeFlash")}
-                    className="block w-full aspect-video rounded-lg overflow-hidden bg-black border-0"
-                />
-            )}
-            {port && !navigatedAway ? (
-                // Zami: touchscreens have no hover, so the button is always shown
-                // (upstream reveals it on hover: opacity-0 group-hover/flash:opacity-100).
-                <Pressable
-                    onPress={() => port?.postMessage({ type: "suspend" })}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("flashEmbed.suspend")}
-                    className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity hover:bg-black/70"
-                >
-                    <SvgIcon
-                        d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"
-                        className="w-4 h-4 text-white"
+                {navigatedAway ? (
+                    <View className="w-full h-full rounded-lg bg-black" />
+                ) : (
+                    <FlashSandbox
+                        ref={frame}
+                        onLoad={() => frameEvents.current?.load()}
+                        onMessage={(msg) => frameEvents.current?.message(msg)}
+                        // Zami: a navigation is refused before it happens, so it's
+                        // reported rather than seen as a second load.
+                        onNavigate={() => setNavigatedAway(true)}
+                        accessibilityLabel={t("swfEmbed.adobeFlash")}
+                        pointerEvents={dragging ? "none" : "auto"}
+                        className="block w-full h-full rounded-lg overflow-hidden bg-black border-0"
                     />
-                </Pressable>
-            ) : null}
+                )}
+                {port && !navigatedAway ? (
+                    // Zami: touchscreens have no hover, so the button is always shown
+                    // (upstream reveals it on hover: opacity-0 group-hover/flash:opacity-100).
+                    <Pressable
+                        onPress={() => port?.postMessage({ type: "suspend" })}
+                        accessibilityRole="button"
+                        accessibilityLabel={t("flashEmbed.suspend")}
+                        className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity hover:bg-black/70"
+                    >
+                        <SvgIcon
+                            d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"
+                            className="w-4 h-4 text-white"
+                        />
+                    </Pressable>
+                ) : null}
+                {!navigatedAway ? (
+                    <View
+                        {...grip.panHandlers}
+                        accessibilityRole="adjustable"
+                        accessibilityLabel={t("flashEmbed.resize")}
+                        accessibilityHint={t("flashEmbed.resizeHint")}
+                        accessibilityActions={[
+                            { name: "increment" },
+                            { name: "decrement" },
+                            { name: "reset", label: t("lightbox.zoomReset") },
+                        ]}
+                        onAccessibilityAction={(e) => {
+                            if (e.nativeEvent.actionName === "reset")
+                                return resetSize();
+                            const base = current.current.size ?? {
+                                w: Math.min(parentWidth, 672),
+                                h: (Math.min(parentWidth, 672) * 9) / 16,
+                            };
+                            const step =
+                                e.nativeEvent.actionName === "increment"
+                                    ? RESIZE_STEP_PX
+                                    : -RESIZE_STEP_PX;
+                            writeSavedFlashSize(
+                                resize(base.w + step, base.h + step),
+                            );
+                        }}
+                        className="absolute bottom-0 end-0 p-3 rounded-ss-md bg-black/50"
+                    >
+                        <Grip size={14} className="text-white" />
+                    </View>
+                ) : null}
+            </View>
         </View>
     );
 }

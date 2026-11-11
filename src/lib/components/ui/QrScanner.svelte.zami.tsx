@@ -3,12 +3,11 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import {
-    captureJpeg,
     FRAME_PICTURE_SIZE,
-    jpegImageData,
+    scanQrFrame,
+    type QrFrame,
 } from "@-/com.leonsilicon.zami.camera";
 import { t } from "$lib/i18n";
-import jsQR from "jsqr";
 import { toQrPayloadBytes, isMatrixQrPayload } from "$lib/utils/qrCode";
 
 interface Props {
@@ -29,11 +28,12 @@ interface Props {
 //
 // Zami: expo-camera's own scanner can't stand in for jsQR: it reports text, and a
 // Matrix code is binary (keys and a random secret), for which iOS gives no text or
-// lossy text. So frames are decoded here as upstream does, each a still the camera
-// takes (@-/com.leonsilicon.zami.camera). Taking one and decoding its JPEG in
-// Hermes take longer than this interval, so it's the wait after each frame rather
-// than the time between frames' starts: at least as long as the decoding took,
-// which leaves the thread free at least half the time.
+// lossy text. So each frame is a still the camera takes, whose codes a native
+// module reads off this thread as raw codewords that become the payload's exact
+// bytes (@-/com.leonsilicon.zami.camera's scanQrFrame; jpeg-js and jsQR on this
+// thread only in a build without that module). Taking a still takes longer than
+// this interval, so it's the wait after each frame rather than the time between
+// frames' starts: at least as long as whatever ran on this thread for the frame.
 const DECODE_INTERVAL_MS = 100;
 
 export default function QrScanner({
@@ -120,25 +120,27 @@ export default function QrScanner({
             scanning.current &&
             now - lastDecode.current >= DECODE_INTERVAL_MS
         ) {
-            // Zami: in place of drawing the video on a canvas: a still from the
-            // camera, whose JPEG is the ImageData's source.
-            let jpeg: Uint8Array | null = null;
+            // Zami: in place of drawing the video on a canvas and jsQR: a still
+            // from the camera, its codes' payloads (jsQR's `binaryData`) read
+            // natively. jsQR finds one code; of several, take one `accept` likes.
+            let scanned: QrFrame | null = null;
             try {
-                jpeg = await captureJpeg(cam);
+                scanned = await scanQrFrame(cam);
             } catch (e) {
                 // The camera wasn't ready for a picture; try the next frame.
                 console.warn("[matrix] could not capture a camera frame", e);
             }
             if (done.current) return;
-            if (jpeg) {
+            if (scanned) {
                 const decodeStart = Date.now();
-                const image = jpegImageData(jpeg);
-                const found = jsQR(image.data, image.width, image.height, {
-                    inversionAttempts: "dontInvert",
-                });
-                const payload = found
-                    ? toQrPayloadBytes(found.binaryData)
-                    : null;
+                const found = scanned.payloads.length > 0;
+                const payloads = scanned.payloads.map((code) =>
+                    toQrPayloadBytes(code),
+                );
+                const payload =
+                    payloads.find((bytes) => bytes && accept(bytes)) ??
+                    payloads[0] ??
+                    null;
                 if (payload && accept(payload) && !delivered.current) {
                     delivered.current = true;
                     // Keep the last frame: the consumer's handshake runs from
@@ -158,7 +160,7 @@ export default function QrScanner({
                     return;
                 }
                 if (found) setStatus(t("qrScanner.thatIsnTAVerificationCode"));
-                busy = Date.now() - decodeStart;
+                busy = scanned.busyMs + Date.now() - decodeStart;
             }
             lastDecode.current = Date.now();
         }

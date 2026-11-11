@@ -67,8 +67,20 @@ final class KeyPressObserver {
         "altKey": flags.contains(.alternate),
         "metaKey": flags.contains(.command),
         "repeat": isRepeat,
+        // Whether UIKit sends this press to a text field. JS learns about focus from an
+        // event that can arrive after the press, so it can't tell on its own.
+        "textInputFocused": KeyPressObserver.textInputIsFirstResponder(),
       ])
     }
+  }
+
+  /// Whether the first responder (what receives typed text) is a text input.
+  static func textInputIsFirstResponder() -> Bool {
+    FirstResponderProbe.current = nil
+    UIApplication.shared.sendAction(
+      #selector(UIResponder.zamiKeyboard_reportFirstResponder), to: nil, from: nil, for: nil)
+    defer { FirstResponderProbe.current = nil }
+    return FirstResponderProbe.current is UITextInput
   }
 
   /// The DOM `key`: the character typed, or the named key.
@@ -163,5 +175,17 @@ extension UIApplication {
     KeyPressObserver.shared.handle(event)
     // Swapped with sendEvent(_:): this calls the original.
     zamiKeyboard_sendEvent(event)
+  }
+}
+
+/// Where `zamiKeyboard_reportFirstResponder` leaves the responder that received it.
+private enum FirstResponderProbe {
+  static weak var current: UIResponder?
+}
+
+extension UIResponder {
+  /// Sent with a nil target, UIKit delivers it to the first responder.
+  @objc fileprivate func zamiKeyboard_reportFirstResponder() {
+    FirstResponderProbe.current = self
   }
 }

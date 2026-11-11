@@ -1,3 +1,4 @@
+import { X } from "lucide-svelte";
 import { Portal } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useState } from "react";
@@ -89,9 +90,10 @@ export default function IdentityChangeBanner() {
                                 accessibilityLabel={t("identityChange.dismiss")}
                                 className="flex-shrink-0"
                             >
-                                <Text className="text-discord-textMuted">
-                                    ✕
-                                </Text>
+                                <X
+                                    size={14}
+                                    className="text-discord-textMuted"
+                                />
                             </Pressable>
                         </View>
                     ))}

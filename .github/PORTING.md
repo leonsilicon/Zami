@@ -206,6 +206,14 @@ vpx _zami check                                    # CI's invariants
 request, and Claude (Opus 5.5) migrates whatever `sync` couldn't: conflicts in copies,
 upstream changes to translated components, and components upstream added.
 
+Claude also goes through everything else upstream changed (`review` in the worklist), and
+ports it to wherever Zami implements that behavior. A clean text merge isn't a port: the
+Expo app has no service worker, so a fix in `static/sw.js` only counts once it's in Zami's
+push code, and a file with no Zami version can still change something Zami does its own
+way. So Claude runs whenever upstream moves, even when `sync` flagged nothing. A run that
+stops partway pushes what it did and the next one continues; to review a range that's
+already merged, run the workflow with `since` set to the commit to start from.
+
 The components that were never ported are a separate backlog. `vpx _zami backlog` lists
 the ones ready to port (their child components are done), and
 `.github/workflows/zami-port.yml` ports them on request.

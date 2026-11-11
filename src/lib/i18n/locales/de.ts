@@ -406,7 +406,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugPanel.debugPanel": "DEBUG-PANEL",
     "debugPanel.sync": "Sync:",
     "debugPanel.refresh": "↻ aktualisieren",
-    "debugPanel.copied": "✓ kopiert",
+    "debugPanel.copied": "kopiert",
     "debugPanel.copy": "⧉ kopieren",
     "debugPanel.unreadState": "UNGELESEN-STATUS",
     "debugPanel.unread": "ungelesen:",
@@ -727,6 +727,9 @@ const messages: Partial<Record<MessageKey, string>> = {
 
     // src/lib/components/ui/FlashEmbed.svelte
     "flashEmbed.suspend": "Anhalten",
+    "flashEmbed.resize": "Player-Größe ändern",
+    "flashEmbed.resizeHint":
+        "Ziehen oder Pfeiltasten zum Ändern der Größe. Doppelklick zum Zurücksetzen.",
 
     // src/lib/components/messages/ForwardMessageDialog.svelte
     "forwardMessageDialog.forwardMessage": "Nachricht weiterleiten",
@@ -889,6 +892,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.image": "Bild",
     "lightbox.videoNoun": "Video",
     "lightbox.imageNoun": "Bild",
+    "lightbox.zoomIn": "Vergrößern",
+    "lightbox.zoomOut": "Verkleinern",
+    "lightbox.zoomReset": "Zoom zurücksetzen",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "YouTube-Video",
@@ -1588,7 +1594,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pluginsSettings.localFolder": "Lokaler Ordner",
     "pluginsSettings.loadFromFolder": "Plugin aus einem Ordner laden",
     "pluginsSettings.loadFromFolderHint":
-        "Zum Entwickeln eines Plugins: Wähle den Ordner mit manifest.json und Bundle. Zam behält eine Kopie und führt es wie jedes Plugin aus; nutze nach dem Neubauen „Neu laden“. Es führt Code mit vollem Vertrauen aus, lade also nur Ordner, die du selbst geschrieben hast oder denen du vertraust.",
+        "Zum Entwickeln eines Plugins: Wähle den Ordner mit manifest.json und Bundle oder einen Repo-Ordner mit mehreren solchen Plugin-Ordnern. Zam behält eine Kopie und führt es wie jedes Plugin aus; nutze nach dem Neubauen „Neu laden“. Es führt Code mit vollem Vertrauen aus, lade also nur Ordner, die du selbst geschrieben hast oder denen du vertraust.",
     "pluginsSettings.chooseFolder": "Ordner wählen",
     "pluginsSettings.reload": "Neu laden",
     "pluginsSettings.reloading": "Wird neu geladen…",
@@ -1626,7 +1632,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pollBody.resultsAreRevealedWhenThePoll":
         "Die Ergebnisse werden am Ende der Umfrage angezeigt",
     "pollBody.chooseUpTo": "· bis zu {maxSelections} auswählen",
-    "pollBody.selected": "✓ ausgewählt",
+    "pollBody.selected": "ausgewählt",
     "pollBody.submitting": "Wird gesendet…",
     "pollBody.submitVote": "Abstimmen",
     "pollBody.votesAreHidden": "Stimmen sind verborgen",
@@ -2155,7 +2161,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "securitySettings.onlyOnce": "nur einmal",
     "securitySettings.storeItNowWithoutItYou":
         " angezeigt. Speichere ihn jetzt - ohne ihn kannst du deinen verschlüsselten Verlauf nicht wiederherstellen, wenn du den Zugriff auf deine Sitzungen verlierst.",
-    "securitySettings.copied": "Kopiert ✓",
+    "securitySettings.copied": "Kopiert",
     "securitySettings.copyKey": "Schlüssel kopieren",
     "securitySettings.youCanAlsoUnlockWithThe":
         "Du kannst auch mit der gewählten Passphrase entsperren. Behalte den Schlüssel trotzdem - er ist der einzige Weg hinein, falls du die Passphrase vergisst.",
@@ -2914,6 +2920,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/VoiceMessagePlayer.svelte
     "voiceMessagePlayer.seek": "Spulen",
     "voiceMessagePlayer.voiceMessage": "Sprachnachricht",
+    "midiPlayer.play": "Abspielen",
+    "midiPlayer.pause": "Pausieren",
+    "midiPlayer.seek": "Position",
+    "midiPlayer.volume": "Lautstärke",
 
     // src/lib/components/messages/VoiceRecorder.svelte
     "voiceRecorder.cancelRecording": "Aufnahme abbrechen",

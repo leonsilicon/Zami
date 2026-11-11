@@ -1,3 +1,11 @@
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const MidiPlayer = lazyComponent(
+    () =>
+        require("$lib/components/ui/MidiPlayer.svelte") as typeof import("$lib/components/ui/MidiPlayer.svelte"),
+);
+import { isSvg } from "$lib/utils/attachmentMime";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
@@ -42,7 +50,8 @@ import {
     openLink,
     type HtmlElement,
 } from "@-/com.leonsilicon.zami.rn";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { shallowEqual, useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { eventRevision } from "@-/com.leonsilicon.zami.event-revision";
 import { createLruMemo } from "$lib/utils/lruMemo";
 
 // Module scope is deliberate: a room switch unmounts every MessageItem and
@@ -74,6 +83,8 @@ import {
     cachedDecryptedImage,
     DECRYPTED_IMAGE_ORIGINAL_MAX,
 } from "$lib/utils/decryptedImageCache";
+// Zami: the media cache on disk (see the encrypted image effect).
+import { cachedDecryptedAttachment } from "$lib/matrix/media";
 import type { DownloadProgress } from "$lib/utils/downloadProgress";
 import LocationBody from "$lib/components/messages/LocationBody.svelte";
 import VerificationRequestMessage from "$lib/components/messages/VerificationRequestMessage.svelte";
@@ -156,9 +167,9 @@ import { mayRedactEvent } from "$lib/utils/redaction";
 import { isVerificationRequestMessage } from "$lib/utils/verificationMessage";
 import { stripFormattedFallback } from "$lib/utils/replyFallback";
 import { parseVoiceContent } from "$lib/utils/voiceMessage";
-import { isMidiAttachment, midiUrlToWavUrl } from "$lib/utils/midi";
+import { isMidiAttachment } from "$lib/utils/midi";
 import { isTrackerAttachment, trackerUrlToWavUrl } from "$lib/utils/tracker";
-import { reservedMediaBox } from "$lib/utils/mediaDimensions";
+import { reservedMediaBox, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
 import { videoPoster } from "$lib/utils/roomMedia";
 import { utdPlaceholderText } from "$lib/utils/encryptionState";
@@ -345,38 +356,108 @@ function MessageItem({
     timelineIndex,
 }: Props) {
     // Zami: what the deriveds below read, first, as React computes in order.
-    // Each rune read is scoped to this row's own values (see useRune).
-    const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
-    const myUserId = useRune(() => auth.userId);
-    // Own messages swap their local `~` id for the real `$id` on the same event
-    // object, and the row is keyed by transaction id so it survives that swap
-    // (see timelineKey). Re-read on timelineTick, which the local-echo update
-    // bumps, so actions gated on a real id light up once the send lands.
-    const eventId = useRune(
-        () => (void messagesState.timelineTick, event.getId() ?? ""),
-        [event],
+    // A row reads its runes through three stores, not one per value (it had
+    // 38, each an effect root, and a batch of rows mounts in one render):
+    // `rowState` (this event, and the app state every row reads), `roomView`
+    // (this room's state, which every sync moves) and `reply` (the quoted
+    // message, further down). Each compares its result shallowly, so a tick
+    // re-renders the row only when something it shows changed.
+    //
+    // `rowState` follows this event's own revision (eventRevision), which
+    // moves when the event changes in place: it decrypts or fails to, is
+    // edited, changes send status, swaps its local `~` id for the real `$id`
+    // (the row is keyed by transaction id so it survives that swap, see
+    // timelineKey, and actions gated on a real id light up once the send
+    // lands), is redacted, or gets its first reaction. Upstream re-reads on
+    // timelineTick and reactionTick instead, which every decryption and
+    // reaction in any room moves for every row on screen.
+    const lastPluginActionViews = useRef<PluginMessageActionView[]>(NO_ACTIONS);
+    const lastDecorations = useRef<MessageDecoration[]>(NO_DECORATIONS);
+    const rowState = useRune(
+        () => {
+            const revision = eventRevision(event);
+            const id = event.getId() ?? "";
+            const touch = interfaceState.isTouchscreen;
+            return {
+                revision,
+                eventId: id,
+                isTouchscreen: touch,
+                myUserId: auth.userId,
+                mobileSelected:
+                    touch && interfaceState.selectedMessageId === id,
+                menuMode: menuModeFromSetting(
+                    settingsState.holdToOpenMessageMenu,
+                ),
+                alignOwnEnabled: settingsState.rightAlignOwnBubbles,
+                linkPreviewsEnabled: settingsState.linkPreviewsEnabled,
+                ...readPluginHooks(
+                    room.roomId,
+                    id,
+                    event,
+                    touch,
+                    lastPluginActionViews,
+                    lastDecorations,
+                ),
+            };
+        },
+        [event, room.roomId],
+        { isEqual: shallowEqual },
     );
+    const isTouchscreen = rowState.isTouchscreen;
+    const myUserId = rowState.myUserId;
+    const eventId = rowState.eventId;
     const isOwnMessage = event.getSender() === myUserId;
 
-    const canPin = useRune(() => {
-        void roomsState.roomsTick;
-        const myPl = getMyPowerLevel(room);
-        const pl = getRoomPowerLevels(room);
-        const pinPl = pl.events?.["m.room.pinned_events"] ?? pl.state_default;
-        return myPl >= pinPl;
-    }, [room]);
-    const isPinned = useRune(() => {
-        void roomsState.roomsTick;
-        return getPinnedEventIds(room).includes(eventId);
-    }, [room, eventId]);
-    const canRedact = useRune(() => {
-        void roomsState.roomsTick;
-        return mayRedactEvent({
-            isOwnEvent: isOwnMessage,
-            myPowerLevel: getMyPowerLevel(room),
-            redactLevel: getRoomPowerLevels(room).redact,
-        });
-    }, [room, isOwnMessage]);
+    // Zami: `roomView`, this room's state for the row, read on roomsTick as
+    // upstream's deriveds are (canPin, isPinned and canRedact here; the
+    // sender's name, avatar and colour, the room's encryption, the shield's
+    // ticks and the thread chip below).
+    const senderId = event.getSender() ?? "";
+    const [shieldRetry, setShieldRetry] = useState(false);
+    const lastThreadSummary = useRef<ThreadSummary | null>(null);
+    // A thread reply is never a thread root (see isThreadRoot).
+    const inThread =
+        event.getOriginalContent()?.["m.relates_to"]?.rel_type === "m.thread";
+    const roomView = useRune(
+        () => {
+            void roomsState.roomsTick;
+            const myPl = getMyPowerLevel(room);
+            const pl = getRoomPowerLevels(room);
+            const pinPl =
+                pl.events?.["m.room.pinned_events"] ?? pl.state_default;
+            const encrypted = isRoomEncrypted(room);
+            const threadSummary = keepThreadSummary(
+                lastThreadSummary,
+                getThreadSummary(room, eventId),
+            );
+            return {
+                canPin: myPl >= pinPl,
+                isPinned: getPinnedEventIds(room).includes(eventId),
+                canRedact: mayRedactEvent({
+                    isOwnEvent: isOwnMessage,
+                    myPowerLevel: myPl,
+                    redactLevel: pl.redact,
+                }),
+                displayName: getMemberName(room, senderId),
+                avatarSrc: getMemberAvatar(room, senderId),
+                nameColour: nameColourFor(senderId),
+                roomEncrypted: encrypted,
+                securityTick: encrypted ? securityState.securityTick : 0,
+                shieldRetryTick: shieldRetry ? messagesState.timelineTick : 0,
+                threadSummary,
+                threadName:
+                    !inThread && threadSummary.count > 0
+                        ? getThreadName(room, eventId)
+                        : null,
+            };
+        },
+        [room, eventId, senderId, isOwnMessage, inThread, shieldRetry],
+        { isEqual: shallowEqual },
+    );
+
+    const canPin = roomView.canPin;
+    const isPinned = roomView.isPinned;
+    const canRedact = roomView.canRedact;
 
     // Reaction emoji picker. Local boolean drives this instance's render; the
     // shared modal slot ("reaction-picker") provides mutual exclusion across
@@ -449,14 +530,8 @@ function MessageItem({
 
     // Zami: `swipeEnabledHere` is SwipePan's (below), so a modal opening
     // re-renders each row's pan, not the row. Whether this device swipes at
-    // all decides if the row creates a pan handler.
-    const swipeOffered = useRune(
-        () => (
-            void pluginRegistry.tick,
-            interfaceState.isTouchscreen &&
-                pluginRegistry.swipeHandlers.length > 0
-        ),
-    );
+    // all decides if the row creates a pan handler (read in `rowState`).
+    const swipeOffered = rowState.swipeOffered;
 
     // Read-receipt reader-list popover (click/tap the avatar cluster).
     const [readerOpen, setReaderOpen] = useState(false);
@@ -787,13 +862,8 @@ function MessageItem({
     const avatarBtnEl = useRef<HostInstance>(null);
     const nameBtnEl = useRef<HostInstance>(null);
 
-    const reactionTick = useRune(() => messagesState.reactionTick);
-    const mobileSelected = useRune(
-        () =>
-            interfaceState.isTouchscreen &&
-            interfaceState.selectedMessageId === eventId,
-        [eventId],
-    );
+    // Zami: no reactionTick: Reactions follows this event's reactions itself.
+    const mobileSelected = rowState.mobileSelected;
 
     // The action bar mounts on demand (see actionBarMount.ts). Hover is
     // pointer-only: mobile browsers fire compat mouse events on tap, and a
@@ -813,11 +883,9 @@ function MessageItem({
         pinned: actionBarPinned,
     });
 
-    const menuMode = useRune(() =>
-        menuModeFromSetting(settingsState.holdToOpenMessageMenu),
-    );
+    const menuMode = rowState.menuMode;
 
-    const alignOwnEnabled = useRune(() => settingsState.rightAlignOwnBubbles);
+    const alignOwnEnabled = rowState.alignOwnEnabled;
     const bubble = useMemo(
         () =>
             resolveBubbleLayout({
@@ -841,22 +909,17 @@ function MessageItem({
                 : 0;
         return avatars + overflow + 4;
     })();
-    const isEdited = useRune(() => {
-        void messagesState.reactionTick;
-        // An encrypted edit is applied once it decrypts; content re-reads on
-        // this tick then, so the indicator must too or the edited text shows
-        // without it.
-        void messagesState.timelineTick;
-        return !!event.replacingEvent();
-    }, [event]);
+    // An encrypted edit is applied once it decrypts; content re-reads on
+    // this event's revision then, so the indicator must too or the edited
+    // text shows without it.
+    // Zami: this and the event's other fields below are read as the row
+    // renders, which `rowState` makes it do whenever the event changes.
+    const isEdited = !!event.replacingEvent();
 
     // A failed (NOT_SENT) local echo: the send errored and the SDK is blocking
     // further sends in this room until it's retried or removed.
     // Zami: the status is read once, for this and the shield's key below.
-    const eventStatus = useRune(
-        () => (void messagesState.timelineTick, event.status),
-        [event],
-    );
+    const eventStatus = event.status;
     const isFailed = eventStatus === EventStatus.NOT_SENT;
     const [isResending, setIsResending] = useState(false);
 
@@ -893,47 +956,38 @@ function MessageItem({
         }
     }
 
-    const senderId = event.getSender() ?? "";
+    // Zami: `senderId` is declared above, for `roomView`.
     // Depend on roomsTick so a sender whose member loads AFTER this row rendered
     // (lazy-loaded/bridged members) re-resolves from raw MXID to name+avatar —
     // getMember reads don't re-run when the member mutates in place.
-    const displayName = useRune(
-        () => (void roomsState.roomsTick, getMemberName(room, senderId)),
-        [room, senderId],
-    );
-    const avatarSrc = useRune(
-        () => (void roomsState.roomsTick, getMemberAvatar(room, senderId)),
-        [room, senderId],
-    );
-    const nameColour = useRune(() => nameColourFor(senderId), [senderId]);
+    const displayName = roomView.displayName;
+    const avatarSrc = roomView.avatarSrc;
+    const nameColour = roomView.nameColour;
     const timestamp = event.getTs();
-    const content = useRune(() => {
-        void messagesState.reactionTick;
+    const revision = rowState.revision;
+    const content = useMemo(() => {
         // A live MatrixEvent mutates IN PLACE when it decrypts (same reference),
-        // so depend on timelineTick — bumped on MatrixEventEvent.Decrypted — or
-        // the encrypted envelope's (empty) content sticks after decryption.
-        void messagesState.timelineTick;
-        return event.getContent();
-    }, [event]);
-    // Likewise tick-dependent: getType() flips "m.room.encrypted" → the cleartext
-    // type on decryption without changing the object reference, so a plain
-    // $derived(event.getType()) would keep the UTD placeholder up forever.
-    const eventType = useRune(
-        () => (void messagesState.timelineTick, event.getType()),
-        [event],
-    );
+        // so depend on its revision — moved on MatrixEventEvent.Decrypted —
+        // or the encrypted envelope's (empty) content sticks after decryption.
+        void revision;
+        // Zami: a redaction empties the content in place, so a redacted
+        // event's is a copy, for the memos below that key on it.
+        const value = event.getContent();
+        return event.isRedacted() ? { ...value } : value;
+    }, [event, revision]);
+    // Likewise revision-dependent: getType() flips "m.room.encrypted" → the
+    // cleartext type on decryption without changing the object reference, so
+    // a plain $derived(event.getType()) would keep the UTD placeholder up
+    // forever.
+    const eventType = event.getType();
 
     const msgtype: string = content?.msgtype ?? "";
 
     // Still encrypted, or failed to decrypt: a failure swaps in an
     // m.room.message stand-in (msgtype m.bad.encrypted) whose body is the
     // SDK's raw "** Unable to decrypt **" text, so the type alone misses it.
-    const isUtd = useRune(
-        () =>
-            eventType === "m.room.encrypted" ||
-            (void messagesState.timelineTick, event.isDecryptionFailure()),
-        [event, eventType],
-    );
+    const isUtd =
+        eventType === "m.room.encrypted" || event.isDecryptionFailure();
 
     // Gate for Edit action: your own m.text messages, plus the caption of your
     // own captioned media (MSC2530), can be edited inline.
@@ -946,26 +1000,15 @@ function MessageItem({
     const swipeRevealIcon = resolveSwipeAction(swipeStageNow, canEditMessage);
 
     // UTD body copy, refined by the decryption-failure reason: a deliberate
-    // key-withhold reads differently from transient key-lag. Tick-bound for the
-    // same reason as eventType — the reason lands on the same object when the
-    // Decrypted event fires and bumps timelineTick.
-    // Zami: only a UTD row reads them, so the others don't follow the tick.
-    const utdText = useRune(
-        () =>
-            isUtd
-                ? (void messagesState.timelineTick,
-                  utdPlaceholderText(event.decryptionFailureReason))
-                : "",
-        [event, isUtd],
-    );
-    const utdRequestable = useRune(
-        () =>
-            isUtd
-                ? (void messagesState.timelineTick,
-                  canRequestRoomKeys(event.decryptionFailureReason))
-                : false,
-        [event, isUtd],
-    );
+    // key-withhold reads differently from transient key-lag. Revision-bound for
+    // the same reason as eventType — the reason lands on the same object when
+    // the Decrypted event fires and moves the revision.
+    const utdText = isUtd
+        ? utdPlaceholderText(event.decryptionFailureReason)
+        : "";
+    const utdRequestable = isUtd
+        ? canRequestRoomKeys(event.decryptionFailureReason)
+        : false;
     // "Request keys" on a UTD row: idle, sending, or sent (stays sent, so a
     // second click can't pile up requests; the row unlocks if an answer comes).
     const [keyRequest, setKeyRequest] = useState<"idle" | "sending" | "sent">(
@@ -984,10 +1027,7 @@ function MessageItem({
 
     // Whether this room has encryption switched on. Tick-bound because the Room
     // mutates in place when the m.room.encryption state event lands.
-    const roomEncrypted = useRune(
-        () => (void roomsState.roomsTick, isRoomEncrypted(room)),
-        [room],
-    );
+    const roomEncrypted = roomView.roomEncrypted;
 
     // Per-message E2EE shield. getEncryptionInfoForEvent is ASYNC, so this
     // cannot be a $derived — it's $state written from an $effect. The effect
@@ -1005,15 +1045,9 @@ function MessageItem({
     // scope must stay invisible to the reactivity graph. Component scope, not
     // module scope — one row's verdict must never leak into another row.
     const lastShieldKey = useRef<string | null>(null);
-    const [shieldRetry, setShieldRetry] = useState(false);
-    const shieldRetryTick = useRune(
-        () => (shieldRetry ? messagesState.timelineTick : 0),
-        [shieldRetry],
-    );
-    const securityTick = useRune(
-        () => (roomEncrypted ? securityState.securityTick : 0),
-        [roomEncrypted],
-    );
+    // Zami: `shieldRetry` is declared above, and both ticks read in `roomView`.
+    const shieldRetryTick = roomView.shieldRetryTick;
+    const securityTick = roomView.securityTick;
     const shieldKey = roomEncrypted
         ? // timelineTick is bumped for EVERY timeline event and every decryption
           // anywhere in the app, and there is one of these effects per rendered row.
@@ -1136,36 +1170,15 @@ function MessageItem({
 
     // Plugin-contributed message actions for THIS message, filtered by each
     // action's `when` gate. Additive — never replaces a core action.
-    // Zami: kept while they render the same, so a row doesn't re-render for a
-    // fresh but equal list (none, for most rows).
-    const lastPluginActionViews = useRef<PluginMessageActionView[]>(NO_ACTIONS);
-    const pluginActionViews = useRune(() => {
-        void pluginRegistry.tick;
-        const next = pluginMessageActions(pluginRegistry.messageActions, {
-            roomId: room.roomId,
-            eventId,
-            msgtype,
-        });
-        if (sameActionViews(lastPluginActionViews.current, next))
-            return lastPluginActionViews.current;
-        lastPluginActionViews.current = next;
-        return next;
-    }, [room.roomId, eventId, msgtype]);
+    // Zami: read in `rowState` (readPluginHooks, at the end of this file), and
+    // kept while they render the same, so a row doesn't re-render for a fresh
+    // but equal list (none, for most rows).
+    const pluginActionViews = rowState.pluginActionViews;
 
     // Text a plugin shows under a voice message (a transcript).
-    // Zami: read as one string (busy flag, then text) so an equal annotation
-    // doesn't re-render the row; only voice messages show one.
-    const pluginAnnotationKey = useRune(() => {
-        void pluginRegistry.tick;
-        if (msgtype !== "m.audio") return null;
-        const annotation = collectAnnotation(pluginRegistry.annotators, {
-            roomId: room.roomId,
-            eventId,
-            msgtype,
-        });
-        if (!annotation) return null;
-        return `${annotation.busy ? "1" : "0"}${annotation.text ?? "\u0000"}`;
-    }, [room.roomId, eventId, msgtype]);
+    // Zami: read (in `rowState`) as one string (busy flag, then text) so an
+    // equal annotation doesn't re-render the row; only voice messages show one.
+    const pluginAnnotationKey = rowState.pluginAnnotationKey;
     const pluginAnnotation =
         pluginAnnotationKey === null
             ? null
@@ -1179,19 +1192,8 @@ function MessageItem({
 
     // Additive plugin decorations for THIS message (badges/tooltips overlaid
     // on the row). Never touches body rendering (interop rule).
-    const lastDecorations = useRef<MessageDecoration[]>(NO_DECORATIONS);
-    const decorations = useRune(() => {
-        void pluginRegistry.tick;
-        const next = collectDecorations(pluginRegistry.decorators, {
-            roomId: room.roomId,
-            eventId,
-            senderId,
-        });
-        if (sameDecorations(lastDecorations.current, next))
-            return lastDecorations.current;
-        lastDecorations.current = next;
-        return next;
-    }, [room.roomId, eventId, senderId]);
+    // Zami: read in `rowState`, as the actions are.
+    const decorations = rowState.decorations;
 
     function openActionsSheet() {
         // Claim the single modal slot so opening the sheet closes any other
@@ -1263,13 +1265,9 @@ function MessageItem({
     // exist on a reply, so we strip it only when this is true. We read the
     // ORIGINAL content (not the edited getContent()) because an edit drops the
     // reply relation from getContent() while the fallback stays in the body.
-    const isReply = useRune(
-        () => (
-            void messagesState.timelineTick,
-            !!event.getOriginalContent()?.["m.relates_to"]?.["m.in_reply_to"]
-        ),
-        [event],
-    );
+    // Zami: read as the row renders, on this event's revision (see `rowState`).
+    const isReply =
+        !!event.getOriginalContent()?.["m.relates_to"]?.["m.in_reply_to"];
 
     // Strip the Matrix rich-reply fallback ("> quoted…\n\n") from body via the
     // shared spec-v1.19 algorithm. Spec v1.13 removed the fallback; legacy
@@ -1360,22 +1358,52 @@ function MessageItem({
     const cachedReplyTarget = useRef<CachedReplyTarget<MatrixEvent> | null>(
         null,
     );
-    const timelineReplyTarget = useRune(() => {
-        if (!inReplyToId) return null;
-        void messagesState.timelineTick;
-        if (shouldRescanReplyTarget(cachedReplyTarget.current, inReplyToId)) {
-            cachedReplyTarget.current = {
-                id: inReplyToId,
-                target: findEventById(room, inReplyToId) ?? null,
-            };
-        }
-        return cachedReplyTarget.current?.target ?? null;
-    }, [inReplyToId, room]);
     // Parents outside the loaded timeline window are fetched individually —
     // modern clients (gomuks & friends) omit the legacy "> quote" fallback,
     // so without this their replies render "Original message not loaded".
+    // Zami: declared before `reply`, which reads it.
     const [fetchedReplyTarget, setFetchedReplyTarget] =
         useState<MatrixEvent | null>(null);
+    // Zami: `reply`, the parent found in the timeline and the quote's sender,
+    // text and deleted mark, as one store (upstream's four deriveds), which
+    // reads nothing for a message that isn't a reply. It reads timelineTick
+    // only while the parent isn't found, and the parent's own revision for
+    // its text.
+    const reply = useRune(
+        () => {
+            if (!inReplyToId) return NO_REPLY;
+            if (
+                shouldRescanReplyTarget(cachedReplyTarget.current, inReplyToId)
+            ) {
+                void messagesState.timelineTick;
+                cachedReplyTarget.current = {
+                    id: inReplyToId,
+                    target: findEventById(room, inReplyToId) ?? null,
+                };
+            }
+            const timelineTarget = cachedReplyTarget.current?.target ?? null;
+            const target = timelineTarget ?? fetchedReplyTarget;
+            if (!target) return NO_REPLY;
+            // Depend on the parent's revision: an encrypted target arrives as
+            // m.room.encrypted (no body) and decrypts later IN PLACE on the
+            // same MatrixEvent reference, which does not change replyTarget's
+            // identity. Without it the row stays on the "unavailable" fallback
+            // until a reload.
+            eventRevision(target);
+            void roomsState.roomsTick;
+            return {
+                timelineTarget,
+                sender: getMemberName(room, target.getSender() ?? ""),
+                // Parents with no text of their own get a type placeholder
+                // instead of falling through to "Original message unavailable".
+                body: eventPreviewText(target),
+                redacted: target.isRedacted(),
+            };
+        },
+        [inReplyToId, room, fetchedReplyTarget],
+        { isEqual: shallowEqual },
+    );
+    const timelineReplyTarget = reply.timelineTarget;
     useEffect(() => {
         const id = inReplyToId;
         if (!id || timelineReplyTarget) {
@@ -1396,34 +1424,11 @@ function MessageItem({
         };
     }, [inReplyToId, timelineReplyTarget, room.roomId]);
     const replyTarget = timelineReplyTarget ?? fetchedReplyTarget;
-    const replyTargetSender = useRune(
-        () =>
-            replyTarget
-                ? (void roomsState.roomsTick,
-                  getMemberName(room, replyTarget.getSender() ?? ""))
-                : null,
-        [replyTarget, room],
-    );
-    const replyTargetBody = useRune(() => {
-        if (!replyTarget) return null;
-        // Depend on timelineTick: an encrypted target arrives as m.room.encrypted
-        // (no body) and decrypts later IN PLACE on the same MatrixEvent reference,
-        // which does not change replyTarget's identity. Decryption bumps
-        // timelineTick (crypto.ts), so reading it here re-derives the body then —
-        // without it the row stays on the "unavailable" fallback until a reload.
-        void messagesState.timelineTick;
-        // Parents with no text of their own get a type placeholder instead of
-        // falling through to "Original message unavailable".
-        return eventPreviewText(replyTarget);
-    }, [replyTarget]);
+    // Zami: read in `reply` above.
+    const replyTargetSender = reply.sender;
+    const replyTargetBody = reply.body;
     // Zami: whether the parent is redacted, for the fallback quote's wording.
-    const replyTargetRedacted = useRune(
-        () =>
-            replyTarget
-                ? (void messagesState.timelineTick, replyTarget.isRedacted())
-                : false,
-        [replyTarget],
-    );
+    const replyTargetRedacted = reply.redacted;
 
     // Sticker URL
     const stickerHttpUrl = useMemo(() => {
@@ -1446,6 +1451,13 @@ function MessageItem({
                 (n ?? "").trim().toLowerCase().endsWith(".gif"),
             ));
 
+    const isSvgImage =
+        msgtype === "m.image" &&
+        isSvg(
+            (content?.info as { mimetype?: string } | undefined)?.mimetype,
+            mediaFilename || (content?.body as string | undefined),
+        );
+
     // Image conversion.
     // In chat we show a server-scaled 800x600 thumbnail to save bandwidth; the
     // full-resolution image is only requested when opened in the lightbox.
@@ -1459,7 +1471,7 @@ function MessageItem({
             if (msgtype !== "m.image") return null;
             // GIFs are served full-res in chat so they keep animating; the server
             // thumbnail would (depending on homeserver) drop the animation.
-            if (isGif) return mxcToHttp(content?.url as string);
+            if (isGif || isSvgImage) return mxcToHttp(content?.url as string);
             // Homeservers generally can't thumbnail JPEG XL, so ask for the
             // original; utils/jxl transcodes it where the engine can't decode it.
             if (
@@ -1474,7 +1486,7 @@ function MessageItem({
             );
         })();
         return () => value;
-    }, [msgtype, isGif, content, mediaFilename]);
+    }, [msgtype, isGif, isSvgImage, content, mediaFilename]);
 
     // Reserved display box (px) for uploaded images/stickers, from the sender's
     // untrusted `info.w`/`info.h`. Rendered as the `<img>`'s width/height
@@ -1501,7 +1513,9 @@ function MessageItem({
         (content?.info as any)?.h ??
         (content?.info as any)?.thumbnail_info?.h ??
         learnedSize?.height;
-    const imageBox = reservedMediaBox(imgInfoW, imgInfoH, 512, 384);
+    const imageBox = isSvgImage
+        ? vectorMediaBox(imgInfoW, imgInfoH, 512, 384)
+        : reservedMediaBox(imgInfoW, imgInfoH, 512, 384);
     const stickerBox = reservedMediaBox(imgInfoW, imgInfoH, 192, 192);
 
     // Encrypted image: decrypt on mount when content.file is present
@@ -1573,12 +1587,26 @@ function MessageItem({
             setEncryptedImageThumbUrl(null);
             setEncryptedImageFullUrl(null);
         };
+        // Zami: decrypted before (scrolled away and back, another room, an
+        // earlier launch): the media cache's file (@-/com.leonsilicon.zami.media)
+        // is the tile and the viewer's image at once, with nothing downloaded.
+        const onDisk = cachedDecryptedAttachment(file);
+        if (onDisk) {
+            setEncryptedImageThumbUrl(onDisk);
+            setEncryptedImageFullUrl(onDisk);
+            setImageDecrypting(false);
+            return cleanup;
+        }
         // Seen before (another room and back): show the kept copy now.
         const cached = cachedDecryptedImage(file.url);
+        // Zami: whether the tile has a picture before the original is fetched
+        // (a kept copy, or the sender's thumbnail below).
+        let hasTile = false;
         if (cached) {
             tileUrl = URL.createObjectURL(cached.blob);
             setEncryptedImageThumbUrl(tileUrl);
             setImageDecrypting(false);
+            hasTile = true;
             if (cached.isOriginal) {
                 setEncryptedImageFullUrl(tileUrl);
                 return cleanup;
@@ -1587,9 +1615,34 @@ function MessageItem({
             setImageDecrypting(true);
         }
         const info = content?.info as
-            | { mimetype?: string; size?: number }
+            | {
+                  mimetype?: string;
+                  size?: number;
+                  thumbnail_info?: { w?: number; h?: number };
+              }
             | undefined;
         const mime = info?.mimetype?.split(";")[0].trim().toLowerCase();
+        // Zami: a big original's tile is the sender's thumbnail
+        // (`info.thumbnail_file`) when it has one of a useful size, and the
+        // original is fetched when the viewer opens, as for a kept copy. A GIF
+        // or WebP may be animated, which a thumbnail isn't, so it loads in full.
+        // Up to this size the original is the tile, as upstream has it.
+        const originalTileMaxBytes = 2 * 1024 * 1024;
+        const senderThumb = cached ? null : videoPoster(content);
+        const standIn =
+            senderThumb?.kind === "encrypted" &&
+            mime !== "image/gif" &&
+            mime !== "image/webp" &&
+            !(
+                typeof info?.size === "number" &&
+                info.size <= originalTileMaxBytes
+            ) &&
+            Math.max(
+                info?.thumbnail_info?.w ?? 0,
+                info?.thumbnail_info?.h ?? 0,
+            ) >= 256
+                ? senderThumb
+                : null;
         const httpUrl = mxcToHttp(file.url);
         const onProgress = (p: DownloadProgress) => {
             if (!cancelled) setImageProgress(p);
@@ -1659,11 +1712,30 @@ function MessageItem({
                 return null;
             }
         };
-        const start = cached
-            ? new Promise<void>(
-                  (resolve) => (requestFullImage.current = resolve),
-              )
-            : Promise.resolve();
+        const start =
+            cached || standIn
+                ? new Promise<void>(
+                      (resolve) => (requestFullImage.current = resolve),
+                  )
+                : Promise.resolve();
+        if (standIn) {
+            fetchDecryptedAttachmentBlob(
+                standIn.file,
+                standIn.mimetype ?? undefined,
+                { signal: abort.signal },
+            ).then(
+                (url) => {
+                    if (cancelled) return;
+                    hasTile = true;
+                    setEncryptedImageThumbUrl(url);
+                    setImageDecrypting(false);
+                },
+                () => {
+                    // No thumbnail after all: the tile needs the original.
+                    if (!cancelled) requestFullImage.current?.();
+                },
+            );
+        }
         start
             .then(load)
             .then(async (url) => {
@@ -1674,11 +1746,16 @@ function MessageItem({
                 blobUrl = url;
                 setImagePreviewing(false);
                 // The kept copy stays as the tile; only the viewer needed this.
-                if (cached) {
+                if (hasTile) {
                     setEncryptedImageFullUrl(url);
                     return;
                 }
-                const tile = await tileCopy(url);
+                // Zami: the media cache's file needs no tile copy: expo-image
+                // decodes it at the tile's size, and the file is what's kept
+                // (reading it back into JS for that would undo the point).
+                const tile = cachedDecryptedAttachment(file)
+                    ? null
+                    : await tileCopy(url);
                 if (cancelled) return;
                 tileUrl = tile ? URL.createObjectURL(tile) : null;
                 setEncryptedImageThumbUrl(tileUrl ?? url);
@@ -1689,7 +1766,7 @@ function MessageItem({
                 if (cancelled) return;
                 setImagePreviewing(false);
                 // A kept copy is still worth showing over an error.
-                if (cached) return;
+                if (hasTile) return;
                 setImageDecrypting(false);
                 setImageDecryptFailed(true);
             });
@@ -1810,7 +1887,8 @@ function MessageItem({
         mediaFilename,
     );
     const audioPlayable =
-        msgtype === "m.audio" || (msgtype === "m.file" && audioIsTracker);
+        msgtype === "m.audio" ||
+        (msgtype === "m.file" && (audioIsTracker || audioIsMidi));
 
     /**
      * Save the attachment as it was sent, decrypted if need be. The audio
@@ -1862,20 +1940,15 @@ function MessageItem({
         if (!audioClicked || !audioPlayable) return;
         if (audioStreamUrl) return;
         const file = content?.file as EncryptedFile | undefined;
-        const isMidi = audioIsMidi;
         const isTracker = audioIsTracker;
         let cancelled = false;
-        // <audio> can't decode MIDI or tracker modules, so render to WAV first.
-        // Zami: MIDI renders on the app's thread (no Workers). Not ported:
+        // MIDI goes to MidiPlayer, which owns its rendering and playback.
+        // Zami: not ported:
         // tracker modules. Their renderer is libopenmpt compiled to
         // WebAssembly, which Hermes can't run, so they fail to load and show
         // the failed state (the file card still saves the module).
         const toPlayableAudio = (url: string) =>
-            isMidi
-                ? midiUrlToWavUrl(url)
-                : isTracker
-                  ? trackerUrlToWavUrl(url)
-                  : url;
+            isTracker ? trackerUrlToWavUrl(url) : url;
         if (file) {
             // Encrypted audio
             setAudioLoading(true);
@@ -1957,14 +2030,12 @@ function MessageItem({
         () => ({ roomId: room.roomId, eventId }),
         [room.roomId, eventId],
     );
-    // Zami: only a GIF can be a favourite, so only a GIF's row reads the list.
-    const imageIsFavourited = useRune(() => {
-        if (!isGif) return false;
-        void favouritesState.gifs; // track
-        const src =
-            imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource);
-        return !!src && isFavouriteGif(src);
-    }, [isGif, imageFullUrl, encryptedFavouriteSource]);
+    // Zami: only a GIF can be a favourite, and only the tile's hover star shows
+    // whether it is one, so that star (GifFavouriteStar) reads the list, and
+    // no other row does.
+    const imageFavouriteKey = isGif
+        ? (imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource))
+        : null;
 
     function toggleImageFavourite() {
         const full = imageFullUrl();
@@ -1988,15 +2059,10 @@ function MessageItem({
 
     // Relation shape is read from the ORIGINAL content — never the post-edit
     // getContent(), which folds m.new_content and can misreport the relation on
-    // an edited event (mirrors client.ts eventThreadRoot). Tick-guarded like
-    // `content` so it re-reads when an encrypted event decrypts in place.
-    const originalRelatesTo = useRune(
-        () => (
-            void messagesState.timelineTick,
-            event.getOriginalContent()?.["m.relates_to"]
-        ),
-        [event],
-    );
+    // an edited event (mirrors client.ts eventThreadRoot). Revision-guarded
+    // like `content` so it re-reads when an encrypted event decrypts in place.
+    // Zami: read as the row renders, which a revision change makes it do.
+    const originalRelatesTo = event.getOriginalContent()?.["m.relates_to"];
 
     // Whether this message is a thread reply
     const isThreadReply = originalRelatesTo?.rel_type === "m.thread";
@@ -2054,24 +2120,11 @@ function MessageItem({
     // the value has not moved (same trick as `shield` above, commit 55a5936).
     // Plain `let`, NOT $state: a memo cell written inside a $derived must stay
     // invisible to the reactivity graph (writing $state there throws).
-    const lastThreadSummary = useRef<ThreadSummary | null>(null);
-    const threadSummary = useRune(() => {
-        void roomsState.roomsTick;
-        const next = getThreadSummary(room, eventId);
-        if (
-            lastThreadSummary.current &&
-            sameThreadSummary(lastThreadSummary.current, next)
-        )
-            return lastThreadSummary.current;
-        lastThreadSummary.current = next;
-        return next;
-    }, [room, eventId]);
+    // Zami: both read in `roomView` (the memo is `lastThreadSummary` and
+    // keepThreadSummary there).
+    const threadSummary = roomView.threadSummary;
     const isThreadRoot = !isThreadReply && threadSummary.count > 0;
-    const threadName = useRune(() => {
-        if (!isThreadRoot) return null;
-        void roomsState.roomsTick;
-        return getThreadName(room, eventId);
-    }, [isThreadRoot, room, eventId]);
+    const threadName = isThreadRoot ? roomView.threadName : null;
 
     // Links to other messages render as an embed of that message instead of
     // a homeserver URL preview (which would only show matrix.to's own page).
@@ -2094,10 +2147,9 @@ function MessageItem({
             return !(target && target.kind !== "user" && target.eventId);
         });
     }, [msgtype, body]);
-    const linkPreviewsEnabled = useRune(
-        () => linkedUrls.length > 0 && settingsState.linkPreviewsEnabled,
-        [linkedUrls.length > 0],
-    );
+    // Zami: the setting is read in `rowState`.
+    const linkPreviewsEnabled =
+        linkedUrls.length > 0 && rowState.linkPreviewsEnabled;
 
     // True if the body text consists entirely of emoji + whitespace (no other characters)
     const emojiOnly = useMemo(() => {
@@ -2451,38 +2503,43 @@ function MessageItem({
         }
         return (
             <View className="flex-row items-center gap-3 p-3 bg-discord-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={mediaFilename || t("messageItem.audio")}
-                    accessibilityState={{ disabled: audioLoading }}
-                    onPress={() => {
-                        if (audioBlobUrl) return;
-                        if (audioFailed) {
-                            setAudioFailed(false);
-                            setAudioAttempt((n) => n + 1);
-                        } else {
-                            setAudioClicked(true);
+                {!(audioIsMidi && audioBlobUrl) ? (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                            mediaFilename || t("messageItem.audio")
                         }
-                    }}
-                    className={`w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center ${
-                        audioLoading ? "opacity-50" : ""
-                    }`}
-                    disabled={audioLoading}
-                >
-                    {audioLoading || (audioStreamUrl && !audioStreamReady) ? (
-                        <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                    ) : !audioBlobUrl && !audioStreamUrl ? (
-                        <SvgIcon
-                            d={PLAY_PATH}
-                            className="w-4 h-4 text-white ms-0.5"
-                        />
-                    ) : (
-                        <SvgIcon
-                            d={MUSIC_PATH}
-                            className="w-4 h-4 text-white"
-                        />
-                    )}
-                </Pressable>
+                        accessibilityState={{ disabled: audioLoading }}
+                        onPress={() => {
+                            if (audioBlobUrl) return;
+                            if (audioFailed) {
+                                setAudioFailed(false);
+                                setAudioAttempt((n) => n + 1);
+                            } else {
+                                setAudioClicked(true);
+                            }
+                        }}
+                        className={`w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center ${
+                            audioLoading ? "opacity-50" : ""
+                        }`}
+                        disabled={audioLoading}
+                    >
+                        {audioLoading ||
+                        (audioStreamUrl && !audioStreamReady) ? (
+                            <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                        ) : !audioBlobUrl && !audioStreamUrl ? (
+                            <SvgIcon
+                                d={PLAY_PATH}
+                                className="w-4 h-4 text-white ms-0.5"
+                            />
+                        ) : (
+                            <SvgIcon
+                                d={MUSIC_PATH}
+                                className="w-4 h-4 text-white"
+                            />
+                        )}
+                    </Pressable>
+                ) : null}
                 <View className="flex-1 min-w-0">
                     <Text
                         numberOfLines={1}
@@ -2496,8 +2553,16 @@ function MessageItem({
                         audioStreamReady ? null : (
                             audioBar()
                         )
+                    ) : audioIsMidi && audioBlobUrl ? (
+                        <MidiPlayer
+                            midiUrl={audioBlobUrl}
+                            onfail={() => {
+                                setAudioBlobUrl(null);
+                                setAudioFailed(true);
+                            }}
+                        />
                     ) : audioBlobUrl ? (
-                        // For MIDI and trackers, this <audio>'s own
+                        // For trackers, this <audio>'s own
                         // download saves the rendered WAV; the button
                         // beside it saves the original.
                         <AudioControls src={audioBlobUrl} />
@@ -2698,6 +2763,7 @@ function MessageItem({
                                 alt={ucur.alt}
                                 placeholders={ucur.placeholders}
                                 dims={ucur.dims}
+                                mimetype={ucur.mimetype}
                                 onClose={() => setUploadGallery(null)}
                                 onPrev={
                                     uprev !== null
@@ -2755,7 +2821,7 @@ function MessageItem({
                                     contentFit="contain"
                                     onError={mediaImgRetry.onError}
                                     onLoad={(e) => {
-                                        if (imageBox) return;
+                                        if (isSvgImage || imageBox) return;
                                         learnMediaSize(
                                             mediaSizeKey,
                                             e.source.width,
@@ -2768,27 +2834,10 @@ function MessageItem({
                             {/* Zami: the GIF star shows on hover, which touch
                                 doesn't have: there the viewer offers it. */}
                             {isGif && !isTouchscreen ? (
-                                <Pressable
-                                    accessibilityRole="button"
-                                    accessibilityLabel={
-                                        imageIsFavourited
-                                            ? t("common.removeFromFavourites")
-                                            : t("common.addToFavourites")
-                                    }
+                                <GifFavouriteStar
+                                    favouriteKey={imageFavouriteKey}
                                     onPress={toggleImageFavourite}
-                                    className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity"
-                                >
-                                    {imageIsFavourited ? (
-                                        <SvgIcon
-                                            d={STAR_PATH}
-                                            className="w-4 h-4 text-discord-warning"
-                                        />
-                                    ) : (
-                                        <StrokedIcon className="w-4 h-4 text-white">
-                                            <Path d={STAR_PATH} />
-                                        </StrokedIcon>
-                                    )}
-                                </Pressable>
+                                />
                             ) : null}
                         </View>
                         {gallery}
@@ -2814,6 +2863,13 @@ function MessageItem({
                             alt={mediaFilename}
                             filename={mediaFilename || undefined}
                             placeholders={lightboxPlaceholders}
+                            mimetype={
+                                (
+                                    content?.info as
+                                        | { mimetype?: string }
+                                        | undefined
+                                )?.mimetype
+                            }
                             preview={file ? imagePreview : null}
                             dims={{ w: imgInfoW, h: imgInfoH }}
                             favourite={
@@ -2939,7 +2995,7 @@ function MessageItem({
                             }
                         />
                     ) : null}
-                    {audioIsTracker ? audioCard() : null}
+                    {audioIsTracker || audioIsMidi ? audioCard() : null}
                     <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
                         <SvgIcon
                             d={FILE_PATH}
@@ -3032,6 +3088,15 @@ function MessageItem({
     const reactionsClass = `${
         isTouchscreen && receipts.length > 0 && !bubble.alignOwn ? "pe-14" : ""
     } ${bubble.alignOwn ? "flex-row justify-end" : ""}`;
+    // Zami: Reactions mounts once this event has reactions, as Element's
+    // tiles do: the SDK emits RelationsCreated on the event with the first
+    // one, which moves its revision and re-renders the row. Until then the
+    // row follows nothing for them.
+    const hasReactions = !!room.relations.getChildEventsForEvent(
+        eventId,
+        "m.annotation",
+        "m.reaction",
+    );
 
     const row = (
         <Pressable
@@ -3279,11 +3344,13 @@ function MessageItem({
                         row never runs under the out-of-flow read-receipt overlay; not needed
                         when own bubbles are right-aligned — the overlay is on the LEFT then) */}
                     <View className={reactionsClass}>
-                        <Reactions
-                            eventId={eventId}
-                            room={room}
-                            reactionTick={reactionTick}
-                        />
+                        {hasReactions ? (
+                            <Reactions
+                                eventId={eventId}
+                                room={room}
+                                event={event}
+                            />
+                        ) : null}
                     </View>
 
                     {/* Failed-send indicator: retry or delete a NOT_SENT local echo */}
@@ -3833,14 +3900,18 @@ function uploadImageOf(e: MatrixEvent): GalleryImage {
     };
     const sender = videoPoster(c as Record<string, unknown>);
     const isGifUpload = c.info?.mimetype === "image/gif";
+    const isVectorUpload = isSvg(c.info?.mimetype, c.filename ?? c.body);
     return {
         src: mxcToHttp(c.url as string) ?? "",
         alt: (c.filename ?? c.body ?? "") as string,
         placeholders: [
-            isGifUpload ? null : mxcToHttp(c.url as string, 800, 600, "scale"),
+            isGifUpload || isVectorUpload
+                ? null
+                : mxcToHttp(c.url as string, 800, 600, "scale"),
             sender?.kind === "plain" ? mxcToHttp(sender.mxc) : null,
         ],
         dims: { w: c.info?.w, h: c.info?.h },
+        mimetype: c.info?.mimetype,
     };
 }
 
@@ -3877,6 +3948,123 @@ function sameDecorations(
                 d.badge === b[i].badge &&
                 d.tooltip === b[i].tooltip,
         )
+    );
+}
+
+/**
+ * Zami: the plugin hooks a row reads in its `rowState` store: whether it
+ * offers the swipe, and this message's plugin actions, voice annotation and
+ * decorations. A hook no plugin registered builds nothing (the usual case),
+ * and each list is kept while it renders the same.
+ */
+function readPluginHooks(
+    roomId: string,
+    eventId: string,
+    event: MatrixEvent,
+    touch: boolean,
+    lastActions: RefObject<PluginMessageActionView[]>,
+    lastDecorations: RefObject<MessageDecoration[]>,
+) {
+    void pluginRegistry.tick;
+    const msgtype: string = event.getContent()?.msgtype ?? "";
+    let pluginActionViews = NO_ACTIONS;
+    if (pluginRegistry.messageActions.length > 0) {
+        const next = pluginMessageActions(pluginRegistry.messageActions, {
+            roomId,
+            eventId,
+            msgtype,
+        });
+        pluginActionViews = sameActionViews(lastActions.current, next)
+            ? lastActions.current
+            : next;
+    }
+    lastActions.current = pluginActionViews;
+    let pluginAnnotationKey: string | null = null;
+    if (msgtype === "m.audio" && pluginRegistry.annotators.length > 0) {
+        const annotation = collectAnnotation(pluginRegistry.annotators, {
+            roomId,
+            eventId,
+            msgtype,
+        });
+        if (annotation)
+            pluginAnnotationKey = `${annotation.busy ? "1" : "0"}${annotation.text ?? "\u0000"}`;
+    }
+    let decorations = NO_DECORATIONS;
+    if (pluginRegistry.decorators.length > 0) {
+        const next = collectDecorations(pluginRegistry.decorators, {
+            roomId,
+            eventId,
+            senderId: event.getSender() ?? "",
+        });
+        decorations = sameDecorations(lastDecorations.current, next)
+            ? lastDecorations.current
+            : next;
+    }
+    lastDecorations.current = decorations;
+    return {
+        swipeOffered: touch && pluginRegistry.swipeHandlers.length > 0,
+        pluginActionViews,
+        pluginAnnotationKey,
+        decorations,
+    };
+}
+
+/** Zami: `lastThreadSummary`'s memo: the previous summary while it's equal. */
+function keepThreadSummary(
+    last: RefObject<ThreadSummary | null>,
+    next: ThreadSummary,
+): ThreadSummary {
+    if (last.current && sameThreadSummary(last.current, next))
+        return last.current;
+    last.current = next;
+    return next;
+}
+
+/** Zami: `reply` with no parent to quote (not a reply, or not loaded). */
+const NO_REPLY: {
+    timelineTarget: MatrixEvent | null;
+    sender: string | null;
+    body: string | null;
+    redacted: boolean;
+} = { timelineTarget: null, sender: null, body: null, redacted: false };
+
+/**
+ * Zami: the GIF tile's hover star. It reads the favourites (upstream's
+ * `imageIsFavourited`), so only a GIF row on a pointer device follows them.
+ */
+function GifFavouriteStar({
+    favouriteKey,
+    onPress,
+}: {
+    favouriteKey: string | null;
+    onPress: () => void;
+}) {
+    const imageIsFavourited = useRune(() => {
+        void favouritesState.gifs; // track
+        return !!favouriteKey && isFavouriteGif(favouriteKey);
+    }, [favouriteKey]);
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+                imageIsFavourited
+                    ? t("common.removeFromFavourites")
+                    : t("common.addToFavourites")
+            }
+            onPress={onPress}
+            className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity"
+        >
+            {imageIsFavourited ? (
+                <SvgIcon
+                    d={STAR_PATH}
+                    className="w-4 h-4 text-discord-warning"
+                />
+            ) : (
+                <StrokedIcon className="w-4 h-4 text-white">
+                    <Path d={STAR_PATH} />
+                </StrokedIcon>
+            )}
+        </Pressable>
     );
 }
 

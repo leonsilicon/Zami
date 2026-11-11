@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-svelte";
 import { Checkbox, openLink, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as WebBrowser from "expo-web-browser";
@@ -1775,10 +1776,22 @@ export default function LoginView({
                                     }
                                     className="self-start"
                                 >
-                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
-                                        {showAdvanced ? "▾" : "▸"}{" "}
-                                        {t("loginView.advancedOptions")}
-                                    </Text>
+                                    <View className="flex-row items-center gap-1">
+                                        {showAdvanced ? (
+                                            <ChevronDown
+                                                size={12}
+                                                className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                            />
+                                        ) : (
+                                            <ChevronRight
+                                                size={12}
+                                                className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                            />
+                                        )}
+                                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            {t("loginView.advancedOptions")}
+                                        </Text>
+                                    </View>
                                 </Pressable>
                                 {showAdvanced ? (
                                     <Checkbox

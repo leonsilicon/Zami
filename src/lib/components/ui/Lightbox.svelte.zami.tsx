@@ -1,3 +1,4 @@
+import { Minus, Plus } from "lucide-svelte";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
     AccessibilityInfo,
@@ -22,6 +23,8 @@ import Animated, {
     FadeIn,
     Keyframe,
     useAnimatedStyle,
+    useAnimatedReaction,
+    type SharedValue,
     useSharedValue,
     withTiming,
 } from "react-native-reanimated";
@@ -52,12 +55,12 @@ import {
     fetchDecryptedAttachmentBlob,
 } from "$lib/matrix/client";
 import { rememberVolume } from "$lib/actions/rememberVolume";
-import { safeMediaBlob } from "$lib/utils/attachmentMime";
+import { isSvg, safeMediaBlob } from "$lib/utils/attachmentMime";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
 import type { EncryptedFileInfo } from "$lib/utils/decryptAttachment";
 import { revokeLater, saveObjectUrl } from "$lib/utils/saveFile";
 import type { FrameRelay } from "$lib/utils/frameRelay";
-import { safeDimension } from "$lib/utils/mediaDimensions";
+import { safeDimension, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
 import type { DownloadProgress } from "$lib/utils/downloadProgress";
 import { motionOK } from "$lib/utils/motionPreference";
@@ -119,7 +122,8 @@ function isObjectUrl(url: string): boolean {
 }
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 8;
+const MAX_SCALE = 16;
+const ZOOM_STEP = 1.25;
 
 // Double-tap (mihon/tachiyomi style): the first double-tap zooms in at the
 // point, the next resets. A single tap does nothing. The old code toggled on
@@ -182,6 +186,7 @@ export default function Lightbox({
     const insets = useSafeAreaInsets();
 
     const isVideo = kind === "video";
+    const vector = !isVideo && isSvg(mimetype, filenameFromSrc());
     const mediaNoun = isVideo ? "video" : "image";
     const MediaNoun = isVideo ? t("lightbox.video") : t("lightbox.image");
     // `mediaNoun` above is also compared against file names, so it stays
@@ -330,10 +335,14 @@ export default function Lightbox({
         if (w === null || h === null) return null;
         // What the loaded image would get from the max-width/max-height caps
         // below: never past its own size, never past the viewport.
-        return fitBox(w, h, maxW, maxH);
+        return vector
+            ? vectorMediaBox(w, h, maxW, maxH)
+            : fitBox(w, h, maxW, maxH);
     })();
     // No size to lay out a box with and no original yet: show the best
     // stand-in as the image itself rather than nothing.
+    // Zami: mediaSource authenticates the native image request directly, so
+    // no service-worker failure or owned-blob retry is needed here.
     const shownSrc =
         src || (imgBox ? "" : (placeholders.find((p) => !!p) ?? ""));
     const imgPlaceholders =
@@ -346,7 +355,9 @@ export default function Lightbox({
     // needs one, so until it loads it gets the whole viewport.
     const naturalBox =
         loaded && loaded.url === shownSrc && loaded.width > 0
-            ? fitBox(loaded.width, loaded.height, maxW, maxH)
+            ? vector
+                ? vectorMediaBox(loaded.width, loaded.height, maxW, maxH)
+                : fitBox(loaded.width, loaded.height, maxW, maxH)
             : null;
     const shownBox = imgBox ?? naturalBox ?? { width: maxW, height: maxH };
     // The image's own box, for the pan limits and for telling a tap on it from
@@ -803,6 +814,21 @@ export default function Lightbox({
                         </Pressable>
                     </View>
 
+                    {!isVideo ? (
+                        <ZoomControls
+                            scale={scale}
+                            bottom={Math.max(insets.bottom, 12)}
+                            zoom={(factor) =>
+                                zoomAt(factor, viewW.value / 2, viewH.value / 2)
+                            }
+                            reset={() => {
+                                scale.value = 1;
+                                tx.value = 0;
+                                ty.value = 0;
+                            }}
+                        />
+                    ) : null}
+
                     {onPrev ? (
                         <Pressable
                             onPress={onPrev}
@@ -849,6 +875,64 @@ export default function Lightbox({
                 </Animated.View>
             </View>
         </Portal>
+    );
+}
+
+/** Zami: touch-accessible zoom buttons, with the gesture's current scale. */
+function ZoomControls({
+    scale,
+    bottom,
+    zoom,
+    reset,
+}: {
+    scale: SharedValue<number>;
+    bottom: number;
+    zoom: (factor: number) => void;
+    reset: () => void;
+}) {
+    const [percent, setPercent] = useState(100);
+    useAnimatedReaction(
+        () => Math.round(scale.value * 100),
+        (next, previous) => {
+            if (next !== previous) scheduleOnRN(setPercent, next);
+        },
+    );
+    return (
+        <View
+            className="absolute z-10 flex-row items-center gap-1 p-1 rounded-full bg-black/50"
+            style={{ bottom }}
+        >
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("lightbox.zoomOut")}
+                disabled={percent <= MIN_SCALE * 100}
+                accessibilityState={{ disabled: percent <= MIN_SCALE * 100 }}
+                className="p-2 rounded-full"
+                onPress={() => zoom(1 / ZOOM_STEP)}
+            >
+                <Minus size={20} className="text-white" />
+            </Pressable>
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("lightbox.zoomReset")}
+                className="min-w-[3.5rem] px-2 py-1 rounded-full"
+                onPress={reset}
+            >
+                <Text className="text-white text-sm tabular-nums text-center">
+                    {percent}%
+                </Text>
+            </Pressable>
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("lightbox.zoomIn")}
+                disabled={percent >= MAX_SCALE * 100}
+                accessibilityState={{ disabled: percent >= MAX_SCALE * 100 }}
+                className="p-2 rounded-full"
+                onPress={() => zoom(ZOOM_STEP)}
+            >
+                <Plus size={20} className="text-white" />
+            </Pressable>
+        </View>
     );
 }
 

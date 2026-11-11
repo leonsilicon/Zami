@@ -1,3 +1,4 @@
+import { X } from "lucide-svelte";
 import {
     anchorElement,
     Image,
@@ -179,9 +180,10 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                         onPress={dismissVerificationNudge}
                         accessibilityLabel={t("profileFooter.dismiss")}
                     >
-                        <Text className="text-discord-textMuted text-sm">
-                            ×
-                        </Text>
+                        <X
+                            size={14}
+                            className="text-discord-textMuted text-sm"
+                        />
                     </Pressable>
                 </View>
             )}

@@ -1,0 +1,16 @@
+{
+  "name": "@-/com.leonsilicon.zami.scheduler",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runs a backlog of async tasks a few milliseconds per turn of the event loop, highest priority first, so a burst of work doesn't keep the app from drawing.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

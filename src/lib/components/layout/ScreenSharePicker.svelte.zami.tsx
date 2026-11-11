@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-svelte";
 import { Image, Select, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Fragment, useEffect, useEffectEvent, useRef, useState } from "react";
@@ -290,12 +291,24 @@ export default function ScreenSharePicker() {
                             accessibilityState={{ expanded: showQuality }}
                             className="me-auto rounded px-3 py-2 hover:bg-discord-messageHover active:bg-discord-messageHover"
                         >
-                            <Text className="text-sm text-discord-textSecondary">
-                                {showQuality ? "▾" : "▸"}{" "}
-                                {t("screenSharePicker.quality", {
-                                    quality: `${SCREEN_RESOLUTIONS.find((r) => r.key === screenShareResolution)?.label ?? screenShareResolution} · ${screenShareFps} fps`,
-                                })}
-                            </Text>
+                            <View className="flex-row items-center gap-1">
+                                {showQuality ? (
+                                    <ChevronDown
+                                        size={12}
+                                        className="text-sm text-discord-textSecondary"
+                                    />
+                                ) : (
+                                    <ChevronRight
+                                        size={12}
+                                        className="text-sm text-discord-textSecondary"
+                                    />
+                                )}
+                                <Text className="text-sm text-discord-textSecondary">
+                                    {t("screenSharePicker.quality", {
+                                        quality: `${SCREEN_RESOLUTIONS.find((r) => r.key === screenShareResolution)?.label ?? screenShareResolution} · ${screenShareFps} fps`,
+                                    })}
+                                </Text>
+                            </View>
                         </Pressable>
                         {audioOptions.length ? (
                             <View className="flex-row min-w-0 max-w-full shrink items-center gap-2">

@@ -44,6 +44,27 @@ export const FRAME_JS = `(function () {
     var started = false;
     var nextId = 0;
     var pending = new Map();
+    var volume = null;
+    var wantedVolume = null;
+
+    function setVolume(value) {
+        if (!player) return;
+        var settings = player.volumeSettings;
+        if (settings && typeof settings.volume === "number") {
+            settings.volume = Math.round(value * 100);
+            settings.isMuted = false;
+        }
+        player.volume = value;
+        volume = player.volume;
+    }
+
+    function pollVolume() {
+        if (!player) return;
+        var v = player.volume;
+        if (typeof v !== "number" || v === volume) return;
+        volume = v;
+        post({ type: "volume", value: v });
+    }
 
     function post(msg) {
         bridge.postMessage(JSON.stringify(msg));
@@ -121,13 +142,18 @@ export const FRAME_JS = `(function () {
             // Ruffle's own limits, kept behind the sandbox: no network
             // (URLLoader/Socket), no host script access (ExternalInterface),
             // no navigation via getURL.
-            player.ruffle().load({
+            volume = player.volume;
+            Promise.resolve(player.ruffle().load({
                 data: swf,
                 allowNetworking: "none",
                 allowScriptAccess: false,
                 openUrlMode: "deny",
+            })).then(function () {
+                if (wantedVolume !== null) setVolume(wantedVolume);
+                else volume = player.volume;
             });
             post({ type: "ready" });
+            setInterval(pollVolume, 1000);
         };
         document.head.appendChild(script);
     }
@@ -150,6 +176,10 @@ export const FRAME_JS = `(function () {
             else p.reject(new TypeError("wasm unavailable"));
         } else if (msg.type === "suspend" && player) {
             player.ruffle().suspend();
+        } else if (msg.type === "volume" && typeof msg.value === "number" &&
+                   msg.value >= 0 && msg.value <= 1) {
+            wantedVolume = msg.value;
+            setVolume(msg.value);
         }
     }
     // React Native's WebView dispatches to window on iOS, and on Android to document,

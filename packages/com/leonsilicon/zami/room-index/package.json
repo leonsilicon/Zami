@@ -1,0 +1,16 @@
+{
+  "name": "@-/com.leonsilicon.zami.room-index",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Incremental indexes over a Matrix account's rooms: each room's unread state, unread roll-ups for spaces and Home, and the spaces each room sits in, kept current from events instead of rebuilt on every read.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}

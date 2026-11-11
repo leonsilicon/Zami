@@ -1,7 +1,14 @@
 import { Range } from "@-/com.leonsilicon.zami.rn";
+import {
+    formatSessionStalls,
+    formatStartup,
+    previousStartup,
+    subscribeStartup,
+    thisStartup,
+} from "@-/com.leonsilicon.zami.startup";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import ExtendedProfileDebug from "$lib/components/settings/ExtendedProfileDebug.svelte";
@@ -403,6 +410,44 @@ export default function DebugSettings() {
                     </View>
                 ) : null}
             </View>
+
+            {/* Zami: the launch timeline (@-/com.leonsilicon.zami.startup), for a
+                slow "Restoring session". A diagnostic, so not translated. */}
+            <View>
+                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    Startup
+                </Text>
+                {(
+                    [
+                        ["This launch", thisStartup()],
+                        ["Previous launch", previousStartup()],
+                    ] as const
+                ).map(([label, record]) =>
+                    record ? (
+                        <View
+                            key={label}
+                            className="py-2 border-b border-discord-divider"
+                        >
+                            <Text className="text-sm text-discord-textPrimary mb-1">
+                                {label}
+                            </Text>
+                            {formatStartup(record, {
+                                sessionStalls: false,
+                            }).map((line, i) => (
+                                <Text
+                                    key={i}
+                                    className="text-discord-textMuted font-mono text-xs"
+                                >
+                                    {line}
+                                </Text>
+                            ))}
+                        </View>
+                    ) : null,
+                )}
+            </View>
+
+            {/* Zami: the longest JS stalls after each launch, with where the app was. */}
+            <SessionStalls />
 
             <View>
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
@@ -918,6 +963,58 @@ export default function DebugSettings() {
                     />
                 </View>
             </View>
+        </View>
+    );
+}
+
+/**
+ * Zami: the longest stalls of the JS thread after this launch and the one before
+ * (@-/com.leonsilicon.zami.startup), each with where the app was, updated as new ones are
+ * recorded. A diagnostic, so not translated.
+ */
+function SessionStalls() {
+    // The list is replaced whenever a new stall makes it.
+    useSyncExternalStore(subscribeStartup, () => thisStartup().sessionStalls);
+    const records = [
+        ["This launch", thisStartup()],
+        ["Previous launch", previousStartup()],
+    ] as const;
+    return (
+        <View>
+            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                Stalls
+            </Text>
+            {records.map(([label, record]) => {
+                const lines = record ? formatSessionStalls(record) : [];
+                return (
+                    <View
+                        key={label}
+                        className="py-2 border-b border-discord-divider"
+                    >
+                        <Text className="text-sm text-discord-textPrimary mb-1">
+                            {label}
+                        </Text>
+                        {lines.length ? (
+                            lines.map((line, i) => (
+                                <Text
+                                    key={i}
+                                    className="text-discord-textMuted font-mono text-xs"
+                                >
+                                    {line}
+                                </Text>
+                            ))
+                        ) : (
+                            <Text className="text-discord-textMuted text-xs">
+                                {!record
+                                    ? "Nothing recorded."
+                                    : record.finished
+                                      ? "No stall of 50 ms or more after the launch."
+                                      : "Watched once the launch is over."}
+                            </Text>
+                        )}
+                    </View>
+                );
+            })}
         </View>
     );
 }

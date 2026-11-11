@@ -1,6 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createClient, EventType, MatrixEvent, Room } from "matrix-js-sdk";
-import { buildSnapshot, materializeSnapshot } from "./roomListCache";
+// Zami: an IndexedDB for the saved room list's tests.
+import "fake-indexeddb/auto";
+import { IDBFactory } from "fake-indexeddb";
+import {
+    buildSnapshot,
+    deleteSnapshot,
+    loadSnapshot,
+    loadSnapshotRest,
+    materializeSnapshot,
+    saveClientSnapshot,
+    splitForFirstScreen,
+} from "./roomListCache";
 
 const ME = "@me:example.org";
 const BOB = "@bob:example.org";
@@ -142,5 +153,192 @@ describe("roomListCache", () => {
         expect(bodies).toHaveLength(40);
         expect(bodies.at(0)).toBe("message 5");
         expect(bodies.at(-1)).toBe("message 44");
+    });
+});
+
+// Zami: the first-screen part of the saved room list (see splitForFirstScreen).
+describe("splitForFirstScreen", () => {
+    type Cached = Parameters<typeof splitForFirstScreen>[0][number];
+    const room = (
+        roomId: string,
+        lastTs: number,
+        state: Cached["state"] = [],
+    ): Cached => ({
+        roomId,
+        state,
+        accountData: [],
+        timeline: [{ type: "m.room.message", origin_server_ts: lastTs }],
+    });
+    const space = (roomId: string, children: string[]): Cached => ({
+        roomId,
+        state: [
+            {
+                type: "m.room.create",
+                state_key: "",
+                content: { type: "m.space" },
+            },
+            ...children.map((child) => ({
+                type: "m.space.child",
+                state_key: child,
+                content: { via: ["example.org"] },
+            })),
+            // A removed child (no `via`) isn't one.
+            { type: "m.space.child", state_key: "!gone", content: {} },
+        ],
+        accountData: [],
+    });
+    const ids = (rooms: Cached[]) => rooms.map((r) => r.roomId).sort();
+
+    it("keeps the most recently active rooms first, the rest for later", () => {
+        const rooms = [room("!a", 1), room("!b", 3), room("!c", 2)];
+        const [first, rest] = splitForFirstScreen(rooms, {}, 2);
+        expect(ids(first)).toEqual(["!b", "!c"]);
+        expect(ids(rest)).toEqual(["!a"]);
+    });
+
+    it("always keeps spaces and the rooms the app may open on", () => {
+        const rooms = [
+            space("!space", []),
+            room("!old", 1),
+            room("!new", 9),
+            room("!mid", 5),
+        ];
+        const [first, rest] = splitForFirstScreen(
+            rooms,
+            { roomIds: new Set(["!old"]) },
+            1,
+        );
+        expect(ids(first)).toEqual(["!new", "!old", "!space"]);
+        expect(ids(rest)).toEqual(["!mid"]);
+    });
+
+    it("keeps the recent rooms of the space the app opens in", () => {
+        const rooms = [
+            space("!space", ["!in1", "!in2", "!in3"]),
+            room("!in1", 1),
+            room("!in2", 2),
+            room("!in3", 3),
+            room("!out1", 10),
+            room("!out2", 11),
+            room("!gone", 12),
+        ];
+        const [first, rest] = splitForFirstScreen(
+            rooms,
+            { spaceId: "!space" },
+            2,
+        );
+        expect(ids(first)).toEqual([
+            "!gone",
+            "!in2",
+            "!in3",
+            "!out2",
+            "!space",
+        ]);
+        expect(ids(rest)).toEqual(["!in1", "!out1"]);
+    });
+});
+
+// Zami: the room list saved a room per record, only what changed
+// (saveClientSnapshot).
+describe("saveClientSnapshot", () => {
+    const message = (roomId: string, n: number) =>
+        new MatrixEvent({
+            type: EventType.RoomMessage,
+            room_id: roomId,
+            sender: BOB,
+            event_id: `$m${n}-${roomId}`,
+            origin_server_ts: 1000 + n,
+            content: { msgtype: "m.text", body: `message ${n}` },
+        });
+    const byId = (a: { roomId: string }, b: { roomId: string }) =>
+        a.roomId.localeCompare(b.roomId);
+
+    function setup(count: number) {
+        globalThis.indexedDB = new IDBFactory();
+        const { client, add } = makeClient();
+        const rooms: Room[] = [];
+        for (let i = 0; i < count; i++) {
+            const roomId = `!r${i}`;
+            const room = add(roomId, [
+                stateEvent(roomId, "m.room.create", "", {}),
+                stateEvent(roomId, "m.room.name", "", { name: `Room ${i}` }),
+                stateEvent(roomId, "m.room.member", ME, { membership: "join" }),
+            ]);
+            room.getLiveTimeline().addEvent(message(roomId, i), {
+                toStartOfTimeline: false,
+                addToState: false,
+            });
+            rooms.push(room);
+        }
+        return { client, rooms };
+    }
+
+    it("saves the first screen's rooms apart from the rest, as buildSnapshot would", async () => {
+        const { client } = setup(60);
+        await saveClientSnapshot(client, "key");
+        const first = await loadSnapshot("key");
+        // The 50 most recently active rooms first (FIRST_PAINT_ROOMS).
+        expect(first?.rooms).toHaveLength(50);
+        expect(first?.rooms.some((r) => r.roomId === "!r59")).toBe(true);
+        const rest = await loadSnapshotRest("key");
+        expect(rest.map((r) => r.roomId).sort()).toEqual(
+            Array.from({ length: 10 }, (_, i) => `!r${i}`).sort(),
+        );
+        const expected = JSON.parse(JSON.stringify(buildSnapshot(client)));
+        expect([...first!.rooms, ...rest].sort(byId)).toEqual(
+            expected.rooms.sort(byId),
+        );
+    });
+
+    it("writes only the rooms that changed", async () => {
+        const { client, rooms } = setup(20);
+        await saveClientSnapshot(client, "key");
+        const put = vi.spyOn(IDBObjectStore.prototype, "put");
+        rooms[5]!.getLiveTimeline().addEvent(message("!r5", 100), {
+            toStartOfTimeline: false,
+            addToState: false,
+        });
+        await saveClientSnapshot(client, "key");
+        expect(put.mock.calls.map((call) => call[1])).toEqual([
+            "key|!r5",
+            "key",
+        ]);
+        put.mockClear();
+        await saveClientSnapshot(client, "key");
+        expect(put).not.toHaveBeenCalled();
+        put.mockRestore();
+    });
+
+    it("reads a room list saved by older code, then replaces it", async () => {
+        const { client } = setup(3);
+        const snap = JSON.parse(JSON.stringify(buildSnapshot(client)));
+        const put = async (name: string, value: unknown) => {
+            const db = await new Promise<IDBDatabase>((resolve) => {
+                const req = indexedDB.open(name, 1);
+                req.onupgradeneeded = () =>
+                    req.result.createObjectStore("snapshots");
+                req.onsuccess = () => resolve(req.result);
+            });
+            const tx = db.transaction("snapshots", "readwrite");
+            tx.objectStore("snapshots").put(value, "key");
+            await new Promise((resolve) => (tx.oncomplete = resolve));
+            db.close();
+        };
+        await put("zam-roomlist-cache", {
+            ...snap,
+            rooms: snap.rooms.slice(0, 1),
+        });
+        await put("zam-roomlist-cache-rest", {
+            v: 1,
+            rooms: snap.rooms.slice(1),
+        });
+        expect((await loadSnapshot("key"))?.rooms).toHaveLength(1);
+        expect(await loadSnapshotRest("key")).toHaveLength(2);
+
+        await saveClientSnapshot(client, "key");
+        expect((await loadSnapshot("key"))?.rooms).toHaveLength(3);
+        expect(await loadSnapshotRest("key")).toHaveLength(0);
+        await deleteSnapshot("key");
+        expect(await loadSnapshot("key")).toBeNull();
     });
 });

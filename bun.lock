@@ -33,15 +33,27 @@
         "@-/com.leonsilicon.zami.blob": "workspace:*",
         "@-/com.leonsilicon.zami.browser": "workspace:*",
         "@-/com.leonsilicon.zami.camera": "workspace:*",
+        "@-/com.leonsilicon.zami.crypto-work": "workspace:*",
+        "@-/com.leonsilicon.zami.event-revision": "workspace:*",
         "@-/com.leonsilicon.zami.flash": "workspace:*",
         "@-/com.leonsilicon.zami.fonts": "workspace:*",
         "@-/com.leonsilicon.zami.icons": "workspace:*",
+        "@-/com.leonsilicon.zami.incremental": "workspace:*",
         "@-/com.leonsilicon.zami.keyboard": "workspace:*",
+        "@-/com.leonsilicon.zami.lists": "workspace:*",
+        "@-/com.leonsilicon.zami.local-storage": "workspace:*",
+        "@-/com.leonsilicon.zami.media": "workspace:*",
         "@-/com.leonsilicon.zami.metro": "workspace:*",
         "@-/com.leonsilicon.zami.parity": "workspace:*",
+        "@-/com.leonsilicon.zami.persist": "workspace:*",
         "@-/com.leonsilicon.zami.rn": "workspace:*",
+        "@-/com.leonsilicon.zami.room-index": "workspace:*",
+        "@-/com.leonsilicon.zami.scheduler": "workspace:*",
+        "@-/com.leonsilicon.zami.sliced": "workspace:*",
+        "@-/com.leonsilicon.zami.startup": "workspace:*",
         "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
         "@-/com.leonsilicon.zami.sveltekit": "workspace:*",
+        "@-/com.leonsilicon.zami.timeline": "workspace:*",
         "@-/com.leonsilicon.zami.webcrypto": "workspace:*",
         "@config-plugins/react-native-webrtc": "catalog:",
         "@formatjs/intl-getcanonicallocales": "catalog:",
@@ -161,10 +173,10 @@
         "expo-camera": "catalog:",
         "expo-file-system": "catalog:",
         "jpeg-js": "catalog:",
+        "jsqr": "catalog:",
       },
       "devDependencies": {
         "@types/qrcode": "catalog:",
-        "jsqr": "catalog:",
         "qrcode": "catalog:",
         "vite-plus": "catalog:",
       },
@@ -172,6 +184,16 @@
     "packages/com/leonsilicon/zami/capacitor": {
       "name": "@-/com.leonsilicon.zami.capacitor",
       "version": "0.0.0",
+    },
+    "packages/com/leonsilicon/zami/crypto-work": {
+      "name": "@-/com.leonsilicon.zami.crypto-work",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.scheduler": "workspace:*",
+      },
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
     },
     "packages/com/leonsilicon/zami/dev": {
       "name": "@-/com.leonsilicon.zami.dev",
@@ -187,6 +209,20 @@
       "devDependencies": {
         "@types/node": "catalog:",
         "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/event-revision": {
+      "name": "@-/com.leonsilicon.zami.event-revision",
+      "version": "0.0.0",
+      "dependencies": {
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "matrix-js-sdk": "catalog:",
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "matrix-js-sdk": "*",
       },
     },
     "packages/com/leonsilicon/zami/flash": {
@@ -237,11 +273,46 @@
         "react": "*",
       },
     },
+    "packages/com/leonsilicon/zami/incremental": {
+      "name": "@-/com.leonsilicon.zami.incremental",
+      "version": "0.0.0",
+      "dependencies": {
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "matrix-js-sdk": "*",
+        "react": "*",
+        "react-native": "*",
+      },
+    },
     "packages/com/leonsilicon/zami/keyboard": {
       "name": "@-/com.leonsilicon.zami.keyboard",
       "version": "0.0.0",
       "dependencies": {
         "expo-modules-core": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/lists": {
+      "name": "@-/com.leonsilicon.zami.lists",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/local-storage": {
+      "name": "@-/com.leonsilicon.zami.local-storage",
+      "version": "0.0.0",
+      "dependencies": {
+        "expo-sqlite": "catalog:",
+      },
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "react-native": "*",
       },
     },
     "packages/com/leonsilicon/zami/maestro": {
@@ -253,6 +324,18 @@
       "dependencies": {
         "@-/com.leonsilicon.zami.dev": "workspace:*",
         "@-/com.leonsilicon.zami.ports": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/media": {
+      "name": "@-/com.leonsilicon.zami.media",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.blob": "workspace:*",
+        "@noble/hashes": "catalog:",
       },
       "devDependencies": {
         "@types/node": "catalog:",
@@ -297,6 +380,18 @@
         "vite-plus": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/persist": {
+      "name": "@-/com.leonsilicon.zami.persist",
+      "version": "0.0.0",
+      "devDependencies": {
+        "fake-indexeddb": "catalog:",
+        "matrix-js-sdk": "catalog:",
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "matrix-js-sdk": "*",
+      },
+    },
     "packages/com/leonsilicon/zami/ports": {
       "name": "@-/com.leonsilicon.zami.ports",
       "version": "0.0.0",
@@ -320,6 +415,7 @@
       "name": "@-/com.leonsilicon.zami.rn",
       "version": "0.0.0",
       "dependencies": {
+        "@-/com.leonsilicon.zami.blob": "workspace:*",
         "@-/com.leonsilicon.zami.icons": "workspace:*",
         "acorn": "catalog:",
         "expo-document-picker": "catalog:",
@@ -338,11 +434,41 @@
         "uniwind": "catalog:",
       },
       "devDependencies": {
+        "fake-indexeddb": "catalog:",
         "vite-plus": "catalog:",
       },
       "peerDependencies": {
         "react": "*",
         "react-native": "*",
+      },
+    },
+    "packages/com/leonsilicon/zami/room-index": {
+      "name": "@-/com.leonsilicon.zami.room-index",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/scheduler": {
+      "name": "@-/com.leonsilicon.zami.scheduler",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/sliced": {
+      "name": "@-/com.leonsilicon.zami.sliced",
+      "version": "0.0.0",
+      "devDependencies": {
+        "spessasynth_core": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/startup": {
+      "name": "@-/com.leonsilicon.zami.startup",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
       },
     },
     "packages/com/leonsilicon/zami/svelte-react": {
@@ -367,6 +493,16 @@
       },
       "peerDependencies": {
         "react-native": "*",
+      },
+    },
+    "packages/com/leonsilicon/zami/timeline": {
+      "name": "@-/com.leonsilicon.zami.timeline",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "react": "*",
       },
     },
     "packages/com/leonsilicon/zami/vite": {
@@ -401,7 +537,10 @@
     },
   },
   "patchedDependencies": {
+    "fake-indexeddb@6.2.7": "patches/fake-indexeddb@6.2.7.patch",
     "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
+    "matrix-js-sdk@45.0.0": "patches/matrix-js-sdk@45.0.0.patch",
+    "react-native-indexeddb-sqlite@0.1.1": "patches/react-native-indexeddb-sqlite@0.1.1.patch",
   },
   "catalog": {
     "@capacitor/app": "8.1.1",
@@ -508,7 +647,11 @@
 
     "@-/com.leonsilicon.zami.capacitor": ["@-/com.leonsilicon.zami.capacitor@workspace:packages/com/leonsilicon/zami/capacitor"],
 
+    "@-/com.leonsilicon.zami.crypto-work": ["@-/com.leonsilicon.zami.crypto-work@workspace:packages/com/leonsilicon/zami/crypto-work"],
+
     "@-/com.leonsilicon.zami.dev": ["@-/com.leonsilicon.zami.dev@workspace:packages/com/leonsilicon/zami/dev"],
+
+    "@-/com.leonsilicon.zami.event-revision": ["@-/com.leonsilicon.zami.event-revision@workspace:packages/com/leonsilicon/zami/event-revision"],
 
     "@-/com.leonsilicon.zami.flash": ["@-/com.leonsilicon.zami.flash@workspace:packages/com/leonsilicon/zami/flash"],
 
@@ -516,13 +659,23 @@
 
     "@-/com.leonsilicon.zami.icons": ["@-/com.leonsilicon.zami.icons@workspace:packages/com/leonsilicon/zami/icons"],
 
+    "@-/com.leonsilicon.zami.incremental": ["@-/com.leonsilicon.zami.incremental@workspace:packages/com/leonsilicon/zami/incremental"],
+
     "@-/com.leonsilicon.zami.keyboard": ["@-/com.leonsilicon.zami.keyboard@workspace:packages/com/leonsilicon/zami/keyboard"],
 
+    "@-/com.leonsilicon.zami.lists": ["@-/com.leonsilicon.zami.lists@workspace:packages/com/leonsilicon/zami/lists"],
+
+    "@-/com.leonsilicon.zami.local-storage": ["@-/com.leonsilicon.zami.local-storage@workspace:packages/com/leonsilicon/zami/local-storage"],
+
     "@-/com.leonsilicon.zami.maestro": ["@-/com.leonsilicon.zami.maestro@workspace:packages/com/leonsilicon/zami/maestro"],
+
+    "@-/com.leonsilicon.zami.media": ["@-/com.leonsilicon.zami.media@workspace:packages/com/leonsilicon/zami/media"],
 
     "@-/com.leonsilicon.zami.metro": ["@-/com.leonsilicon.zami.metro@workspace:packages/com/leonsilicon/zami/metro"],
 
     "@-/com.leonsilicon.zami.parity": ["@-/com.leonsilicon.zami.parity@workspace:packages/com/leonsilicon/zami/parity"],
+
+    "@-/com.leonsilicon.zami.persist": ["@-/com.leonsilicon.zami.persist@workspace:packages/com/leonsilicon/zami/persist"],
 
     "@-/com.leonsilicon.zami.ports": ["@-/com.leonsilicon.zami.ports@workspace:packages/com/leonsilicon/zami/ports"],
 
@@ -530,9 +683,19 @@
 
     "@-/com.leonsilicon.zami.rn": ["@-/com.leonsilicon.zami.rn@workspace:packages/com/leonsilicon/zami/rn"],
 
+    "@-/com.leonsilicon.zami.room-index": ["@-/com.leonsilicon.zami.room-index@workspace:packages/com/leonsilicon/zami/room-index"],
+
+    "@-/com.leonsilicon.zami.scheduler": ["@-/com.leonsilicon.zami.scheduler@workspace:packages/com/leonsilicon/zami/scheduler"],
+
+    "@-/com.leonsilicon.zami.sliced": ["@-/com.leonsilicon.zami.sliced@workspace:packages/com/leonsilicon/zami/sliced"],
+
+    "@-/com.leonsilicon.zami.startup": ["@-/com.leonsilicon.zami.startup@workspace:packages/com/leonsilicon/zami/startup"],
+
     "@-/com.leonsilicon.zami.svelte-react": ["@-/com.leonsilicon.zami.svelte-react@workspace:packages/com/leonsilicon/zami/svelte-react"],
 
     "@-/com.leonsilicon.zami.sveltekit": ["@-/com.leonsilicon.zami.sveltekit@workspace:packages/com/leonsilicon/zami/sveltekit"],
+
+    "@-/com.leonsilicon.zami.timeline": ["@-/com.leonsilicon.zami.timeline@workspace:packages/com/leonsilicon/zami/timeline"],
 
     "@-/com.leonsilicon.zami.vite": ["@-/com.leonsilicon.zami.vite@workspace:packages/com/leonsilicon/zami/vite"],
 
@@ -2144,7 +2307,7 @@
 
     "sdp": ["sdp@3.2.2", "", {}, "sha512-xZocWwfyp4hkbN4hLWxMjmv2Q8aNa9MhmOZ7L9aCZPT+dZsgRr6wZRrSYE3HTdyk/2pZKPSgqI7ns7Een1xMSA=="],
 
-    "sdp-transform": ["sdp-transform@2.15.0", "", { "bin": { "sdp-verify": "checker.js" } }, "sha512-KrOH82c/W+GYQ0LHqtr3caRpM3ITglq3ljGUIb8LTki7ByacJZ9z+piSGiwZDsRyhQbYBOBJgr2k6X4BZXi3Kw=="],
+    "sdp-transform": ["sdp-transform@3.0.0", "", { "bin": { "sdp-verify": "checker.js" } }, "sha512-gfYVRGxjHkGF2NPeUWHw5u6T/KGFtS5/drPms73gaSuMaVHKCY3lpLnGDfswVQO0kddeePoti09AwhYP4zA8dQ=="],
 
     "semver": ["semver@7.8.6", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw=="],
 
@@ -2486,13 +2649,13 @@
 
     "linkedom/htmlparser2": ["htmlparser2@10.1.0", "", { "dependencies": { "domelementtype": "^2.3.0", "domhandler": "^5.0.3", "domutils": "^3.2.2", "entities": "^7.0.1" } }, "sha512-VTZkM9GWRAtEpveh7MSF6SjjrpNVNNVJfFup7xTY3UpFtm67foy9HDVXneLtFVt4pMz5kZtgNcvCniNFb1hlEQ=="],
 
+    "livekit-client/sdp-transform": ["sdp-transform@2.15.0", "", { "bin": { "sdp-verify": "checker.js" } }, "sha512-KrOH82c/W+GYQ0LHqtr3caRpM3ITglq3ljGUIb8LTki7ByacJZ9z+piSGiwZDsRyhQbYBOBJgr2k6X4BZXi3Kw=="],
+
     "livekit-client/tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "log-symbols/chalk": ["chalk@2.4.2", "", { "dependencies": { "ansi-styles": "^3.2.1", "escape-string-regexp": "^1.0.5", "supports-color": "^5.3.0" } }, "sha512-Mti+f9lpJNcwF4tWV8/OrTTtF1gZi+f8FqlyAdouralcFWFQWF2+NgCHShjkCb+IFBLq9buZwE1xckQU4peSuQ=="],
 
     "matrix-js-sdk/@babel/runtime": ["@babel/runtime@8.1.0", "", {}, "sha512-MQye/pU7gzXerMzlhScFNH1u4Je6rR8cqJWSgAfD+rIwbbtwG8tVDegoI7sWfcXkfVRW09G7vk2vjxGIuKFfwg=="],
-
-    "matrix-js-sdk/sdp-transform": ["sdp-transform@3.0.0", "", { "bin": { "sdp-verify": "checker.js" } }, "sha512-gfYVRGxjHkGF2NPeUWHw5u6T/KGFtS5/drPms73gaSuMaVHKCY3lpLnGDfswVQO0kddeePoti09AwhYP4zA8dQ=="],
 
     "metro/flow-parser": ["flow-parser@0.331.0", "", { "dependencies": { "flow-estree": "0.331.0" } }, "sha512-vEZcHIlnKeN8JSVtYFczj8sWJfHIJOkz+YG00O/oul/Bete+t1ZhTi+O6JRRLFYvGW+yJkZ0YgL16iStnbkUqQ=="],
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import {
@@ -7,6 +7,10 @@ import {
     mediaSource,
     pickedFile,
 } from "@-/com.leonsilicon.zami.rn";
+import {
+    useProgressiveCount,
+    useStableCallback,
+} from "@-/com.leonsilicon.zami.incremental/react";
 import { t } from "$lib/i18n";
 import {
     addUserEmoji,
@@ -204,6 +208,11 @@ export default function CustomPackSettings({ kind }: Props) {
         load();
     }, [kind]);
 
+    // Zami: the rows' actions, the same functions across renders.
+    const onSetUsage = useStableCallback(setUsage);
+    const onRemove = useStableCallback(remove);
+    const shownCount = useProgressiveCount(items.length, 40, kind);
+
     return (
         <View className="gap-4">
             <View className="gap-2">
@@ -276,73 +285,23 @@ export default function CustomPackSettings({ kind }: Props) {
                 <Text className="text-sm text-discord-danger">{error}</Text>
             ) : null}
             <View className="gap-1.5">
-                {items.map((item) => (
-                    <View
+                {/* Zami: memoized rows (typing a shortcode re-renders none of
+                    them), mounted a slice per turn of the event loop: this
+                    list sits in the settings panel's scroll view, so it
+                    can't be virtualized, and a pack of thousands would
+                    otherwise mount in one frozen frame. */}
+                {items.slice(0, shownCount).map((item) => (
+                    <PackItemRow
                         key={item.shortcode}
-                        className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
-                    >
-                        <View className="w-12 h-12 rounded bg-discord-backgroundSecondary flex-shrink-0 overflow-hidden flex-row items-center justify-center">
-                            <Image
-                                source={mediaSource(item.url)}
-                                contentFit="contain"
-                                accessibilityIgnoresInvertColors
-                                className="w-full h-full max-w-full max-h-full"
-                            />
-                        </View>
-                        <View className="flex-1 min-w-0">
-                            <Text
-                                numberOfLines={1}
-                                className="text-sm font-medium text-discord-textPrimary truncate"
-                            >
-                                :{item.shortcode}:
-                            </Text>
-                            <Text
-                                numberOfLines={1}
-                                className="text-xs text-discord-textMuted truncate"
-                            >
-                                {item.mxcUrl}
-                            </Text>
-                        </View>
-                        {kind === "emotes" && (
-                            <>
-                                <Checkbox
-                                    checked={!!item.canEmoji}
-                                    onChange={(checked) =>
-                                        setUsage(item, "emoticon", checked)
-                                    }
-                                    disabled={
-                                        pending === `${item.shortcode}:emoticon`
-                                    }
-                                    label={t("common.emoji")}
-                                    labelClassName="text-xs text-discord-textPrimary"
-                                    className="items-center gap-1.5"
-                                />
-                                <Checkbox
-                                    checked={!!item.canSticker}
-                                    onChange={(checked) =>
-                                        setUsage(item, "sticker", checked)
-                                    }
-                                    disabled={
-                                        pending === `${item.shortcode}:sticker`
-                                    }
-                                    label={t("customPackSettings.sticker")}
-                                    labelClassName="text-xs text-discord-textPrimary"
-                                    className="items-center gap-1.5"
-                                />
-                            </>
-                        )}
-                        <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={t("customPackSettings.remove", {
-                                toLowerCase: singular.toLowerCase(),
-                            })}
-                            onPress={() => remove(item)}
-                            disabled={pending === `${item.shortcode}:remove`}
-                            className="p-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
-                        >
-                            <X size={14} className="text-discord-textMuted" />
-                        </Pressable>
-                    </View>
+                        item={item}
+                        kind={kind}
+                        singularLower={singular.toLowerCase()}
+                        pendingEmoji={pending === `${item.shortcode}:emoticon`}
+                        pendingSticker={pending === `${item.shortcode}:sticker`}
+                        pendingRemove={pending === `${item.shortcode}:remove`}
+                        onSetUsage={onSetUsage}
+                        onRemove={onRemove}
+                    />
                 ))}
                 {items.length === 0 && (
                     <Text className="text-sm text-discord-textMuted text-center py-4">
@@ -357,3 +316,86 @@ export default function CustomPackSettings({ kind }: Props) {
         </View>
     );
 }
+
+// Zami: one image of the pack, memoized on what it shows.
+const PackItemRow = memo(function PackItemRow({
+    item,
+    kind,
+    singularLower,
+    pendingEmoji,
+    pendingSticker,
+    pendingRemove,
+    onSetUsage,
+    onRemove,
+}: {
+    item: PackItem;
+    kind: PackKind;
+    singularLower: string;
+    pendingEmoji: boolean;
+    pendingSticker: boolean;
+    pendingRemove: boolean;
+    onSetUsage: (item: PackItem, changed: ImageUsage, enabled: boolean) => void;
+    onRemove: (item: PackItem) => void;
+}) {
+    return (
+        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary">
+            <View className="w-12 h-12 rounded bg-discord-backgroundSecondary flex-shrink-0 overflow-hidden flex-row items-center justify-center">
+                <Image
+                    source={mediaSource(item.url)}
+                    contentFit="contain"
+                    accessibilityIgnoresInvertColors
+                    className="w-full h-full max-w-full max-h-full"
+                />
+            </View>
+            <View className="flex-1 min-w-0">
+                <Text
+                    numberOfLines={1}
+                    className="text-sm font-medium text-discord-textPrimary truncate"
+                >
+                    :{item.shortcode}:
+                </Text>
+                <Text
+                    numberOfLines={1}
+                    className="text-xs text-discord-textMuted truncate"
+                >
+                    {item.mxcUrl}
+                </Text>
+            </View>
+            {kind === "emotes" && (
+                <>
+                    <Checkbox
+                        checked={!!item.canEmoji}
+                        onChange={(checked) =>
+                            onSetUsage(item, "emoticon", checked)
+                        }
+                        disabled={pendingEmoji}
+                        label={t("common.emoji")}
+                        labelClassName="text-xs text-discord-textPrimary"
+                        className="items-center gap-1.5"
+                    />
+                    <Checkbox
+                        checked={!!item.canSticker}
+                        onChange={(checked) =>
+                            onSetUsage(item, "sticker", checked)
+                        }
+                        disabled={pendingSticker}
+                        label={t("customPackSettings.sticker")}
+                        labelClassName="text-xs text-discord-textPrimary"
+                        className="items-center gap-1.5"
+                    />
+                </>
+            )}
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("customPackSettings.remove", {
+                    toLowerCase: singularLower,
+                })}
+                onPress={() => onRemove(item)}
+                disabled={pendingRemove}
+                className="p-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+            >
+                <X size={14} className="text-discord-textMuted" />
+            </Pressable>
+        </View>
+    );
+});

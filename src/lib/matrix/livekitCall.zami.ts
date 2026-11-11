@@ -91,6 +91,14 @@ import {
     setBlockedDecodeCodecs,
 } from "$lib/stores/settings.svelte";
 import { lazyModule } from "$lib/utils/lazyModule";
+import { RedundancyController } from "$lib/utils/audioRedundancy";
+import {
+    AUDIO_LOSS_TOPIC,
+    ReportedLoss,
+    decodeLossReport,
+    encodeLossReport,
+    nextLossReport,
+} from "$lib/utils/audioLossReport";
 import {
     availableOutgoingBitrate,
     summarizeTransport,
@@ -1093,8 +1101,18 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
             _kind?: unknown,
             topic?: string,
         ) => {
-            if (topic !== SOUNDBOARD_TOPIC || !participant) return;
-            if (activeVoice !== call) return;
+            if (!participant || activeVoice !== call) return;
+            if (topic === AUDIO_LOSS_TOPIC) {
+                const loss = decodeLossReport(payload);
+                if (loss !== null)
+                    reportedLossOf(call).note(
+                        participant.identity,
+                        loss,
+                        Date.now(),
+                    );
+                return;
+            }
+            if (topic !== SOUNDBOARD_TOPIC) return;
             // The `encryptionType` LiveKit passes cannot tell plaintext from
             // decrypted: its sender leaves the field unset on encrypted
             // packets, so every genuine one arrives as NONE. Filtering on it
@@ -1537,12 +1555,16 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
         // Each video publish sets its own backup codec
         // (videoCodecPublishOptions).
         // Speech, not the SDK's music preset: a lower bitrate that holds up
-        // on lossy links. RED carries the redundancy that recovers losses.
+        // on lossy links. RED (redundancy that recovers losses) doubles the
+        // audio bitrate, so it is off until the link loses packets
+        // (sampleAudioRedundancy). Encrypted calls never get RED, since
+        // LiveKit disables it under E2EE; they carry the earlier frames in
+        // each packet's padding instead (audio/redundancy).
         publishDefaults: {
             backupCodec: false,
             audioPreset: lk.AudioPresets.speech,
             dtx: true,
-            red: true,
+            red: false,
         },
         // Stop encoding simulcast layers (and codecs) no subscriber is
         // watching. Only this room publishes; remote SFUs are receive-only.
@@ -2586,6 +2608,9 @@ interface CallE2EE {
     roomOptions: () => {
         e2eeManager: LivekitClient.BaseE2EEManager;
     };
+    /** Earlier audio frames each outgoing packet carries (see
+     *  audio/redundancy): 0 sends none. */
+    setAudioRedundancy: (depth: number) => void;
     /** Stop listening for keys and end the workers. */
     stop: () => void;
 }
@@ -2657,6 +2682,7 @@ async function setupCallE2EE(
     };
     session.on(MEDIA_KEY_EVENT as never, onKey as never);
     session.reemitEncryptionKeys();
+
     return {
         roomOptions: () => {
             // Zami: a native E2EE manager per connection, as a worker was.
@@ -2664,6 +2690,11 @@ async function setupCallE2EE(
             managers.push(manager);
             return { e2eeManager: manager };
         },
+        // Zami: not ported: encrypted Opus padding redundancy. RNE2EEManager
+        // encrypts in native WebRTC, which exposes no encoded-frame transform
+        // where the browser worker adds/removes Opus padding. Keep native E2EE;
+        // loss reports and adaptive RED still apply to unencrypted calls.
+        setAudioRedundancy: () => {},
         stop: () => {
             session.off(MEDIA_KEY_EVENT as never, onKey as never);
             // After the rooms have disconnected, which flushes their streams.
@@ -3319,7 +3350,169 @@ function startUploadSampling(call: ActiveVoiceCall): void {
         }
         void sampleUpload(call);
         void checkDecodeHealth(call);
+        void sampleAudioRedundancy(call);
     }, UPLOAD_SAMPLE_MS);
+}
+
+const micRedundancy = new WeakMap<ActiveVoiceCall, RedundancyController>();
+const reportedLoss = new WeakMap<ActiveVoiceCall, ReportedLoss>();
+const redundancyDepth = new WeakMap<ActiveVoiceCall, number>();
+const lastSubscriberSample = new WeakMap<LivekitRoom, TransportSummary>();
+const lastLossReport = new WeakMap<
+    ActiveVoiceCall,
+    { loss: number; at: number }
+>();
+
+function reportedLossOf(call: ActiveVoiceCall): ReportedLoss {
+    let r = reportedLoss.get(call);
+    if (!r) {
+        r = new ReportedLoss();
+        reportedLoss.set(call, r);
+    }
+    return r;
+}
+
+/** The worst share of audio packets lost on the way in over the last sample,
+ *  across the call's connections, or null before there is a second sample. */
+async function sampleListeningLoss(
+    call: ActiveVoiceCall,
+): Promise<number | null> {
+    let worst: number | null = null;
+    for (const room of callLkRooms(call)) {
+        const pcm = (
+            room.engine as
+                | {
+                      pcManager?: {
+                          subscriber?: {
+                              getStats(): Promise<RTCStatsReport> | undefined;
+                          };
+                      };
+                  }
+                | undefined
+        )?.pcManager;
+        const stats = await reportValues(pcm?.subscriber?.getStats());
+        if (!stats) continue;
+        const summary = summarizeTransport(
+            stats,
+            Date.now(),
+            lastSubscriberSample.get(room) ?? null,
+        );
+        lastSubscriberSample.set(room, summary);
+        if (summary.intervalAudioLoss !== null)
+            worst = Math.max(worst ?? 0, summary.intervalAudioLoss);
+    }
+    return worst;
+}
+
+/** Tell the call how much audio we lose on the way in, when it is any. */
+function reportListeningLoss(call: ActiveVoiceCall, loss: number | null): void {
+    const now = Date.now();
+    const last = lastLossReport.get(call) ?? { loss: 0, at: 0 };
+    const send = nextLossReport(loss, last, now);
+    if (send === null) return;
+    lastLossReport.set(call, { loss: send, at: now });
+    void call.lkRoom.localParticipant
+        .publishData(encodeLossReport(send), {
+            reliable: true,
+            topic: AUDIO_LOSS_TOPIC,
+        })
+        .catch(() => {});
+}
+
+/**
+ * Send audio with redundancy while anyone in the call loses packets (ours
+ * on the way out, or a listener's, which they report to us) and stop once
+ * the call is clean again (utils/audioRedundancy). Encrypted calls repeat the
+ * earlier frames inside each packet (audio/redundancy), which costs nothing
+ * to switch; the others turn RED on by republishing the mic, so a muted mic
+ * waits and picks the change up on a later sample.
+ */
+async function sampleAudioRedundancy(call: ActiveVoiceCall): Promise<void> {
+    const lp = call.lkRoom.localParticipant;
+    const source = call.lk.Track.Source.Microphone;
+    const listening = await sampleListeningLoss(call);
+    if (activeVoice !== call) return;
+    reportListeningLoss(call, listening);
+    const pcm = (
+        call.lkRoom.engine as
+            | {
+                  pcManager?: {
+                      publisher?: {
+                          getStats(): Promise<RTCStatsReport> | undefined;
+                      };
+                  };
+              }
+            | undefined
+    )?.pcManager;
+    const stats = await reportValues(pcm?.publisher?.getStats());
+    if (activeVoice !== call) return;
+    const now = Date.now();
+    const sending = stats ? summarizeTransport(stats, now).outgoingLoss : null;
+    // Nothing sampled on our uplink yet says nothing, but listeners' reports
+    // still count.
+    const loss = Math.max(sending ?? 0, reportedLossOf(call).worst(now));
+    let controller = micRedundancy.get(call);
+    if (!controller) {
+        controller = new RedundancyController();
+        micRedundancy.set(call, controller);
+    }
+    const change = controller.push(loss, now);
+    if (call.e2ee) {
+        const depth = controller.depth();
+        if (redundancyDepth.get(call) !== depth) {
+            redundancyDepth.set(call, depth);
+            call.e2ee.setAudioRedundancy(depth);
+        }
+        return;
+    }
+    if (change === null) return;
+    const pub = lp.getTrackPublication(source);
+    if (!pub?.track || pub.isMuted || micCreation) {
+        // Not now: the next sample decides again.
+        controller.undo(change);
+        return;
+    }
+    await republishMicRed(call, change);
+}
+
+async function republishMicRed(
+    call: ActiveVoiceCall,
+    red: boolean,
+): Promise<void> {
+    const lp = call.lkRoom.localParticipant;
+    const source = call.lk.Track.Source.Microphone;
+    while (micCreation) await micCreation;
+    const pub = lp.getTrackPublication(source);
+    const track = pub?.audioTrack;
+    if (!pub || !track || activeVoice !== call) return;
+    const previous = { ...pub.options, source };
+    // Held in micCreation so a mute or unmute during the swap waits for it
+    // rather than creating a second track.
+    const run = (async () => {
+        try {
+            await lp.unpublishTrack(track, false);
+            if (activeVoice !== call) {
+                track.stop();
+                return;
+            }
+            await publishWithRetry(lp, track, { ...previous, red });
+        } catch (err) {
+            console.error("Mic redundancy switch failed:", err);
+            if (activeVoice === call) {
+                try {
+                    await publishWithRetry(lp, track, previous);
+                } catch (restoreErr) {
+                    console.error("Couldn't restore the mic:", restoreErr);
+                }
+            }
+        }
+    })();
+    micCreation = run;
+    try {
+        await run;
+    } finally {
+        micCreation = null;
+    }
 }
 
 async function sampleUpload(call: ActiveVoiceCall): Promise<void> {

@@ -1,7 +1,12 @@
+import { Check } from "lucide-svelte";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    eventRevision,
+    relationsRevision,
+} from "@-/com.leonsilicon.zami.event-revision";
 import { t } from "$lib/i18n";
 import type { MatrixEvent, Room } from "matrix-js-sdk";
 import {
@@ -10,9 +15,13 @@ import {
     sendPollResponse,
     sendPollEnd,
 } from "$lib/matrix/client";
-import { messagesState, bumpReactionTick } from "$lib/stores/messages.svelte";
+import { bumpReactionTick } from "$lib/stores/messages.svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { POLL_END_TYPES, POLL_RESPONSE_TYPES } from "$lib/utils/pollContent";
+
+// Zami: a poll's responses and ends, for relationsRevision.
+const POLL_RELATION_TYPES = [...POLL_RESPONSE_TYPES, ...POLL_END_TYPES];
 
 interface Props {
     event: MatrixEvent;
@@ -45,13 +54,24 @@ export default function PollBody({ event, room }: Props) {
     // reactionTick bumps when poll responses/ends arrive over sync (see
     // MessageArea); roomsTick covers power-level changes that affect whose
     // end events count.
-    const reactionTick = useRune(() => messagesState.reactionTick);
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // Zami: in place of reactionTick, which every reaction, vote and edit in
+    // the room moved for every row: this poll's own responses and ends
+    // (relationsRevision) and edits of the poll itself (eventRevision). Read
+    // as one store, with roomsTick.
+    const pollTick = useRune(
+        () =>
+            `${roomsState.roomsTick}:${eventRevision(event)}:${relationsRevision(
+                room.relations,
+                event,
+                "m.reference",
+                POLL_RELATION_TYPES,
+            )}`,
+        [room, event],
+    );
     const view = useMemo(() => {
-        void reactionTick;
-        void roomsTick;
+        void pollTick;
         return getPollView(room, event, fetchedRelations);
-    }, [reactionTick, roomsTick, room, event, fetchedRelations]);
+    }, [pollTick, room, event, fetchedRelations]);
 
     const [draftAnswers, setDraftAnswers] = useState<string[] | null>(null);
     const [isVoting, setIsVoting] = useState(false);
@@ -185,6 +205,10 @@ export default function PollBody({ event, room }: Props) {
                                         <>
                                             {" "}
                                             <Text className="text-xs text-discord-accent font-semibold">
+                                                <Check
+                                                    size={12}
+                                                    className="text-discord-accent"
+                                                />
                                                 {t("pollBody.selected")}
                                             </Text>
                                         </>

@@ -9,10 +9,18 @@ import {
     Select,
     SvgIcon,
 } from "@-/com.leonsilicon.zami.rn";
+import {
+    roomStateRevision,
+    updateSorted,
+} from "@-/com.leonsilicon.zami.incremental";
+import {
+    useDebouncedValue,
+    useThrottledRune,
+} from "@-/com.leonsilicon.zami.incremental/react";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, ChevronRight, Circle } from "lucide-svelte";
+import { ArrowLeft, ChevronRight, Circle, TriangleAlert } from "lucide-svelte";
 import type { Room, RoomMember } from "matrix-js-sdk";
 import {
     useCallback,
@@ -356,8 +364,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     }, [view.mode, activeTab]);
 
     // Zami: every reader below that upstream ties to `roomsState.roomsTick`
-    // runs during render, and this re-renders on each tick.
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // runs during render, and this re-renders on each tick: at most twice a
+    // second, so a burst of syncs (any room's) re-renders the open tab once
+    // rather than per sync. A quiet spell's first tick (a save echoing back)
+    // re-renders at once.
+    const roomsTick = useThrottledRune(() => roomsState.roomsTick, 500);
     const myPowerLevel = getMyPowerLevel(room);
     // Rank decides who may act on whom (creators outrank admins); the level is
     // still the ceiling for hand-typed levels.
@@ -1115,47 +1126,68 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // list and power-level badges refresh after a kick/ban/role change echoes
     // back from the server, rather than only when the modal is reopened.
     // Zami: only on the Members tab, where they are read (upstream's
-    // `$derived`s are lazy).
+    // `$derived`s are lazy), and keyed on this room's state revision rather
+    // than the tick: a sync that changes nothing in this room doesn't rebuild
+    // (or re-sort) thousands of members.
     const membersShown = activeTab === "members";
+    const memberRevision = useThrottledRune(
+        () => roomStateRevision(room),
+        500,
+        [room],
+    );
     const allMembers = useMemo(() => {
-        void roomsTick;
+        void memberRevision;
         return membersShown ? getRoomMembers(room) : [];
-    }, [roomsTick, room, membersShown]);
+    }, [memberRevision, room, membersShown]);
     const bannedMembers = useMemo(() => {
-        void roomsTick;
+        void memberRevision;
         return membersShown ? getBannedMembers(room) : [];
-    }, [roomsTick, room, membersShown]);
+    }, [memberRevision, room, membersShown]);
     const knockingMembers = useMemo(() => {
-        void roomsTick;
+        void memberRevision;
         return membersShown ? getKnockingMembers(room) : [];
-    }, [roomsTick, room, membersShown]);
+    }, [memberRevision, room, membersShown]);
     // A moderator who can approve (invite) OR deny (kick) a knock; tick so the
     // section shows/hides live on a promote/demote.
     const canModerateKnocks = canInvite || canKick;
 
-    const filteredMembers = useMemo(
-        () =>
-            allMembers
-                .filter(
-                    (m) =>
-                        !memberSearch ||
-                        m.name
-                            .toLowerCase()
-                            .includes(memberSearch.toLowerCase()) ||
-                        m.userId
-                            .toLowerCase()
-                            .includes(memberSearch.toLowerCase()),
-                )
-                .sort((a, b) => {
-                    // Rank, highest first. Subtraction would be NaN for two
-                    // Infinity creators, so compare explicitly.
-                    const ra = getUserPowerRank(room, a.userId);
-                    const rb = getUserPowerRank(room, b.userId);
-                    if (ra !== rb) return ra > rb ? -1 : 1;
-                    return a.name.localeCompare(b.name);
-                }),
-        [allMembers, memberSearch, room],
+    // Zami: sorted once per change of the members (their rank and lowercased
+    // name and id worked out once each, not per comparison), keeping the last
+    // order for members whose rank and name didn't change (updateSorted), and
+    // then only filtered by the search, once typing pauses.
+    const rankedMembers = useMemo(() => {
+        const entries = allMembers.map((m): RankedMember => ({
+            member: m,
+            userId: m.userId,
+            rank: getUserPowerRank(room, m.userId),
+            name: m.name,
+            lowerName: m.name.toLowerCase(),
+            lowerId: m.userId.toLowerCase(),
+        }));
+        const sorted = updateSorted(previousRanking.get(room), entries, {
+            id: (e) => e.userId,
+            sameSortKey: (a, b) => a.rank === b.rank && a.name === b.name,
+            compare: compareRankedMembers,
+        });
+        previousRanking.set(room, sorted);
+        return sorted;
+    }, [allMembers, room]);
+    const memberQuery = useDebouncedValue(
+        memberSearch,
+        150,
+        (query) => query === "",
     );
+    const filteredMembers = useMemo(() => {
+        const query = memberQuery.toLowerCase();
+        return rankedMembers
+            .filter(
+                (e) =>
+                    !query ||
+                    e.lowerName.includes(query) ||
+                    e.lowerId.includes(query),
+            )
+            .map((e) => e.member);
+    }, [rankedMembers, memberQuery]);
 
     async function doKick(userId: string) {
         setMemberActionPending(userId);
@@ -1764,6 +1796,47 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         );
     }
 
+    // Zami: what the member rows render from. The list re-renders its rows
+    // when one of these changes, and only then: not on every sync.
+    const memberListExtraData = useMemo(
+        () => ({
+            showReasonFor,
+            plDrafts,
+            reasonInputs,
+            memberActionPending,
+            blockedUserIds,
+            showMatrixIds,
+            memberRevision,
+            authUserId,
+            myPowerLevel,
+            myPowerRank,
+            canKick,
+            canBan,
+        }),
+        [
+            showReasonFor,
+            plDrafts,
+            reasonInputs,
+            memberActionPending,
+            blockedUserIds,
+            showMatrixIds,
+            memberRevision,
+            authUserId,
+            myPowerLevel,
+            myPowerRank,
+            canKick,
+            canBan,
+        ],
+    );
+    const renderMember = useCallback(
+        ({ item: member }: { item: RoomMember }) =>
+            // Banned members, or the active ones.
+            showBanned ? bannedRow(member) : memberRow(member),
+        // The rows read exactly what memberListExtraData holds, and the room.
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- bannedRow and memberRow are new each render; their inputs are listed.
+        [memberListExtraData, showBanned, room],
+    );
+
     // The Members tab above its list: invite, search, the banned toggle, the
     // error and the pending join requests.
     const membersHeader = (
@@ -2015,15 +2088,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                             ? bannedMembers
                                             : filteredMembers
                                     }
-                                    extraData={{
-                                        showReasonFor,
-                                        plDrafts,
-                                        reasonInputs,
-                                        memberActionPending,
-                                        blockedUserIds,
-                                        showMatrixIds,
-                                        roomsTick,
-                                    }}
+                                    extraData={memberListExtraData}
                                     keyExtractor={(member) => member.userId}
                                     keyboardShouldPersistTaps="handled"
                                     renderScrollComponent={(props) => (
@@ -2036,12 +2101,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         </>
                                     }
                                     ItemSeparatorComponent={MemberGap}
-                                    renderItem={({ item: member }) =>
-                                        // Banned members, or the active ones.
-                                        showBanned
-                                            ? bannedRow(member)
-                                            : memberRow(member)
-                                    }
+                                    renderItem={renderMember}
                                     ListEmptyComponent={
                                         showBanned ? (
                                             <Text className="text-sm text-discord-textMuted text-center py-4">
@@ -2050,6 +2110,29 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 )}
                                             </Text>
                                         ) : undefined
+                                    }
+                                />
+                            ) : activeTab === "emotes" ? (
+                                // Zami: the Emotes tab's scroll box is the image
+                                // pack editor's own list (a FlatList, so a pack of
+                                // hundreds of images renders only the rows on
+                                // screen), with the banner above and the
+                                // soundboard below it.
+                                <ImagePackEditor
+                                    room={room}
+                                    canEdit={canEditEmojis}
+                                    onUpdate={onUpdate}
+                                    header={trustBanner}
+                                    footer={
+                                        <View className="mt-8 gap-3">
+                                            <Text
+                                                role="heading"
+                                                className="text-lg font-semibold text-discord-textPrimary"
+                                            >
+                                                {t("soundboard.title")}
+                                            </Text>
+                                            <SoundPackEditor room={room} />
+                                        </View>
                                     }
                                 />
                             ) : (
@@ -2999,12 +3082,20 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         <View className="mt-3 gap-1">
                                                             {aclWarnings.map(
                                                                 (w) => (
-                                                                    <Text
+                                                                    <View
+                                                                        className="flex-row items-center gap-1"
                                                                         key={w}
-                                                                        className="text-sm text-discord-danger"
                                                                     >
-                                                                        ⚠ {w}
-                                                                    </Text>
+                                                                        <TriangleAlert
+                                                                            size={
+                                                                                14
+                                                                            }
+                                                                            className="text-discord-danger"
+                                                                        />
+                                                                        <Text className="text-sm text-discord-danger">
+                                                                            {w}
+                                                                        </Text>
+                                                                    </View>
                                                                 ),
                                                             )}
                                                         </View>
@@ -3719,24 +3810,8 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                             </View>
                                         </View>
                                     ) : /* ── Emotes ──────────────────────────────────────────── */
-                                    activeTab === "emotes" ? (
-                                        <>
-                                            <ImagePackEditor
-                                                room={room}
-                                                canEdit={canEditEmojis}
-                                                onUpdate={onUpdate}
-                                            />
-                                            <View className="mt-8 gap-3">
-                                                <Text
-                                                    role="heading"
-                                                    className="text-lg font-semibold text-discord-textPrimary"
-                                                >
-                                                    {t("soundboard.title")}
-                                                </Text>
-                                                <SoundPackEditor room={room} />
-                                            </View>
-                                        </>
-                                    ) : null}
+                                    // Zami: rendered above, in place of this scroll box.
+                                    null}
                                 </ScrollArea>
                             )}
                         </View>
@@ -3746,6 +3821,38 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         </Portal>
     );
 }
+
+// Zami: a member with what the Members tab sorts and searches by, worked out
+// once per change of the room's members.
+interface RankedMember {
+    member: RoomMember;
+    userId: string;
+    rank: number;
+    name: string;
+    lowerName: string;
+    lowerId: string;
+}
+
+// One collator for every comparison: `localeCompare` sets one up per call.
+const memberNameCollator =
+    typeof Intl !== "undefined" && typeof Intl.Collator === "function"
+        ? new Intl.Collator()
+        : null;
+
+function compareRankedMembers(a: RankedMember, b: RankedMember): number {
+    // Rank, highest first. Subtraction would be NaN for two Infinity
+    // creators, so compare explicitly.
+    if (a.rank !== b.rank) return a.rank > b.rank ? -1 : 1;
+    const byName = memberNameCollator
+        ? memberNameCollator.compare(a.name, b.name)
+        : a.name.localeCompare(b.name);
+    if (byName !== 0) return byName;
+    // Zami: by id when names tie, so an update sorts as a full sort would.
+    return a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0;
+}
+
+/** Each room's last sorted members, the base for the next update. */
+const previousRanking = new WeakMap<Room, RankedMember[]>();
 
 // The `space-y-1` between member rows.
 function MemberGap() {

@@ -23,11 +23,13 @@ import type {
 import { settingsState } from "$lib/stores/settings.svelte";
 import type { MidiSoundBankChoice } from "./midiSoundBankChoice";
 import { getStoredSoundBank, isRiff } from "./customSoundBank";
+// Zami: for the render worker's stand-in (inThreadWorker).
+import { nextTurn } from "@-/com.leonsilicon.zami.sliced";
 
 /** Built by scripts/build-soundfont.mjs (SF3 with Opus samples). */
 export const BUNDLED_SOUND_BANK_URL = "/soundfonts/default.sf3";
 
-interface SoundBank {
+export interface SoundBank {
     key: string;
     data: ArrayBuffer;
 }
@@ -95,6 +97,14 @@ async function findSoundBank(
     return preferred ?? (await bundledBank());
 }
 
+/**
+ * The bank the real-time player should use: the same choice and fallbacks as
+ * renderMidiWithSoundBank, with the bytes, or null when there is none.
+ */
+export function findPlaybackSoundBank(): Promise<SoundBank | null> {
+    return findSoundBank(settingsState.midiSoundBank);
+}
+
 /** The bank found for `choice`; its key is null when there is none. */
 let found: { choice: MidiSoundBankChoice; key: Promise<string | null> } | null =
     null;
@@ -152,6 +162,9 @@ function inThreadWorker(): Worker {
         onerror: null as (() => void) | null,
         postMessage(request: MidiRenderRequest) {
             queue = queue
+                // A turn of its own, as a worker's message would get, rather
+                // than the end of the caller's.
+                .then(() => nextTurn())
                 // Loaded on first use, from the app's bundle.
                 .then(
                     () =>

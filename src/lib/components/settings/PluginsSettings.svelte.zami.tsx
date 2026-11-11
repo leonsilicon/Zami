@@ -1,7 +1,8 @@
 import { Select } from "@-/com.leonsilicon.zami.rn";
+import { useStableCallback } from "@-/com.leonsilicon.zami.incremental/react";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { Directory } from "expo-file-system";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import {
@@ -11,6 +12,7 @@ import {
     pluginPrefs,
     pluginUpdates,
     pluginNeedsUpdate,
+    type InstalledPluginRecord,
 } from "$lib/stores/plugins.svelte";
 import {
     enablePlugin,
@@ -19,7 +21,7 @@ import {
     removeRepo,
     installRepoPlugin,
     uninstallRepoPlugin,
-    loadLocalPlugin,
+    loadLocalFolder,
     reloadLocalPlugin,
     disableAllPlugins,
     pushPluginSync,
@@ -337,15 +339,14 @@ export default function PluginsSettings({
         files: Map<string, Blob>,
         handle?: FileSystemDirectoryHandle,
     ) {
-        const res = await loadLocalPlugin(files, {
+        const res = await loadLocalFolder(files, {
             handle,
             expectedId: pickFor.current,
         });
-        if (!res.ok)
-            setLocalError(res.error ?? t("pluginsSettings.installFailed"));
+        if (res.error) setLocalError(res.error);
     }
 
-    /** Ask for the plugin's folder. Where the browser can keep a handle to it,
+    /** Ask for the plugin's folder (or a repo folder holding several). Where the browser can keep a handle to it,
      *  later reloads need no picking. */
     async function chooseFolder(forId?: string) {
         setLocalError("");
@@ -510,6 +511,35 @@ export default function PluginsSettings({
     async function disableAll() {
         await disableAllPlugins();
     }
+
+    // Zami: the rows' actions, the same functions across renders, so a
+    // keystroke in a field below re-renders no row.
+    const doUpdateStable = useStableCallback(doUpdate);
+    const toggleStable = useStableCallback(toggle);
+    const reloadLocalStable = useStableCallback(reloadLocal);
+    const setOverrideStable = useStableCallback(setOverride);
+    const removeStable = useStableCallback(remove);
+    const installStable = useStableCallback(install);
+    const rowActions = useMemo(
+        (): PluginRowActions => ({
+            doUpdate: doUpdateStable,
+            openSettings: setSettingsForPluginId,
+            toggle: toggleStable,
+            reloadLocal: reloadLocalStable,
+            setOverride: setOverrideStable,
+            setRemovePending,
+            remove: removeStable,
+            install: installStable,
+        }),
+        [
+            doUpdateStable,
+            toggleStable,
+            reloadLocalStable,
+            setOverrideStable,
+            removeStable,
+            installStable,
+        ],
+    );
 
     if (settingsForPluginId) {
         return (
@@ -710,280 +740,32 @@ export default function PluginsSettings({
                     </Text>
                 ) : (
                     <View className="gap-2">
-                        {installedList.map((p) => {
-                            // Zami: read as the row renders; installedList
-                            // re-renders it when the record's manifest changes.
-                            const hasSettings =
-                                (installedPlugins[p.id]?.manifest.settings
-                                    ?.length ?? 0) > 0;
-                            return (
-                                <View
-                                    key={p.id}
-                                    className="flex-row items-start gap-3 p-3 rounded bg-discord-backgroundTertiary"
-                                >
-                                    <View className="flex-1 min-w-0">
-                                        <Text className="text-sm font-medium text-discord-textPrimary">
-                                            {p.name}
-                                        </Text>
-                                        <Text className="text-xs text-discord-textMuted">
-                                            v{p.version} · {p.author}
-                                            {p.source === "repo" && p.repoRef
-                                                ? ` · ${repoLabel(p.repoRef)}${
-                                                      p.sha
-                                                          ? `@${p.sha.slice(0, 7)}`
-                                                          : ""
-                                                  }`
-                                                : p.source === "local"
-                                                  ? ` · ${t("pluginsSettings.localFolder")}`
-                                                  : null}
-                                        </Text>
-                                        {p.error ? (
-                                            <View className="flex-row items-center gap-1.5 mt-1">
-                                                <TriangleAlert
-                                                    size={14}
-                                                    className="text-discord-danger flex-shrink-0"
-                                                />
-                                                <Text className="flex-shrink text-xs text-discord-danger">
-                                                    {p.error}
-                                                </Text>
-                                            </View>
-                                        ) : null}
-                                        {updatesAvailable[p.id] ||
-                                        needsUpdate[p.id] ? (
-                                            <View className="flex-row items-center gap-2 mt-1">
-                                                {needsUpdate[p.id] ? (
-                                                    <View className="px-1.5 py-0.5 rounded bg-discord-danger/20">
-                                                        <Text className="text-[10px] font-semibold text-discord-danger">
-                                                            {t(
-                                                                "pluginsSettings.needsUpdate",
-                                                            )}
-                                                        </Text>
-                                                    </View>
-                                                ) : updatesAvailable[p.id] ? (
-                                                    <View className="px-1.5 py-0.5 rounded bg-discord-accent/20">
-                                                        <Text className="text-[10px] font-semibold text-discord-accent">
-                                                            {t(
-                                                                "pluginsSettings.updateToV",
-                                                                {
-                                                                    value: updatesAvailable[
-                                                                        p.id
-                                                                    ],
-                                                                },
-                                                            )}
-                                                        </Text>
-                                                    </View>
-                                                ) : null}
-                                                <Pressable
-                                                    accessibilityRole="button"
-                                                    accessibilityState={{
-                                                        disabled:
-                                                            !!updateBusy[p.id],
-                                                    }}
-                                                    onPress={() =>
-                                                        void doUpdate(p.id)
-                                                    }
-                                                    disabled={updateBusy[p.id]}
-                                                    className={
-                                                        updateBusy[p.id]
-                                                            ? "opacity-50"
-                                                            : ""
-                                                    }
-                                                >
-                                                    <Text className="text-xs text-discord-accent hover:underline">
-                                                        {updateBusy[p.id]
-                                                            ? t(
-                                                                  "pluginsSettings.updating",
-                                                              )
-                                                            : t(
-                                                                  "pluginsSettings.update",
-                                                              )}
-                                                    </Text>
-                                                </Pressable>
-                                            </View>
-                                        ) : null}
-                                        {updateError[p.id] ? (
-                                            <Text
-                                                className="text-xs text-discord-danger mt-1"
-                                                accessibilityRole="alert"
-                                            >
-                                                {updateError[p.id]}
-                                            </Text>
-                                        ) : null}
-                                        {removeError[p.id] ? (
-                                            <Text
-                                                className="text-xs text-discord-danger mt-1"
-                                                accessibilityRole="alert"
-                                            >
-                                                {removeError[p.id]}
-                                            </Text>
-                                        ) : null}
-                                    </View>
-                                    <View className="flex-row items-center gap-2 flex-shrink-0">
-                                        {hasSettings ? (
-                                            <Pressable
-                                                accessibilityRole="button"
-                                                accessibilityLabel={t(
-                                                    "pluginsSettings.pluginSettings",
-                                                )}
-                                                onPress={() =>
-                                                    setSettingsForPluginId(p.id)
-                                                }
-                                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
-                                            >
-                                                <Settings
-                                                    size={16}
-                                                    className="text-discord-textMuted hover:text-discord-textPrimary"
-                                                />
-                                            </Pressable>
-                                        ) : null}
-                                        <ToggleSwitch
-                                            checked={p.enabled}
-                                            onChange={(next) =>
-                                                void toggle(p.id, next)
-                                            }
-                                            label={t(
-                                                "pluginsSettings.enable2",
-                                                {
-                                                    name: p.name,
-                                                },
-                                            )}
-                                            title={
-                                                busy[p.id]
-                                                    ? t(
-                                                          "pluginsSettings.working",
-                                                      )
-                                                    : undefined
-                                            }
-                                        />
-                                        {p.source === "local" ? (
-                                            <Pressable
-                                                accessibilityRole="button"
-                                                accessibilityLabel={t(
-                                                    "pluginsSettings.reloadFromFolder",
-                                                )}
-                                                accessibilityState={{
-                                                    disabled:
-                                                        localBusy !== null,
-                                                }}
-                                                onPress={() =>
-                                                    void reloadLocal(p.id)
-                                                }
-                                                disabled={localBusy !== null}
-                                                className={`px-2 py-1 rounded hover:bg-discord-messageHover transition-colors ${
-                                                    localBusy !== null
-                                                        ? "opacity-50"
-                                                        : ""
-                                                }`}
-                                            >
-                                                <Text className="text-xs font-semibold text-discord-accent">
-                                                    {localBusy === p.id
-                                                        ? t(
-                                                              "pluginsSettings.reloading",
-                                                          )
-                                                        : t(
-                                                              "pluginsSettings.reload",
-                                                          )}
-                                                </Text>
-                                            </Pressable>
-                                        ) : null}
-                                        {p.source === "repo" ? (
-                                            <Select
-                                                value={overrideValue(p.id)}
-                                                onChange={(value) =>
-                                                    setOverride(p.id, value)
-                                                }
-                                                accessibilityLabel={t(
-                                                    "pluginsSettings.autoUpdateThisPlugin",
-                                                )}
-                                                // Zami: `w-32`: in this row of fixed-size
-                                                // controls Select would grow to the row's
-                                                // width (a <select> fits its options).
-                                                className="w-32 rounded bg-discord-backgroundSecondary border border-discord-divider px-1 py-0.5"
-                                                options={[
-                                                    {
-                                                        value: "default",
-                                                        label: t(
-                                                            "pluginsSettings.autoDefault",
-                                                        ),
-                                                    },
-                                                    {
-                                                        value: "on",
-                                                        label: t(
-                                                            "pluginsSettings.autoOn",
-                                                        ),
-                                                    },
-                                                    {
-                                                        value: "off",
-                                                        label: t(
-                                                            "pluginsSettings.autoOff",
-                                                        ),
-                                                    },
-                                                ]}
-                                            />
-                                        ) : null}
-                                        {p.source !== "builtin" ? (
-                                            removePending === p.id ? (
-                                                <>
-                                                    <Pressable
-                                                        accessibilityRole="button"
-                                                        onPress={() =>
-                                                            setRemovePending(
-                                                                null,
-                                                            )
-                                                        }
-                                                        className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
-                                                    >
-                                                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
-                                                            {t("common.cancel")}
-                                                        </Text>
-                                                    </Pressable>
-                                                    <Pressable
-                                                        accessibilityRole="button"
-                                                        accessibilityLabel={t(
-                                                            "pluginsSettings.confirmRemove",
-                                                            { name: p.name },
-                                                        )}
-                                                        onPress={() =>
-                                                            void remove(p.id)
-                                                        }
-                                                        className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
-                                                    >
-                                                        <Text className="text-xs text-white">
-                                                            {t("common.remove")}
-                                                        </Text>
-                                                    </Pressable>
-                                                </>
-                                            ) : (
-                                                <Pressable
-                                                    accessibilityRole="button"
-                                                    accessibilityLabel={t(
-                                                        "pluginsSettings.remove",
-                                                        { name: p.name },
-                                                    )}
-                                                    accessibilityState={{
-                                                        disabled: !!busy[p.id],
-                                                    }}
-                                                    onPress={() =>
-                                                        setRemovePending(p.id)
-                                                    }
-                                                    disabled={busy[p.id]}
-                                                    className={`p-1.5 rounded hover:bg-discord-messageHover transition-colors ${
-                                                        busy[p.id]
-                                                            ? "opacity-50"
-                                                            : ""
-                                                    }`}
-                                                >
-                                                    <Trash2
-                                                        size={16}
-                                                        className="text-discord-textMuted hover:text-discord-danger"
-                                                    />
-                                                </Pressable>
-                                            )
-                                        ) : null}
-                                    </View>
-                                </View>
-                            );
-                        })}
+                        {installedList.map((p) => (
+                            // Zami: memoized (InstalledPluginRow, below), on
+                            // what the row shows.
+                            <InstalledPluginRow
+                                key={p.id}
+                                p={p}
+                                // Zami: read as the row renders; installedList
+                                // re-renders it when the record's manifest changes.
+                                hasSettings={
+                                    (installedPlugins[p.id]?.manifest.settings
+                                        ?.length ?? 0) > 0
+                                }
+                                repoName={p.repoRef ? repoLabel(p.repoRef) : ""}
+                                updateAvailable={updatesAvailable[p.id]}
+                                needsUpdate={!!needsUpdate[p.id]}
+                                updating={!!updateBusy[p.id]}
+                                updateError={updateError[p.id]}
+                                removeError={removeError[p.id]}
+                                busy={!!busy[p.id]}
+                                localBusyAny={localBusy !== null}
+                                localBusyThis={localBusy === p.id}
+                                removePending={removePending === p.id}
+                                override={overrideValue(p.id)}
+                                actions={rowActions}
+                            />
+                        ))}
                     </View>
                 )}
             </View>
@@ -1020,57 +802,20 @@ export default function PluginsSettings({
                                 </Text>
                             ) : (
                                 <View className="gap-2">
-                                    {browse[repo.ref].entries.map((entry) => {
-                                        // Zami: read as the row renders;
-                                        // installedList re-renders on installs.
-                                        const alreadyInstalled =
-                                            entry.id in installedPlugins;
-                                        return (
-                                            <View
-                                                key={entry.id}
-                                                className="flex-row items-start gap-3 p-2 rounded bg-discord-backgroundSecondary"
-                                            >
-                                                <View className="flex-1 min-w-0">
-                                                    <Text className="text-sm font-medium text-discord-textPrimary">
-                                                        {entry.name}
-                                                    </Text>
-                                                    <Text className="text-xs text-discord-textMuted">
-                                                        v{entry.version} ·{" "}
-                                                        {entry.author}
-                                                    </Text>
-                                                    <Text className="text-xs text-discord-textSecondary mt-0.5">
-                                                        {entry.description}
-                                                    </Text>
-                                                </View>
-                                                {alreadyInstalled ? (
-                                                    <View className="px-2.5 py-1 rounded bg-discord-backgroundTertiary">
-                                                        <Text className="text-xs font-semibold text-discord-textMuted">
-                                                            {t(
-                                                                "pluginsSettings.installed",
-                                                            )}
-                                                        </Text>
-                                                    </View>
-                                                ) : (
-                                                    <Pressable
-                                                        accessibilityRole="button"
-                                                        onPress={() =>
-                                                            void install(
-                                                                repo.ref,
-                                                                entry,
-                                                            )
-                                                        }
-                                                        className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
-                                                    >
-                                                        <Text className="text-xs font-semibold text-white">
-                                                            {t(
-                                                                "pluginsSettings.install",
-                                                            )}
-                                                        </Text>
-                                                    </Pressable>
-                                                )}
-                                            </View>
-                                        );
-                                    })}
+                                    {browse[repo.ref].entries.map((entry) => (
+                                        // Zami: memoized (BrowseEntryRow, below).
+                                        <BrowseEntryRow
+                                            key={entry.id}
+                                            repoRef={repo.ref}
+                                            entry={entry}
+                                            // Zami: read as the row renders;
+                                            // installedList re-renders on installs.
+                                            alreadyInstalled={
+                                                entry.id in installedPlugins
+                                            }
+                                            install={rowActions.install}
+                                        />
+                                    ))}
                                 </View>
                             )}
                         </View>
@@ -1255,3 +1000,316 @@ export default function PluginsSettings({
         </View>
     );
 }
+
+/** An `installedList` entry. */
+interface InstalledPluginSummary {
+    id: string;
+    name: string;
+    version: string;
+    author: string;
+    source: InstalledPluginRecord["source"];
+    enabled: boolean;
+    error: string | null;
+    repoRef?: string;
+    sha?: string;
+}
+
+interface PluginRowActions {
+    doUpdate: (id: string) => Promise<void>;
+    openSettings: (id: string) => void;
+    toggle: (id: string, next: boolean) => Promise<void>;
+    reloadLocal: (id: string) => Promise<void>;
+    setOverride: (id: string, value: string) => void;
+    setRemovePending: (id: string | null) => void;
+    remove: (id: string) => Promise<void>;
+    install: (ref: string, entry: PluginIndexEntry) => Promise<void>;
+}
+
+// Zami: an installed plugin's row, memoized on what it shows.
+const InstalledPluginRow = memo(function InstalledPluginRow({
+    p,
+    hasSettings,
+    repoName,
+    updateAvailable,
+    needsUpdate,
+    updating,
+    updateError,
+    removeError,
+    busy,
+    localBusyAny,
+    localBusyThis,
+    removePending,
+    override,
+    actions,
+}: {
+    p: InstalledPluginSummary;
+    hasSettings: boolean;
+    repoName: string;
+    updateAvailable: string | undefined;
+    needsUpdate: boolean;
+    updating: boolean;
+    updateError: string | undefined;
+    removeError: string | undefined;
+    busy: boolean;
+    localBusyAny: boolean;
+    localBusyThis: boolean;
+    removePending: boolean;
+    override: "default" | "on" | "off";
+    actions: PluginRowActions;
+}) {
+    const {
+        doUpdate,
+        openSettings,
+        toggle,
+        reloadLocal,
+        setOverride,
+        setRemovePending,
+        remove,
+    } = actions;
+    return (
+        <View className="flex-row items-start gap-3 p-3 rounded bg-discord-backgroundTertiary">
+            <View className="flex-1 min-w-0">
+                <Text className="text-sm font-medium text-discord-textPrimary">
+                    {p.name}
+                </Text>
+                <Text className="text-xs text-discord-textMuted">
+                    v{p.version} · {p.author}
+                    {p.source === "repo" && p.repoRef
+                        ? ` · ${repoName}${
+                              p.sha ? `@${p.sha.slice(0, 7)}` : ""
+                          }`
+                        : p.source === "local"
+                          ? ` · ${t("pluginsSettings.localFolder")}`
+                          : null}
+                </Text>
+                {p.error ? (
+                    <View className="flex-row items-center gap-1.5 mt-1">
+                        <TriangleAlert
+                            size={14}
+                            className="text-discord-danger flex-shrink-0"
+                        />
+                        <Text className="flex-shrink text-xs text-discord-danger">
+                            {p.error}
+                        </Text>
+                    </View>
+                ) : null}
+                {updateAvailable || needsUpdate ? (
+                    <View className="flex-row items-center gap-2 mt-1">
+                        {needsUpdate ? (
+                            <View className="px-1.5 py-0.5 rounded bg-discord-danger/20">
+                                <Text className="text-[10px] font-semibold text-discord-danger">
+                                    {t("pluginsSettings.needsUpdate")}
+                                </Text>
+                            </View>
+                        ) : updateAvailable ? (
+                            <View className="px-1.5 py-0.5 rounded bg-discord-accent/20">
+                                <Text className="text-[10px] font-semibold text-discord-accent">
+                                    {t("pluginsSettings.updateToV", {
+                                        value: updateAvailable,
+                                    })}
+                                </Text>
+                            </View>
+                        ) : null}
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityState={{
+                                disabled: updating,
+                            }}
+                            onPress={() => void doUpdate(p.id)}
+                            disabled={updating}
+                            className={updating ? "opacity-50" : ""}
+                        >
+                            <Text className="text-xs text-discord-accent hover:underline">
+                                {updating
+                                    ? t("pluginsSettings.updating")
+                                    : t("pluginsSettings.update")}
+                            </Text>
+                        </Pressable>
+                    </View>
+                ) : null}
+                {updateError ? (
+                    <Text
+                        className="text-xs text-discord-danger mt-1"
+                        accessibilityRole="alert"
+                    >
+                        {updateError}
+                    </Text>
+                ) : null}
+                {removeError ? (
+                    <Text
+                        className="text-xs text-discord-danger mt-1"
+                        accessibilityRole="alert"
+                    >
+                        {removeError}
+                    </Text>
+                ) : null}
+            </View>
+            <View className="flex-row items-center gap-2 flex-shrink-0">
+                {hasSettings ? (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("pluginsSettings.pluginSettings")}
+                        onPress={() => openSettings(p.id)}
+                        className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                    >
+                        <Settings
+                            size={16}
+                            className="text-discord-textMuted hover:text-discord-textPrimary"
+                        />
+                    </Pressable>
+                ) : null}
+                <ToggleSwitch
+                    checked={p.enabled}
+                    onChange={(next) => void toggle(p.id, next)}
+                    label={t("pluginsSettings.enable2", {
+                        name: p.name,
+                    })}
+                    title={busy ? t("pluginsSettings.working") : undefined}
+                />
+                {p.source === "local" ? (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t(
+                            "pluginsSettings.reloadFromFolder",
+                        )}
+                        accessibilityState={{
+                            disabled: localBusyAny,
+                        }}
+                        onPress={() => void reloadLocal(p.id)}
+                        disabled={localBusyAny}
+                        className={`px-2 py-1 rounded hover:bg-discord-messageHover transition-colors ${
+                            localBusyAny ? "opacity-50" : ""
+                        }`}
+                    >
+                        <Text className="text-xs font-semibold text-discord-accent">
+                            {localBusyThis
+                                ? t("pluginsSettings.reloading")
+                                : t("pluginsSettings.reload")}
+                        </Text>
+                    </Pressable>
+                ) : null}
+                {p.source === "repo" ? (
+                    <Select
+                        value={override}
+                        onChange={(value) => setOverride(p.id, value)}
+                        accessibilityLabel={t(
+                            "pluginsSettings.autoUpdateThisPlugin",
+                        )}
+                        // Zami: `w-32`: in this row of fixed-size
+                        // controls Select would grow to the row's
+                        // width (a <select> fits its options).
+                        className="w-32 rounded bg-discord-backgroundSecondary border border-discord-divider px-1 py-0.5"
+                        options={[
+                            {
+                                value: "default",
+                                label: t("pluginsSettings.autoDefault"),
+                            },
+                            {
+                                value: "on",
+                                label: t("pluginsSettings.autoOn"),
+                            },
+                            {
+                                value: "off",
+                                label: t("pluginsSettings.autoOff"),
+                            },
+                        ]}
+                    />
+                ) : null}
+                {p.source !== "builtin" ? (
+                    removePending ? (
+                        <>
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => setRemovePending(null)}
+                                className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                            >
+                                <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                    {t("common.cancel")}
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={t(
+                                    "pluginsSettings.confirmRemove",
+                                    { name: p.name },
+                                )}
+                                onPress={() => void remove(p.id)}
+                                className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                            >
+                                <Text className="text-xs text-white">
+                                    {t("common.remove")}
+                                </Text>
+                            </Pressable>
+                        </>
+                    ) : (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t("pluginsSettings.remove", {
+                                name: p.name,
+                            })}
+                            accessibilityState={{
+                                disabled: busy,
+                            }}
+                            onPress={() => setRemovePending(p.id)}
+                            disabled={busy}
+                            className={`p-1.5 rounded hover:bg-discord-messageHover transition-colors ${
+                                busy ? "opacity-50" : ""
+                            }`}
+                        >
+                            <Trash2
+                                size={16}
+                                className="text-discord-textMuted hover:text-discord-danger"
+                            />
+                        </Pressable>
+                    )
+                ) : null}
+            </View>
+        </View>
+    );
+});
+
+// Zami: a repo's plugin in Browse, memoized on what it shows.
+const BrowseEntryRow = memo(function BrowseEntryRow({
+    repoRef,
+    entry,
+    alreadyInstalled,
+    install,
+}: {
+    repoRef: string;
+    entry: PluginIndexEntry;
+    alreadyInstalled: boolean;
+    install: (ref: string, entry: PluginIndexEntry) => Promise<void>;
+}) {
+    return (
+        <View className="flex-row items-start gap-3 p-2 rounded bg-discord-backgroundSecondary">
+            <View className="flex-1 min-w-0">
+                <Text className="text-sm font-medium text-discord-textPrimary">
+                    {entry.name}
+                </Text>
+                <Text className="text-xs text-discord-textMuted">
+                    v{entry.version} · {entry.author}
+                </Text>
+                <Text className="text-xs text-discord-textSecondary mt-0.5">
+                    {entry.description}
+                </Text>
+            </View>
+            {alreadyInstalled ? (
+                <View className="px-2.5 py-1 rounded bg-discord-backgroundTertiary">
+                    <Text className="text-xs font-semibold text-discord-textMuted">
+                        {t("pluginsSettings.installed")}
+                    </Text>
+                </View>
+            ) : (
+                <Pressable
+                    accessibilityRole="button"
+                    onPress={() => void install(repoRef, entry)}
+                    className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                >
+                    <Text className="text-xs font-semibold text-white">
+                        {t("pluginsSettings.install")}
+                    </Text>
+                </Pressable>
+            )}
+        </View>
+    );
+});

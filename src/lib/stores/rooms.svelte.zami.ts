@@ -6,6 +6,7 @@ import {
     getRoomsInSpace,
     getRoomTags,
     isRoomLandable,
+    isRoomListFromCache,
     isVideoRoom,
     markRoomPendingArrival,
     roomTypeIsKnown,
@@ -57,12 +58,28 @@ function saveLastSpace(spaceId: string | null): void {
 }
 
 /**
+ * Zami: whether the account's last space and room have been read. Until then
+ * "no room selected" is only the value from before the account was known, so the
+ * landing chain must not take it for "none remembered" (see resolveLandingSurface).
+ */
+let lastLocationLoaded = false;
+
+/**
  * Re-read the active account's persisted last space and room. Module init
  * runs before the account is known, so the app shell calls this on boot.
  */
 export function reloadLastLocationFromStorage(): void {
+    lastLocationLoaded = true;
     roomsState.activeSpaceId = loadLastSpace();
     roomsState.activeRoomId = getLastRoom(roomsState.activeSpaceId);
+    // Zami: the space's last known children, as setActiveSpace shows them, while
+    // the fresh /hierarchy loads. The app shell mounts after the saved room list
+    // (which keeps them) is loaded, so they're here already; without them a
+    // space opened on a "Loading rooms…" spinner for as long as /hierarchy took,
+    // which for a large space is many pages.
+    roomsState.spaceHierarchy = roomsState.activeSpaceId
+        ? (getCachedHierarchy(roomsState.activeSpaceId) ?? [])
+        : [];
     // The restored room is a destination like any other, so it gets the same
     // surface decision. On boot that decision is almost always deferred (no
     // rooms exist yet), which is precisely why this call matters: it arms the
@@ -70,12 +87,50 @@ export function reloadLastLocationFromStorage(): void {
     applyDefaultSurface(roomsState.activeRoomId);
 }
 
+// Zami: the room lists are `$state.raw`, behind accessors on roomsState. They
+// are only ever replaced whole (refreshRooms, a space switch, an optimistic
+// leave, a /hierarchy answer), and a deep proxy made each read of a room in
+// lists of thousands a Proxy trap and a dependency, slow on Hermes. Replace
+// them; never change one in place.
+let rawSpaces = $state.raw<Room[]>([]);
+let rawOrphanRooms = $state.raw<Room[]>([]);
+let rawDirectRooms = $state.raw<Room[]>([]);
+let rawInvitedRooms = $state.raw<Room[]>([]);
+let rawKnockedRooms = $state.raw<Room[]>([]);
+let rawRoomsInSpace = $state.raw<Room[]>([]);
+let rawSpaceHierarchy = $state.raw<SpaceChildInfo[]>([]);
+
 export const roomsState = $state({
-    spaces: [] as Room[],
-    orphanRooms: [] as Room[],
-    directRooms: [] as Room[],
-    invitedRooms: [] as Room[],
-    knockedRooms: [] as Room[],
+    get spaces(): Room[] {
+        return rawSpaces;
+    },
+    set spaces(value: Room[]) {
+        rawSpaces = value;
+    },
+    get orphanRooms(): Room[] {
+        return rawOrphanRooms;
+    },
+    set orphanRooms(value: Room[]) {
+        rawOrphanRooms = value;
+    },
+    get directRooms(): Room[] {
+        return rawDirectRooms;
+    },
+    set directRooms(value: Room[]) {
+        rawDirectRooms = value;
+    },
+    get invitedRooms(): Room[] {
+        return rawInvitedRooms;
+    },
+    set invitedRooms(value: Room[]) {
+        rawInvitedRooms = value;
+    },
+    get knockedRooms(): Room[] {
+        return rawKnockedRooms;
+    },
+    set knockedRooms(value: Room[]) {
+        rawKnockedRooms = value;
+    },
     activeSpaceId: loadLastSpace() as string | null,
     activeRoomId: getLastRoom(loadLastSpace()) as string | null,
     showInbox: false,
@@ -85,8 +140,18 @@ export const roomsState = $state({
      * the space's first room. Cleared by any real navigation.
      */
     showSpaceHome: false,
-    roomsInSpace: [] as Room[],
-    spaceHierarchy: [] as SpaceChildInfo[],
+    get roomsInSpace(): Room[] {
+        return rawRoomsInSpace;
+    },
+    set roomsInSpace(value: Room[]) {
+        rawRoomsInSpace = value;
+    },
+    get spaceHierarchy(): SpaceChildInfo[] {
+        return rawSpaceHierarchy;
+    },
+    set spaceHierarchy(value: SpaceChildInfo[]) {
+        rawSpaceHierarchy = value;
+    },
     /**
      * Set while browsing a sub-space reached from inside another space: the
      * nearest *joined* ancestor (for the hierarchy-via-parent fallback and
@@ -120,8 +185,21 @@ export const roomsState = $state({
     draftDm: null as { userId: string; encrypt: boolean } | null,
 });
 
+// Zami: at most one bump per turn of the event loop. Replaying a saved sync adds
+// every cached message in one long chain of microtasks, and Svelte flushes its
+// effects between them, so a bump per message re-ran every unread badge and
+// preview (each a pass over all rooms) once per message: on Hermes, minutes of
+// "Restoring session" for a large account. A timer can't fire inside that chain,
+// so its bumps collapse into one when it ends; otherwise this is a frame later.
+let unreadBumpQueued = false;
+
 export function bumpUnreadTick(): void {
-    roomsState.unreadTick++;
+    if (unreadBumpQueued) return;
+    unreadBumpQueued = true;
+    setTimeout(() => {
+        unreadBumpQueued = false;
+        roomsState.unreadTick++;
+    }, 0);
 }
 
 /**
@@ -256,23 +334,37 @@ export function resolveLandingSurface(): void {
         // Conservative on purpose: an offline or erroring boot simply never
         // runs the chain, and the user keeps whatever the cache gave them —
         // never worse than the behaviour before this feature.
-        roomsReady: auth.syncState === "SYNCING",
+        // Zami: or, with nothing selected, the saved room list (see
+        // roomListCache.ts). There is no remembered room to overwrite then, and
+        // a launch with none otherwise showed an empty pane until live sync,
+        // which for a large account is the saved sync's replay and more. Live
+        // sync still moves the user on if that room turns out to be gone.
+        roomsReady:
+            auth.syncState === "SYNCING" ||
+            (lastLocationLoaded &&
+                roomsState.activeRoomId === null &&
+                isRoomListFromCache()),
         showInbox: roomsState.showInbox || roomsState.showSpaceHome,
         activeSpaceId: spaceId,
         activeRoomId: roomsState.activeRoomId,
         activeRoomIsLandable: roomsState.activeRoomId
             ? isRoomLandable(roomsState.activeRoomId)
             : false,
-        spaceRoomIds: spaceId
-            ? sidebarOrderedIds(getRoomsInSpace(spaceId))
-            : [],
+        // Zami: the two lists are getters, sorted only if read: "keep", nearly
+        // always the answer, never reads them, and this runs on every room-list
+        // rebuild.
+        get spaceRoomIds() {
+            return spaceId ? sidebarOrderedIds(getRoomsInSpace(spaceId)) : [];
+        },
         // The sidebar renders the DM section after the room groups, so Home's
         // order is the two lists sorted separately and concatenated — never one
         // sort over both, which would interleave a favourited DM into the rooms.
-        homeRoomIds: [
-            ...sidebarOrderedIds(roomsState.orphanRooms),
-            ...sidebarOrderedIds(roomsState.directRooms),
-        ],
+        get homeRoomIds() {
+            return [
+                ...sidebarOrderedIds(roomsState.orphanRooms),
+                ...sidebarOrderedIds(roomsState.directRooms),
+            ];
+        },
     });
 
     switch (target.kind) {

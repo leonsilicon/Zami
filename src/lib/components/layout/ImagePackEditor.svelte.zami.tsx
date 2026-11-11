@@ -9,8 +9,18 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { X } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
-import { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+    FlatList,
+    Pressable,
+    Text,
+    TextInput,
+    View,
+    type ListRenderItemInfo,
+} from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { createKeyedMemo } from "@-/com.leonsilicon.zami.incremental";
+import { useStableCallback } from "@-/com.leonsilicon.zami.incremental/react";
 import { t } from "$lib/i18n";
 import {
     getAvailableRoomEmotePacks,
@@ -25,6 +35,7 @@ import {
     uploadContent,
     mxcToHttp,
     getRoomStateAvatar,
+    imagePackRevision,
     type CustomImagePack,
     type CustomPackImage,
     type ImageUsage,
@@ -40,12 +51,26 @@ interface Props {
      *  from the levels of the events an edit to them writes. */
     canEdit: boolean;
     onUpdate?: () => void;
+    /** Zami: shown above the add form, in the list's scroll (the trust banner). */
+    header?: ReactNode;
+    /** Zami: shown below the packs (the soundboard). */
+    footer?: ReactNode;
 }
+
+// Zami: each room's packs, read again only when pack state changes (a reopened
+// Emotes tab, or a re-read after an edit that hasn't echoed back yet).
+const roomPacksMemo = createKeyedMemo<CustomImagePack[]>();
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text, and `title` tooltips
 // are dropped.
-export default function ImagePackEditor({ room, canEdit, onUpdate }: Props) {
+export default function ImagePackEditor({
+    room,
+    canEdit,
+    onUpdate,
+    header,
+    footer,
+}: Props) {
     const [emotePacks, setEmotePacks] = useState<CustomImagePack[]>([]);
     const [selectedEmotePackKey, setSelectedEmotePackKey] = useState("");
     const [newEmotePackName, setNewEmotePackName] = useState("");
@@ -86,7 +111,9 @@ export default function ImagePackEditor({ room, canEdit, onUpdate }: Props) {
     const canAdd = canEdit || emotePacks.some(canEditPack);
 
     function loadEmotes() {
-        const packs = sortEmotePacks(getAvailableRoomEmotePacks(room));
+        const packs = roomPacksMemo([room, imagePackRevision()], () =>
+            sortEmotePacks(getAvailableRoomEmotePacks(room)),
+        );
         setEmotePacks(packs);
         const editablePacks = editableEmotePacks(packs);
         setSelectedEmotePackKey((selected) =>
@@ -481,447 +508,571 @@ export default function ImagePackEditor({ room, canEdit, onUpdate }: Props) {
         }
     }
 
-    return (
-        <View className="gap-4">
-            {canAdd && (
-                <View className="gap-2">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
-                        {t("imagePackEditor.addImage")}
-                    </Text>
-                    {/* Zami: the grid (sm:grid-cols-[1fr_auto]) as a column, and a
-                        row from sm up. */}
-                    <View className="gap-2 sm:flex-row">
-                        <View className="gap-2 min-w-0 sm:flex-1">
-                            <Select
-                                value={selectedEmotePackKey}
-                                onChange={setSelectedEmotePackKey}
-                                disabled={!canAdd || emoteUploading}
-                                options={[
-                                    ...editableEmotePacks().map((pack) => ({
-                                        key: pack.id,
-                                        value: packKey(pack),
-                                        label: pack.name,
-                                    })),
-                                    ...(canEdit
-                                        ? [
-                                              {
-                                                  key: "__new",
-                                                  value: "__new",
-                                                  label: t(
-                                                      "imagePackEditor.newPack",
-                                                  ),
-                                              },
-                                          ]
-                                        : []),
-                                ]}
-                                className="w-full bg-discord-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
-                            />
-                            {selectedEmotePackKey === "__new" && (
-                                <TextInput
-                                    value={newEmotePackName}
-                                    onChangeText={setNewEmotePackName}
-                                    editable={!(!canAdd || emoteUploading)}
-                                    placeholder={t("imagePackEditor.packName")}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
-                                    className="w-full min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
-                                />
-                            )}
-                            <View className="flex-row items-center bg-discord-backgroundTertiary rounded border border-transparent">
-                                <Text className="ps-3 text-sm text-discord-textMuted">
-                                    :
-                                </Text>
-                                <TextInput
-                                    value={emoteShortcode}
-                                    onChangeText={setEmoteShortcode}
-                                    editable={!(!canAdd || emoteUploading)}
-                                    placeholder={t("imagePackEditor.shortcode")}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
-                                    accessibilityLabel={t(
-                                        "imagePackEditor.addImage",
-                                    )}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    className="min-w-0 flex-1 bg-transparent text-discord-textPrimary text-sm py-2 disabled:opacity-50"
-                                />
-                                <Text className="pe-3 text-sm text-discord-textMuted">
-                                    :
-                                </Text>
-                            </View>
-                        </View>
-                        {canAdd && (
-                            <Pressable
-                                accessibilityRole="button"
-                                onPress={() => {
-                                    handleEmoteUpload();
-                                }}
-                                disabled={emoteUploading}
-                                className={`shrink-0 self-start px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
-                                    emoteUploading ? "opacity-50" : ""
-                                }`}
-                            >
-                                <Text className="text-white text-sm font-semibold text-center">
-                                    {emoteUploading
-                                        ? t("common.uploading")
-                                        : t("common.uploadImage")}
-                                </Text>
-                            </Pressable>
-                        )}
-                    </View>
-                    <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary">
-                        <Checkbox
-                            checked={newEmoteAsEmoji}
-                            onChange={setNewEmoteAsEmoji}
-                            disabled={!canAdd || emoteUploading}
-                            label={t("imagePackEditor.useAsEmoji")}
-                            labelClassName="text-xs text-discord-textPrimary"
-                            className="items-center gap-1.5"
-                        />
-                        <Checkbox
-                            checked={newEmoteAsSticker}
-                            onChange={setNewEmoteAsSticker}
-                            disabled={!canAdd || emoteUploading}
-                            label={t("imagePackEditor.useAsSticker")}
-                            labelClassName="text-xs text-discord-textPrimary"
-                            className="items-center gap-1.5"
-                        />
-                    </View>
+    // Zami: one FlatList, which RoomSettings shows as the Emotes tab's scroll
+    // box, so a pack of hundreds of images renders only the rows on screen. A
+    // pack's card is a "pack" row (its header, the all-rooms toggle and the
+    // edit form) and then a row per image (`ImageRow`, memoized: an edit
+    // re-renders the rows it changed); the add form above is the list's header.
+    const rows = useMemo(() => {
+        const out: PackRow[] = [];
+        emotePacks.forEach((pack, index) => {
+            out.push({ kind: "pack", key: pack.id, pack, first: index === 0 });
+            pack.images.forEach((item, i) =>
+                out.push({
+                    kind: "image",
+                    key: pack.id + ":" + item.shortcode,
+                    pack,
+                    item,
+                    first: i === 0,
+                    last: i === pack.images.length - 1,
+                }),
+            );
+        });
+        return out;
+    }, [emotePacks]);
+
+    // Zami: the image rows' actions, the same functions across renders.
+    const packById = (packId: string) =>
+        emotePacks.find((pack) => pack.id === packId);
+    const onSetFlag = useStableCallback(
+        (
+            packId: string,
+            item: CustomPackImage,
+            kind: ImageUsage,
+            checked: boolean,
+        ) => {
+            const pack = packById(packId);
+            if (pack) setRoomEmoteFlag(pack, item, kind, checked);
+        },
+    );
+    const onAddToMine = useStableCallback(
+        (packId: string, item: CustomPackImage) => {
+            const pack = packById(packId);
+            if (pack) addToMine(pack, item);
+        },
+    );
+    const onRemove = useStableCallback((packId: string, shortcode: string) => {
+        const pack = packById(packId);
+        if (pack) doRemoveEmote(pack, shortcode);
+    });
+
+    function renderRow({ item: row }: ListRenderItemInfo<PackRow>) {
+        const pack = row.pack;
+        if (row.kind === "image") {
+            const item = row.item;
+            const action = `${packKey(pack)}:${item.shortcode}`;
+            return (
+                <View
+                    className={`bg-discord-backgroundTertiary px-2 ${
+                        row.first ? "pt-2" : ""
+                    } ${row.last ? "pb-2 rounded-b" : "pb-1"}`}
+                >
+                    <ImageRow
+                        packId={pack.id}
+                        item={item}
+                        editable={canEditPack(pack)}
+                        pendingEmoji={
+                            emoteActionPending === `${action}:emoticon`
+                        }
+                        pendingSticker={
+                            emoteActionPending === `${action}:sticker`
+                        }
+                        pendingRemove={
+                            emoteActionPending === `${action}:remove`
+                        }
+                        mineBusy={
+                            packBusy ===
+                            packBusyKey(pack, `mine:${item.shortcode}`)
+                        }
+                        onSetFlag={onSetFlag}
+                        onAddToMine={onAddToMine}
+                        onRemove={onRemove}
+                    />
                 </View>
-            )}
-
-            {emoteError ? (
-                <Text className="text-sm text-discord-danger">
-                    {emoteError}
-                </Text>
-            ) : null}
-            {notice ? (
-                <Text className="text-sm text-discord-textMuted">{notice}</Text>
-            ) : null}
-
-            <View className="gap-3">
-                {emotePacks.map((pack) => (
-                    <View
-                        key={pack.id}
-                        className="rounded bg-discord-backgroundTertiary overflow-hidden"
-                    >
-                        <View className="flex-row items-center gap-2 px-3 py-2 border-b border-discord-divider">
-                            {pack.avatarUrl ? (
-                                <Image
-                                    source={mediaSource(pack.avatarUrl)}
-                                    contentFit="cover"
-                                    className="w-5 h-5 rounded flex-shrink-0"
-                                />
-                            ) : null}
-                            <View className="min-w-0 flex-1">
-                                <Text
-                                    numberOfLines={1}
-                                    className="text-sm font-semibold text-discord-textPrimary"
+            );
+        }
+        return (
+            <View
+                className={`rounded-t bg-discord-backgroundTertiary overflow-hidden ${
+                    row.first ? "" : "mt-3"
+                }`}
+            >
+                <View className="flex-row items-center gap-2 px-3 py-2 border-b border-discord-divider">
+                    {pack.avatarUrl ? (
+                        <Image
+                            source={mediaSource(pack.avatarUrl)}
+                            contentFit="cover"
+                            className="w-5 h-5 rounded flex-shrink-0"
+                        />
+                    ) : null}
+                    <View className="min-w-0 flex-1">
+                        <Text
+                            numberOfLines={1}
+                            className="text-sm font-semibold text-discord-textPrimary"
+                        >
+                            {pack.name}
+                        </Text>
+                        <Text
+                            numberOfLines={1}
+                            className="text-xs text-discord-textMuted"
+                        >
+                            {pack.inherited
+                                ? t("imagePackEditor.inheritedFrom", {
+                                      sourceName: pack.sourceName,
+                                  })
+                                : pack.sourceName}
+                        </Text>
+                        {pack.attribution ? (
+                            <Text
+                                numberOfLines={1}
+                                className="text-xs text-discord-textMuted"
+                            >
+                                {t("imagePackEditor.attribution", {
+                                    value: pack.attribution,
+                                })}
+                            </Text>
+                        ) : null}
+                    </View>
+                    <View className="flex-row items-center gap-1 flex-shrink-0">
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => {
+                                addToMine(pack);
+                            }}
+                            disabled={packBusy === packBusyKey(pack, "mine")}
+                            className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                        >
+                            <Text className="text-xs text-discord-textPrimary">
+                                {t("imagePackEditor.addToMine")}
+                            </Text>
+                        </Pressable>
+                        {canEditPack(pack) && (
+                            <>
+                                <Pressable
+                                    accessibilityRole="button"
+                                    onPress={() =>
+                                        editingKey === pack.id
+                                            ? setEditingKey(null)
+                                            : startEdit(pack)
+                                    }
+                                    className="px-2 py-1 rounded hover:bg-discord-messageHover"
                                 >
-                                    {pack.name}
-                                </Text>
-                                <Text
-                                    numberOfLines={1}
-                                    className="text-xs text-discord-textMuted"
-                                >
-                                    {pack.inherited
-                                        ? t("imagePackEditor.inheritedFrom", {
-                                              sourceName: pack.sourceName,
-                                          })
-                                        : pack.sourceName}
-                                </Text>
-                                {pack.attribution ? (
-                                    <Text
-                                        numberOfLines={1}
-                                        className="text-xs text-discord-textMuted"
-                                    >
-                                        {t("imagePackEditor.attribution", {
-                                            value: pack.attribution,
-                                        })}
+                                    <Text className="text-xs text-discord-textPrimary">
+                                        {t("imagePackEditor.editDetails")}
                                     </Text>
-                                ) : null}
-                            </View>
-                            <View className="flex-row items-center gap-1 flex-shrink-0">
+                                </Pressable>
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={() => {
-                                        addToMine(pack);
+                                        doDeletePack(pack);
                                     }}
                                     disabled={
-                                        packBusy === packBusyKey(pack, "mine")
+                                        packBusy === packBusyKey(pack, "delete")
                                     }
                                     className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
                                 >
-                                    <Text className="text-xs text-discord-textPrimary">
-                                        {t("imagePackEditor.addToMine")}
+                                    <Text className="text-xs text-discord-danger">
+                                        {t("imagePackEditor.deletePack")}
                                     </Text>
                                 </Pressable>
-                                {canEditPack(pack) && (
-                                    <>
-                                        <Pressable
-                                            accessibilityRole="button"
-                                            onPress={() =>
-                                                editingKey === pack.id
-                                                    ? setEditingKey(null)
-                                                    : startEdit(pack)
-                                            }
-                                            className="px-2 py-1 rounded hover:bg-discord-messageHover"
-                                        >
-                                            <Text className="text-xs text-discord-textPrimary">
-                                                {t(
-                                                    "imagePackEditor.editDetails",
-                                                )}
-                                            </Text>
-                                        </Pressable>
-                                        <Pressable
-                                            accessibilityRole="button"
-                                            onPress={() => {
-                                                doDeletePack(pack);
-                                            }}
-                                            disabled={
-                                                packBusy ===
-                                                packBusyKey(pack, "delete")
-                                            }
-                                            className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
-                                        >
-                                            <Text className="text-xs text-discord-danger">
-                                                {t(
-                                                    "imagePackEditor.deletePack",
-                                                )}
-                                            </Text>
-                                        </Pressable>
-                                    </>
-                                )}
-                            </View>
-                        </View>
-                        <Checkbox
-                            checked={!!pack.global}
-                            onChange={(checked) => {
-                                toggleGlobal(pack, checked);
-                            }}
-                            disabled={packBusy === packBusyKey(pack, "global")}
-                            className="items-center gap-2 px-3 py-2 border-b border-discord-divider"
-                            label={
-                                <Text className="flex-1 min-w-0 text-xs text-discord-textPrimary">
-                                    {t("imagePackEditor.useInAllRooms")}{" "}
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("imagePackEditor.useInAllRoomsHint")}
-                                    </Text>
-                                </Text>
-                            }
-                        />
-                        {editingKey === pack.id && (
-                            <View className="gap-2 px-3 py-2 border-b border-discord-divider">
-                                {/* Zami: the grid's two columns from sm up
-                                    (sm:grid-cols-2): the fields share a row there,
-                                    and the actions (sm:col-span-2) have their own. */}
-                                <View className="gap-2 sm:flex-row">
-                                    <TextInput
-                                        value={editName}
-                                        onChangeText={setEditName}
-                                        placeholder={t(
-                                            "imagePackEditor.packName",
-                                        )}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
-                                        className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
-                                    />
-                                    <TextInput
-                                        value={editAttribution}
-                                        onChangeText={setEditAttribution}
-                                        placeholder={t(
-                                            "imagePackEditor.attributionPlaceholder",
-                                        )}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
-                                        className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
-                                    />
-                                </View>
-                                <View className="flex-row items-center gap-2">
-                                    <Pressable
-                                        accessibilityRole="button"
-                                        onPress={() => {
-                                            pickPackAvatar();
-                                        }}
-                                        className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover"
-                                    >
-                                        <Text className="text-xs text-discord-textPrimary">
-                                            {t(
-                                                "imagePackEditor.uploadPackAvatar",
-                                            )}
-                                        </Text>
-                                    </Pressable>
-                                    {editAvatarMxc ? (
-                                        <Text className="text-xs text-discord-textMuted">
-                                            {t("imagePackEditor.avatarReady")}
-                                        </Text>
-                                    ) : null}
-                                    {pack.avatarUrl || editAvatarMxc ? (
-                                        <Pressable
-                                            accessibilityRole="button"
-                                            onPress={() =>
-                                                setEditAvatarMxc(null)
-                                            }
-                                        >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
-                                                {t(
-                                                    "imagePackEditor.removePackAvatar",
-                                                )}
-                                            </Text>
-                                        </Pressable>
-                                    ) : null}
-                                    <View className="flex-1" />
-                                    <Pressable
-                                        accessibilityRole="button"
-                                        onPress={() => {
-                                            saveEdit(pack);
-                                        }}
-                                        disabled={
-                                            packBusy ===
-                                            packBusyKey(pack, "edit")
-                                        }
-                                        className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
-                                    >
-                                        <Text className="text-white text-xs font-semibold">
-                                            {t("common.save")}
-                                        </Text>
-                                    </Pressable>
-                                </View>
-                            </View>
+                            </>
                         )}
-                        <View className="gap-1 p-2">
-                            {pack.images.map((item) => (
-                                <View
-                                    key={pack.id + ":" + item.shortcode}
-                                    className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundSecondary"
+                    </View>
+                </View>
+                <Checkbox
+                    checked={!!pack.global}
+                    onChange={(checked) => {
+                        toggleGlobal(pack, checked);
+                    }}
+                    disabled={packBusy === packBusyKey(pack, "global")}
+                    className="items-center gap-2 px-3 py-2 border-b border-discord-divider"
+                    label={
+                        <Text className="flex-1 min-w-0 text-xs text-discord-textPrimary">
+                            {t("imagePackEditor.useInAllRooms")}{" "}
+                            <Text className="text-xs text-discord-textMuted">
+                                {t("imagePackEditor.useInAllRoomsHint")}
+                            </Text>
+                        </Text>
+                    }
+                />
+                {editingKey === pack.id && (
+                    <View className="gap-2 px-3 py-2 border-b border-discord-divider">
+                        {/* Zami: the grid's two columns from sm up
+                        (sm:grid-cols-2): the fields share a row there,
+                        and the actions (sm:col-span-2) have their own. */}
+                        <View className="gap-2 sm:flex-row">
+                            <TextInput
+                                value={editName}
+                                onChangeText={setEditName}
+                                placeholder={t("imagePackEditor.packName")}
+                                placeholderTextColorClassName="accent-discord-textMuted"
+                                className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                            />
+                            <TextInput
+                                value={editAttribution}
+                                onChangeText={setEditAttribution}
+                                placeholder={t(
+                                    "imagePackEditor.attributionPlaceholder",
+                                )}
+                                placeholderTextColorClassName="accent-discord-textMuted"
+                                className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                            />
+                        </View>
+                        <View className="flex-row items-center gap-2">
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => {
+                                    pickPackAvatar();
+                                }}
+                                className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                            >
+                                <Text className="text-xs text-discord-textPrimary">
+                                    {t("imagePackEditor.uploadPackAvatar")}
+                                </Text>
+                            </Pressable>
+                            {editAvatarMxc ? (
+                                <Text className="text-xs text-discord-textMuted">
+                                    {t("imagePackEditor.avatarReady")}
+                                </Text>
+                            ) : null}
+                            {pack.avatarUrl || editAvatarMxc ? (
+                                <Pressable
+                                    accessibilityRole="button"
+                                    onPress={() => setEditAvatarMxc(null)}
                                 >
-                                    <View className="w-12 h-12 rounded bg-discord-backgroundTertiary flex-shrink-0 overflow-hidden items-center justify-center">
-                                        <Image
-                                            source={mediaSource(item.url)}
-                                            contentFit="contain"
-                                            className="w-12 h-12"
-                                        />
-                                    </View>
-                                    <View className="flex-1 min-w-0">
-                                        <Text
-                                            numberOfLines={1}
-                                            className="text-sm font-medium text-discord-textPrimary"
-                                        >
-                                            :{item.shortcode}:
-                                        </Text>
-                                        <Text
-                                            numberOfLines={1}
-                                            className="text-xs text-discord-textMuted"
-                                        >
-                                            {item.mxcUrl}
-                                        </Text>
-                                    </View>
-                                    <View className="flex-row items-center gap-3">
-                                        {canEditPack(pack) ? (
-                                            <Checkbox
-                                                checked={item.canEmoji}
-                                                onChange={(checked) => {
-                                                    setRoomEmoteFlag(
-                                                        pack,
-                                                        item,
-                                                        "emoticon",
-                                                        checked,
-                                                    );
-                                                }}
-                                                disabled={
-                                                    !canEditPack(pack) ||
-                                                    emoteActionPending ===
-                                                        `${packKey(pack)}:${item.shortcode}:emoticon`
-                                                }
-                                                label={t("common.emoji")}
-                                                labelClassName="text-xs text-discord-textPrimary"
-                                                className="items-center gap-1.5"
-                                            />
-                                        ) : item.canEmoji ? (
-                                            <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
-                                                {t("common.emoji")}
-                                            </Text>
-                                        ) : null}
-                                        {canEditPack(pack) ? (
-                                            <Checkbox
-                                                checked={item.canSticker}
-                                                onChange={(checked) => {
-                                                    setRoomEmoteFlag(
-                                                        pack,
-                                                        item,
-                                                        "sticker",
-                                                        checked,
-                                                    );
-                                                }}
-                                                disabled={
-                                                    !canEditPack(pack) ||
-                                                    emoteActionPending ===
-                                                        `${packKey(pack)}:${item.shortcode}:sticker`
-                                                }
-                                                label={t(
-                                                    "imagePackEditor.sticker",
-                                                )}
-                                                labelClassName="text-xs text-discord-textPrimary"
-                                                className="items-center gap-1.5"
-                                            />
-                                        ) : item.canSticker ? (
-                                            <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
-                                                {t("imagePackEditor.sticker")}
-                                            </Text>
-                                        ) : null}
-                                    </View>
-                                    <Pressable
-                                        accessibilityRole="button"
-                                        onPress={() => {
-                                            addToMine(pack, item);
-                                        }}
-                                        disabled={
-                                            packBusy ===
-                                            packBusyKey(
-                                                pack,
-                                                `mine:${item.shortcode}`,
-                                            )
-                                        }
-                                        className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
-                                    >
-                                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
-                                            {t("imagePackEditor.addToMine")}
-                                        </Text>
-                                    </Pressable>
-                                    {canEditPack(pack) && (
-                                        <Pressable
-                                            accessibilityRole="button"
-                                            accessibilityLabel={t(
-                                                "imagePackEditor.removeImage",
-                                            )}
-                                            onPress={() => {
-                                                doRemoveEmote(
-                                                    pack,
-                                                    item.shortcode,
-                                                );
-                                            }}
-                                            disabled={
-                                                emoteActionPending ===
-                                                `${packKey(pack)}:${item.shortcode}:remove`
-                                            }
-                                            className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
-                                        >
-                                            <X
-                                                size={16}
-                                                className="text-discord-textMuted"
-                                            />
-                                        </Pressable>
-                                    )}
-                                </View>
-                            ))}
+                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                        {t("imagePackEditor.removePackAvatar")}
+                                    </Text>
+                                </Pressable>
+                            ) : null}
+                            <View className="flex-1" />
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => {
+                                    saveEdit(pack);
+                                }}
+                                disabled={
+                                    packBusy === packBusyKey(pack, "edit")
+                                }
+                                className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
+                            >
+                                <Text className="text-white text-xs font-semibold">
+                                    {t("common.save")}
+                                </Text>
+                            </Pressable>
                         </View>
                     </View>
-                ))}
-                {emotePacks.length === 0 ? (
-                    <Text className="text-sm text-discord-textMuted text-center py-4">
-                        {t("imagePackEditor.noCustomImages")}
+                )}
+            </View>
+        );
+    }
+
+    return (
+        <FlatList
+            className="flex-1 min-w-0"
+            contentContainerClassName="p-4 md:p-6"
+            data={rows}
+            keyExtractor={(row) => row.key}
+            keyboardShouldPersistTaps="handled"
+            renderScrollComponent={(props) => (
+                <KeyboardAwareScrollView {...props} />
+            )}
+            renderItem={renderRow}
+            ListHeaderComponent={
+                <>
+                    {header}
+                    {canAdd || emoteError || notice ? (
+                        <View className="gap-4 mb-4">
+                            {canAdd && (
+                                <View className="gap-2">
+                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                                        {t("imagePackEditor.addImage")}
+                                    </Text>
+                                    {/* Zami: the grid (sm:grid-cols-[1fr_auto]) as a column, and a
+                                    row from sm up. */}
+                                    <View className="gap-2 sm:flex-row">
+                                        <View className="gap-2 min-w-0 sm:flex-1">
+                                            <Select
+                                                value={selectedEmotePackKey}
+                                                onChange={
+                                                    setSelectedEmotePackKey
+                                                }
+                                                disabled={
+                                                    !canAdd || emoteUploading
+                                                }
+                                                options={[
+                                                    ...editableEmotePacks().map(
+                                                        (pack) => ({
+                                                            key: pack.id,
+                                                            value: packKey(
+                                                                pack,
+                                                            ),
+                                                            label: pack.name,
+                                                        }),
+                                                    ),
+                                                    ...(canEdit
+                                                        ? [
+                                                              {
+                                                                  key: "__new",
+                                                                  value: "__new",
+                                                                  label: t(
+                                                                      "imagePackEditor.newPack",
+                                                                  ),
+                                                              },
+                                                          ]
+                                                        : []),
+                                                ]}
+                                                className="w-full bg-discord-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
+                                            />
+                                            {selectedEmotePackKey ===
+                                                "__new" && (
+                                                <TextInput
+                                                    value={newEmotePackName}
+                                                    onChangeText={
+                                                        setNewEmotePackName
+                                                    }
+                                                    editable={
+                                                        !(
+                                                            !canAdd ||
+                                                            emoteUploading
+                                                        )
+                                                    }
+                                                    placeholder={t(
+                                                        "imagePackEditor.packName",
+                                                    )}
+                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    className="w-full min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
+                                                />
+                                            )}
+                                            <View className="flex-row items-center bg-discord-backgroundTertiary rounded border border-transparent">
+                                                <Text className="ps-3 text-sm text-discord-textMuted">
+                                                    :
+                                                </Text>
+                                                <TextInput
+                                                    value={emoteShortcode}
+                                                    onChangeText={
+                                                        setEmoteShortcode
+                                                    }
+                                                    editable={
+                                                        !(
+                                                            !canAdd ||
+                                                            emoteUploading
+                                                        )
+                                                    }
+                                                    placeholder={t(
+                                                        "imagePackEditor.shortcode",
+                                                    )}
+                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    accessibilityLabel={t(
+                                                        "imagePackEditor.addImage",
+                                                    )}
+                                                    autoCapitalize="none"
+                                                    autoCorrect={false}
+                                                    className="min-w-0 flex-1 bg-transparent text-discord-textPrimary text-sm py-2 disabled:opacity-50"
+                                                />
+                                                <Text className="pe-3 text-sm text-discord-textMuted">
+                                                    :
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        {canAdd && (
+                                            <Pressable
+                                                accessibilityRole="button"
+                                                onPress={() => {
+                                                    handleEmoteUpload();
+                                                }}
+                                                disabled={emoteUploading}
+                                                className={`shrink-0 self-start px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                                                    emoteUploading
+                                                        ? "opacity-50"
+                                                        : ""
+                                                }`}
+                                            >
+                                                <Text className="text-white text-sm font-semibold text-center">
+                                                    {emoteUploading
+                                                        ? t("common.uploading")
+                                                        : t(
+                                                              "common.uploadImage",
+                                                          )}
+                                                </Text>
+                                            </Pressable>
+                                        )}
+                                    </View>
+                                    <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary">
+                                        <Checkbox
+                                            checked={newEmoteAsEmoji}
+                                            onChange={setNewEmoteAsEmoji}
+                                            disabled={!canAdd || emoteUploading}
+                                            label={t(
+                                                "imagePackEditor.useAsEmoji",
+                                            )}
+                                            labelClassName="text-xs text-discord-textPrimary"
+                                            className="items-center gap-1.5"
+                                        />
+                                        <Checkbox
+                                            checked={newEmoteAsSticker}
+                                            onChange={setNewEmoteAsSticker}
+                                            disabled={!canAdd || emoteUploading}
+                                            label={t(
+                                                "imagePackEditor.useAsSticker",
+                                            )}
+                                            labelClassName="text-xs text-discord-textPrimary"
+                                            className="items-center gap-1.5"
+                                        />
+                                    </View>
+                                </View>
+                            )}
+
+                            {emoteError ? (
+                                <Text className="text-sm text-discord-danger">
+                                    {emoteError}
+                                </Text>
+                            ) : null}
+                            {notice ? (
+                                <Text className="text-sm text-discord-textMuted">
+                                    {notice}
+                                </Text>
+                            ) : null}
+                        </View>
+                    ) : null}
+                </>
+            }
+            ListEmptyComponent={
+                <Text className="text-sm text-discord-textMuted text-center py-4">
+                    {t("imagePackEditor.noCustomImages")}
+                </Text>
+            }
+            ListFooterComponent={<>{footer}</>}
+        />
+    );
+}
+
+type PackRow =
+    | { kind: "pack"; key: string; pack: CustomImagePack; first: boolean }
+    | {
+          kind: "image";
+          key: string;
+          pack: CustomImagePack;
+          item: CustomPackImage;
+          first: boolean;
+          last: boolean;
+      };
+
+// Zami: one image of a pack. Memoized on what it shows, so a list of hundreds
+// re-renders only the rows an action changed.
+const ImageRow = memo(function ImageRow({
+    packId,
+    item,
+    editable,
+    pendingEmoji,
+    pendingSticker,
+    pendingRemove,
+    mineBusy,
+    onSetFlag,
+    onAddToMine,
+    onRemove,
+}: {
+    packId: string;
+    item: CustomPackImage;
+    editable: boolean;
+    pendingEmoji: boolean;
+    pendingSticker: boolean;
+    pendingRemove: boolean;
+    mineBusy: boolean;
+    onSetFlag: (
+        packId: string,
+        item: CustomPackImage,
+        kind: ImageUsage,
+        checked: boolean,
+    ) => void;
+    onAddToMine: (packId: string, item: CustomPackImage) => void;
+    onRemove: (packId: string, shortcode: string) => void;
+}) {
+    return (
+        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundSecondary">
+            <View className="w-12 h-12 rounded bg-discord-backgroundTertiary flex-shrink-0 overflow-hidden items-center justify-center">
+                <Image
+                    source={mediaSource(item.url)}
+                    contentFit="contain"
+                    className="w-12 h-12"
+                />
+            </View>
+            <View className="flex-1 min-w-0">
+                <Text
+                    numberOfLines={1}
+                    className="text-sm font-medium text-discord-textPrimary"
+                >
+                    :{item.shortcode}:
+                </Text>
+                <Text
+                    numberOfLines={1}
+                    className="text-xs text-discord-textMuted"
+                >
+                    {item.mxcUrl}
+                </Text>
+            </View>
+            <View className="flex-row items-center gap-3">
+                {editable ? (
+                    <Checkbox
+                        checked={item.canEmoji}
+                        onChange={(checked) => {
+                            onSetFlag(packId, item, "emoticon", checked);
+                        }}
+                        disabled={!editable || pendingEmoji}
+                        label={t("common.emoji")}
+                        labelClassName="text-xs text-discord-textPrimary"
+                        className="items-center gap-1.5"
+                    />
+                ) : item.canEmoji ? (
+                    <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
+                        {t("common.emoji")}
+                    </Text>
+                ) : null}
+                {editable ? (
+                    <Checkbox
+                        checked={item.canSticker}
+                        onChange={(checked) => {
+                            onSetFlag(packId, item, "sticker", checked);
+                        }}
+                        disabled={!editable || pendingSticker}
+                        label={t("imagePackEditor.sticker")}
+                        labelClassName="text-xs text-discord-textPrimary"
+                        className="items-center gap-1.5"
+                    />
+                ) : item.canSticker ? (
+                    <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
+                        {t("imagePackEditor.sticker")}
                     </Text>
                 ) : null}
             </View>
+            <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                    onAddToMine(packId, item);
+                }}
+                disabled={mineBusy}
+                className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+            >
+                <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                    {t("imagePackEditor.addToMine")}
+                </Text>
+            </Pressable>
+            {editable && (
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("imagePackEditor.removeImage")}
+                    onPress={() => {
+                        onRemove(packId, item.shortcode);
+                    }}
+                    disabled={pendingRemove}
+                    className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                >
+                    <X size={16} className="text-discord-textMuted" />
+                </Pressable>
+            )}
         </View>
     );
-}
+});
 
 // Zami: <input type="file" accept="image/*"> → expo-image-picker's photo library.
 // Resolves to the picked image as a `File` with its size, or null when cancelled.

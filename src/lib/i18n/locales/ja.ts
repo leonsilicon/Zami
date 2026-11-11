@@ -360,7 +360,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugPanel.debugPanel": "デバッグパネル",
     "debugPanel.sync": "同期:",
     "debugPanel.refresh": "↻ 更新",
-    "debugPanel.copied": "✓ コピーしました",
+    "debugPanel.copied": "コピーしました",
     "debugPanel.copy": "⧉ コピー",
     "debugPanel.unreadState": "未読状態",
     "debugPanel.unread": "未読:",
@@ -664,6 +664,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "extendedProfileDebug.couldNotCopyToClipboard":
         "クリップボードにコピーできませんでした",
     "flashEmbed.suspend": "一時停止",
+    "flashEmbed.resize": "プレーヤーのサイズを変更",
+    "flashEmbed.resizeHint":
+        "ドラッグするか矢印キーでサイズを変更。ダブルクリックでリセット",
     "forwardMessageDialog.forwardMessage": "メッセージを転送",
     "forwardMessageDialog.searchRooms": "ルームを検索",
     "forwardMessageDialog.noJoinedRoomsFound": "参加中のルームが見つかりません",
@@ -838,6 +841,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.image": "画像",
     "lightbox.videoNoun": "動画",
     "lightbox.imageNoun": "画像",
+    "lightbox.zoomIn": "拡大",
+    "lightbox.zoomOut": "縮小",
+    "lightbox.zoomReset": "ズームをリセット",
     "linkPreview.youtubeVideo": "YouTube 動画",
     "linkPreview.xTwitter": "X / Twitter",
     "linkPreview.loadingItContactsTheSiteHosting":
@@ -1459,7 +1465,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pluginsSettings.localFolder": "ローカルフォルダー",
     "pluginsSettings.loadFromFolder": "フォルダーからプラグインを読み込む",
     "pluginsSettings.loadFromFolderHint":
-        "プラグイン開発用: manifest.json とバンドルが入ったフォルダーを選びます。Zam はそのコピーを保存し、通常のプラグインと同じように実行します。ビルドし直したら「再読み込み」を使ってください。完全な権限で動くコードなので、自分で書いたか信頼できるフォルダーだけを読み込んでください。",
+        "プラグイン開発用: manifest.json とバンドルが入ったフォルダー、またはそのようなプラグインフォルダーを複数含むリポジトリのフォルダーを選びます。Zam はそのコピーを保存し、通常のプラグインと同じように実行します。ビルドし直したら「再読み込み」を使ってください。完全な権限で動くコードなので、自分で書いたか信頼できるフォルダーだけを読み込んでください。",
     "pluginsSettings.chooseFolder": "フォルダーを選択",
     "pluginsSettings.reload": "再読み込み",
     "pluginsSettings.reloading": "再読み込み中…",
@@ -1494,7 +1500,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "pollBody.resultsAreRevealedWhenThePoll":
         "結果は投票の終了時に公開されます",
     "pollBody.chooseUpTo": "· 最大{maxSelections}件まで選択",
-    "pollBody.selected": "✓ 選択済み",
+    "pollBody.selected": "選択済み",
     "pollBody.submitting": "送信しています…",
     "pollBody.submitVote": "投票を送信",
     "pollBody.votesAreHidden": "投票は非公開です",
@@ -1980,7 +1986,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "securitySettings.onlyOnce": "一度きりです。",
     "securitySettings.storeItNowWithoutItYou":
         "今すぐ保存してください - これがないと、セッションへのアクセスを失ったときに暗号化された履歴を復元できません。",
-    "securitySettings.copied": "コピーしました ✓",
+    "securitySettings.copied": "コピーしました",
     "securitySettings.copyKey": "キーをコピー",
     "securitySettings.youCanAlsoUnlockWithThe":
         "選択したパスフレーズでも解錠できます。パスフレーズを忘れたときの唯一の手段なので、キーは必ず保管してください。",
@@ -2592,6 +2598,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceCallPanel.disconnect": "切断",
     "voiceMessagePlayer.seek": "シーク",
     "voiceMessagePlayer.voiceMessage": "ボイスメッセージ",
+    "midiPlayer.play": "再生",
+    "midiPlayer.pause": "一時停止",
+    "midiPlayer.seek": "再生位置",
+    "midiPlayer.volume": "音量",
     "voiceRecorder.cancelRecording": "録音をキャンセル",
     "voiceRecorder.stop": "停止",
     "voiceRecorder.discard": "破棄",

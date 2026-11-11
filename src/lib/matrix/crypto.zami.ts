@@ -111,6 +111,20 @@ import {
     setIdentityAlert,
     clearIdentityAlerts,
 } from "$lib/stores/identityAlerts.svelte";
+// Zami: the engine runs on the JS thread here; its bulk work goes through one
+// sliced queue, and its long calls are split where they can be.
+import {
+    countJsonKey,
+    createVersionedCache,
+    cryptoQueue,
+    forEachSliced,
+    interactivePriority,
+    queueRetries,
+    sliceEngineWork,
+    splitJsonArray,
+    waitForSlicedEngineWork,
+    yieldToEventLoop,
+} from "@-/com.leonsilicon.zami.crypto-work";
 
 // Graceful-degradation flag. Stays false if rust-crypto fails to initialise
 // (e.g. WASM can't load, or the device is out of storage): the app keeps
@@ -161,7 +175,12 @@ export async function waitForCryptoEngineIdle(
     timeoutMs: number,
 ): Promise<boolean> {
     if (!engineWorkTracked) return false;
-    return engineWork.waitForIdle(timeoutMs);
+    // Zami: also a split engine call (sliceEngineWork) between two of its
+    // parts, when no engine call is running but the next part will still write
+    // to the store.
+    const deadline = Date.now() + timeoutMs;
+    if (!(await waitForSlicedEngineWork(timeoutMs))) return false;
+    return engineWork.waitForIdle(Math.max(0, deadline - Date.now()));
 }
 
 // Teardown for the key backfill attached to the running engine's client.
@@ -236,14 +255,22 @@ export function applyDeviceIsolation(excludeInsecure: boolean): void {
     // messages refused under the strict mode would stay locked until reload
     // after the user relaxes it. Retry the loaded ones now.
     if (client && crypto && !excludeInsecure) {
-        for (const room of client.getRooms()) {
+        // Zami: the scan gives the event loop a turn every few ms, and the
+        // retries wait their turn on the crypto queue, newest first: every
+        // failed message of a large account at once froze the app.
+        const failed: MatrixEvent[] = [];
+        void forEachSliced(client.getRooms(), (room) => {
             for (const ev of room.getLiveTimeline().getEvents()) {
-                if (!ev.isDecryptionFailure()) continue;
-                ev.attemptDecryption(crypto as never, { isRetry: true }).catch(
-                    () => {},
-                );
+                if (ev.isDecryptionFailure()) failed.push(ev);
             }
-        }
+        }).then(() =>
+            queueRetries(
+                failed,
+                (ev) =>
+                    ev.attemptDecryption(crypto as never, { isRetry: true }),
+                { stillNeeded: (ev) => ev.isDecryptionFailure() },
+            ),
+        );
     }
     clearEventShieldCache();
     bumpTimelineTick();
@@ -373,6 +400,25 @@ export function waitForSessionOwnership(
 export const ENGINE_IDLE_TIMEOUT_MS = 15_000;
 
 /**
+ * Zami: install @-/com.leonsilicon.zami.crypto-work's wrappers on a RustCrypto
+ * that initRustCrypto just made. Never throws: without them crypto works as
+ * before, only with longer stalls.
+ */
+async function sliceLongEngineCalls(crypto: unknown): Promise<void> {
+    if (!(crypto as { olmMachine?: unknown } | undefined)?.olmMachine) return;
+    try {
+        const { DeviceLists } =
+            await import("@matrix-org/matrix-sdk-crypto-wasm");
+        const installed = sliceEngineWork(crypto, { DeviceLists });
+        console.info(
+            `[matrix] crypto engine calls split: ${installed.join(", ")}`,
+        );
+    } catch (err) {
+        console.warn("[matrix] can't split crypto engine calls", err);
+    }
+}
+
+/**
  * Start a fresh crypto engine on a client whose engine was stopped (by
  * stopClient) to free the store in the background (backgroundRelease.ts).
  * matrix-js-sdk refuses a second initRustCrypto while it still has the old
@@ -499,6 +545,10 @@ export async function initCrypto(
                     : new AllDevicesIsolationMode(false),
             );
         }
+        // Zami: split the engine's long calls (to-device batches, key claims,
+        // backup restore) into parts with a turn of the event loop between
+        // them.
+        await sliceLongEngineCalls(cryptoApi);
         attachDecryptionListener(client);
         attachSecurityListeners(client);
         detachKeyBackfill = attachKeyBackfill(client);
@@ -536,7 +586,13 @@ function attachDecryptionListener(client: MatrixClient): void {
         // later superseded by the sender's own), so forget the memoised one.
         const id = event.getId();
         if (id) eventShieldCache.delete(id);
-        bumpTimelineTick();
+        // Zami: not for every decryption in every room, which re-ran every
+        // message row on screen (a launch decrypts thousands in the
+        // background). A row follows its own event (MessageItem's
+        // eventRevision), and the open room's list re-reads on decryption
+        // (MessageArea). Only the raw "show all events" rows still re-read
+        // on this tick.
+        if (settingsState.showAllEvents) bumpTimelineTick();
     };
     client.on(MatrixEventEvent.Decrypted as never, handler as never);
     decryptionListenerClient = client;
@@ -599,9 +655,19 @@ function attachSecurityListeners(client: MatrixClient): void {
     // event carries the affected user; our own keys changing arrives as
     // `KeysChanged`.
     const trustHandler = (userId: string): void => {
-        void refreshIdentityAlert(userId);
+        // Zami: what's cached about this user is out of date (see
+        // checkedIdentities). A keys query reports up to 250 users at once:
+        // their lookups wait their turn on the crypto queue.
+        checkedIdentities.invalidate(userId);
+        forgetDeviceTrust([userId]);
+        void cryptoQueue
+            .add(() => refreshIdentityAlert(userId), interactivePriority())
+            .catch(() => {});
     };
     const keysHandler = (): void => {
+        // Zami: our own keys decide everyone's verification status.
+        checkedIdentities.clear();
+        deviceTrustCache.clear();
         const me = getClient()?.getUserId();
         if (me) void refreshIdentityAlert(me);
     };
@@ -610,7 +676,13 @@ function attachSecurityListeners(client: MatrixClient): void {
         trustHandler as never,
     );
     client.on(CryptoEvent.KeysChanged as never, keysHandler as never);
-    identityHandlers = { trustHandler, keysHandler };
+    // Zami: a user's devices changed (signed, added, removed): their cached
+    // trust is stale.
+    const devicesHandler = (userIds: string[]): void => {
+        forgetDeviceTrust(userIds);
+    };
+    client.on(CryptoEvent.DevicesUpdated as never, devicesHandler as never);
+    identityHandlers = { trustHandler, keysHandler, devicesHandler };
     keysHandler();
     // `KeyBackupSessionsRemaining` carries a `(remaining: number)` payload, so
     // it can't ride the shared no-arg handler above — it gets its own pair.
@@ -631,7 +703,14 @@ function attachSecurityListeners(client: MatrixClient): void {
 let identityHandlers: {
     trustHandler: (userId: string) => void;
     keysHandler: () => void;
+    devicesHandler: (userIds: string[]) => void;
 } | null = null;
+
+// Zami: users whose identity alert is up to date. A user's status only changes
+// with a `UserTrustStatusChanged` for them (or `KeysChanged` for our own keys),
+// which forget them here, so a room switch only looks up users not checked
+// since.
+const checkedIdentities = createVersionedCache<string, true>();
 
 /**
  * Re-read one user's cross-signing status and raise or clear their identity
@@ -643,8 +722,12 @@ export async function refreshIdentityAlert(userId: string): Promise<void> {
     const client = getClient();
     const crypto = client?.getCrypto();
     if (!crypto) return;
+    // Zami: an answer read before a trust change for this user must not land
+    // after the fresh one.
+    const ticket = checkedIdentities.begin(userId);
     try {
         const status = await crypto.getUserVerificationStatus(userId);
+        if (!checkedIdentities.isCurrent(userId, ticket)) return;
         const own = userId === client?.getUserId();
         const raised = own
             ? status.known &&
@@ -661,22 +744,39 @@ export async function refreshIdentityAlert(userId: string): Promise<void> {
                 : null,
             userId,
         );
+        checkedIdentities.set(userId, true, ticket);
     } catch {
         // Never let an alert lookup break sync or rendering.
     }
 }
 
-/** Check every joined member of an encrypted room (bounded) for a changed identity. */
-export async function checkRoomIdentities(roomId: string): Promise<void> {
+/**
+ * Check every joined member of an encrypted room (bounded) for a changed identity.
+ *
+ * Zami: only members not checked since their last trust change, one lookup at a
+ * time on the crypto queue; `signal` drops the ones not started yet (the room
+ * was left).
+ */
+export async function checkRoomIdentities(
+    roomId: string,
+    signal?: AbortSignal,
+): Promise<void> {
     const room = getClient()?.getRoom(roomId);
     if (!room || !isRoomEncrypted(room)) return;
     const me = getClient()?.getUserId();
     const members = room
         .getJoinedMembers()
         .map((m) => m.userId)
-        .filter((id) => id !== me)
+        .filter((id) => id !== me && !checkedIdentities.has(id))
         .slice(0, 200);
-    await Promise.all(members.map((id) => refreshIdentityAlert(id)));
+    const priority = interactivePriority();
+    await Promise.all(
+        members.map((id) =>
+            cryptoQueue
+                .add(() => refreshIdentityAlert(id), priority, { signal })
+                .catch(() => {}),
+        ),
+    );
 }
 
 /** Accept a user's new identity (pin it) so sending to them resumes. */
@@ -703,9 +803,16 @@ function detachSecurityListeners(): void {
             CryptoEvent.KeysChanged as never,
             identityHandlers.keysHandler as never,
         );
+        securityListenerClient.off(
+            CryptoEvent.DevicesUpdated as never,
+            identityHandlers.devicesHandler as never,
+        );
     }
     identityHandlers = null;
     clearIdentityAlerts();
+    // Zami: what was checked or cached belongs to the session being let go.
+    checkedIdentities.clear();
+    deviceTrustCache.clear();
     if (securityListenerClient && securityHandler) {
         for (const event of SECURITY_EVENTS) {
             securityListenerClient.off(
@@ -834,6 +941,98 @@ export async function isRoomEncryptedForSend(roomId: string): Promise<boolean> {
         );
     } catch {
         return false;
+    }
+}
+
+// Zami: see prepareToSend.
+const PREPARE_TO_SEND_DELAY_MS = 2_000;
+const PREPARE_TO_SEND_EVERY_MS = 60_000;
+const PREPARE_TO_SEND_RECENT_EVENTS = 50;
+const preparedToSendAt = new Map<string, number>();
+
+/** Zami: whether one of the room's latest loaded events is the user's own. */
+function sentRecently(room: Room): boolean {
+    const me = getClient()?.getUserId();
+    const events = room.getLiveTimeline().getEvents();
+    const stop = Math.max(0, events.length - PREPARE_TO_SEND_RECENT_EVENTS);
+    for (let i = events.length - 1; i >= stop; i--) {
+        if (events[i]!.getSender() === me) return true;
+    }
+    return false;
+}
+
+/**
+ * Zami: get a room ready for an encrypted message before one is sent
+ * (matrix-js-sdk's prepareToEncrypt, which Element calls as the user types):
+ * track its members, query their keys, claim one-time keys and share the room
+ * key now, so the first send in a large room doesn't do all of that. Runs at
+ * most once a minute per room, after `delayMs` unless `signal` aborts first.
+ *
+ * From the composer (`composing`), whenever the user writes. Otherwise (a room
+ * just opened) only where the user is likely to write: their own message is
+ * among the room's latest, and its members are already loaded (loading
+ * thousands of members, or sharing a new room key with all their devices, just
+ * to read a room costs more than it saves).
+ */
+export async function prepareToSend(
+    roomId: string,
+    {
+        signal,
+        delayMs = PREPARE_TO_SEND_DELAY_MS,
+        composing = false,
+    }: { signal?: AbortSignal; delayMs?: number; composing?: boolean } = {},
+): Promise<void> {
+    if (delayMs > 0) {
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, delayMs);
+            signal?.addEventListener(
+                "abort",
+                () => {
+                    clearTimeout(timer);
+                    resolve();
+                },
+                { once: true },
+            );
+        });
+    }
+    if (signal?.aborted) return;
+    const client = getClient();
+    const crypto = client?.getCrypto();
+    const room = client?.getRoom(roomId);
+    if (!cryptoAvailable || !crypto || !room || !isRoomEncrypted(room)) return;
+    if (!composing && !(room.membersLoaded() && sentRecently(room))) return;
+    const last = preparedToSendAt.get(roomId);
+    if (last !== undefined && Date.now() - last < PREPARE_TO_SEND_EVERY_MS)
+        return;
+    preparedToSendAt.set(roomId, Date.now());
+    // prepareToEncrypt drops the promise of the work it starts, so a failure
+    // (offline, say) would be an unhandled rejection: call the room's encryptor
+    // the same way, and keep the promise.
+    const rust = crypto as unknown as {
+        roomEncryptors?: Record<
+            string,
+            {
+                prepareForEncryption?(
+                    blacklistUnverified: boolean,
+                    isolation: unknown,
+                ): Promise<void>;
+            }
+        >;
+        deviceIsolationMode?: unknown;
+    };
+    const encryptor = rust.roomEncryptors?.[roomId];
+    if (!encryptor?.prepareForEncryption || !rust.deviceIsolationMode) {
+        crypto.prepareToEncrypt(room);
+        return;
+    }
+    try {
+        await encryptor.prepareForEncryption(
+            crypto.globalBlacklistUnverifiedDevices,
+            rust.deviceIsolationMode,
+        );
+    } catch (err) {
+        preparedToSendAt.delete(roomId);
+        console.warn(`[matrix] couldn't prepare ${roomId} for sending`, err);
     }
 }
 
@@ -1718,6 +1917,47 @@ export async function getDeviceTrust(
     } catch {
         return null;
     }
+}
+
+// Zami: device trust read for a list (Settings › Sessions), kept until a crypto
+// event says that user's devices or trust changed (attachSecurityListeners),
+// keyed "userId deviceId".
+const deviceTrustCache = createVersionedCache<
+    string,
+    { isVerified: boolean; signedByOwner: boolean }
+>();
+
+/** Zami: forget the cached device trust of these users. */
+export function forgetDeviceTrust(userIds: readonly string[]): void {
+    const users = new Set(userIds);
+    deviceTrustCache.invalidateWhere((key) =>
+        users.has(key.slice(0, key.indexOf(" "))),
+    );
+}
+
+/**
+ * Zami: getDeviceTrust for a list of devices: answered from a cache that crypto
+ * events keep current, and otherwise looked up one at a time on the crypto
+ * queue (not all at once), ahead of background work. `signal` drops lookups not
+ * started yet.
+ */
+export async function readDeviceTrust(
+    userId: string,
+    deviceId: string,
+    signal?: AbortSignal,
+): Promise<{ isVerified: boolean; signedByOwner: boolean } | null> {
+    const key = `${userId} ${deviceId}`;
+    const cached = deviceTrustCache.get(key);
+    if (cached) return cached;
+    const ticket = deviceTrustCache.begin(key);
+    const trust = await cryptoQueue.add(
+        () => getDeviceTrust(userId, deviceId),
+        interactivePriority(),
+        { signal },
+    );
+    // Not knowing (crypto not ready, device not in the store yet) isn't kept.
+    if (trust) deviceTrustCache.set(key, trust, ticket);
+    return trust;
 }
 
 /** One of another user's sessions, as THIS session's crypto store knows it. */
@@ -2924,10 +3164,23 @@ export async function exportRoomKeysToFile(
 ): Promise<{ file: string; count: number }> {
     const crypto = getClient()?.getCrypto();
     if (!crypto) throw new Error(t("crypto.encryptionIsNotReadyOnThis"));
-    const json = await crypto.exportRoomKeysAsJson();
-    const count = (JSON.parse(json) as unknown[]).length;
+    // Zami: the export is one engine call (it can't be split; see crypto-work's
+    // README), run on its own turn of the crypto queue. The keys are counted
+    // without parsing the list, which is tens of MB for a large account.
+    const json = await cryptoQueue.add(
+        () => crypto.exportRoomKeysAsJson(),
+        interactivePriority(),
+    );
+    const count = await countJsonKey(json, "session_id");
     return { file: await encryptKeyExportFile(json, passphrase), count };
 }
+
+/**
+ * Zami: about how much of a key list one import call takes: ~90 keys of ~560
+ * bytes, which took 7 ms in Node with an IndexedDB store (0.08 ms a key), so
+ * 15-25 ms on a phone.
+ */
+const KEY_IMPORT_PIECE_CHARS = 48 * 1024;
 
 /**
  * Import a key export file's room keys. Throws KeyExportFileError for a bad
@@ -2941,12 +3194,46 @@ export async function importRoomKeysFromFile(
     const crypto = getClient()?.getCrypto();
     if (!crypto) throw new Error(t("crypto.encryptionIsNotReadyOnThis"));
     const json = await decryptKeyExportFile(text, passphrase);
-    await crypto.importRoomKeysAsJson(
-        json,
-        onProgress
-            ? { progressCallback: (p) => onProgress(toRestoreProgress(p)) }
-            : undefined,
-    );
+    // Zami: the list goes to the engine a piece at a time, in order, with a
+    // turn of the event loop between pieces: one call for every key froze the
+    // app for as long as the import took. Every piece is checked before any is
+    // imported, as the single call parsed the whole list first. A list that
+    // can't be split safely is imported whole.
+    const pieces = await splitJsonArray(json, KEY_IMPORT_PIECE_CHARS);
+    if (!pieces) {
+        await crypto.importRoomKeysAsJson(
+            json,
+            onProgress
+                ? { progressCallback: (p) => onProgress(toRestoreProgress(p)) }
+                : undefined,
+        );
+        return;
+    }
+    const total = pieces.reduce((n, piece) => n + piece.count, 0);
+    let done = 0;
+    for (const piece of pieces) {
+        await yieldToEventLoop();
+        await crypto.importRoomKeysAsJson(
+            piece.text,
+            onProgress
+                ? {
+                      progressCallback: (p) =>
+                          onProgress(
+                              toRestoreProgress(
+                                  p.stage === ImportRoomKeyStage.LoadKeys
+                                      ? {
+                                            ...p,
+                                            total,
+                                            successes: done + p.successes,
+                                        }
+                                      : p,
+                              ),
+                          ),
+                  }
+                : undefined,
+        );
+        done += piece.count;
+    }
 }
 
 /** Map the SDK's room-key import progress onto the SDK-free `RestoreProgress`. */

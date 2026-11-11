@@ -173,8 +173,16 @@ export function initPresence(): () => void {
     for (const type of inputEvents)
         window.addEventListener(type, onUserInput, { passive: true });
 
+    // Zami: one bump per turn of the event loop. Each presence update fires
+    // three SDK events, and a sync can carry hundreds of users' presence: a
+    // bump per event re-ran every presence reader (each DM row, the member
+    // list) hundreds of times in one go.
+    let presenceBump: ReturnType<typeof setTimeout> | undefined;
     const unsubPresence = onPresenceEvent(() => {
-        presenceState.presenceTick++;
+        presenceBump ??= setTimeout(() => {
+            presenceBump = undefined;
+            presenceState.presenceTick++;
+        }, 0);
     });
     return () => {
         unsubSliding();
@@ -183,5 +191,6 @@ export function initPresence(): () => void {
         for (const type of inputEvents)
             window.removeEventListener(type, onUserInput);
         unsubPresence();
+        clearTimeout(presenceBump);
     };
 }

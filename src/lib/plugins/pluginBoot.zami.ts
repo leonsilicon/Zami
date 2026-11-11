@@ -50,7 +50,13 @@ import { satisfiesMinAppVersion } from "./semver";
 import { checkInstallId, decideRepoLoad } from "./pluginPin";
 import { deleteCachedBundle } from "./bundleCache";
 import { deletePluginFiles, putLocalPluginFiles } from "./pluginAssets";
-import { filesFromDirectory, readLocalPlugin } from "./localPlugin";
+import {
+    directoryUnder,
+    filesFromDirectory,
+    filesUnder,
+    findPluginDirs,
+    readLocalPlugin,
+} from "./localPlugin";
 import {
     deleteLocalHandle,
     ensureReadable,
@@ -243,9 +249,14 @@ function pluginScope(): Record<string, unknown> {
 // --- module import: built-in (direct) + repo (blob-import) ---
 async function blobImport(code: string): Promise<PluginModule> {
     // Zami: Hermes can't import() a module at run time (from a blob: URL or
-    // anywhere), so importModule evaluates the bundle as an ES module.
+    // anywhere), so importModule evaluates the bundle as an ES module. Its
+    // rewrite of the bundle is kept between launches (compileCache): parsing
+    // a large bundle held the JS thread at every launch.
     {
-        const mod = (await importModule(code, { scope: pluginScope() })) as {
+        const mod = (await importModule(code, {
+            scope: pluginScope(),
+            compileCache: "zami-plugin-modules",
+        })) as {
             default?: PluginModule;
         } & Partial<PluginModule>;
         const resolved = mod.default ?? (mod as PluginModule);
@@ -391,9 +402,15 @@ const loadables = new Map<string, LoadablePlugin>();
  *  Returns an unsubscribe-all. */
 function initEventBus(): () => void {
     const unsubs: Array<() => void> = [];
+    // Zami: whether a plugin listens for any of `names`. With none (the usual
+    // case) an event builds no payload: a copy of its content per timeline
+    // event, during a launch's whole backlog.
+    const subscribed = (...names: string[]): boolean =>
+        pluginRegistry.eventSubs.some((e) => names.includes(e.value.event));
 
     unsubs.push(
         onTimelineEvent((event, room) => {
+            if (!subscribed("message", "timeline")) return;
             const payload = {
                 roomId: room.roomId,
                 eventId: event.getId() ?? "",
@@ -418,6 +435,7 @@ function initEventBus(): () => void {
 
     unsubs.push(
         onReactionEvent((event, room) => {
+            if (!subscribed("reaction-added")) return;
             dispatchPluginEvent(
                 pluginRegistry.eventSubs.map((e) => e.value),
                 "reaction-added",
@@ -433,6 +451,7 @@ function initEventBus(): () => void {
 
     unsubs.push(
         onRoomUpdate(() => {
+            if (!subscribed("room-update")) return;
             dispatchPluginEvent(
                 pluginRegistry.eventSubs.map((e) => e.value),
                 "room-update",
@@ -472,6 +491,31 @@ function initEventBus(): () => void {
                 /* best-effort teardown */
             }
         }
+    };
+}
+
+/** Zami: resolves once the next frame has been drawn. */
+function afterNextFrame(): Promise<void> {
+    return new Promise((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve, 0)),
+    );
+}
+
+/**
+ * Zami: the plugin, loaded on a turn of the event loop of its own. Once
+ * plugins are stopped (`stopped()`), it never loads: a load that failed instead
+ * would be recorded as the plugin's error.
+ */
+function onItsOwnTurn(
+    plugin: LoadablePlugin,
+    stopped: () => boolean,
+): LoadablePlugin {
+    return {
+        ...plugin,
+        load: () =>
+            new Promise((resolve) => setTimeout(resolve, 0)).then(() =>
+                stopped() ? new Promise<PluginModule>(() => {}) : plugin.load(),
+            ),
     };
 }
 
@@ -543,10 +587,20 @@ export function initPlugins(): () => void {
     }
 
     // 3) Boot-load enabled plugins (built-ins first, each error-isolated).
-    void loader.bootLoad(toBoot);
+    // Zami: once the first frame is drawn, and each on a turn of the event
+    // loop of its own: compiling and starting them all in one go held the JS
+    // thread while the session was being restored.
+    let disposed = false;
+    void afterNextFrame().then(() => {
+        if (disposed) return;
+        return loader.bootLoad(
+            toBoot.map((p) => onItsOwnTurn(p, () => disposed)),
+        );
+    });
 
     // Disposer: unsubscribe the event bus + disable every loaded plugin.
     return () => {
+        disposed = true;
         disposeEventBus();
         for (const id of [...loadables.keys()]) {
             if (loader.isLoaded(id)) void loader.disable(id);
@@ -797,6 +851,53 @@ export async function loadLocalPlugin(
     } catch (e) {
         return { ok: false, error: (e as Error).message };
     }
+}
+
+/** Load whatever plugins a picked folder holds: the folder itself when it has a
+ *  manifest.json, otherwise every plugin folder inside it (a repo). Each gets
+ *  its own sub-folder handle, so Reload re-reads just that plugin. With
+ *  `expectedId` (a reload re-picked by hand) only the plugin with that id is
+ *  loaded. Never throws; `error` joins what failed, `ids` is what loaded. */
+export async function loadLocalFolder(
+    files: Map<string, Blob>,
+    opts: { handle?: FileSystemDirectoryHandle; expectedId?: string } = {},
+): Promise<{ ok: boolean; ids: string[]; error?: string }> {
+    const dirs = findPluginDirs(files);
+    if (!dirs.length) {
+        // Nothing found: let the plugin reader say what's missing.
+        const res = await loadLocalPlugin(files, {
+            expectedId: opts.expectedId,
+        });
+        return { ok: res.ok, ids: [], error: res.error };
+    }
+    const ids: string[] = [];
+    const errors: string[] = [];
+    for (const dir of dirs) {
+        let handle: FileSystemDirectoryHandle | undefined;
+        try {
+            if (opts.handle) handle = await directoryUnder(opts.handle, dir);
+        } catch {
+            /* no handle: Reload asks for the folder again */
+        }
+        const res = await loadLocalPlugin(filesUnder(files, dir), {
+            handle,
+            expectedId: opts.expectedId,
+        });
+        const label = dir ? `${dir}: ` : "";
+        if (res.ok && res.id) ids.push(res.id);
+        else if (
+            dirs.length === 1 ||
+            !res.error?.startsWith("That folder holds")
+        )
+            errors.push(label + res.error);
+    }
+    if (opts.expectedId && !ids.length && !errors.length)
+        errors.push(`No plugin "${opts.expectedId}" in that folder`);
+    return {
+        ok: ids.length > 0 && !errors.length,
+        ids,
+        error: errors.join("\n") || undefined,
+    };
 }
 
 /** Re-read a local plugin from the folder it was loaded from. `needsPick` means

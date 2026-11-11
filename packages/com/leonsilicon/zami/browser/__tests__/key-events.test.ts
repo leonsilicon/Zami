@@ -141,6 +141,16 @@ describe("createKeyDispatcher", () => {
     expect(targets[1]).toMatchObject({ tagName: "TEXTAREA", isContentEditable: false, input });
   });
 
+  test("a press UIKit sends to a text input targets an input before React Native knows", () => {
+    const { dispatcher, window, body } = setup();
+    const targets: unknown[] = [];
+    window.addEventListener("keydown", (e: KeyboardEvent) => targets.push(e.target));
+    dispatcher.dispatch(press({ key: "a", code: "KeyA", textInputFocused: true }));
+    dispatcher.dispatch(press({ key: "a", code: "KeyA", textInputFocused: false }));
+    expect(targets[0]).toMatchObject({ tagName: "TEXTAREA" });
+    expect(targets[1]).toBe(body);
+  });
+
   test("with nothing focused, only the newest container gets the press", () => {
     const { dispatcher } = setup();
     const got: string[] = [];

@@ -9,6 +9,7 @@
  * like the tune", not General MIDI fidelity.
  */
 import { renderMidiWithSoundBank } from "./midiSoundBank";
+import { createSlicer } from "@-/com.leonsilicon.zami.sliced";
 
 const MIDI_MIME_TYPES = new Set([
     "audio/midi",
@@ -26,6 +27,22 @@ export function isMidiAttachment(
     const base = (mimetype ?? "").toLowerCase().split(";")[0].trim();
     if (MIDI_MIME_TYPES.has(base)) return true;
     return /\.(midi?|kar|rmi)$/i.test((filename ?? "").trim());
+}
+
+/**
+ * The mimetype to send a MIDI file with. Browsers often give a `.mid` no type
+ * (or application/octet-stream), so that becomes audio/midi; any other type
+ * the browser gave is kept. Non-MIDI files come back unchanged.
+ */
+export function midiSendMimetype(
+    mimetype: string | null | undefined,
+    filename: string | null | undefined,
+): string {
+    const base = (mimetype ?? "").toLowerCase().split(";")[0].trim();
+    if (!isMidiAttachment(mimetype, filename)) return mimetype ?? "";
+    return base === "" || base === "application/octet-stream"
+        ? "audio/midi"
+        : (mimetype ?? "");
 }
 
 export type MidiEvent =
@@ -801,6 +818,62 @@ export function encodeWav(buffer: AudioBuffer): Blob {
     return new Blob([out.buffer], { type: "audio/wav" });
 }
 
+/** Zami: encodeWav (same bytes), yielding to the event loop every ~8 ms. */
+async function encodeWavSliced(buffer: AudioBuffer): Promise<Blob> {
+    const slicer = createSlicer();
+    const CHUNK = 4096;
+    const channels = buffer.numberOfChannels;
+    const frames = buffer.length;
+    const data = Array.from({ length: channels }, (_, c) =>
+        buffer.getChannelData(c),
+    );
+    let peak = 0;
+    for (const ch of data) {
+        for (let start = 0; start < frames; start += CHUNK) {
+            if (slicer.due) await slicer.pause();
+            const end = Math.min(frames, start + CHUNK);
+            for (let i = start; i < end; i++) {
+                const a = Math.abs(ch[i]);
+                if (a > peak) peak = a;
+            }
+        }
+    }
+    const scale = peak > 0 ? 0.944 / peak : 1;
+
+    const bytesPerFrame = channels * 2;
+    const out = new DataView(new ArrayBuffer(44 + frames * bytesPerFrame));
+    const str = (at: number, s: string) => {
+        for (let i = 0; i < s.length; i++)
+            out.setUint8(at + i, s.charCodeAt(i));
+    };
+    str(0, "RIFF");
+    out.setUint32(4, 36 + frames * bytesPerFrame, true);
+    str(8, "WAVE");
+    str(12, "fmt ");
+    out.setUint32(16, 16, true);
+    out.setUint16(20, 1, true); // PCM
+    out.setUint16(22, channels, true);
+    out.setUint32(24, buffer.sampleRate, true);
+    out.setUint32(28, buffer.sampleRate * bytesPerFrame, true);
+    out.setUint16(32, bytesPerFrame, true);
+    out.setUint16(34, 16, true);
+    str(36, "data");
+    out.setUint32(40, frames * bytesPerFrame, true);
+    let o = 44;
+    for (let start = 0; start < frames; start += CHUNK) {
+        if (slicer.due) await slicer.pause();
+        const end = Math.min(frames, start + CHUNK);
+        for (let i = start; i < end; i++) {
+            for (let c = 0; c < channels; c++) {
+                const s = Math.max(-1, Math.min(1, data[c][i] * scale));
+                out.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+                o += 2;
+            }
+        }
+    }
+    return new Blob([out.buffer], { type: "audio/wav" });
+}
+
 /**
  * Turn a MIDI blob URL into a playable WAV blob URL. Always revokes the input
  * URL; the caller owns (and must revoke) the returned one.
@@ -815,7 +888,9 @@ export async function midiUrlToWavUrl(midiUrl: string): Promise<string> {
         );
         if (sampled) return URL.createObjectURL(sampled);
         const rendered = await renderMidi(data);
-        return URL.createObjectURL(encodeWav(rendered));
+        // Zami: encodeWav's two passes over millions of samples, a slice at a
+        // time, so a fallback render doesn't freeze the app for seconds.
+        return URL.createObjectURL(await encodeWavSliced(rendered));
     } finally {
         URL.revokeObjectURL(midiUrl);
     }
