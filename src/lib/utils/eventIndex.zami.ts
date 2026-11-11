@@ -31,6 +31,9 @@ export interface IndexEntry {
     v?: 1;
     /** For an edit: the event it replaces. */
     o?: string;
+    /** Zami: the body as search compares it, when that isn't the body in lower
+     *  case; written with the entry (matrix/eventIndex.ts). */
+    n?: string;
 }
 
 /** The minimum an event has to expose: raw JSON or an unwrapped MatrixEvent. */

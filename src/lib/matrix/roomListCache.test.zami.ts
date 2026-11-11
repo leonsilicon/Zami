@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createClient, EventType, MatrixEvent, Room } from "matrix-js-sdk";
+// Zami: an IndexedDB for the saved room list's tests.
+import "fake-indexeddb/auto";
+import { IDBFactory } from "fake-indexeddb";
 import {
     buildSnapshot,
+    deleteSnapshot,
+    loadSnapshot,
+    loadSnapshotRest,
     materializeSnapshot,
+    saveClientSnapshot,
     splitForFirstScreen,
 } from "./roomListCache";
 
@@ -228,5 +235,110 @@ describe("splitForFirstScreen", () => {
             "!space",
         ]);
         expect(ids(rest)).toEqual(["!in1", "!out1"]);
+    });
+});
+
+// Zami: the room list saved a room per record, only what changed
+// (saveClientSnapshot).
+describe("saveClientSnapshot", () => {
+    const message = (roomId: string, n: number) =>
+        new MatrixEvent({
+            type: EventType.RoomMessage,
+            room_id: roomId,
+            sender: BOB,
+            event_id: `$m${n}-${roomId}`,
+            origin_server_ts: 1000 + n,
+            content: { msgtype: "m.text", body: `message ${n}` },
+        });
+    const byId = (a: { roomId: string }, b: { roomId: string }) =>
+        a.roomId.localeCompare(b.roomId);
+
+    function setup(count: number) {
+        globalThis.indexedDB = new IDBFactory();
+        const { client, add } = makeClient();
+        const rooms: Room[] = [];
+        for (let i = 0; i < count; i++) {
+            const roomId = `!r${i}`;
+            const room = add(roomId, [
+                stateEvent(roomId, "m.room.create", "", {}),
+                stateEvent(roomId, "m.room.name", "", { name: `Room ${i}` }),
+                stateEvent(roomId, "m.room.member", ME, { membership: "join" }),
+            ]);
+            room.getLiveTimeline().addEvent(message(roomId, i), {
+                toStartOfTimeline: false,
+                addToState: false,
+            });
+            rooms.push(room);
+        }
+        return { client, rooms };
+    }
+
+    it("saves the first screen's rooms apart from the rest, as buildSnapshot would", async () => {
+        const { client } = setup(60);
+        await saveClientSnapshot(client, "key");
+        const first = await loadSnapshot("key");
+        // The 50 most recently active rooms first (FIRST_PAINT_ROOMS).
+        expect(first?.rooms).toHaveLength(50);
+        expect(first?.rooms.some((r) => r.roomId === "!r59")).toBe(true);
+        const rest = await loadSnapshotRest("key");
+        expect(rest.map((r) => r.roomId).sort()).toEqual(
+            Array.from({ length: 10 }, (_, i) => `!r${i}`).sort(),
+        );
+        const expected = JSON.parse(JSON.stringify(buildSnapshot(client)));
+        expect([...first!.rooms, ...rest].sort(byId)).toEqual(
+            expected.rooms.sort(byId),
+        );
+    });
+
+    it("writes only the rooms that changed", async () => {
+        const { client, rooms } = setup(20);
+        await saveClientSnapshot(client, "key");
+        const put = vi.spyOn(IDBObjectStore.prototype, "put");
+        rooms[5]!.getLiveTimeline().addEvent(message("!r5", 100), {
+            toStartOfTimeline: false,
+            addToState: false,
+        });
+        await saveClientSnapshot(client, "key");
+        expect(put.mock.calls.map((call) => call[1])).toEqual([
+            "key|!r5",
+            "key",
+        ]);
+        put.mockClear();
+        await saveClientSnapshot(client, "key");
+        expect(put).not.toHaveBeenCalled();
+        put.mockRestore();
+    });
+
+    it("reads a room list saved by older code, then replaces it", async () => {
+        const { client } = setup(3);
+        const snap = JSON.parse(JSON.stringify(buildSnapshot(client)));
+        const put = async (name: string, value: unknown) => {
+            const db = await new Promise<IDBDatabase>((resolve) => {
+                const req = indexedDB.open(name, 1);
+                req.onupgradeneeded = () =>
+                    req.result.createObjectStore("snapshots");
+                req.onsuccess = () => resolve(req.result);
+            });
+            const tx = db.transaction("snapshots", "readwrite");
+            tx.objectStore("snapshots").put(value, "key");
+            await new Promise((resolve) => (tx.oncomplete = resolve));
+            db.close();
+        };
+        await put("zam-roomlist-cache", {
+            ...snap,
+            rooms: snap.rooms.slice(0, 1),
+        });
+        await put("zam-roomlist-cache-rest", {
+            v: 1,
+            rooms: snap.rooms.slice(1),
+        });
+        expect((await loadSnapshot("key"))?.rooms).toHaveLength(1);
+        expect(await loadSnapshotRest("key")).toHaveLength(2);
+
+        await saveClientSnapshot(client, "key");
+        expect((await loadSnapshot("key"))?.rooms).toHaveLength(3);
+        expect(await loadSnapshotRest("key")).toHaveLength(0);
+        await deleteSnapshot("key");
+        expect(await loadSnapshot("key")).toBeNull();
     });
 });

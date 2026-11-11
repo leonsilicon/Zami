@@ -34,6 +34,16 @@ import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api";
 import type { CryptoApi } from "matrix-js-sdk/lib/crypto-api";
 import { isUserBlocked } from "$lib/stores/ignoredUsers.svelte";
 import { readScoped } from "$lib/utils/scopedStorage";
+// Zami: retries and answers wait their turn on the shared crypto queue (see
+// attachKeyBackfill).
+import {
+    createOwnKeyExporter,
+    cryptoQueue,
+    forEachSliced,
+    interactivePriority,
+    probeOwnSession,
+    queueRetries,
+} from "@-/com.leonsilicon.zami.crypto-work";
 
 export const KEY_REQUEST_TYPE = "moe.crafty.room_key_request";
 export const KEY_RESPONSE_TYPE = "moe.crafty.room_key";
@@ -206,6 +216,8 @@ interface ExportHooks {
                 hasBeenImported(): boolean;
             }) => boolean,
         ): Promise<string>;
+        // Zami: for probeOwnSession.
+        getRoomEventEncryptionInfo?: unknown;
     };
 }
 
@@ -288,50 +300,122 @@ export function attachKeyBackfill(client: MatrixClient): () => void {
         );
     }
 
+    // Zami: exportRoomKeys reads every session in the store, whatever it's
+    // asked for (seconds on a large account), so an answer exports last, and
+    // requests that arrived before an export ran share it
+    // (createOwnKeyExporter).
+    const machine = (crypto as unknown as ExportHooks).olmMachine;
+    const exporter = createOwnKeyExporter(
+        (predicate) => machine!.exportRoomKeys(predicate),
+        async () => (await crypto!.getOwnDeviceKeys()).curve25519,
+    );
+    // Zami: retries not started yet are dropped on teardown.
+    const retries = new AbortController();
+
     async function answer(payload: ReceivedToDevice): Promise<void> {
-        const { message, encryptionInfo } = payload;
+        const { message } = payload;
         const roomId = message.content.room_id;
         const sessionId = message.content.session_id;
         if (typeof roomId !== "string" || typeof sessionId !== "string") return;
+        // Zami: the checks and the export are one task on the crypto queue,
+        // queued before anything is awaited; the reply is sent after it,
+        // outside the queue.
+        const ticket = exporter.want(roomId, sessionId);
+        let reply: Awaited<ReturnType<typeof answerable>>;
+        try {
+            reply = await cryptoQueue.add(
+                () => answerable(payload, roomId, sessionId, ticket),
+                interactivePriority(),
+            );
+        } finally {
+            exporter.release(ticket);
+        }
+        if (!reply) return;
+        log(`re-sending ${sessionId} to ${reply.requester} ${reply.deviceId}`);
+        await sendEncrypted(
+            KEY_RESPONSE_TYPE,
+            [{ userId: reply.requester, deviceId: reply.deviceId }],
+            { room_id: roomId, session_id: sessionId, key: reply.key },
+        );
+    }
+
+    /** Zami: answer's checks and export: the key to send, or null to refuse. */
+    async function answerable(
+        payload: ReceivedToDevice,
+        roomId: string,
+        sessionId: string,
+        ticket: symbol,
+    ): Promise<{
+        requester: string;
+        deviceId: string;
+        key: ExportedRoomKey;
+    } | null> {
+        const { encryptionInfo } = payload;
         // Who Olm says sent it, not what the message claims.
         const requester = encryptionInfo!.sender;
         const deviceId = encryptionInfo!.senderDevice;
         const room = client.getRoom(roomId);
         const own = await crypto!.getOwnDeviceKeys();
-        let keys: ExportedRoomKey[] = [];
-        const machine = (crypto as unknown as ExportHooks).olmMachine;
-        if (room && machine) {
-            keys = JSON.parse(
-                await machine.exportRoomKeys(
-                    (s) =>
-                        s.sessionId === sessionId &&
-                        s.roomId.toString() === roomId &&
-                        s.senderKey.toBase64() === own.curve25519 &&
-                        !s.hasBeenImported(),
-                ),
-            ) as ExportedRoomKey[];
-        }
         const status = deviceId
             ? await crypto!.getDeviceVerificationStatus(requester, deviceId)
             : null;
-        const refusal = answerRefusal({
-            fromKnownDevice: !!deviceId,
-            requesterBlocked: isUserBlocked(requester),
-            requesterJoined: room?.getMember(requester)?.membership === "join",
-            historyVisibility: room?.getHistoryVisibility() ?? null,
-            ownKey: keys.length === 1,
-            deviceAllowed: deviceAllowed(crypto!, ownUserId!, status),
-        });
+        const refusalIf = (ownKey: boolean) =>
+            answerRefusal({
+                fromKnownDevice: !!deviceId,
+                requesterBlocked: isUserBlocked(requester),
+                requesterJoined:
+                    room?.getMember(requester)?.membership === "join",
+                historyVisibility: room?.getHistoryVisibility() ?? null,
+                ownKey,
+                deviceAllowed: deviceAllowed(crypto!, ownUserId!, status),
+            });
+        // Zami: everything but whose key it is first, then one lookup of who
+        // created it (usually another of our devices: the requester asks them
+        // all), then the rate limit, and only then the export.
+        const early = refusalIf(true);
+        if (early) {
+            log(`not re-sending ${sessionId} to ${requester}: ${early}`);
+            return null;
+        }
+        if (
+            room &&
+            machine &&
+            (await probeSession(roomId, sessionId, own.curve25519)) ===
+                "not-own"
+        ) {
+            log(
+                `not re-sending ${sessionId} to ${requester}: ${refusalIf(false)}`,
+            );
+            return null;
+        }
+        if (!canAnswer()) return null;
+        const keys: ExportedRoomKey[] =
+            room && machine
+                ? ((await exporter.take(ticket)) as ExportedRoomKey[])
+                : [];
+        const refusal = refusalIf(keys.length === 1);
         if (refusal) {
             log(`not re-sending ${sessionId} to ${requester}: ${refusal}`);
-            return;
+            return null;
         }
-        if (!canAnswer()) return;
-        log(`re-sending ${sessionId} to ${requester} ${deviceId}`);
-        await sendEncrypted(
-            KEY_RESPONSE_TYPE,
-            [{ userId: requester, deviceId: deviceId! }],
-            { room_id: roomId, session_id: sessionId, key: keys[0] },
+        return { requester, deviceId: deviceId!, key: keys[0] };
+    }
+
+    /** Zami: who created a stored room key, from one lookup (probeOwnSession). */
+    async function probeSession(
+        roomId: string,
+        sessionId: string,
+        ownCurve25519: string,
+    ): Promise<string> {
+        if (typeof machine?.getRoomEventEncryptionInfo !== "function")
+            return "unknown";
+        const { RoomId } = await import("@matrix-org/matrix-sdk-crypto-wasm");
+        return probeOwnSession(
+            machine,
+            (id) => new RoomId(id),
+            roomId,
+            sessionId,
+            ownCurve25519,
         );
     }
 
@@ -357,12 +441,16 @@ export function attachKeyBackfill(client: MatrixClient): () => void {
         await crypto!.importRoomKeys([key as ExportedRoomKey]);
         asked.delete(sessionId);
         log(`got ${sessionId} back from ${encryptionInfo.sender}`);
-        for (const event of pending!.events) {
-            if (!event.isDecryptionFailure()) continue;
-            event
-                .attemptDecryption(crypto as never, { isRetry: true })
-                .catch(() => {});
-        }
+        // Zami: on the crypto queue, newest first.
+        void queueRetries(
+            pending!.events,
+            (event) =>
+                event.attemptDecryption(crypto as never, { isRetry: true }),
+            {
+                stillNeeded: (event) => event.isDecryptionFailure(),
+                signal: retries.signal,
+            },
+        );
     }
 
     const onToDevice = (payload: ReceivedToDevice): void => {
@@ -381,7 +469,11 @@ export function attachKeyBackfill(client: MatrixClient): () => void {
     };
 
     function retryFailed(): void {
-        for (const room of client.getRooms()) {
+        // Zami: the scan gives the event loop a turn every few ms, and the
+        // retries wait their turn on the crypto queue, newest first: every
+        // failed message of every room at once froze a large account.
+        const failed: MatrixEvent[] = [];
+        void forEachSliced(client.getRooms(), (room) => {
             const timelines = [
                 room.getLiveTimeline(),
                 ...room.getThreads().map((t) => t.liveTimeline),
@@ -389,13 +481,24 @@ export function attachKeyBackfill(client: MatrixClient): () => void {
             for (const timeline of timelines) {
                 for (const event of timeline.getEvents()) {
                     if (!isMissingRoomKey(event)) continue;
-                    // A failed retry fires Decrypted again, which asks.
-                    event
-                        .attemptDecryption(crypto as never, { isRetry: true })
-                        .catch(() => {});
+                    failed.push(event);
                 }
             }
-        }
+        }).then(() =>
+            // A failed retry fires Decrypted again, which asks.
+            queueRetries(
+                failed,
+                (event) =>
+                    event.attemptDecryption(crypto as never, { isRetry: true }),
+                {
+                    stillNeeded: isMissingRoomKey,
+                    signal: retries.signal,
+                    // This runs from a timer: the first retries start right
+                    // away.
+                    startNow: true,
+                },
+            ),
+        );
     }
 
     function scheduleRetries(): void {
@@ -500,5 +603,8 @@ export function attachKeyBackfill(client: MatrixClient): () => void {
         manualRequest = null;
         for (const timer of timers) clearTimeout(timer);
         timers.clear();
+        // Zami: queued retries for this client stop here.
+        retries.abort();
+        exporter.clear();
     };
 }

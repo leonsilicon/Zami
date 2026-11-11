@@ -15,11 +15,21 @@ import {
     type NewDeviceInfo,
 } from "$lib/matrix/qrLogin";
 import { checkCodeMatches } from "$lib/matrix/qrLoginRendezvous";
-import QrCodeImage from "$lib/components/ui/QrCodeImage.svelte";
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const QrCodeImage = lazyComponent(
+    () =>
+        require("$lib/components/ui/QrCodeImage.svelte") as typeof import("$lib/components/ui/QrCodeImage.svelte"),
+);
 // Zami: Metro bundles the scanner with the app, so it is imported statically
 // rather than fetched on mount: there is no load to wait for (upstream's
 // spinner) or to fail (its "could not open the camera" error).
-import QrScanner from "$lib/components/ui/QrScanner.svelte";
+// Zami: lazyComponent, as QrCodeImage above.
+const QrScanner = lazyComponent(
+    () =>
+        require("$lib/components/ui/QrScanner.svelte") as typeof import("$lib/components/ui/QrScanner.svelte"),
+);
 
 /**
  * Zami: the approval link is `a[data-in-app]`, which Zam's root layout opens in

@@ -90,9 +90,9 @@ these, which keep the element's props as close as React Native allows:
   too. Screen readers skip it.
 - `pickedFile(asset)`: `<input type="file">` → `expo-image-picker` or
   `expo-document-picker`, then this: the picked asset as the `File` the input gives,
-  named, typed and dated like it, which keeps the asset's `uri`. Its bytes are in memory
-  (Zami's Blob polyfill makes `fetch(uri).blob()` an in-memory Blob), so it reads and
-  slices as on the web.
+  named, typed and dated like it, which keeps the asset's `uri`. Its bytes stay in the
+  file (Zami's Blob polyfill's file-backed `File`): it reads and slices as on the web, from
+  the file, and uploads from the file, so a big video never becomes a JS buffer.
 - `confirmAlert(message, { confirmText, cancelText, destructive })`: `confirm()` as a
   native alert, resolving true when confirmed. Pass the button texts translated.
 - `notificationPermission()` / `requestNotificationPermission()`:

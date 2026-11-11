@@ -1,7 +1,8 @@
+import { useStableCallback } from "@-/com.leonsilicon.zami.incremental/react";
 import { anchorElement, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Haptics from "expo-haptics";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
     Pressable,
     ScrollView,
@@ -218,9 +219,7 @@ export default function CallView({
             }),
         [inThisCall, participants, room],
     );
-    const speaking = useRune(() => voiceCallState.speakingUserIds);
-    // Contract: a user absent from this set is unmuted, never "unknown".
-    const muted = useRune(() => voiceCallState.mutedUserIds);
+    // Zami: speaking and muted are read per tile (ParticipantTile, below).
 
     // Video tiles for THIS call. `voiceCallState.videoTiles` is global — it
     // holds the tiles of whichever call we are connected to, whatever room that
@@ -281,11 +280,21 @@ export default function CallView({
     const mirrorCamera = useRune(() => settingsState.mirrorCamera);
     const cameraDisabled = useRune(() => settingsState.cameraDisabled);
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
-    // participantAudioFor() reads this map: re-render when it changes.
-    useRune(() => settingsState.participantAudio);
-    // Names and avatars hang off roomsTick: re-render on it, and the
-    // getMemberName/getMemberAvatar reads below run again.
-    useRune(() => roomsState.roomsTick);
+    // Zami: participantAudioFor() is read per tile (ParticipantTile, below).
+    // Names and avatars hang off roomsTick: the participants' are read per
+    // tile; the screen shares' and spotlight's labels here re-render only
+    // when one of their names changes.
+    useRune(() => {
+        void roomsState.roomsTick;
+        return [...screenTiles, ...(focusedTile ? [focusedTile] : [])]
+            .map((tile) =>
+                getMemberName(
+                    room,
+                    tile.identity.slice(0, tile.identity.lastIndexOf(":")),
+                ),
+            )
+            .join("\u0000");
+    }, [room, screenTiles, focusedTile]);
 
     function tileLabel(
         identity: string,
@@ -465,33 +474,23 @@ export default function CallView({
     const [gridWidth, setGridWidth] = useState(0);
     const gridCount = screenTiles.length + participants.length;
     const gridColumns = autoFitColumns(gridWidth, 220, 12, gridCount);
-    const gridCellStyle = gridWidth
-        ? {
-              // Floored, so rounding never pushes the last column to wrap.
-              width: Math.floor(
-                  (gridWidth - 12 * (gridColumns - 1)) / gridColumns,
-              ),
-          }
-        : { width: "100%" as const };
-
-    // Zami: the `sr-only` texts of a tile's status icons, as the label of the
-    // row they sit in.
-    function statusLabel(
-        status: ReturnType<typeof callTileStatus>,
-        userId: string,
-    ): string {
-        return [
-            status.micOff && t("callView.muted"),
-            status.deafened && t("callView.deafened"),
-            status.locallyMuted && t("callView.mutedForYou"),
-            status.multiDevice &&
-                t("callView.devices", {
-                    value: deviceCounts.get(userId) ?? 1,
-                }),
-        ]
-            .filter(Boolean)
-            .join(", ");
-    }
+    // Zami: the same object while the width holds, for the memoized tiles.
+    const gridCellStyle = useMemo(
+        () =>
+            gridWidth
+                ? {
+                      // Floored, so rounding never pushes the last column to wrap.
+                      width: Math.floor(
+                          (gridWidth - 12 * (gridColumns - 1)) / gridColumns,
+                      ),
+                  }
+                : { width: "100%" as const },
+        [gridWidth, gridColumns],
+    );
+    // Zami: the tiles' actions, the same functions across renders.
+    const tileLongPress = useStableCallback(onTileLongPress);
+    const tileMenuPress = useStableCallback(onTileMenuPress);
+    const spotlightTileStable = useStableCallback(spotlightTile);
 
     return (
         <>
@@ -687,110 +686,35 @@ export default function CallView({
                                             </Pressable>
                                         </Animated.View>
                                     ))}
-                                    {participants.map((p) => {
-                                        const identity = `${p.userId}:${p.deviceId}`;
-                                        const cam =
-                                            cameraByIdentity.get(identity);
-                                        const name = getMemberName(
-                                            room,
-                                            p.userId,
-                                        );
-                                        const avatar = getMemberAvatar(
-                                            room,
-                                            p.userId,
-                                        );
-                                        return (
-                                            <Animated.View
-                                                key={p.userId}
-                                                layout={tileFlip()}
-                                                entering={tileIn()}
-                                                exiting={tileOut()}
-                                                className={`relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-discord-backgroundSecondary border-2 ${
-                                                    speaking.has(p.userId) ||
-                                                    (cam &&
-                                                        cam.key ===
-                                                            focusedTileKey)
-                                                        ? "border-discord-accent"
-                                                        : "border-transparent"
-                                                }`}
-                                            >
-                                                {/* Zami: `title` has no React
-                                                    Native equivalent. */}
-                                                <Pressable
-                                                    accessible={false}
-                                                    className="w-full h-full flex-row items-center justify-center"
-                                                    onPress={
-                                                        cam
-                                                            ? () =>
-                                                                  focusTile(
-                                                                      cam.key,
-                                                                  )
-                                                            : undefined
-                                                    }
-                                                    delayLongPress={500}
-                                                    onLongPress={onTileLongPress(
-                                                        p.userId,
-                                                    )}
-                                                >
-                                                    {cam ? (
-                                                        <>
-                                                            <VideoTile
-                                                                tile={cam}
-                                                                label={name}
-                                                                compact
-                                                                mirror={
-                                                                    isLocalIdentity(
-                                                                        identity,
-                                                                    ) &&
-                                                                    mirrorCamera
-                                                                }
-                                                            />
-                                                            <View
-                                                                accessible
-                                                                accessibilityRole="button"
-                                                                pointerEvents="none"
-                                                                className={
-                                                                    TILE_OVERLAY_BTN
-                                                                }
-                                                                accessibilityLabel={spotlightLabel(
-                                                                    cam.key,
-                                                                    name,
-                                                                )}
-                                                                onAccessibilityTap={() =>
-                                                                    spotlightTile(
-                                                                        cam.key,
-                                                                    )
-                                                                }
-                                                            />
-                                                        </>
-                                                    ) : (
-                                                        <Avatar
-                                                            src={avatar}
-                                                            name={name}
-                                                            id={p.userId}
-                                                            size={36}
-                                                        />
-                                                    )}
-                                                    <Pressable
-                                                        accessibilityRole="button"
-                                                        className={`${TILE_MENU_BTN} top-0.5 end-0.5 p-1`}
-                                                        accessibilityLabel={t(
-                                                            "callView.optionsFor",
-                                                            { name },
-                                                        )}
-                                                        onPress={onTileMenuPress(
-                                                            p.userId,
-                                                        )}
-                                                    >
-                                                        <EllipsisVertical
-                                                            size={14}
-                                                            className="text-white"
-                                                        />
-                                                    </Pressable>
-                                                </Pressable>
-                                            </Animated.View>
-                                        );
-                                    })}
+                                    {/* Zami: each tile its own memoized component
+                                        (ParticipantTile, below), reading its own
+                                        name, avatar, speaking and mute state, so
+                                        someone starting to speak re-renders their
+                                        tile, not the call. */}
+                                    {participants.map((p) => (
+                                        <ParticipantTile
+                                            key={p.userId}
+                                            variant="filmstrip"
+                                            room={room}
+                                            userId={p.userId}
+                                            deviceId={p.deviceId}
+                                            cam={cameraByIdentity.get(
+                                                `${p.userId}:${p.deviceId}`,
+                                            )}
+                                            focusedTileKey={focusedTileKey}
+                                            selfUserId={selfUserId}
+                                            mirrorCamera={mirrorCamera}
+                                            micMuted={micMuted}
+                                            deafened={deafened}
+                                            deviceCount={
+                                                deviceCounts.get(p.userId) ?? 1
+                                            }
+                                            gridCellStyle={gridCellStyle}
+                                            onTileLongPress={tileLongPress}
+                                            onTileMenuPress={tileMenuPress}
+                                            spotlightTile={spotlightTileStable}
+                                        />
+                                    ))}
                                 </ScrollView>
                             </LayoutAnimationConfig>
                         </>
@@ -866,199 +790,30 @@ export default function CallView({
                                     </Animated.View>
                                 ))}
 
-                                {participants.map((p) => {
-                                    const identity = `${p.userId}:${p.deviceId}`;
-                                    const cam = cameraByIdentity.get(identity);
-                                    const name = getMemberName(room, p.userId);
-                                    const avatar = getMemberAvatar(
-                                        room,
-                                        p.userId,
-                                    );
-                                    const status = callTileStatus({
-                                        isOwn: isLocalIdentity(identity),
-                                        remoteMuted: muted.has(p.userId),
-                                        speaking: speaking.has(p.userId),
-                                        locallyMuted: participantAudioFor(
-                                            p.userId,
-                                        ).muted,
-                                        selfMicMuted: micMuted,
-                                        selfDeafened: deafened,
-                                        deviceCount:
-                                            deviceCounts.get(p.userId) ?? 1,
-                                    });
-                                    const statusIcons = (
-                                        <>
-                                            {status.micOff && (
-                                                <MicOff
-                                                    size={14}
-                                                    className="text-discord-danger flex-shrink-0"
-                                                />
-                                            )}
-                                            {status.deafened && (
-                                                <HeadphoneOff
-                                                    size={14}
-                                                    className="text-discord-danger flex-shrink-0"
-                                                />
-                                            )}
-                                            {status.locallyMuted && (
-                                                <VolumeX
-                                                    size={14}
-                                                    className="text-discord-textMuted flex-shrink-0"
-                                                />
-                                            )}
-                                            {status.multiDevice && (
-                                                // Zami: `title` has no React
-                                                // Native equivalent.
-                                                <View className="flex-row items-center gap-0.5 flex-shrink-0">
-                                                    <Smartphone
-                                                        size={12}
-                                                        className="text-white"
-                                                    />
-                                                    <Text className="text-[10px] leading-none text-white">
-                                                        {deviceCounts.get(
-                                                            p.userId,
-                                                        ) ?? 1}
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </>
-                                    );
-                                    return (
-                                        <Animated.View
-                                            key={p.userId}
-                                            layout={tileFlip()}
-                                            entering={tileIn()}
-                                            exiting={tileOut()}
-                                            style={gridCellStyle}
-                                            className={`relative aspect-video rounded-lg overflow-hidden bg-discord-backgroundSecondary border-2 ${
-                                                speaking.has(p.userId) ||
-                                                (cam &&
-                                                    cam.key === focusedTileKey)
-                                                    ? "border-discord-accent"
-                                                    : "border-transparent"
-                                            }`}
-                                        >
-                                            <Pressable
-                                                accessible={false}
-                                                className="w-full h-full flex-row items-center justify-center"
-                                                onPress={
-                                                    cam
-                                                        ? () =>
-                                                              focusTile(cam.key)
-                                                        : undefined
-                                                }
-                                                delayLongPress={500}
-                                                onLongPress={onTileLongPress(
-                                                    p.userId,
-                                                )}
-                                            >
-                                                {cam ? (
-                                                    <>
-                                                        <VideoTile
-                                                            tile={cam}
-                                                            label={name}
-                                                            mirror={
-                                                                isLocalIdentity(
-                                                                    identity,
-                                                                ) &&
-                                                                mirrorCamera
-                                                            }
-                                                        />
-                                                        <View
-                                                            accessible
-                                                            accessibilityRole="button"
-                                                            pointerEvents="none"
-                                                            className={
-                                                                TILE_OVERLAY_BTN
-                                                            }
-                                                            accessibilityLabel={spotlightLabel(
-                                                                cam.key,
-                                                                name,
-                                                            )}
-                                                            onAccessibilityTap={() =>
-                                                                spotlightTile(
-                                                                    cam.key,
-                                                                )
-                                                            }
-                                                        />
-                                                        {(status.micOff ||
-                                                            status.deafened ||
-                                                            status.locallyMuted ||
-                                                            status.multiDevice) && (
-                                                            <View
-                                                                accessible
-                                                                accessibilityLabel={statusLabel(
-                                                                    status,
-                                                                    p.userId,
-                                                                )}
-                                                                className="absolute top-2 start-2 flex-row items-center gap-1 px-1.5 py-0.5 rounded bg-black/60"
-                                                            >
-                                                                {statusIcons}
-                                                            </View>
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Avatar
-                                                            src={avatar}
-                                                            name={name}
-                                                            id={p.userId}
-                                                            size={80}
-                                                        />
-                                                        {/* Zami: `max-w-[calc(100%-1rem)]`
-                                                            → the end inset. */}
-                                                        <View
-                                                            pointerEvents="box-none"
-                                                            className="absolute bottom-2 start-2 end-2 flex-row"
-                                                        >
-                                                            <View
-                                                                accessible
-                                                                accessibilityLabel={[
-                                                                    statusLabel(
-                                                                        status,
-                                                                        p.userId,
-                                                                    ),
-                                                                    name,
-                                                                ]
-                                                                    .filter(
-                                                                        Boolean,
-                                                                    )
-                                                                    .join(", ")}
-                                                                className="flex-shrink flex-row items-center gap-1.5 px-2 py-0.5 rounded bg-black/60"
-                                                            >
-                                                                {statusIcons}
-                                                                <Text
-                                                                    numberOfLines={
-                                                                        1
-                                                                    }
-                                                                    className="flex-shrink text-xs text-white truncate"
-                                                                >
-                                                                    {name}
-                                                                </Text>
-                                                            </View>
-                                                        </View>
-                                                    </>
-                                                )}
-                                                <Pressable
-                                                    accessibilityRole="button"
-                                                    className={`${TILE_MENU_BTN} top-2 end-2 p-1.5`}
-                                                    accessibilityLabel={t(
-                                                        "callView.optionsFor",
-                                                        { name },
-                                                    )}
-                                                    onPress={onTileMenuPress(
-                                                        p.userId,
-                                                    )}
-                                                >
-                                                    <EllipsisVertical
-                                                        size={16}
-                                                        className="text-white"
-                                                    />
-                                                </Pressable>
-                                            </Pressable>
-                                        </Animated.View>
-                                    );
-                                })}
+                                {participants.map((p) => (
+                                    <ParticipantTile
+                                        key={p.userId}
+                                        variant="grid"
+                                        room={room}
+                                        userId={p.userId}
+                                        deviceId={p.deviceId}
+                                        cam={cameraByIdentity.get(
+                                            `${p.userId}:${p.deviceId}`,
+                                        )}
+                                        focusedTileKey={focusedTileKey}
+                                        selfUserId={selfUserId}
+                                        mirrorCamera={mirrorCamera}
+                                        micMuted={micMuted}
+                                        deafened={deafened}
+                                        deviceCount={
+                                            deviceCounts.get(p.userId) ?? 1
+                                        }
+                                        gridCellStyle={gridCellStyle}
+                                        onTileLongPress={tileLongPress}
+                                        onTileMenuPress={tileMenuPress}
+                                        spotlightTile={spotlightTileStable}
+                                    />
+                                ))}
                             </ScrollView>
                         </LayoutAnimationConfig>
                     )}
@@ -1293,3 +1048,300 @@ export default function CallView({
         </>
     );
 }
+
+interface ParticipantTileProps {
+    variant: "filmstrip" | "grid";
+    room: Room;
+    userId: string;
+    deviceId: string;
+    cam: VideoTileDescriptor | undefined;
+    focusedTileKey: string | null;
+    selfUserId: string | null;
+    mirrorCamera: boolean;
+    micMuted: boolean;
+    deafened: boolean;
+    deviceCount: number;
+    gridCellStyle: { width: number | "100%" };
+    onTileLongPress: (userId: string) => (e: GestureResponderEvent) => void;
+    onTileMenuPress: (userId: string) => (e: GestureResponderEvent) => void;
+    spotlightTile: (key: string) => void;
+}
+
+// Zami: a participant's tile, in the filmstrip under a spotlight or in the
+// grid: upstream's two `{#each participants}` bodies. Memoized, and it reads
+// the runes only it shows (its name, avatar, speaking and mute state), so a
+// change re-renders this tile rather than the whole call view.
+const ParticipantTile = memo(function ParticipantTile({
+    variant,
+    room,
+    userId,
+    deviceId,
+    cam,
+    focusedTileKey,
+    selfUserId,
+    mirrorCamera,
+    micMuted,
+    deafened,
+    deviceCount,
+    gridCellStyle,
+    onTileLongPress,
+    onTileMenuPress,
+    spotlightTile,
+}: ParticipantTileProps) {
+    const p = { userId, deviceId };
+    const identity = `${p.userId}:${p.deviceId}`;
+    const name = useRune(() => {
+        void roomsState.roomsTick;
+        return getMemberName(room, p.userId);
+    }, [room, userId]);
+    const avatar = useRune(() => {
+        void roomsState.roomsTick;
+        return getMemberAvatar(room, p.userId);
+    }, [room, userId]);
+    const isSpeaking = useRune(
+        () => voiceCallState.speakingUserIds.has(p.userId),
+        [userId],
+    );
+    // Contract: a user absent from this set is unmuted, never "unknown".
+    const isMuted = useRune(
+        () => voiceCallState.mutedUserIds.has(p.userId),
+        [userId],
+    );
+    const locallyMuted = useRune(
+        () => participantAudioFor(p.userId).muted,
+        [userId],
+    );
+
+    function isLocalIdentity(identity: string): boolean {
+        return identity.slice(0, identity.lastIndexOf(":")) === selfUserId;
+    }
+
+    // focusTile() is a toggle, so the label has to say which way it goes.
+    function spotlightLabel(key: string, label: string): string {
+        return focusedTileKey === key
+            ? t("callView.exitSpotlightFor", { label })
+            : t("callView.spotlight", { label });
+    }
+
+    // Zami: the `sr-only` texts of a tile's status icons, as the label of the
+    // row they sit in.
+    function statusLabel(
+        status: ReturnType<typeof callTileStatus>,
+        _userId: string,
+    ): string {
+        return [
+            status.micOff && t("callView.muted"),
+            status.deafened && t("callView.deafened"),
+            status.locallyMuted && t("callView.mutedForYou"),
+            status.multiDevice &&
+                t("callView.devices", {
+                    value: deviceCount,
+                }),
+        ]
+            .filter(Boolean)
+            .join(", ");
+    }
+
+    if (variant === "filmstrip")
+        return (
+            <Animated.View
+                layout={tileFlip()}
+                entering={tileIn()}
+                exiting={tileOut()}
+                className={`relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-discord-backgroundSecondary border-2 ${
+                    isSpeaking || (cam && cam.key === focusedTileKey)
+                        ? "border-discord-accent"
+                        : "border-transparent"
+                }`}
+            >
+                {/* Zami: `title` has no React
+                        Native equivalent. */}
+                <Pressable
+                    accessible={false}
+                    className="w-full h-full flex-row items-center justify-center"
+                    onPress={cam ? () => focusTile(cam.key) : undefined}
+                    delayLongPress={500}
+                    onLongPress={onTileLongPress(p.userId)}
+                >
+                    {cam ? (
+                        <>
+                            <VideoTile
+                                tile={cam}
+                                label={name}
+                                compact
+                                mirror={
+                                    isLocalIdentity(identity) && mirrorCamera
+                                }
+                            />
+                            <View
+                                accessible
+                                accessibilityRole="button"
+                                pointerEvents="none"
+                                className={TILE_OVERLAY_BTN}
+                                accessibilityLabel={spotlightLabel(
+                                    cam.key,
+                                    name,
+                                )}
+                                onAccessibilityTap={() =>
+                                    spotlightTile(cam.key)
+                                }
+                            />
+                        </>
+                    ) : (
+                        <Avatar
+                            src={avatar}
+                            name={name}
+                            id={p.userId}
+                            size={36}
+                        />
+                    )}
+                    <Pressable
+                        accessibilityRole="button"
+                        className={`${TILE_MENU_BTN} top-0.5 end-0.5 p-1`}
+                        accessibilityLabel={t("callView.optionsFor", { name })}
+                        onPress={onTileMenuPress(p.userId)}
+                    >
+                        <EllipsisVertical size={14} className="text-white" />
+                    </Pressable>
+                </Pressable>
+            </Animated.View>
+        );
+
+    const status = callTileStatus({
+        isOwn: isLocalIdentity(identity),
+        remoteMuted: isMuted,
+        speaking: isSpeaking,
+        locallyMuted: locallyMuted,
+        selfMicMuted: micMuted,
+        selfDeafened: deafened,
+        deviceCount: deviceCount,
+    });
+    const statusIcons = (
+        <>
+            {status.micOff && (
+                <MicOff
+                    size={14}
+                    className="text-discord-danger flex-shrink-0"
+                />
+            )}
+            {status.deafened && (
+                <HeadphoneOff
+                    size={14}
+                    className="text-discord-danger flex-shrink-0"
+                />
+            )}
+            {status.locallyMuted && (
+                <VolumeX
+                    size={14}
+                    className="text-discord-textMuted flex-shrink-0"
+                />
+            )}
+            {status.multiDevice && (
+                // Zami: `title` has no React
+                // Native equivalent.
+                <View className="flex-row items-center gap-0.5 flex-shrink-0">
+                    <Smartphone size={12} className="text-white" />
+                    <Text className="text-[10px] leading-none text-white">
+                        {deviceCount}
+                    </Text>
+                </View>
+            )}
+        </>
+    );
+    return (
+        <Animated.View
+            layout={tileFlip()}
+            entering={tileIn()}
+            exiting={tileOut()}
+            style={gridCellStyle}
+            className={`relative aspect-video rounded-lg overflow-hidden bg-discord-backgroundSecondary border-2 ${
+                isSpeaking || (cam && cam.key === focusedTileKey)
+                    ? "border-discord-accent"
+                    : "border-transparent"
+            }`}
+        >
+            <Pressable
+                accessible={false}
+                className="w-full h-full flex-row items-center justify-center"
+                onPress={cam ? () => focusTile(cam.key) : undefined}
+                delayLongPress={500}
+                onLongPress={onTileLongPress(p.userId)}
+            >
+                {cam ? (
+                    <>
+                        <VideoTile
+                            tile={cam}
+                            label={name}
+                            mirror={isLocalIdentity(identity) && mirrorCamera}
+                        />
+                        <View
+                            accessible
+                            accessibilityRole="button"
+                            pointerEvents="none"
+                            className={TILE_OVERLAY_BTN}
+                            accessibilityLabel={spotlightLabel(cam.key, name)}
+                            onAccessibilityTap={() => spotlightTile(cam.key)}
+                        />
+                        {(status.micOff ||
+                            status.deafened ||
+                            status.locallyMuted ||
+                            status.multiDevice) && (
+                            <View
+                                accessible
+                                accessibilityLabel={statusLabel(
+                                    status,
+                                    p.userId,
+                                )}
+                                className="absolute top-2 start-2 flex-row items-center gap-1 px-1.5 py-0.5 rounded bg-black/60"
+                            >
+                                {statusIcons}
+                            </View>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <Avatar
+                            src={avatar}
+                            name={name}
+                            id={p.userId}
+                            size={80}
+                        />
+                        {/* Zami: `max-w-[calc(100%-1rem)]`
+                                → the end inset. */}
+                        <View
+                            pointerEvents="box-none"
+                            className="absolute bottom-2 start-2 end-2 flex-row"
+                        >
+                            <View
+                                accessible
+                                accessibilityLabel={[
+                                    statusLabel(status, p.userId),
+                                    name,
+                                ]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                className="flex-shrink flex-row items-center gap-1.5 px-2 py-0.5 rounded bg-black/60"
+                            >
+                                {statusIcons}
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-shrink text-xs text-white truncate"
+                                >
+                                    {name}
+                                </Text>
+                            </View>
+                        </View>
+                    </>
+                )}
+                <Pressable
+                    accessibilityRole="button"
+                    className={`${TILE_MENU_BTN} top-2 end-2 p-1.5`}
+                    accessibilityLabel={t("callView.optionsFor", { name })}
+                    onPress={onTileMenuPress(p.userId)}
+                >
+                    <EllipsisVertical size={16} className="text-white" />
+                </Pressable>
+            </Pressable>
+        </Animated.View>
+    );
+});

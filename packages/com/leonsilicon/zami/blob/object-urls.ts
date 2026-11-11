@@ -4,6 +4,8 @@ import { extensionFor } from "#extension";
 export interface ObjectUrls {
   /** A URL that loads `bytes`, available as soon as this returns. */
   create(bytes: Uint8Array, type: string, name?: string): string;
+  /** The same, written off the JS thread: the URL loads once the promise resolves. */
+  createAsync?(bytes: Uint8Array, type: string, name?: string): Promise<string>;
   /** Releases a URL `create` gave, returning false for any other URL. */
   revoke(url: string): boolean;
 }
@@ -19,6 +21,8 @@ export interface CacheDirectory {
 export interface CacheFile {
   readonly uri: string;
   writeSync(content: Uint8Array): void;
+  /** Writes off the JS thread, where the file system can. */
+  writeAsync?(content: Uint8Array): Promise<void>;
   delete(): void;
 }
 
@@ -54,11 +58,22 @@ export function cacheFileUrls<Directory extends CacheDirectory>(
     return fresh;
   }
 
+  function next(type: string, name?: string): CacheFile {
+    const id = `${Date.now().toString(36)}-${(count++).toString(36)}`;
+    return fs.file(ready(), `${id}${extensionFor(type, name)}`);
+  }
+
   return {
     create(bytes, type, name) {
-      const id = `${Date.now().toString(36)}-${(count++).toString(36)}`;
-      const file = fs.file(ready(), `${id}${extensionFor(type, name)}`);
+      const file = next(type, name);
       file.writeSync(bytes);
+      created.set(file.uri, file);
+      return file.uri;
+    },
+    async createAsync(bytes, type, name) {
+      const file = next(type, name);
+      if (file.writeAsync) await file.writeAsync(bytes);
+      else file.writeSync(bytes);
       created.set(file.uri, file);
       return file.uri;
     },

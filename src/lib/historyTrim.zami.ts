@@ -33,8 +33,18 @@ function trimmable(roomId: string): boolean {
     );
 }
 
+// Zami: how long the sweep may hold the JS thread before giving the event loop
+// a turn. It visits every room, and a room it skips returns at once (no await
+// that yields), so with thousands of rooms it ran as one long block.
+const SWEEP_SLICE_MS = 8;
+
 async function sweep(): Promise<void> {
+    let sliceStart = performance.now();
     for (const room of getRooms()) {
+        if (performance.now() - sliceStart >= SWEEP_SLICE_MS) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            sliceStart = performance.now();
+        }
         const id = room.roomId;
         if (!trimmable(id)) continue;
         try {

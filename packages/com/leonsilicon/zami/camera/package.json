@@ -2,7 +2,7 @@
   "name": "@-/com.leonsilicon.zami.camera",
   "version": "0.0.0",
   "private": true,
-  "description": "Camera frames for Zam's QR scanning: an expo-camera still, read back and decoded from JPEG into the RGBA ImageData jsQR takes from a canvas.",
+  "description": "QR scanning for Zam's scanner: an expo-camera still whose codes a native module (Vision, ZXing) reads as data codewords, parsed here into their exact bytes; jpeg-js and jsQR where the app lacks the module.",
   "type": "module",
   "imports": {
     "#*": "./*.ts"
@@ -13,11 +13,11 @@
   "dependencies": {
     "expo-camera": "catalog:",
     "expo-file-system": "catalog:",
-    "jpeg-js": "catalog:"
+    "jpeg-js": "catalog:",
+    "jsqr": "catalog:"
   },
   "devDependencies": {
     "@types/qrcode": "catalog:",
-    "jsqr": "catalog:",
     "qrcode": "catalog:",
     "vite-plus": "catalog:"
   }

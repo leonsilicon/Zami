@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.leonsilicon.zami'
+version = '0.0.0'
+
+android {
+  namespace "com.leonsilicon.zami.camera"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.0"
+  }
+}
+
+dependencies {
+  // QR decoding that exposes a code's data codewords (ML Kit's scanner doesn't say which
+  // version a code is, which reading its codewords needs).
+  implementation "com.google.zxing:core:3.5.3"
+  // android/src/test: decoding symbols ZXing's encoder draws, on the JVM.
+  testImplementation "junit:junit:4.13.2"
+}

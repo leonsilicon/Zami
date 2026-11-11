@@ -13,6 +13,12 @@ import { useUniwind } from "uniwind";
 import { markStartup } from "@-/com.leonsilicon.zami.startup";
 import { fontsReady } from "#fonts";
 import { storageReady } from "#storage";
+// Loaded before anything draws, whatever reads it first: with inline requires
+// (@-/com.leonsilicon.zami.metro) a module imported for a name loads when the name is first
+// used, and the settings store applies the theme, text scale and fonts when it loads, so the
+// splash would draw in the default theme. (A bare import of a module this file also imports
+// names from is merged into that import: see index.ts for storage.)
+import "$lib/stores/settings.svelte";
 import Splash from "$lib/components/layout/Splash.svelte";
 import { initI18n } from "$lib/i18n";
 import { getClient } from "$lib/matrix/client";

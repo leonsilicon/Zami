@@ -26,6 +26,9 @@ const inputClass =
 const buttonClass =
     "self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50";
 const buttonTextClass = "text-sm font-medium text-white";
+// Zami: how much of an export file one write takes (it's ASCII, so as many
+// bytes).
+const EXPORT_WRITE_CHARS = 1024 * 1024;
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead.
@@ -51,7 +54,14 @@ export default function KeyExportSettings() {
             const day = new Date().toISOString().slice(0, 10);
             const saved = new File(Paths.cache, `zam-keys-${day}.txt`);
             saved.create({ overwrite: true });
-            await saved.write(file);
+            // Zami: a large account's file is tens of MB, and each write hands
+            // its text to native code on the JS thread: it's written a megabyte
+            // at a time.
+            for (let at = 0; at < file.length; at += EXPORT_WRITE_CHARS) {
+                await saved.write(file.slice(at, at + EXPORT_WRITE_CHARS), {
+                    append: at > 0,
+                });
+            }
             await Sharing.shareAsync(saved.uri, {
                 mimeType: "text/plain",
                 UTI: "public.plain-text",

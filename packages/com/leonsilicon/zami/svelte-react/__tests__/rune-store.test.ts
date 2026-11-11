@@ -1,6 +1,6 @@
 import { flushSync } from "svelte";
 import { describe, expect, test } from "vite-plus/test";
-import { createRuneStore } from "#subscribe.svelte";
+import { createRuneStore, sameObject, shallowEqual } from "#subscribe.svelte";
 import { createState } from "./fixture.svelte.ts";
 
 function watch<T>(store: ReturnType<typeof createRuneStore<T>>) {
@@ -35,6 +35,7 @@ describe("createRuneStore", () => {
     expect(store.getSnapshot().value).toBe(0); // React renders
     state.count = 1; // the store changes before React subscribes
     const watcher = watch(store);
+    flushSync();
     expect(watcher.changes()).toBe(1);
     expect(store.getSnapshot().value).toBe(1);
     watcher.stop();
@@ -96,6 +97,99 @@ describe("createRuneStore", () => {
     state.byRoom["!a"] = { events: [] };
     flushSync();
     expect(watcher.changes()).toBe(1);
+    watcher.stop();
+  });
+
+  test("creates its effect when subscribing, not when rendering", () => {
+    const state = createState();
+    let reads = 0;
+    const store = createRuneStore(() => {
+      reads++;
+      return state.count;
+    });
+    store.getSnapshot();
+    state.count = 1;
+    flushSync();
+    expect(reads).toBe(1); // the render's read tracks nothing
+    const watcher = watch(store);
+    expect(watcher.changes()).toBe(1);
+    expect(store.getSnapshot().value).toBe(1);
+    watcher.stop();
+  });
+
+  test("skips an object result that isEqual calls the same", () => {
+    const state = createState();
+    const content = { body: "hi" };
+    const store = createRuneStore(
+      () => {
+        void state.count;
+        return content;
+      },
+      { isEqual: sameObject },
+    );
+    const watcher = watch(store);
+    state.count = 1;
+    flushSync();
+    expect(watcher.changes()).toBe(0);
+    watcher.stop();
+  });
+
+  test("shallowEqual skips a rebuilt object with the same values", () => {
+    const state = createState();
+    const store = createRuneStore(() => ({ big: state.count > 10, toasts: state.toasts }), {
+      isEqual: shallowEqual,
+    });
+    const watcher = watch(store);
+    state.count = 1;
+    flushSync();
+    expect(watcher.changes()).toBe(0);
+    state.count = 11;
+    flushSync();
+    expect(watcher.changes()).toBe(1);
+    watcher.stop();
+  });
+
+  test("by default, the same object still counts as a change", () => {
+    const state = createState();
+    const events: string[] = [];
+    const store = createRuneStore(() => {
+      void state.count;
+      return events; // grows in place, like timeline.getEvents()
+    });
+    const watcher = watch(store);
+    events.push("$event");
+    state.count = 1;
+    flushSync();
+    expect(watcher.changes()).toBe(1);
+    watcher.stop();
+  });
+
+  test("after a pause, reads again and reports what changed meanwhile", async () => {
+    const state = createState();
+    const store = createRuneStore(() => state.count);
+    let watcher = watch(store);
+    watcher.stop();
+    await Promise.resolve(); // tracking stops the microtask after the last unsubscribe
+    state.count = 1;
+    flushSync();
+    expect(store.getSnapshot().value).toBe(0);
+    watcher = watch(store);
+    expect(watcher.changes()).toBe(1);
+    expect(store.getSnapshot().value).toBe(1);
+    watcher.stop();
+  });
+
+  test("keeps tracking through an unsubscribe and resubscribe in one commit", () => {
+    const state = createState();
+    let reads = 0;
+    const store = createRuneStore(() => {
+      reads++;
+      return state.count;
+    });
+    store.getSnapshot();
+    watch(store).stop();
+    const watcher = watch(store);
+    expect(reads).toBe(2); // the render's read, then the effect's first pass
     watcher.stop();
   });
 

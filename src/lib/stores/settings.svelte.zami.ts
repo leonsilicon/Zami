@@ -1268,9 +1268,24 @@ export function setCameraDisabled(value: boolean): void {
     writeAccountBool("cameraDisabled", value);
 }
 
+// Zami: the volume setters run on every step of a slider's drag. The value applies at once;
+// it's stored once the drag has settled, for the account it was set for.
+const settlingWrites = new Map<string, ReturnType<typeof setTimeout>>();
+function writeAccountStringWhenSettled(key: string, value: string): void {
+    const userId = auth.userId;
+    clearTimeout(settlingWrites.get(key));
+    settlingWrites.set(
+        key,
+        setTimeout(() => {
+            settlingWrites.delete(key);
+            writeScoped(STORAGE_PREFIX + key, userId, value);
+        }, 300),
+    );
+}
+
 export function setCallOutputVolume(value: number): void {
     settingsState.callOutputVolume = Math.min(1, Math.max(0, value));
-    writeAccountString(
+    writeAccountStringWhenSettled(
         "callOutputVolume",
         String(settingsState.callOutputVolume),
     );
@@ -1439,7 +1454,7 @@ export function setCallSoundsEnabled(value: boolean): void {
 
 export function setCallSoundsVolume(value: number): void {
     settingsState.callSoundsVolume = Math.min(1, Math.max(0, value));
-    writeAccountString(
+    writeAccountStringWhenSettled(
         "callSoundsVolume",
         String(settingsState.callSoundsVolume),
     );
@@ -1452,7 +1467,10 @@ export function setRingEnabled(value: boolean): void {
 
 export function setRingVolume(value: number): void {
     settingsState.ringVolume = Math.min(1, Math.max(0, value));
-    writeAccountString("ringVolume", String(settingsState.ringVolume));
+    writeAccountStringWhenSettled(
+        "ringVolume",
+        String(settingsState.ringVolume),
+    );
 }
 
 /** Per-user call volume/mute. Stored as one account-scoped JSON blob. */

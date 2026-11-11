@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { shallowEqual, useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { relationsRevision } from "@-/com.leonsilicon.zami.event-revision";
 import { t } from "$lib/i18n";
-import type { Room } from "matrix-js-sdk";
+import type { MatrixEvent, Room } from "matrix-js-sdk";
 import {
     getReactions,
     sendReaction,
@@ -24,16 +25,39 @@ import ReactorPopover from "./ReactorPopover.svelte";
 interface Props {
     eventId: string;
     room: Room;
-    reactionTick: number; // reactive counter to force re-read
+    // Zami: the reacted-to event, whose reactions this follows itself, in
+    // place of `reactionTick`, which every reaction in the room moved for
+    // every row.
+    event: MatrixEvent;
 }
 
-export default function Reactions({ eventId, room, reactionTick }: Props) {
+// Zami: what a reaction is, for relationsRevision.
+const REACTION_TYPES = ["m.reaction"];
+// Zami: what the reactor list reads while it is closed.
+const REACTORS_CLOSED: { roomsTick: number; ownUserId: string | null } = {
+    roomsTick: 0,
+    ownUserId: null,
+};
+
+export default function Reactions({ eventId, room, event }: Props) {
     // Optimistic removals: event IDs of reactions the user has removed, pending server confirmation
     const [pendingRemovals, setPendingRemovals] = useState(
         () => new Set<string>(),
     );
 
     // Re-read reactions whenever reactionTick changes
+    // Zami: a revision that moves when this event's reactions change (one is
+    // added, removed or redacted, or one of ours finishes sending).
+    const reactionTick = useRune(
+        () =>
+            relationsRevision(
+                room.relations,
+                event,
+                "m.annotation",
+                REACTION_TYPES,
+            ),
+        [room, event],
+    );
     const reactions = useMemo(() => {
         void reactionTick; // dependency
         return getReactions(room, eventId);
@@ -113,12 +137,17 @@ export default function Reactions({ eventId, room, reactionTick }: Props) {
     const anchorY = 0;
 
     // Zami: only an open reactor list reads these, so a row subscribes to
-    // them only while its list is open.
-    const roomsTick = useRune(
-        () => (openKey ? roomsState.roomsTick : 0),
+    // them only while its list is open (as one store).
+    const reactorState = useRune(
+        () =>
+            openKey
+                ? { roomsTick: roomsState.roomsTick, ownUserId: auth.userId }
+                : REACTORS_CLOSED,
         [openKey],
+        { isEqual: shallowEqual },
     );
-    const ownUserId = useRune(() => (openKey ? auth.userId : null), [openKey]);
+    const roomsTick = reactorState.roomsTick;
+    const ownUserId = reactorState.ownUserId;
 
     function reactorsFor(reactorIds: string[]) {
         void roomsTick; // re-resolve names/avatars as members load

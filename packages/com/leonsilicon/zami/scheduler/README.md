@@ -16,3 +16,17 @@ await queue.add(() => decrypt(event), event.getTs()); // newest first
 
 Tasks with equal priority run in the order they were added. A task's result or error reaches
 the promise `add` returned; it never stops the queue.
+
+A task can be dropped before it starts by passing an `AbortSignal`; its promise then rejects
+with the signal's reason. Use it for work that only matters while something is on screen
+(the identity checks of the room being viewed):
+
+```ts
+const controller = new AbortController();
+void queue.add(() => check(userId), Date.now(), { signal: controller.signal });
+controller.abort(); // the user left the room
+```
+
+Every `createSlicedQueue` call with the same `name` returns the same queue, so independent
+callers (decryption in the client, retries and trust lookups in crypto) share one time budget
+per turn instead of each taking their own. The first call's options apply.

@@ -1,7 +1,7 @@
 Pod::Spec.new do |s|
   s.name           = 'ZamiWebCrypto'
   s.version        = '0.0.0'
-  s.summary        = "The costly part of Zami's crypto.subtle (digests, HMAC, AES-CTR, PBKDF2) in CommonCrypto."
+  s.summary        = "The costly part of Zami's crypto.subtle (digests, HMAC, AES-CTR, AES-GCM, PBKDF2) in CommonCrypto and CryptoKit."
   s.author         = 'Leon Si'
   s.homepage       = 'https://github.com/leonsilicon/Zami'
   s.license        = 'GPL-3.0-or-later'

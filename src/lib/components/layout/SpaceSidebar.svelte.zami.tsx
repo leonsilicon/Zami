@@ -10,6 +10,7 @@ import * as Haptics from "expo-haptics";
 import { Circle } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
 import {
+    memo,
     useCallback,
     useEffect,
     useLayoutEffect,
@@ -20,6 +21,7 @@ import {
     type RefObject,
 } from "react";
 import {
+    FlatList,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -56,7 +58,9 @@ import {
     getRoomDisplayName,
     leaveRoom,
     setSpaceLayout,
-    getRoomUnreadInfo,
+    getHomeUnreadGroup,
+    getSpaceUnreadGroup,
+    getSpaceUnreadReach,
     getRoomsInSpace,
     getSpaceChildIds,
     getNestedSpaceIds,
@@ -85,7 +89,7 @@ import {
 import { openInviteDialog } from "$lib/stores/inviteDialog.svelte";
 import {
     hasLoudInRoom,
-    hasLoudInSpace,
+    notificationsState,
 } from "$lib/stores/notifications.svelte";
 import { openModal, closeModal } from "$lib/stores/interface.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
@@ -102,50 +106,53 @@ interface Notifs {
     loud: boolean;
 }
 
-function getSpaceNotifs(spaceId: string, visited = new Set<string>()): Notifs {
-    void roomsState.unreadTick;
-    if (visited.has(spaceId))
-        return { unread: false, highlight: false, loud: false };
-    visited.add(spaceId);
-    const loud = hasLoudInSpace(spaceId);
-    const rooms = getRoomsInSpace(spaceId);
-    let unread = loud;
-    let highlight = false;
-    for (const r of rooms) {
-        const info = getRoomUnreadInfo(r);
-        if (info.highlight) {
-            highlight = true;
-            unread = true;
-        } else if (info.unread) unread = true;
-    }
-    for (const childId of getSpaceChildIds(spaceId)) {
-        const child = getRoom(childId);
-        if (!child?.isSpaceRoom()) continue;
-        const info = getSpaceNotifs(childId, visited);
-        if (info.highlight) highlight = true;
-        if (info.unread) unread = true;
-    }
-    return { unread, highlight, loud };
+// Zami: the rooms with a loud notification, worked out once per change of the
+// notifications store (each bumps its `tick`). They are few, so a badge looks
+// for them among its rooms, not at each of its rooms.
+let loudRoomsCache: { tick: number; ids: string[] } | null = null;
+function loudRoomIds(): readonly string[] {
+    const tick = notificationsState.tick;
+    if (loudRoomsCache?.tick === tick) return loudRoomsCache.ids;
+    const ids = Object.keys(notificationsState.byRoom).filter((id) =>
+        hasLoudInRoom(id),
+    );
+    loudRoomsCache = { tick, ids };
+    return ids;
 }
 
-function getHomeNotifs(): Notifs {
+// Zami: upstream's two passes (the unread state of every room in the space and
+// in every space below it, then hasLoudInSpace over them again), from the
+// unread roll-ups instead (getSpaceUnreadGroup, kept current as rooms change):
+// a pass over the spaces the badge covers, not their rooms. The same answer:
+// unread if any of those rooms is unread, has a highlight or a loud
+// notification. roomsTick follows a change in which rooms those are.
+function getSpaceNotifs(spaceId: string): Notifs {
     void roomsState.unreadTick;
-    const rooms = [...getOrphanRooms(), ...getDirectRooms()];
+    void roomsState.roomsTick;
+    const loudIds = loudRoomIds();
     let unread = false;
     let highlight = false;
     let loud = false;
-    for (const r of rooms) {
-        if (hasLoudInRoom(r.roomId)) {
-            loud = true;
-            unread = true;
-        }
-        const info = getRoomUnreadInfo(r);
-        if (info.highlight) {
-            highlight = true;
-            unread = true;
-        } else if (info.unread) unread = true;
+    for (const id of getSpaceUnreadReach(spaceId)) {
+        const group = getSpaceUnreadGroup(id);
+        if (group.highlight > 0) highlight = true;
+        if (group.unread > 0) unread = true;
+        if (!loud) loud = loudIds.some((roomId) => group.members.has(roomId));
     }
-    return { unread, highlight, loud };
+    return { unread: unread || loud, highlight, loud };
+}
+
+// Zami: as getSpaceNotifs, over Home's rooms and DMs (getHomeUnreadGroup).
+function getHomeNotifs(): Notifs {
+    void roomsState.unreadTick;
+    void roomsState.roomsTick;
+    const group = getHomeUnreadGroup();
+    const loud = loudRoomIds().some((roomId) => group.members.has(roomId));
+    return {
+        unread: group.unread > 0 || loud,
+        highlight: group.highlight > 0,
+        loud,
+    };
 }
 
 // Zami: upstream's `{@const folderNotifs = item.spaces.reduce(…)}`, as a
@@ -265,6 +272,9 @@ type RootItem =
 // context menu.
 const DRAG_HOLD_MS = 300;
 const CONTEXT_MENU_HOLD_MS = 600;
+// Zami: how far (points) a dragged rail item moves before its drop target is
+// worked out again (TouchDrag).
+const TOUCH_MOVE_STEP_PX = 4;
 
 // Zami: state the touch handlers read too. They run from gesture callbacks,
 // which can arrive before React re-renders with a value they just set, so they
@@ -313,6 +323,9 @@ function TouchDrag({
     ghostY: SharedValue<number>;
     children: ReactNode;
 }) {
+    // Zami: where the finger was last handed to JS (see onUpdate).
+    const sentX = useSharedValue(0);
+    const sentY = useSharedValue(0);
     const config = useMemo((): PanGestureConfig => {
         const start = (x: number, y: number) => handlers.current?.start(x, y);
         const drag = () => handlers.current?.drag(kind, id, fromFolderId);
@@ -322,6 +335,8 @@ function TouchDrag({
             activateAfterLongPress: DRAG_HOLD_MS,
             onBegin: (e) => {
                 "worklet";
+                sentX.set(e.absoluteX);
+                sentY.set(e.absoluteY);
                 scheduleOnRN(start, e.absoluteX, e.absoluteY);
             },
             onActivate: (e) => {
@@ -334,6 +349,17 @@ function TouchDrag({
                 "worklet";
                 ghostX.set(e.absoluteX);
                 ghostY.set(e.absoluteY);
+                // Zami: the ghost follows every frame here; the drop target's
+                // hit test (in JS) only needs the finger once it has moved a
+                // few points, not on every frame of the drag.
+                if (
+                    Math.abs(e.absoluteX - sentX.get()) +
+                        Math.abs(e.absoluteY - sentY.get()) <
+                    TOUCH_MOVE_STEP_PX
+                )
+                    return;
+                sentX.set(e.absoluteX);
+                sentY.set(e.absoluteY);
                 scheduleOnRN(move, e.absoluteX, e.absoluteY);
             },
             onFinalize: () => {
@@ -341,7 +367,7 @@ function TouchDrag({
                 scheduleOnRN(end);
             },
         };
-    }, [handlers, kind, id, fromFolderId, ghostX, ghostY]);
+    }, [handlers, kind, id, fromFolderId, ghostX, ghostY, sentX, sentY]);
     const gesture = usePanGesture(config);
     return <GestureDetector gesture={gesture}>{children}</GestureDetector>;
 }
@@ -357,38 +383,27 @@ async function boxOf(view: HostInstance | null): Promise<Box> {
     return (await anchorElement(view)).getBoundingClientRect();
 }
 
-// Zami: the context menu rows' classes, which upstream repeats on each: the
-// row's box, and its text.
-const MENU_ITEM =
-    "w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-discord-accent active:bg-discord-accent";
-const MENU_TEXT = "text-sm text-discord-textPrimary hover:text-white";
-const MENU_DANGER = "text-sm text-discord-danger hover:text-white";
-
-export default function SpaceSidebar({
-    onHomeClick,
-    onOpenSpaceSettings,
-}: Props) {
-    const viewport = useWindowDimensions();
-    const { theme } = useUniwind();
-
-    const activeSpaceId = useRune(() => roomsState.activeSpaceId);
-    const spaceDrillParentId = useRune(() => roomsState.spaceDrillParentId);
-    // Live SDK objects (m.space.child state, space names and avatars) mutate in
-    // place; roomsTick bumps with them.
-    const roomsTick = useRune(() => roomsState.roomsTick);
-    const spaces = useRune(() => roomsState.spaces);
-    const spaceLayout = useRune(() => roomsState.spaceLayout);
-
-    const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
-    const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
-    const [colorPicker, setColorPicker] = useState<{
-        folderId: string;
-    } | null>(null);
-
+// Zami: the folder color picker, as its own component holding the picker's
+// state (upstream keeps it in the sidebar). Dragging in the box or on the hue
+// slider sets that state on every frame, which re-rendered the whole rail and
+// its dialogs per frame; now it renders the picker alone. The sidebar gets the
+// color on save.
+function FolderColorPicker({
+    initialHex,
+    onSave,
+    onClose,
+}: {
+    initialHex: string;
+    onSave: (hex: string) => void;
+    onClose: () => void;
+}) {
     // HSV color picker state
-    const [cpHue, setCpHue] = useState(0); // 0–360
-    const [cpSat, setCpSat] = useState(1); // 0–1
-    const [cpVal, setCpVal] = useState(1); // 0–1
+    const [initialHsv] = useState(() =>
+        /^#[0-9a-fA-F]{6}$/.test(initialHex) ? hexToHsv(initialHex) : null,
+    );
+    const [cpHue, setCpHue] = useState(initialHsv?.[0] ?? 0); // 0–360
+    const [cpSat, setCpSat] = useState(initialHsv?.[1] ?? 1); // 0–1
+    const [cpVal, setCpVal] = useState(initialHsv?.[2] ?? 1); // 0–1
     // Zami: bind:this on the SV box and hue slider → their laid-out sizes.
     const svBoxEl = useRef({ width: 1, height: 1 });
     const hueSliderEl = useRef({ width: 1, height: 1 });
@@ -434,6 +449,240 @@ export default function SpaceSidebar({
             };
         }, []),
     );
+
+    // Zami: the color picker's hex field shows what was typed until the color
+    // changes, as `value={cpHex}` only writes the input when cpHex changes.
+    const [hexText, setHexText] = useState(cpHex);
+    const [hexFor, setHexFor] = useState(cpHex);
+    if (hexFor !== cpHex) {
+        setHexFor(cpHex);
+        setHexText(cpHex);
+    }
+
+    return (
+        // The title is a <p>, not a heading, so the dialog is named directly
+        // rather than promoted to an <h2> (which would change typography).
+        // The 240px width was an inline style; ModalDialog takes no `style`,
+        // so it becomes the identical Tailwind arbitrary value.
+        <ModalDialog
+            onClose={onClose}
+            label={t("spaceSidebar.folderColor")}
+            panelClass="relative w-[240px] bg-discord-backgroundSecondary rounded-xl shadow-2xl p-4 flex flex-col gap-3"
+            backdropClass="bg-black/50"
+        >
+            <Text className="text-sm font-semibold text-discord-textPrimary">
+                {t("spaceSidebar.folderColor")}
+            </Text>
+
+            {/* SV box + hue slider */}
+            <View className="flex-row gap-2" style={{ height: 148 }}>
+                {/* Saturation/Value gradient box */}
+                <GestureDetector gesture={startSVDrag}>
+                    <View
+                        onLayout={(e) => {
+                            svBoxEl.current = e.nativeEvent.layout;
+                        }}
+                        className="relative flex-1 rounded-lg overflow-hidden cursor-crosshair select-none"
+                        style={{
+                            backgroundImage: `linear-gradient(to right, white, hsl(${cpHue}, 100%, 50%))`,
+                        }}
+                    >
+                        {/* Black-to-transparent overlay */}
+                        <View
+                            className="absolute inset-0"
+                            style={{
+                                backgroundImage:
+                                    "linear-gradient(to bottom, transparent, black)",
+                            }}
+                        />
+                        {/* Cursor */}
+                        <View
+                            pointerEvents="none"
+                            className="absolute w-3 h-3 rounded-full border-2 border-white shadow pointer-events-none"
+                            style={{
+                                left: `${cpSat * 100}%`,
+                                top: `${(1 - cpVal) * 100}%`,
+                                transform: [
+                                    { translateX: -6 },
+                                    { translateY: -6 },
+                                ],
+                                boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+                            }}
+                        />
+                    </View>
+                </GestureDetector>
+
+                {/* Hue slider */}
+                <GestureDetector gesture={startHueDrag}>
+                    <View
+                        onLayout={(e) => {
+                            hueSliderEl.current = e.nativeEvent.layout;
+                        }}
+                        className="relative w-4 rounded-lg overflow-hidden cursor-ns-resize select-none flex-shrink-0"
+                        style={{
+                            backgroundImage:
+                                "linear-gradient(to bottom, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
+                        }}
+                    >
+                        {/* Cursor bar */}
+                        <View
+                            pointerEvents="none"
+                            className="absolute start-0 end-0 h-1 pointer-events-none rounded-sm"
+                            style={{
+                                top: `${(cpHue / 360) * 100}%`,
+                                transform: [{ translateY: -2 }],
+                                boxShadow:
+                                    "0 0 0 1.5px white, 0 0 0 2.5px rgba(0,0,0,0.5)",
+                            }}
+                        />
+                    </View>
+                </GestureDetector>
+            </View>
+
+            {/* Presets */}
+            <View className="flex-row gap-1.5">
+                {FOLDER_COLORS.map((color) => {
+                    const [h, s, v] = hexToHsv(color);
+                    const selected =
+                        Math.abs(cpHue - h) < 2 &&
+                        Math.abs(cpSat - s) < 0.05 &&
+                        Math.abs(cpVal - v) < 0.05;
+                    return (
+                        <Pressable
+                            key={color}
+                            accessibilityRole="button"
+                            accessibilityLabel={color}
+                            accessibilityState={{ selected }}
+                            onPress={() => setHsvFromHex(color)}
+                            className="flex-1 h-5 rounded transition-all duration-100"
+                            style={{
+                                backgroundColor: color,
+                                outlineColor: "white",
+                                outlineStyle: "solid",
+                                outlineWidth: selected ? 2 : 0,
+                            }}
+                        />
+                    );
+                })}
+            </View>
+
+            {/* Hex input */}
+            <View className="flex-row items-center gap-2">
+                <View
+                    className="w-7 h-7 rounded flex-shrink-0"
+                    style={{ backgroundColor: cpHex }}
+                />
+                {/* Nominated as the trap's initial focus: the first focusable
+                    in DOM order is a preset swatch, which is unnamed and whose
+                    inline `outline: none` would leave a keyboard user with no
+                    visible focus at all. */}
+                {/* Zami: not focused on open (data-autofocus): on a
+                    phone that raises the keyboard over the picker,
+                    whose box and swatches are the touch path.
+                    `uppercase` → the text uppercased (iOS inputs
+                    don't transform text). */}
+                <TextInput
+                    accessibilityLabel={t("spaceSidebar.folderColor")}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm font-mono px-2 py-1.5 rounded outline-none border border-discord-divider focus:border-discord-accent uppercase tracking-wider"
+                    value={hexText.toUpperCase()}
+                    maxLength={7}
+                    onChangeText={(value) => {
+                        setHexText(value);
+                        setHsvFromHex(value);
+                    }}
+                />
+            </View>
+
+            {/* Actions */}
+            <View className="flex-row gap-2">
+                <Pressable
+                    accessibilityRole="button"
+                    onPress={() => onSave(cpHex)}
+                    className="flex-1 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors"
+                >
+                    <Text className="text-center text-sm font-semibold text-white">
+                        {t("common.save")}
+                    </Text>
+                </Pressable>
+                <Pressable
+                    accessibilityRole="button"
+                    onPress={onClose}
+                    className="flex-1 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                >
+                    <Text className="text-center text-sm font-semibold text-discord-textPrimary">
+                        {t("common.cancel")}
+                    </Text>
+                </Pressable>
+            </View>
+        </ModalDialog>
+    );
+}
+
+// Zami: a row of the "Add existing room to space" list, memoized (see the
+// dialog's FlatList).
+const roomKey = (room: Room) => room.roomId;
+const AddRoomRow = memo(function AddRoomRow({
+    room,
+    onPick,
+}: {
+    room: Room;
+    onPick: (roomId: string) => void;
+}) {
+    return (
+        <Pressable
+            accessibilityRole="button"
+            onPress={() => onPick(room.roomId)}
+            className="w-full px-3 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+        >
+            <Avatar
+                src={getRoomAvatar(room)}
+                name={getRoomDisplayName(room)}
+                size={24}
+                rounded="none"
+                class="rounded flex-shrink-0"
+            />
+            <Text
+                numberOfLines={1}
+                className="flex-1 text-sm text-discord-textSecondary hover:text-discord-textPrimary"
+            >
+                {getRoomDisplayName(room)}
+            </Text>
+        </Pressable>
+    );
+});
+
+// Zami: the context menu rows' classes, which upstream repeats on each: the
+// row's box, and its text.
+const MENU_ITEM =
+    "w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-discord-accent active:bg-discord-accent";
+const MENU_TEXT = "text-sm text-discord-textPrimary hover:text-white";
+const MENU_DANGER = "text-sm text-discord-danger hover:text-white";
+
+export default function SpaceSidebar({
+    onHomeClick,
+    onOpenSpaceSettings,
+}: Props) {
+    const viewport = useWindowDimensions();
+    const { theme } = useUniwind();
+
+    const activeSpaceId = useRune(() => roomsState.activeSpaceId);
+    const spaceDrillParentId = useRune(() => roomsState.spaceDrillParentId);
+    // Live SDK objects (m.space.child state, space names and avatars) mutate in
+    // place; roomsTick bumps with them.
+    const roomsTick = useRune(() => roomsState.roomsTick);
+    const spaces = useRune(() => roomsState.spaces);
+    const spaceLayout = useRune(() => roomsState.spaceLayout);
+
+    const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+    const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
+    // Zami: the picker's own state is FolderColorPicker's; this is the folder
+    // it colors and the color it opened with.
+    const [colorPicker, setColorPicker] = useState<{
+        folderId: string;
+        initialHex: string;
+    } | null>(null);
 
     // Drag state
     const [dragState, dragStateRef, setDragState] =
@@ -983,11 +1232,10 @@ export default function SpaceSidebar({
         openModal("color-picker", () => setColorPicker(null));
         const current =
             roomsState.spaceLayout.folders[folderId]?.color ?? FOLDER_COLORS[0];
-        setHsvFromHex(current);
-        setColorPicker({ folderId });
+        setColorPicker({ folderId, initialHex: current });
     }
 
-    function commitColor() {
+    function commitColor(cpHex: string) {
         if (!colorPicker) return;
         const layout = getLayout();
         if (!layout.folders[colorPicker.folderId]) return;
@@ -1183,15 +1431,6 @@ export default function SpaceSidebar({
         ],
     }));
 
-    // Zami: the color picker's hex field shows what was typed until the color
-    // changes, as `value={cpHex}` only writes the input when cpHex changes.
-    const [hexText, setHexText] = useState(cpHex);
-    const [hexFor, setHexFor] = useState(cpHex);
-    if (hexFor !== cpHex) {
-        setHexFor(cpHex);
-        setHexText(cpHex);
-    }
-
     const touchProps = {
         handlers: touchHandlers,
         ghostX: touchGhostX,
@@ -1386,9 +1625,19 @@ export default function SpaceSidebar({
     const menuClass =
         "absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl min-w-40";
 
-    const addRoomCandidates = addRoomModal
-        ? getRoomsNotInSpace(addRoomModal.spaceId)
-        : [];
+    // Zami: once per opening (and per change of the room list), not on every
+    // render of the rail while the dialog is open: it walks every Home room
+    // and DM.
+    const addRoomCandidates = useMemo(() => {
+        void roomsTick;
+        return addRoomModal ? getRoomsNotInSpace(addRoomModal.spaceId) : [];
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- getRoomsNotInSpace reads no props or state.
+    }, [addRoomModal, roomsTick]);
+    const pickRoomToAdd = useCallback(
+        (roomId: string) => void submitAddRoom(roomId),
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- submitAddRoom reads addRoomModal.
+        [addRoomModal],
+    );
 
     const ghostSpace = touchGhostId
         ? spaces.find((s) => s.roomId === touchGhostId)
@@ -1458,7 +1707,7 @@ export default function SpaceSidebar({
                     />
                     <WithNotifs
                         read={() => getSpaceNotifs(item.space.roomId)}
-                        deps={[item.space.roomId, roomsTick]}
+                        deps={[item.space.roomId]}
                     >
                         {(spaceNotifs) =>
                             isActive ? (
@@ -1691,7 +1940,7 @@ export default function SpaceSidebar({
                     />
                     <WithNotifs
                         read={() => getSpaceNotifs(space.roomId)}
-                        deps={[space.roomId, roomsTick]}
+                        deps={[space.roomId]}
                     >
                         {(isn) =>
                             isActive ? (
@@ -1888,170 +2137,11 @@ export default function SpaceSidebar({
                     claiming aria-modal over the whole app. */}
                 {/* Color picker dialog */}
                 {colorPicker && (
-                    // The title is a <p>, not a heading, so the dialog is named directly
-                    // rather than promoted to an <h2> (which would change typography).
-                    // The 240px width was an inline style; ModalDialog takes no `style`,
-                    // so it becomes the identical Tailwind arbitrary value.
-                    <ModalDialog
+                    <FolderColorPicker
+                        initialHex={colorPicker.initialHex}
+                        onSave={commitColor}
                         onClose={closeModal}
-                        label={t("spaceSidebar.folderColor")}
-                        panelClass="relative w-[240px] bg-discord-backgroundSecondary rounded-xl shadow-2xl p-4 flex flex-col gap-3"
-                        backdropClass="bg-black/50"
-                    >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
-                            {t("spaceSidebar.folderColor")}
-                        </Text>
-
-                        {/* SV box + hue slider */}
-                        <View
-                            className="flex-row gap-2"
-                            style={{ height: 148 }}
-                        >
-                            {/* Saturation/Value gradient box */}
-                            <GestureDetector gesture={startSVDrag}>
-                                <View
-                                    onLayout={(e) => {
-                                        svBoxEl.current = e.nativeEvent.layout;
-                                    }}
-                                    className="relative flex-1 rounded-lg overflow-hidden cursor-crosshair select-none"
-                                    style={{
-                                        backgroundImage: `linear-gradient(to right, white, hsl(${cpHue}, 100%, 50%))`,
-                                    }}
-                                >
-                                    {/* Black-to-transparent overlay */}
-                                    <View
-                                        className="absolute inset-0"
-                                        style={{
-                                            backgroundImage:
-                                                "linear-gradient(to bottom, transparent, black)",
-                                        }}
-                                    />
-                                    {/* Cursor */}
-                                    <View
-                                        pointerEvents="none"
-                                        className="absolute w-3 h-3 rounded-full border-2 border-white shadow pointer-events-none"
-                                        style={{
-                                            left: `${cpSat * 100}%`,
-                                            top: `${(1 - cpVal) * 100}%`,
-                                            transform: [
-                                                { translateX: -6 },
-                                                { translateY: -6 },
-                                            ],
-                                            boxShadow:
-                                                "0 0 0 1px rgba(0,0,0,0.4)",
-                                        }}
-                                    />
-                                </View>
-                            </GestureDetector>
-
-                            {/* Hue slider */}
-                            <GestureDetector gesture={startHueDrag}>
-                                <View
-                                    onLayout={(e) => {
-                                        hueSliderEl.current =
-                                            e.nativeEvent.layout;
-                                    }}
-                                    className="relative w-4 rounded-lg overflow-hidden cursor-ns-resize select-none flex-shrink-0"
-                                    style={{
-                                        backgroundImage:
-                                            "linear-gradient(to bottom, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
-                                    }}
-                                >
-                                    {/* Cursor bar */}
-                                    <View
-                                        pointerEvents="none"
-                                        className="absolute start-0 end-0 h-1 pointer-events-none rounded-sm"
-                                        style={{
-                                            top: `${(cpHue / 360) * 100}%`,
-                                            transform: [{ translateY: -2 }],
-                                            boxShadow:
-                                                "0 0 0 1.5px white, 0 0 0 2.5px rgba(0,0,0,0.5)",
-                                        }}
-                                    />
-                                </View>
-                            </GestureDetector>
-                        </View>
-
-                        {/* Presets */}
-                        <View className="flex-row gap-1.5">
-                            {FOLDER_COLORS.map((color) => {
-                                const [h, s, v] = hexToHsv(color);
-                                const selected =
-                                    Math.abs(cpHue - h) < 2 &&
-                                    Math.abs(cpSat - s) < 0.05 &&
-                                    Math.abs(cpVal - v) < 0.05;
-                                return (
-                                    <Pressable
-                                        key={color}
-                                        accessibilityRole="button"
-                                        accessibilityLabel={color}
-                                        accessibilityState={{ selected }}
-                                        onPress={() => setHsvFromHex(color)}
-                                        className="flex-1 h-5 rounded transition-all duration-100"
-                                        style={{
-                                            backgroundColor: color,
-                                            outlineColor: "white",
-                                            outlineStyle: "solid",
-                                            outlineWidth: selected ? 2 : 0,
-                                        }}
-                                    />
-                                );
-                            })}
-                        </View>
-
-                        {/* Hex input */}
-                        <View className="flex-row items-center gap-2">
-                            <View
-                                className="w-7 h-7 rounded flex-shrink-0"
-                                style={{ backgroundColor: cpHex }}
-                            />
-                            {/* Nominated as the trap's initial focus: the first focusable
-                                in DOM order is a preset swatch, which is unnamed and whose
-                                inline `outline: none` would leave a keyboard user with no
-                                visible focus at all. */}
-                            {/* Zami: not focused on open (data-autofocus): on a
-                                phone that raises the keyboard over the picker,
-                                whose box and swatches are the touch path.
-                                `uppercase` → the text uppercased (iOS inputs
-                                don't transform text). */}
-                            <TextInput
-                                accessibilityLabel={t(
-                                    "spaceSidebar.folderColor",
-                                )}
-                                autoCapitalize="characters"
-                                autoCorrect={false}
-                                className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm font-mono px-2 py-1.5 rounded outline-none border border-discord-divider focus:border-discord-accent uppercase tracking-wider"
-                                value={hexText.toUpperCase()}
-                                maxLength={7}
-                                onChangeText={(value) => {
-                                    setHexText(value);
-                                    setHsvFromHex(value);
-                                }}
-                            />
-                        </View>
-
-                        {/* Actions */}
-                        <View className="flex-row gap-2">
-                            <Pressable
-                                accessibilityRole="button"
-                                onPress={commitColor}
-                                className="flex-1 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors"
-                            >
-                                <Text className="text-center text-sm font-semibold text-white">
-                                    {t("common.save")}
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                accessibilityRole="button"
-                                onPress={closeModal}
-                                className="flex-1 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
-                            >
-                                <Text className="text-center text-sm font-semibold text-discord-textPrimary">
-                                    {t("common.cancel")}
-                                </Text>
-                            </Pressable>
-                        </View>
-                    </ModalDialog>
+                    />
                 )}
 
                 {/* Create room in space modal */}
@@ -2212,35 +2302,22 @@ export default function SpaceSidebar({
                                 {t("spaceSidebar.noRoomsAvailableToAdd")}
                             </Text>
                         ) : (
-                            <ScrollView
+                            // Zami: a FlatList of memoized rows: it lists every
+                            // Home room and DM, thousands on a bridge account.
+                            <FlatList
                                 className="max-h-72 grow-0"
                                 contentContainerClassName="flex flex-col gap-1"
-                            >
-                                {addRoomCandidates.map((room) => (
-                                    <Pressable
-                                        key={room.roomId}
-                                        accessibilityRole="button"
-                                        onPress={() =>
-                                            void submitAddRoom(room.roomId)
-                                        }
-                                        className="w-full px-3 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex-row items-center gap-2"
-                                    >
-                                        <Avatar
-                                            src={getRoomAvatar(room)}
-                                            name={getRoomDisplayName(room)}
-                                            size={24}
-                                            rounded="none"
-                                            class="rounded flex-shrink-0"
-                                        />
-                                        <Text
-                                            numberOfLines={1}
-                                            className="flex-1 text-sm text-discord-textSecondary hover:text-discord-textPrimary"
-                                        >
-                                            {getRoomDisplayName(room)}
-                                        </Text>
-                                    </Pressable>
-                                ))}
-                            </ScrollView>
+                                data={addRoomCandidates}
+                                keyExtractor={roomKey}
+                                initialNumToRender={12}
+                                windowSize={5}
+                                renderItem={({ item: room }) => (
+                                    <AddRoomRow
+                                        room={room}
+                                        onPick={pickRoomToAdd}
+                                    />
+                                )}
+                            />
                         )}
                         <View className="flex-row justify-end">
                             <Pressable

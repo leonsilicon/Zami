@@ -31,8 +31,8 @@ import {
     decodeBlock,
     encodeBlock,
     entryFromEvent,
-    resolveEntries,
-    searchEntries,
+    normalizeForSearch,
+    searchWords,
     type EncodedBlock,
     type IndexEntry,
 } from "$lib/utils/eventIndex";
@@ -41,7 +41,17 @@ import {
     mediaItemFromEvent,
     type RoomMediaItem,
 } from "$lib/utils/roomMedia";
-import type { ParsedSearchQuery } from "$lib/utils/messageSearch";
+import {
+    matchesParsedQuery,
+    type ParsedSearchQuery,
+} from "$lib/utils/messageSearch";
+// Zami: the search and the writes run a slice of the event loop at a time.
+import {
+    createIndexSearch,
+    createSlicer,
+    prepareEntry,
+    type Slicer,
+} from "@-/com.leonsilicon.zami.sliced";
 
 const DB_VERSION = 1;
 const BLOCKS = "blocks";
@@ -67,10 +77,14 @@ interface StoredBlock extends EncodedBlock {
     count: number;
     minTs: number;
     maxTs: number;
+    /** Zami: its entries carry their search bodies (prepareEntry). */
+    p?: 1;
 }
 interface StoredTail {
     roomId: string;
     entries: IndexEntry[];
+    /** Zami: its entries carry their search bodies (prepareEntry). */
+    p?: 1;
 }
 interface CrawlState {
     roomId: string;
@@ -143,6 +157,8 @@ interface Session {
     db: Promise<IDBDatabase>;
     stopped: boolean;
     detach: () => void;
+    /** Zami: every room's crawl state, read once and kept up to date. */
+    crawlStates?: Map<string, CrawlState>;
 }
 
 let session: Session | null = null;
@@ -207,7 +223,14 @@ function flush(): Promise<void> {
     writeChain = writeChain
         .then(async () => {
             const db = await s.db;
-            for (const [roomId, b] of batch) await writeRoom(db, roomId, b);
+            // Zami: a turn of the event loop between rooms once the slice is
+            // used up: at launch, background decryption queues messages in
+            // hundreds of rooms at once.
+            const slicer = createSlicer();
+            for (const [roomId, b] of batch) {
+                if (slicer.due) await slicer.pause();
+                await writeRoom(db, roomId, b);
+            }
         })
         .catch((e) => {
             reportStorageError(e, { fromIndexedDB: true });
@@ -225,6 +248,11 @@ async function writeRoom(
     const tail = ((await req(read.objectStore(TAILS).get(roomId))) as
         | StoredTail
         | undefined) ?? { roomId, entries: [] };
+    // Zami: each body is normalized for search once, as it's written (a tail
+    // from before this has none yet), rather than by every search.
+    if (!tail.p)
+        for (const e of tail.entries) prepareEntry(e, normalizeForSearch);
+    for (const e of b.entries) prepareEntry(e, normalizeForSearch);
     let entries = [...tail.entries, ...b.entries];
     // Compress outside the transaction: an IndexedDB transaction closes as
     // soon as it waits on anything that isn't IndexedDB.
@@ -239,10 +267,11 @@ async function writeRoom(
             count: chunk.length,
             minTs: Math.min(...ts),
             maxTs: Math.max(...ts),
+            p: 1,
         });
     }
     const tx = db.transaction([TAILS, BLOCKS, MEDIA, REDACTED], "readwrite");
-    tx.objectStore(TAILS).put({ roomId, entries } satisfies StoredTail);
+    tx.objectStore(TAILS).put({ roomId, entries, p: 1 } satisfies StoredTail);
     for (const block of blocks) tx.objectStore(BLOCKS).add(block);
     for (const m of b.media) tx.objectStore(MEDIA).put(m);
     for (const eventId of b.redacted) {
@@ -303,22 +332,45 @@ async function storageTight(): Promise<boolean> {
     }
 }
 
-function crawlCandidates(client: MatrixClient): Room[] {
+// Zami: takes the crawl states, so rooms already done drop out first, and
+// reads each room's last activity once rather than in every comparison: a
+// bridged account has thousands of rooms, nearly all of them done.
+function crawlCandidates(
+    client: MatrixClient,
+    states: ReadonlyMap<string, CrawlState>,
+): Room[] {
     return client
         .getRooms()
-        .filter((r) => r.getMyMembership() === "join" && isRoomEncrypted(r))
-        .sort(
-            (a, b) => b.getLastActiveTimestamp() - a.getLastActiveTimestamp(),
-        );
+        .filter(
+            (r) =>
+                r.getMyMembership() === "join" &&
+                !states.get(r.roomId)?.done &&
+                isRoomEncrypted(r),
+        )
+        .map((room) => ({ room, active: room.getLastActiveTimestamp() }))
+        .sort((a, b) => b.active - a.active)
+        .map(({ room }) => room);
+}
+
+/** Zami: every room's crawl state, in one request. */
+async function readCrawlStates(
+    db: IDBDatabase,
+): Promise<Map<string, CrawlState>> {
+    const rows = (await req(
+        db.transaction(CRAWL).objectStore(CRAWL).getAll(),
+    )) as CrawlState[];
+    return new Map(rows.map((row) => [row.roomId, row]));
 }
 
 /** Index one page of some room's history. False when every room is done. */
 async function crawlStep(s: Session): Promise<boolean> {
     const db = await s.db;
-    for (const room of crawlCandidates(s.client)) {
-        const state = (await req(
-            db.transaction(CRAWL).objectStore(CRAWL).get(room.roomId),
-        )) as CrawlState | undefined;
+    // Zami: the states are read once a session and kept up to date below,
+    // rather than in a transaction per room per page.
+    s.crawlStates ??= await readCrawlStates(db);
+    const states = s.crawlStates;
+    for (const room of crawlCandidates(s.client, states)) {
+        const state = states.get(room.roomId);
         if (state?.done) continue;
         const from = state?.from ?? null;
         const filter = new Filter(s.client.getUserId());
@@ -332,11 +384,16 @@ async function crawlStep(s: Session): Promise<boolean> {
         );
         if (s.stopped) return false;
         const events = (res.chunk ?? []).map((raw) => new MatrixEvent(raw));
-        await Promise.all(
-            events
-                .filter((e) => e.getType() === "m.room.encrypted")
-                .map((e) => s.client.decryptEventIfNeeded(e).catch(() => {})),
-        );
+        // Zami: one at a time, with a turn of the event loop between once the
+        // slice is used up, rather than a page at once in one microtask chain;
+        // the index may have stopped meanwhile.
+        const slicer = createSlicer();
+        for (const e of events) {
+            if (e.getType() !== "m.room.encrypted") continue;
+            if (slicer.due) await slicer.pause();
+            await s.client.decryptEventIfNeeded(e).catch(() => {});
+        }
+        if (s.stopped) return false;
         for (const e of events) {
             const eventId = e.getId();
             const sender = e.getSender();
@@ -362,6 +419,7 @@ async function crawlStep(s: Session): Promise<boolean> {
         const tx = db.transaction(CRAWL, "readwrite");
         tx.objectStore(CRAWL).put(next);
         await done(tx);
+        states.set(room.roomId, next);
         return true;
     }
     return false;
@@ -516,11 +574,14 @@ export async function searchLocalIndex(
     const db = await s.db;
     // Write what's queued first, so a message that just arrived is findable.
     await flush();
+    // Zami: the blocks are read a few at a time (their keys first), decoded and
+    // searched one at a time, a slice of the event loop at a time, keeping only
+    // the newest matches (@-/com.leonsilicon.zami.sliced), with the same results
+    // as searchEntries(resolveEntries(…)) over them all: a long history read,
+    // decoded, normalized and sorted in one task froze the app.
     const tx = db.transaction([BLOCKS, TAILS, CRAWL, REDACTED]);
-    const [blocks, tail, crawl, redactedRows] = await Promise.all([
-        req(tx.objectStore(BLOCKS).index("room").getAll(roomId)) as Promise<
-            StoredBlock[]
-        >,
+    const [blockKeys, tail, crawl, redactedRows] = await Promise.all([
+        req(tx.objectStore(BLOCKS).index("room").getAllKeys(roomId)),
         req(tx.objectStore(TAILS).get(roomId)) as Promise<
             StoredTail | undefined
         >,
@@ -532,24 +593,63 @@ export async function searchLocalIndex(
         >,
     ]);
     const redacted = new Set(redactedRows.map((r) => r.eventId));
-    const all: IndexEntry[] = [...(tail?.entries ?? [])];
+    const slicer = createSlicer();
+    const words = searchWords(parsed.term);
+    const search = createIndexSearch<IndexEntry>({
+        redacted,
+        normalize: normalizeForSearch,
+        // entryMatches, with the body already normalized.
+        matches: (entry, body) =>
+            words.every((w) => body.includes(w)) &&
+            matchesParsedQuery(
+                {
+                    sender: entry.s,
+                    msgtype: entry.m,
+                    body: entry.b,
+                    isVoice: !!entry.v,
+                },
+                parsed,
+            ),
+        slicer,
+    });
+    const blocks = await readBlocks(db, blockKeys, slicer);
+    await search.add(tail?.entries ?? [], !!tail?.p);
     blocks.sort((a, b) => b.maxTs - a.maxTs);
     const PARTIAL_AFTER = 8;
     for (let i = 0; i < blocks.length; i++) {
-        all.push(...(await decodeBlock(blocks[i])));
+        if (slicer.due) await slicer.pause();
+        await search.add(await decodeBlock(blocks[i]), !!blocks[i].p);
         if (
             onPartial &&
             i === PARTIAL_AFTER - 1 &&
             blocks.length > PARTIAL_AFTER
         )
-            onPartial(
-                toEvents(searchEntries(resolveEntries(all, redacted), parsed)),
-            );
+            onPartial(toEvents(await search.results()));
     }
     return {
-        events: toEvents(searchEntries(resolveEntries(all, redacted), parsed)),
+        events: toEvents(await search.results()),
         complete: !!crawl?.done,
     };
+}
+
+/** Zami: blocks by key, a few to a transaction, with a turn of the event loop
+ *  between once the slice is used up. */
+async function readBlocks(
+    db: IDBDatabase,
+    keys: IDBValidKey[],
+    slicer: Slicer,
+): Promise<StoredBlock[]> {
+    const BATCH = 16;
+    const blocks: StoredBlock[] = [];
+    for (let i = 0; i < keys.length; i += BATCH) {
+        if (slicer.due) await slicer.pause();
+        const store = db.transaction(BLOCKS).objectStore(BLOCKS);
+        const batch = (await Promise.all(
+            keys.slice(i, i + BATCH).map((key) => req(store.get(key))),
+        )) as (StoredBlock | undefined)[];
+        for (const block of batch) if (block) blocks.push(block);
+    }
+    return blocks;
 }
 
 /** A room's indexed attachments, newest first. `resumeFrom` is where the

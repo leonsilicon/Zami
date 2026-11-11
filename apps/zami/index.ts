@@ -7,6 +7,10 @@ import "#fonts";
 import "#media";
 import "#calls";
 import "#notifications";
+// Starts loading the databases (and defines `indexedDB`) as the app starts: root.tsx only
+// reads `storageReady` once it has rendered, which with inline requires is when it would
+// first load (@-/com.leonsilicon.zami.metro).
+import "#storage";
 import { parityRoot } from "@-/com.leonsilicon.zami.parity/native";
 import { registerRootComponent } from "expo";
 import { LogBox } from "react-native";

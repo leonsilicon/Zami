@@ -1,0 +1,22 @@
+{
+  "name": "@-/com.leonsilicon.zami.local-storage",
+  "version": "0.0.0",
+  "private": true,
+  "description": "localStorage served from memory and written to expo-sqlite in batches, so reading or writing an item never waits on SQLite.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "expo-sqlite": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react-native": "*"
+  }
+}

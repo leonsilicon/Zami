@@ -91,3 +91,125 @@ describe("createSlicedQueue", () => {
     expect(queue.size).toBe(0);
   });
 });
+
+describe("createSlicedQueue: cancellation", () => {
+  test("an aborted task never runs and rejects with the reason", async () => {
+    const { queue, work, nextTurn } = harness(100, 1);
+    const controller = new AbortController();
+    const ran: string[] = [];
+    const keep = queue.add(async () => {
+      ran.push("keep");
+      return "keep";
+    });
+    const dropped = queue.add(
+      async () => {
+        ran.push("dropped");
+        return "dropped";
+      },
+      5,
+      { signal: controller.signal },
+    );
+    const after = queue.add(work("after"), 1);
+    controller.abort(new Error("left the room"));
+    await expect(dropped).rejects.toThrow("left the room");
+    expect(queue.size).toBe(2);
+    await nextTurn();
+    await expect(keep).resolves.toBe("keep");
+    await expect(after).resolves.toBe("after");
+    expect(ran).toEqual(["keep"]);
+  });
+
+  test("a task added with an aborted signal is refused at once", async () => {
+    const { queue, work } = harness(100, 1);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(queue.add(work("x"), 0, { signal: controller.signal })).rejects.toBeDefined();
+    expect(queue.size).toBe(0);
+  });
+
+  test("aborting after the task started doesn't stop it", async () => {
+    const { queue, nextTurn } = harness(100, 1);
+    const controller = new AbortController();
+    const task = queue.add(
+      async () => {
+        controller.abort();
+        await Promise.resolve();
+        return "done";
+      },
+      0,
+      { signal: controller.signal },
+    );
+    await nextTurn();
+    await expect(task).resolves.toBe("done");
+  });
+
+  test("removing tasks from the middle keeps the order of the rest", async () => {
+    const { queue, work, nextTurn } = harness(1000, 1);
+    const finished: number[] = [];
+    const controllers: AbortController[] = [];
+    for (let i = 0; i < 40; i++) {
+      const controller = new AbortController();
+      controllers.push(controller);
+      queue.add(work(i), (i * 7) % 13, { signal: controller.signal }).then(
+        (v) => finished.push(v),
+        () => {},
+      );
+    }
+    for (let i = 0; i < 40; i += 3) controllers[i]!.abort();
+    for (let i = 0; i < 5; i++) await nextTurn();
+    const expected = Array.from({ length: 40 }, (_, i) => i)
+      .filter((i) => i % 3 !== 0)
+      .sort((a, b) => ((b * 7) % 13) - ((a * 7) % 13) || a - b);
+    expect(finished).toEqual(expected);
+  });
+});
+
+describe("createSlicedQueue: startTurn", () => {
+  test("runs a slice now, and leaves the rest to the scheduled turn", async () => {
+    const { queue, work, nextTurn, pendingTurns } = harness(8, 3);
+    const finished: number[] = [];
+    for (let i = 0; i < 5; i++) void queue.add(work(i)).then((v) => finished.push(v));
+    queue.startTurn();
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    expect(finished).toEqual([0, 1, 2]);
+    // The turn scheduled by the first add is the only one waiting.
+    expect(pendingTurns()).toBe(1);
+    await nextTurn();
+    expect(finished).toEqual([0, 1, 2, 3, 4]);
+    expect(pendingTurns()).toBe(0);
+  });
+
+  test("does nothing while a turn runs or nothing is queued", async () => {
+    const { queue, nextTurn, pendingTurns } = harness(100, 1);
+    queue.startTurn();
+    expect(pendingTurns()).toBe(0);
+    let release!: () => void;
+    const order: string[] = [];
+    void queue.add(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push("first");
+          release = resolve;
+        }),
+    );
+    void queue.add(async () => {
+      order.push("second");
+    });
+    const turn = nextTurn();
+    queue.startTurn();
+    expect(order).toEqual(["first"]);
+    release();
+    await turn;
+    expect(order).toEqual(["first", "second"]);
+  });
+});
+
+describe("createSlicedQueue: named queues", () => {
+  test("the same name is the same queue", () => {
+    const a = createSlicedQueue({ sliceMs: 8, name: "test-shared" });
+    const b = createSlicedQueue({ sliceMs: 50, name: "test-shared" });
+    const c = createSlicedQueue({ sliceMs: 8 });
+    expect(b).toBe(a);
+    expect(c).not.toBe(a);
+  });
+});

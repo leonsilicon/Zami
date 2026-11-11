@@ -5,6 +5,7 @@ import {
     Spin,
     SvgIcon,
 } from "@-/com.leonsilicon.zami.rn";
+import { membershipRevision } from "@-/com.leonsilicon.zami.incremental";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +46,7 @@ import {
     unblockUser,
 } from "$lib/stores/ignoredUsers.svelte";
 import {
+    getClient,
     getMemberAvatar,
     getMutualRoomsWith,
     getMyPowerRank,
@@ -130,8 +132,9 @@ export default function UserProfileCard({ room }: Props) {
 
     // Live SDK objects mutate in place — depend on the ticks so kicks/bans,
     // membership and presence changes re-render the open card.
-    // Zami: a tick re-renders the card, and the reads below run again.
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // Zami: a tick re-renders the card, and the reads below run again. Only
+    // while it's open: the card stays mounted (closed) under every room.
+    useRune(() => (open ? roomsState.roomsTick : 0), [open]);
     const member = userId ? room.getMember(userId) : null;
     const displayName = member ? memberDisplayName(member) : userId;
     const avatarSrc = userId ? getMemberAvatar(room, userId) : null;
@@ -190,15 +193,24 @@ export default function UserProfileCard({ room }: Props) {
     const connections = parseConnections(field("connections"));
     const nameColour = useRune(() => nameColourFor(userId), [userId]);
 
+    // Zami: getMutualRoomsWith scans every room, so it runs once per opened
+    // card and again when this user's (or our) membership changes, not on
+    // every sync's tick.
+    const mutualRevision = useRune(() => {
+        const client = getClient();
+        return open && userId && !isSelf && client
+            ? membershipRevision(client, userId)
+            : -1;
+    }, [open, userId, isSelf]);
     const mutual = useMemo(() => {
-        void roomsTick;
+        void mutualRevision;
         if (!userId || isSelf) return { shown: [], moreCount: 0, total: 0 };
         const rooms = getMutualRoomsWith(userId);
         return {
             ...summarizeMutualRooms(rooms.map((r) => r.name)),
             total: rooms.length,
         };
-    }, [roomsTick, userId, isSelf]);
+    }, [mutualRevision, userId, isSelf]);
 
     const myPowerRank = getMyPowerRank(room);
     const pl = getRoomPowerLevels(room);

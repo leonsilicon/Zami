@@ -3,6 +3,7 @@ import {
     resolveFontStack,
     subscribeAppFont,
 } from "@-/com.leonsilicon.zami.fonts/app-font";
+import { debounce } from "@-/com.leonsilicon.zami.incremental";
 import { pickedFile, Range, Select } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
@@ -112,13 +113,26 @@ export default function ThemeColorEditor() {
     const effective = resolveEffectiveColors(currentBase, draft);
     const warnings = paletteContrastWarnings(effective);
 
+    // Zami: the colors apply as they are typed, but the preset is saved (its
+    // localStorage write and account-data sync) once the edits pause, and
+    // saving applies it again only where it changed (one Uniwind update, by
+    // `document`'s CSS variable batch). Everything else that reads or replaces
+    // the presets saves what's pending first (`saveDraftSoon.flush()`).
+    const [saveDraftSoon] = useState(() =>
+        debounce(
+            (...args: Parameters<typeof saveCustomPreset>) =>
+                saveCustomPreset(...args),
+            300,
+        ),
+    );
+
     function setColor(key: ThemeTokenKey, value: string) {
         if (activeIsBuiltin) return; // Built-ins are read-only
         const next = { ...draft, [key]: value };
         setDraft(next);
         // Live-update the active custom preset
-        saveCustomPreset(activePresetName, currentBase, next);
         applyThemeColors(next);
+        saveDraftSoon(activePresetName, currentBase, next);
     }
 
     function resetColor(key: ThemeTokenKey) {
@@ -126,21 +140,24 @@ export default function ThemeColorEditor() {
         const updated = { ...draft };
         delete updated[key];
         setDraft(updated);
-        saveCustomPreset(activePresetName, currentBase, updated);
         applyThemeColors(updated);
+        saveDraftSoon(activePresetName, currentBase, updated);
     }
 
     function selectPreset(name: string) {
+        saveDraftSoon.flush();
         setActivePreset(name);
         setDraft({ ...getPresetColors(name) });
     }
 
     function handleDelete(name: string) {
+        saveDraftSoon.flush();
         setDeletePending(null);
         deleteCustomPreset(name);
     }
 
     function handleSave() {
+        saveDraftSoon.flush();
         const name = saveNameInput.trim();
         if (!name) return;
         try {
@@ -179,6 +196,7 @@ export default function ThemeColorEditor() {
     }
 
     function handleImport() {
+        saveDraftSoon.flush();
         const p = decodeThemePreset(importText);
         if (p === null) {
             setImportError(t("themeColorEditor.notAValidThemeCode"));
@@ -201,6 +219,7 @@ export default function ThemeColorEditor() {
     }
 
     function handleDuplicate() {
+        saveDraftSoon.flush();
         if (!activeIsBuiltin) return;
         const copyName = t("themeColorEditor.copy", { activePresetName });
         forkActivePreset(copyName, draft);
@@ -214,6 +233,7 @@ export default function ThemeColorEditor() {
     }
 
     function commitRename() {
+        saveDraftSoon.flush();
         if (renamingRef.current === null) return;
         const oldName = renamingRef.current;
         const newName = renameValue.trim();
@@ -238,6 +258,8 @@ export default function ThemeColorEditor() {
 
     useEffect(
         () => () => {
+            // Zami: save what's pending first.
+            saveDraftSoon.flush();
             // Restore active preset's colors on unmount
             const activeColors = getPresetColors(settingsState.activePreset);
             applyThemeColors(

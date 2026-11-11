@@ -33,6 +33,20 @@ export function historyTrimCut(
     return null;
 }
 
+/**
+ * Zami: whether a room holding `eventCount` events could have any cut
+ * (historyTrimCut needs `keep` rendered events after at least `minDrop`), so
+ * the sweep can skip the many rooms that hold too few without building their
+ * rendered list.
+ */
+export function mayCutHistory(
+    eventCount: number,
+    keep = HISTORY_KEEP_VISIBLE,
+    minDrop = HISTORY_TRIM_MIN_DROP,
+): boolean {
+    return eventCount >= keep + minDrop;
+}
+
 /** Whether a room may be trimmed: not open, and not left a moment ago. */
 export function mayTrimRoom(
     roomId: string,

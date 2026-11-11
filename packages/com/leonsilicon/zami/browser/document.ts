@@ -7,6 +7,7 @@
 // the file through the share sheet.
 import { AppState, Linking } from "react-native";
 import { Uniwind } from "uniwind";
+import { createVariableBatch } from "#css-variables";
 import { shareDownload } from "#download";
 import { domDocument } from "#dom";
 import { createEventHub } from "#events";
@@ -23,6 +24,8 @@ AppState.addEventListener("change", (next) => {
 /** Zam's `[data-theme]` themes are Uniwind's; its unscoped `:root` is Uniwind's "dark". */
 function setTheme(theme: string | undefined): void {
   const name = theme !== undefined && Uniwind.themes.includes(theme as never) ? theme : "dark";
+  // A preset's variables follow its theme: send them before the render it starts.
+  variableBatch.begin();
   Uniwind.setTheme(name as never);
 }
 
@@ -45,9 +48,14 @@ const dataset = new Proxy<Record<string, string>>(
 // before the first override.
 const cssVariables: Record<string, string> = {};
 const themeValues = new Map<string, string>();
+// One `updateCSSVariables` per task with only the changed variables: each call
+// re-renders every styled component, and a theme preset sets about 80 of them.
+const variableBatch = createVariableBatch((theme, variables) =>
+  Uniwind.updateCSSVariables(theme as typeof Uniwind.currentTheme, variables),
+);
 
 function setVariable(name: string, value: string): void {
-  Uniwind.updateCSSVariables(Uniwind.currentTheme, { [name]: value });
+  variableBatch.set(Uniwind.currentTheme, name, value);
 }
 
 const rootStyle = {
@@ -122,6 +130,47 @@ const documentElement = new Proxy({} as HTMLElement, {
 const bound = <K extends keyof Document>(key: K) =>
   (domDocument[key] as (...args: unknown[]) => unknown).bind(domDocument);
 
+/**
+ * A DOM `<video>` that does what a browser's does with a source it can't play: it fires
+ * `error` once one is set. Nothing in the detached DOM loads media (the app's videos are
+ * expo-video views), so code waiting on `loadedmetadata` or `error` from one (Zam's video
+ * thumbnail and first-frame helpers) would otherwise wait forever.
+ */
+function detachedVideo(): Element {
+  const node = domDocument.createElement("video") as HTMLVideoElement;
+  let source = "";
+  const fail = () => {
+    const event = domDocument.createEvent("Event");
+    event.initEvent("error", false, false);
+    setTimeout(() => {
+      // Cleared since: nothing to report.
+      if (source === "") return;
+      // linkedom's dispatch calls the `onerror` handler too.
+      node.dispatchEvent(event);
+    }, 0);
+  };
+  Object.defineProperties(node, {
+    src: {
+      get: () => source,
+      set(value: string | null | undefined) {
+        source = value ?? "";
+        if (source !== "") fail();
+      },
+      configurable: true,
+    },
+    currentSrc: { get: () => source, configurable: true },
+    load: { value: () => {}, writable: true, configurable: true },
+    pause: { value: () => {}, writable: true, configurable: true },
+    play: {
+      value: () =>
+        Promise.reject(new DOMException("A detached <video> plays nothing", "NotSupportedError")),
+      writable: true,
+      configurable: true,
+    },
+  });
+  return node;
+}
+
 export const zamiDocument = {
   get visibilityState(): "visible" | "hidden" {
     return appState === "background" ? "hidden" : "visible";
@@ -153,7 +202,9 @@ export const zamiDocument = {
   pictureInPictureElement: null,
   exitPictureInPicture: async (): Promise<void> => {},
   createElement(tagName: string): Element {
-    return tagName.toLowerCase() === "a" ? anchor() : domDocument.createElement(tagName);
+    const tag = tagName.toLowerCase();
+    if (tag === "video") return detachedVideo();
+    return tag === "a" ? anchor() : domDocument.createElement(tagName);
   },
   createElementNS: bound("createElementNS"),
   createTextNode: bound("createTextNode"),

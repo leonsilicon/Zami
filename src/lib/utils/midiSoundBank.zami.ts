@@ -23,6 +23,8 @@ import type {
 import { settingsState } from "$lib/stores/settings.svelte";
 import type { MidiSoundBankChoice } from "./midiSoundBankChoice";
 import { getStoredSoundBank, isRiff } from "./customSoundBank";
+// Zami: for the render worker's stand-in (inThreadWorker).
+import { nextTurn } from "@-/com.leonsilicon.zami.sliced";
 
 /** Built by scripts/build-soundfont.mjs (SF3 with Opus samples). */
 export const BUNDLED_SOUND_BANK_URL = "/soundfonts/default.sf3";
@@ -160,6 +162,9 @@ function inThreadWorker(): Worker {
         onerror: null as (() => void) | null,
         postMessage(request: MidiRenderRequest) {
             queue = queue
+                // A turn of its own, as a worker's message would get, rather
+                // than the end of the caller's.
+                .then(() => nextTurn())
                 // Loaded on first use, from the app's bundle.
                 .then(
                     () =>

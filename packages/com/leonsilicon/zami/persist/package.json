@@ -1,0 +1,21 @@
+{
+  "name": "@-/com.leonsilicon.zami.persist",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Saves and restores the app's large caches (matrix-js-sdk's sync store, the saved room list) a room at a time, a few milliseconds per turn of the event loop, so neither a save nor a launch freezes the app.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "catalog:",
+    "matrix-js-sdk": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "matrix-js-sdk": "*"
+  }
+}

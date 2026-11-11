@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.crypto-work",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Keeps the end-to-end encryption's bulk work from freezing the app: one sliced queue for every backlog of crypto calls, long engine calls split into chunks with turns of the event loop between them, and key export files built and read a piece at a time.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.scheduler": "workspace:*"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}
