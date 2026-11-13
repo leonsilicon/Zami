@@ -10,7 +10,9 @@
 #  4. Claude also goes through everything else upstream changed and ports it to wherever
 #     Zami implements that behavior, since a clean text merge into a copy (or a file with
 #     no Zami version at all) doesn't make the app behave like upstream;
-#  5. opens or updates a pull request, which zami-ci.yml checks.
+#  5. opens or updates a pull request, which zami-ci.yml and zami-maestro.yml check, and
+#     zami-upstream-merge.yml merges once they pass, if Claude finished and `_zami check`
+#     passed.
 #
 # A run Claude doesn't finish still pushes what it did, and the next run continues it.
 #
@@ -211,18 +213,31 @@ jobs:
             echo "Claude found nothing to change, so there's nothing to open a pull request for."
             exit 0
           fi
+          number=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          # The open pull request may be marked ready to merge (zami-upstream-merge.yml). Hold
+          # that before pushing, until this run's work has been checked below.
+          if [ -n "$number" ]; then
+            gh api "repos/$GH_REPO/pulls/$number" -q '.body // ""' |
+              sed 's/<!-- zami-automerge: [^ ]* -->/<!-- zami-automerge: hold -->/' > "$RUNNER_TEMP/held.md"
+            gh api -X PATCH "repos/$GH_REPO/pulls/$number" -F body=@"$RUNNER_TEMP/held.md" > /dev/null
+          fi
           git push origin "HEAD:$BRANCH"
           # `_zami done` is only a claim: flag translations it was said of that didn't change.
           unchanged=$(node -e 'for (const i of require("./node_modules/.cache/zami/worklist.json").work) if (i.kind === "migrate") console.log(i.zamiPath)' |
             while read -r path; do if git diff --quiet origin/trunk -- "$path"; then echo "- \`$path\`"; fi; done)
           {
+            # The merge workflow merges this commit (or one built on it) once CI passes.
+            if [ "$CLAUDE_OUTCOME" = "success" ] && [ "$CHECK_OK" = "true" ]; then
+              printf '<!-- zami-automerge: %s -->\n**Auto-merge:** on. This merges itself once Zami CI and Zami Maestro pass; mark it as a draft to stop that.\n\n' "$(git rev-parse HEAD)"
+            else
+              printf '<!-- zami-automerge: hold -->\n**Auto-merge:** held, because Claude didn'"'"'t finish or `_zami check` failed (below). The next run continues.\n\n'
+            fi
             cat node_modules/.cache/zami/summary.md
             if [ -f node_modules/.cache/zami/report.md ]; then printf '\n## Claude'"'"'s migration report\n\n'; cat node_modules/.cache/zami/report.md; fi
             if [ "$CLAUDE_OUTCOME" != "success" ]; then printf '\n## Claude did not finish\n\nThis branch has what it got done. The next scheduled run continues it.\n'; fi
             if [ -n "$unchanged" ]; then printf '\n## Translations that did not change\n\nUpstream changed these components, but their translations are the same. Claude'"'"'s report should say why.\n\n%s\n' "$unchanged"; fi
             if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 node_modules/.cache/zami/check.txt; printf '```\n'; fi
           } > "$RUNNER_TEMP/body.md"
-          number=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
           if [ -n "$number" ]; then
             # Not `gh pr edit`: it also reads the PR's reviewers and projects, which needs
             # the read:org scope this token doesn't have, so the step failed after pushing.
