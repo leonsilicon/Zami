@@ -34,6 +34,13 @@ vi.mock("./connection", () => {
         remoteDataTracks() {
             return [];
         }
+        // Zami: the speaker poll (every 250 ms) reads a connection's tracks.
+        // Under Zam's Vitest 4 each poll here happens to land while the peer
+        // has no connection; Vite+'s Vitest 5 runs the retry's async steps
+        // between timers, so a poll sees one and threw on the missing method.
+        tracks() {
+            return [];
+        }
     }
     return {
         SubscriberConnection: class extends Fake {
