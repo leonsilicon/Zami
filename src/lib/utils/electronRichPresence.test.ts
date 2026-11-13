@@ -385,14 +385,14 @@ describe("Wine and Proton games on Linux", () => {
         `${bs}${bs}lib${bs}${bs}windows-i686${bs}${bs}SakuyaIzayoiGivesYouAdviceAndDabs.exe`,
     ].join("");
     const sakuyaProton =
-        "python3 /home/rani/steamapps/common/Proton - Experimental/proton waitforexitandrun " +
-        "/home/rani/steamapps/common/Sakuya Izayoi Gives You Advice And Dabs/SakuyaIzayoiGivesYouAdviceAndDabs.exe";
+        "python3 /home/user/steamapps/common/Proton - Experimental/proton waitforexitandrun " +
+        "/home/user/steamapps/common/Sakuya Izayoi Gives You Advice And Dabs/SakuyaIzayoiGivesYouAdviceAndDabs.exe";
     const steamHelper = `c:${bs}windows${bs}system32${bs}steam.exe`;
     const system32Lines = [
         steamHelper,
         `C:${bs}windows${bs}system32${bs}services.exe`,
         `C:${bs}windows${bs}system32${bs}winedevice.exe`,
-        `${steamHelper} /home/rani/steamapps/common/Sakuya Izayoi Gives You Advice And Dabs/SakuyaIzayoiGivesYouAdviceAndDabs.exe`,
+        `${steamHelper} /home/user/steamapps/common/Sakuya Izayoi Gives You Advice And Dabs/SakuyaIzayoiGivesYouAdviceAndDabs.exe`,
     ];
 
     const entry = (id: string, name: string, os: string, exe: string) => ({
@@ -500,7 +500,7 @@ describe("Wine and Proton games on Linux", () => {
         const out = psLines([
             [
                 4242,
-                "/home/rani/Games/steamapps/common/Hollow Knight/hollow_knight.x86_64 -windowed",
+                "/home/user/Games/steamapps/common/Hollow Knight/hollow_knight.x86_64 -windowed",
             ],
         ]);
         expect(matchOf(out, byExe)).toEqual(["2"]);
