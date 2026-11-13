@@ -215,6 +215,13 @@ way. So Claude runs whenever upstream moves, even when `sync` flagged nothing. A
 stops partway pushes what it did and the next one continues; to review a range that's
 already merged, run the workflow with `since` set to the commit to start from.
 
+The pull request merges itself, with no one's approval
+([`workflows/zami-upstream-merge.yml`](./workflows/zami-upstream-merge.yml)), once Zami CI
+and Zami Maestro pass on it, if the sync run that last pushed to it saw Claude finish and
+`_zami check` pass. That run names the commit it checked in the description; commits pushed
+on top of it, such as a person's fix, merge the same way. Mark the pull request as a draft to
+keep it open.
+
 The workflow keeps one sync branch, `zami/upstream-sync`, and merges trunk into it before
 merging upstream. When trunk changed the same Zami code the branch migrated, Claude resolves
 those conflicts first (`ports/@prompts/resolve-trunk.md`), keeping both sides.
