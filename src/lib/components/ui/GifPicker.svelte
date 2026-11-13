@@ -3,13 +3,17 @@
     import FavouriteFileImg from "$lib/components/ui/FavouriteFileImg.svelte";
     import {
         eventFavouriteFile,
+        isMatrixMediaUrl,
+        mediaUrlFavouriteFile,
         parseEventFavouriteSource,
+        reusableMediaOfFile,
     } from "$lib/matrix/favouriteFile";
     import {
         favouritesState,
         addFavouriteGif,
         removeFavouriteGif,
         isFavouriteGif,
+        setFavouriteGifMxc,
         setFavouriteGifTags,
         upgradeFavouriteGifs,
         type FavouriteGif,
@@ -22,7 +26,10 @@
         loadGifs,
         queueSearch,
         loadMore,
+        type GifSource,
     } from "$lib/stores/gifSearch.svelte";
+    import { pluginRegistry } from "$lib/stores/plugins.svelte";
+    import { normalizeProviderPage } from "$lib/plugins/pluginGifs";
     import { untrack } from "svelte";
     import { Star } from "lucide-svelte";
     import { resizeHandle } from "$lib/actions/resizeHandle";
@@ -60,7 +67,25 @@
         onSwitchToSticker,
     }: Props = $props();
 
-    type Tab = "gifs" | "favourites";
+    // "gifs" is KLIPY; `plugin:<entryId>` is a plugin's GIF provider.
+    type Tab = string;
+
+    const providerTabs = $derived.by(() => {
+        void pluginRegistry.tick;
+        return pluginRegistry.gifProviders.map((e) => ({
+            value: `plugin:${e.entryId}`,
+            label: e.value.label,
+            source: {
+                key: `plugin:${e.pluginId}:${e.value.id}`,
+                fetch: async (query: string, page: number) =>
+                    normalizeProviderPage(
+                        await e.value.search(query.trim(), page),
+                    ),
+            } satisfies GifSource,
+        }));
+    });
+    const providerTab = $derived(providerTabs.find((p) => p.value === tab));
+    const gifSource = $derived<GifSource | undefined>(providerTab?.source);
 
     // Land on the configured tab ("gifs" or "favourites").
     let tab = $state<Tab>(
@@ -81,8 +106,13 @@
     $effect(() => {
         const t = tab;
         if (t === "favourites") return;
+        // A provider whose plugin was disabled while its tab was open.
+        if (t !== "gifs" && !providerTab) {
+            tab = "gifs";
+            return;
+        }
         const kind: GifKind = "gifs";
-        untrack(() => loadGifs(kind, search));
+        untrack(() => loadGifs(kind, search, gifSource));
     });
 
     function onSearchInput(e: Event & { currentTarget: HTMLInputElement }) {
@@ -94,7 +124,7 @@
         moveCursor(-1);
         if (tab !== "favourites") {
             const kind: GifKind = "gifs";
-            queueSearch(kind, search);
+            queueSearch(kind, search, gifSource);
         }
     }
 
@@ -229,11 +259,36 @@
 
     async function pickFavourite(gif: FavouriteGif) {
         const source = parseEventFavouriteSource(gif.source);
-        if (!source) return pickUrl(gif.url);
-        const file = await eventFavouriteFile(source).catch(() => null);
-        if (!file) return;
-        onSelectFile?.(file);
-        onClose();
+        if (source) {
+            const file = await eventFavouriteFile(source).catch(() => null);
+            if (!file) return;
+            // Favourites starred before the mxc was stored learn it now, so a
+            // message sent from this pick can be matched back to the star.
+            const mxc = reusableMediaOfFile(file)?.file?.url;
+            if (mxc && !gif.mxc) void setFavouriteGifMxc(gif.url, mxc);
+            onSelectFile?.(file);
+            onClose();
+            return;
+        }
+        // An upload starred from an unencrypted room is keyed by its Matrix
+        // media URL. That needs the access token, so it cannot be previewed
+        // from the URL; attach the bytes, as for an encrypted favourite, and it
+        // is sent as an image. A URL naming another homeserver is routed
+        // through ours.
+        if (onSelectFile && isMatrixMediaUrl(gif.url)) {
+            const file = await mediaUrlFavouriteFile(
+                gif.url,
+                gif.width,
+                gif.height,
+                gif.name,
+            ).catch(() => null);
+            if (file) {
+                onSelectFile(file);
+                onClose();
+                return;
+            }
+        }
+        pickUrl(gif.url);
     }
 
     // KLIPY's width/height are typed as numbers but arrive as third-party JSON,
@@ -364,7 +419,12 @@
         // panel's own onkeydown, which closes the picker.
         if (e.key === "Enter" && activeIndex >= 0) {
             e.preventDefault();
-            pickUrl(activeKeys[activeIndex]);
+            if (tab === "favourites") {
+                const gif = visibleFavourites[activeIndex];
+                if (gif) void pickFavourite(gif);
+            } else {
+                pickUrl(activeKeys[activeIndex]);
+            }
         }
     }
 
@@ -431,7 +491,7 @@
 
     <!-- Inner content tabs -->
     <div class="flex gap-1 px-2 pt-2 flex-shrink-0">
-        {#each [["gifs", "GIFs"], ["favourites", "Favourites"]] as [value, label] (value)}
+        {#each [["gifs", "GIFs"], ...providerTabs.map( (p) => [p.value, p.label] ), ["favourites", "Favourites"]] as [value, label] (value)}
             <button
                 onclick={() => selectTab(value as Tab)}
                 class="flex-1 py-1.5 text-xs font-semibold rounded transition-colors {tab ===
@@ -549,7 +609,7 @@
                                  favourite carries; the URL in `title` would be
                                  a terrible name to hear read out. -->
                                     <button
-                                        onclick={() => pickUrl(gif.url)}
+                                        onclick={() => void pickFavourite(gif)}
                                         title={(gif.tags ?? []).length
                                             ? `${gif.url}\n${(gif.tags ?? []).join(", ")}`
                                             : gif.url}
@@ -720,7 +780,7 @@
             <!-- KLIPY GIFs -->
             {#if gifSearchState.error && gifSearchState.items.length === 0}
                 <button
-                    onclick={() => loadGifs("gifs", search)}
+                    onclick={() => loadGifs("gifs", search, gifSource)}
                     class="w-full text-center text-discord-textMuted text-sm py-8 px-4 hover:text-discord-textPrimary transition-colors"
                 >
                     {gifSearchState.error}

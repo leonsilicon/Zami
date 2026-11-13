@@ -14,12 +14,18 @@ import android.net.Uri;
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
+import androidx.core.content.pm.ShortcutInfoCompat;
+import androidx.core.content.pm.ShortcutManagerCompat;
+import androidx.core.graphics.drawable.IconCompat;
+import android.service.notification.StatusBarNotification;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InputStream;
@@ -107,6 +113,17 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             PushNotificationsPlugin.sendRemoteMessage(remoteMessage);
         } catch (Throwable ignored) {}
 
+        // Priority as sent vs as delivered: FCM downgrades high-priority
+        // messages that keep ending without a visible notification, and a
+        // downgraded one waits for the phone to wake. The delay shows it.
+        try {
+            long sent = remoteMessage.getSentTime();
+            PushLog.log(this, "fcm received: priority " + priorityName(remoteMessage.getPriority())
+                + " (sent as " + priorityName(remoteMessage.getOriginalPriority()) + ")"
+                + (sent > 0 ? ", " + (System.currentTimeMillis() - sent) + "ms after sending" : "")
+                + (remoteMessage.getNotification() != null ? ", has notification block" : ""));
+        } catch (Throwable ignored) {}
+
         // A message carrying its own notification block is shown elsewhere.
         if (remoteMessage.getNotification() != null) return;
 
@@ -125,8 +142,21 @@ public class MatrixMessagingService extends FirebaseMessagingService {
      * `accountId` is the account the push names (null from a pusher that has
      * not re-registered since pushes were tagged: the active account then).
      */
+    private static String priorityName(int p) {
+        switch (p) {
+            case RemoteMessage.PRIORITY_HIGH: return "high";
+            case RemoteMessage.PRIORITY_NORMAL: return "normal";
+            default: return "unknown";
+        }
+    }
+
     static void handleMatrixPush(Context ctx, String roomId, String eventId, String unreadStr,
             String accountId) {
+        final long startedAt = System.currentTimeMillis();
+        final String tag = "push room " + PushLog.shortId(roomId) + " event "
+            + PushLog.shortId(eventId) + ": ";
+        PushLog.log(ctx, tag + "start, unread " + unreadStr
+            + (accountId != null ? ", names an account" : ", no account named"));
         // unread == 0 is a "clear" push: the room was read somewhere, so take
         // its notification DOWN rather than merely declining to post a new one.
         if (unreadStr != null) {
@@ -142,6 +172,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                                 .cancel(roomId.hashCode());
                         } catch (Throwable ignored) {}
                     }
+                    PushLog.log(ctx, tag + "clear push (room read), notification removed");
                     return;
                 }
             } catch (NumberFormatException ignored) {}
@@ -159,12 +190,18 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             session = resolveSession(sessionPrefs, active, accountId);
             sessionIsActive = session != null && session == active;
         } catch (Throwable ignored) {}
+        if (session == null) {
+            PushLog.log(ctx, tag + "no signed-in session matches; generic notification");
+        }
         // The app is open on this account: the user sees the message in the
         // app itself, so a notification would only duplicate it. Checked
         // here to skip the enrichment requests, and again before posting in
         // case the app came forward meanwhile. Another account's push still
         // notifies — the open app only syncs the active one.
-        if (sessionIsActive && MainActivity.isInForeground()) return;
+        if (sessionIsActive && MainActivity.isInForeground()) {
+            PushLog.log(ctx, tag + "skipped: app is open (resumed) on this account");
+            return;
+        }
         final String postedBy = session != null ? session.userId : null;
 
         // Defaults (used if enrichment fails).
@@ -174,6 +211,15 @@ public class MatrixMessagingService extends FirebaseMessagingService {
         // MSC4075 m.call.notify → render an incoming CALL, not a message.
         boolean isCall = false;
         String callerName = null;
+        // The message's author and the room kind, for the conversation
+        // notification (a per-person channel, shortcut and message history).
+        String msgSenderId = null;
+        String msgSenderName = null;
+        Bitmap senderIcon = null;
+        boolean msgDm = false;
+        long msgTs = System.currentTimeMillis();
+        String msgBody = null;
+        Bitmap msgImage = null;
 
         try {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -189,7 +235,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             // Another device is demonstrably in use → stay quiet. Checked
             // before the enrichment fetches below so a suppressed push costs
             // one request instead of five. Never throws; false on any doubt.
-            if (shouldStayQuiet(hs, token, selfUserId, selfDeviceId)) return;
+            if (shouldStayQuiet(ctx, tag, hs, token, selfUserId, selfDeviceId)) return;
             // Device-global "hide message text in notifications" privacy setting,
             // mirrored by src/lib/nativeSession.ts. Capacitor Preferences stores
             // every value as a String, so compare rather than getBoolean() (which
@@ -205,6 +251,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             // lose enrichment here.
             if (session != null && roomId != null && eventId != null) {
                 // Room display name.
+                // (A DM overrides this with the other person's name below.)
                 String roomName = fetchRoomName(hs, token, roomId);
                 if (roomName != null) title = roomName;
 
@@ -214,8 +261,31 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                 // fallback below both need it). Null until asked.
                 Boolean direct = null;
                 JSONObject event = fetchEvent(hs, token, roomId, eventId);
+                // An invite: the push names our own invite event, which an
+                // invitee usually cannot fetch (only joined members see a
+                // room under "shared" history). Either way the room's
+                // stripped state says who invited us and to what.
+                if (event == null || isOwnInvite(event, selfUserId)) {
+                    InviteInfo invite = fetchInvite(hs, token, selfUserId, roomId);
+                    if (invite != null) {
+                        PushLog.log(ctx, tag + "invite"
+                            + (invite.isSpace ? " to a space" : invite.isDirect ? " to a DM" : ""));
+                        String[] inviteText = inviteNotification(invite);
+                        Bitmap inviteIcon = inviteText[2] != null
+                            ? fetchMxcThumbnail(hs, token, inviteText[2], 128) : null;
+                        if (sessionIsActive && MainActivity.isInForeground()) {
+                            PushLog.log(ctx, tag + "skipped: app came to the front during enrichment");
+                            return;
+                        }
+                        showInviteNotification(ctx, inviteText[0], inviteText[1], roomId,
+                            inviteIcon, postedBy);
+                        return;
+                    }
+                }
                 if (event != null) {
                     sender = event.optString("sender", "");
+                    long originTs = event.optLong("origin_server_ts", 0L);
+                    if (originTs > 0) msgTs = originTs;
                     // This service holds no E2EE keys, so an encrypted
                     // message is still m.room.encrypted here. Ask the web
                     // layer to decrypt it when the app is running (see
@@ -245,6 +315,17 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                     if (senderName == null || senderName.isEmpty()) senderName = sender;
 
                     String name = senderName.trim();
+
+                    // A DM is titled by the other person, and the sender is
+                    // not repeated in the text: it would only say the same
+                    // name twice. (A DM usually has no m.room.name, which is
+                    // why the title used to stay "New message".)
+                    if (direct == null) direct = isDirectRoom(hs, token, selfUserId, roomId);
+                    final boolean dm = direct;
+                    if (dm && !name.isEmpty()) title = name;
+                    msgSenderId = sender;
+                    msgSenderName = name.isEmpty() ? sender : name;
+                    msgDm = dm;
 
                     // Same rule as pushNotificationKind() (src/lib/utils) and
                     // buildNotification() in static/sw.js: an MSC4075 ring (the
@@ -284,8 +365,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                     // src/lib/stores/incomingCalls.svelte.ts), so it gets a
                     // plain message-style notification even if the sender's
                     // client asked for a ring.
-                    if (isCallType && wantsRing
-                            && (direct = isDirectRoom(hs, token, selfUserId, roomId))) {
+                    if (isCallType && wantsRing && dm) {
                         if (ringEnabled) {
                             isCall = true;
                             callerName = name;
@@ -295,7 +375,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                             text = name.isEmpty() ? "Incoming call" : name + " is calling";
                         }
                     } else if (isCallType) {
-                        text = name.isEmpty() ? "A call started" : name + " started a call";
+                        text = name.isEmpty() || dm ? "A call started" : name + " started a call";
                     } else {
                         // Same comparisons as notificationBody() in
                         // src/lib/utils/notificationPrivacy.ts (and
@@ -305,10 +385,29 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                         // The room name still becomes the title — only the
                         // message text is gated.
                         String preview = hideBody ? "" : body.trim();
+                        // A picture (m.image, or a sticker) is shown in the
+                        // notification itself; never when message text is hidden.
+                        String msgtype = content != null ? content.optString("msgtype", "") : "";
+                        boolean isImage = type.equals("m.sticker")
+                            || (type.equals("m.room.message") && msgtype.equals("m.image"));
+                        if (isImage && !hideBody && content != null) {
+                            msgImage = fetchNotificationImage(ctx, hs, token, content);
+                            // The body of an image is its file name unless a
+                            // caption was given (then filename differs).
+                            String fileName = content.optString("filename", "");
+                            boolean caption = !fileName.isEmpty() && !fileName.equals(preview);
+                            if (!caption) preview = "";
+                            if (preview.isEmpty()) {
+                                msgBody = "Sent an image";
+                                text = dm || name.isEmpty() ? "Sent an image"
+                                    : name + " sent an image";
+                            }
+                        }
                         if (!preview.isEmpty()) {
-                            text = name.isEmpty() ? preview : name + ": " + preview;
+                            msgBody = preview;
+                            text = name.isEmpty() || dm ? preview : name + ": " + preview;
                         } else if (!name.isEmpty()) {
-                            text = name + " sent a message";
+                            text = dm ? "Sent a message" : name + " sent a message";
                         }
                     }
                 }
@@ -323,15 +422,30 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                 if (avatarMxc != null) {
                     largeIcon = fetchMxcThumbnail(hs, token, avatarMxc, 128);
                 }
+                // The sender's own avatar, for their line in the conversation.
+                if (!sender.isEmpty()) {
+                    String senderMxc = fetchUserAvatar(hs, token, roomId, sender);
+                    if (senderMxc != null) {
+                        senderIcon = fetchMxcThumbnail(hs, token, senderMxc, 128);
+                    }
+                }
             }
         } catch (Throwable t) {
             // Any failure → fall back to the generic notification.
+            PushLog.log(ctx, tag + "enrichment failed: " + t.getClass().getSimpleName());
         }
+        PushLog.log(ctx, tag + "enriched in " + (System.currentTimeMillis() - startedAt) + "ms"
+            + (msgSenderId != null ? "" : " (event not fetched)")
+            + (msgBody != null || msgImage != null ? "" : ", no message text"));
 
         if (isCall) {
             // App already in front: the in-app ringer shows the call (and
             // rings) itself — a second, notification ringtone would double up.
-            if (MainActivity.isInForeground()) return;
+            if (MainActivity.isInForeground()) {
+                PushLog.log(ctx, tag + "call skipped: app is open, in-app ringer has it");
+                return;
+            }
+            PushLog.log(ctx, tag + "ringing call");
             // Account stamp: only attribute (deep-link + join) when we can
             // name the poster, mirroring showNotification()'s PRIV-02 guard.
             // Report it to the system call stack so it rings like a phone
@@ -345,8 +459,12 @@ public class MatrixMessagingService extends FirebaseMessagingService {
                 IncomingCallNotification.show(ctx, callerName, roomId, postedBy, largeIcon);
             }
         } else {
-            if (sessionIsActive && MainActivity.isInForeground()) return;
-            showNotification(ctx, title, text, roomId, eventId, largeIcon, postedBy);
+            if (sessionIsActive && MainActivity.isInForeground()) {
+                PushLog.log(ctx, tag + "skipped: app came to the front during enrichment");
+                return;
+            }
+            showNotification(ctx, title, text, roomId, eventId, largeIcon, postedBy,
+                msgSenderId, msgSenderName, senderIcon, msgDm, msgTs, msgBody, msgImage);
         }
     }
 
@@ -561,6 +679,21 @@ public class MatrixMessagingService extends FirebaseMessagingService {
      * already runs on a Firebase background thread, and httpGet is bounded by
      * the 5s connect/read timeouts.
      */
+    private static boolean shouldStayQuiet(Context ctx, String tag, String hs, String token,
+            String userId, String deviceId) {
+        boolean quiet = shouldStayQuiet(hs, token, userId, deviceId);
+        if (quiet) {
+            PushLog.log(ctx, tag + "skipped: another device is active ("
+                + lastQuietDetail + ")");
+        }
+        return quiet;
+    }
+
+    // Why the last shouldStayQuiet() said yes, for the push log only. Pushes
+    // are handled one at a time on Firebase's thread; a stale value from a
+    // UnifiedPush push racing it would only mislabel one log line.
+    private static volatile String lastQuietDetail = "";
+
     private static boolean shouldStayQuiet(String hs, String token, String userId, String deviceId) {
         if (hs == null || token == null || userId == null || deviceId == null) return false;
         if (userId.isEmpty() || deviceId.isEmpty()) return false;
@@ -608,6 +741,8 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             // doubles, cannot overflow, and would notify — match them.
             if (ts < 0) return false;
             if (ts > now + MAX_FUTURE_SKEW_MS) return false; // broken clock
+            lastQuietDetail = "device " + otherDevice + " heartbeat " + (now - ts)
+                + "ms ago, grace " + Math.min(graceMs, MAX_GRACE_MS) + "ms";
             return now - ts < Math.min(graceMs, MAX_GRACE_MS);
         } catch (Exception e) {
             return false; // anything unexpected (network, parse) → notify
@@ -692,6 +827,208 @@ public class MatrixMessagingService extends FirebaseMessagingService {
         }
     }
 
+    // ── Invites ─────────────────────────────────────────────────────────────
+
+    /** What an invite's stripped state says. Mirror of parseInviteState() in static/sw.js. */
+    static final class InviteInfo {
+        String inviterId = "";
+        String inviterName = "";
+        String inviterAvatar = "";
+        String roomName = "";
+        String roomAvatar = "";
+        boolean isSpace;
+        boolean isDirect;
+    }
+
+    private static boolean isOwnInvite(JSONObject event, String selfUserId) {
+        if (selfUserId == null || !"m.room.member".equals(event.optString("type", ""))) {
+            return false;
+        }
+        JSONObject c = event.optJSONObject("content");
+        return selfUserId.equals(event.optString("state_key", ""))
+            && c != null && "invite".equals(c.optString("membership", ""));
+    }
+
+    /**
+     * The room's pending invite for this account, from a one-room /sync: an
+     * invitee cannot read the room's events or state, but sync hands out the
+     * invite's stripped state. timeout=0 and set_presence=offline so this
+     * neither waits nor marks the account online; next_batch is discarded, so
+     * the app's own sync (and its to-device queue) is untouched. Null when
+     * the room holds no pending invite for us.
+     */
+    private static InviteInfo fetchInvite(String hs, String token, String selfUserId,
+            String roomId) {
+        if (selfUserId == null) return null;
+        try {
+            JSONObject none = new JSONObject().put("not_types", new JSONArray().put("*"));
+            JSONObject room = new JSONObject()
+                .put("rooms", new JSONArray().put(roomId))
+                .put("timeline", new JSONObject().put("limit", 0)
+                    .put("not_types", new JSONArray().put("*")))
+                .put("state", none)
+                .put("ephemeral", none)
+                .put("account_data", none)
+                .put("include_leave", false);
+            JSONObject filter = new JSONObject()
+                .put("room", room)
+                .put("presence", none)
+                .put("account_data", none);
+            String json = httpGet(hs + "/_matrix/client/v3/sync?timeout=0&set_presence=offline"
+                + "&filter=" + enc(filter.toString()), token);
+            if (json == null) return null;
+            JSONObject rooms = new JSONObject(json).optJSONObject("rooms");
+            JSONObject invites = rooms != null ? rooms.optJSONObject("invite") : null;
+            JSONObject invited = invites != null ? invites.optJSONObject(roomId) : null;
+            JSONObject state = invited != null ? invited.optJSONObject("invite_state") : null;
+            JSONArray events = state != null ? state.optJSONArray("events") : null;
+            InviteInfo info = parseInviteState(events, selfUserId);
+            // Stripped state may lack the inviter's member event: their profile.
+            if (info != null && !info.inviterId.isEmpty()
+                    && (info.inviterName.isEmpty() || info.inviterAvatar.isEmpty())) {
+                String profile = httpGet(hs + "/_matrix/client/v3/profile/"
+                    + enc(info.inviterId), token);
+                if (profile != null) {
+                    JSONObject p = new JSONObject(profile);
+                    if (info.inviterName.isEmpty()) {
+                        info.inviterName = p.optString("displayname", "").trim();
+                    }
+                    if (info.inviterAvatar.isEmpty()) {
+                        info.inviterAvatar = p.optString("avatar_url", "").trim();
+                    }
+                }
+            }
+            return info;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static InviteInfo parseInviteState(JSONArray events, String selfUserId) {
+        if (events == null) return null;
+        JSONObject invite = null;
+        String alias = "";
+        InviteInfo info = new InviteInfo();
+        java.util.Map<String, JSONObject> members = new java.util.HashMap<>();
+        for (int i = 0; i < events.length(); i++) {
+            JSONObject e = events.optJSONObject(i);
+            if (e == null) continue;
+            JSONObject c = e.optJSONObject("content");
+            if (c == null) c = new JSONObject();
+            String type = e.optString("type", "");
+            if ("m.room.member".equals(type) && e.has("state_key")) {
+                String key = e.optString("state_key", "");
+                members.put(key, c);
+                if (key.equals(selfUserId) && "invite".equals(c.optString("membership", ""))) {
+                    invite = e;
+                }
+            } else if ("m.room.create".equals(type)) {
+                info.isSpace = "m.space".equals(c.optString("type", ""));
+            } else if ("m.room.name".equals(type)) {
+                info.roomName = c.optString("name", "").trim();
+            } else if ("m.room.canonical_alias".equals(type)) {
+                alias = c.optString("alias", "").trim();
+            } else if ("m.room.avatar".equals(type)) {
+                info.roomAvatar = c.optString("url", "").trim();
+            }
+        }
+        if (invite == null) return null;
+        if (info.roomName.isEmpty()) info.roomName = alias;
+        info.inviterId = invite.optString("sender", "").trim();
+        JSONObject inviter = members.get(info.inviterId);
+        if (inviter != null) {
+            info.inviterName = inviter.optString("displayname", "").trim();
+            info.inviterAvatar = inviter.optString("avatar_url", "").trim();
+        }
+        JSONObject own = invite.optJSONObject("content");
+        info.isDirect = own != null && own.optBoolean("is_direct", false);
+        return info;
+    }
+
+    /**
+     * { title, text, avatar mxc or null } for an invite. A DM is the
+     * inviter's; a space or a named room is the room's, with the inviter in
+     * the text. Mirror of inviteNotificationText() in static/sw.js.
+     */
+    private static String[] inviteNotification(InviteInfo info) {
+        String who = !info.inviterName.isEmpty() ? info.inviterName
+            : !info.inviterId.isEmpty() ? info.inviterId : "Someone";
+        String title;
+        String text;
+        String avatar;
+        if (info.isSpace) {
+            title = !info.roomName.isEmpty() ? info.roomName : "Space invite";
+            text = who + " invited you to join this space";
+            avatar = !info.roomAvatar.isEmpty() ? info.roomAvatar : info.inviterAvatar;
+        } else if (info.isDirect || info.roomName.isEmpty()) {
+            title = who;
+            text = info.isDirect ? "Invited you to a direct chat" : "Invited you to a room";
+            avatar = !info.inviterAvatar.isEmpty() ? info.inviterAvatar : info.roomAvatar;
+        } else {
+            title = info.roomName;
+            text = who + " invited you to join this room";
+            avatar = !info.roomAvatar.isEmpty() ? info.roomAvatar : info.inviterAvatar;
+        }
+        return new String[] { title, text, avatar.startsWith("mxc://") ? avatar : null };
+    }
+
+    /**
+     * An invite: a plain notification on the shared channel, with Accept and
+     * Decline instead of Reply and Mark-as-read (neither works in a room not
+     * yet joined). Same id as the
+     * room's message notification, so joining (a clear push) takes it down.
+     */
+    private static void showInviteNotification(Context ctx, String title, String text,
+            String roomId, Bitmap icon, String postedBy) {
+        createChannel(ctx);
+        Intent intent = new Intent(ctx, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        // Same attribution guard as showNotification() (audit PRIV-02).
+        if (postedBy != null && !postedBy.isEmpty()) {
+            intent.putExtra("room_id", roomId);
+            intent.putExtra("user_id", postedBy);
+        }
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pending = PendingIntent.getActivity(ctx, roomId.hashCode(), intent, flags);
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(pending);
+        if (icon != null) builder.setLargeIcon(icon);
+        // Accept / Decline, only when attributable (same guard as the tap).
+        if (postedBy != null && !postedBy.isEmpty()) {
+            Intent accept = new Intent(ctx, MainActivity.class);
+            accept.setAction(MessageActionReceiver.ACTION_ACCEPT_INVITE);
+            accept.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            accept.putExtra("room_id", roomId);
+            accept.putExtra("user_id", postedBy);
+            builder.addAction(0, "Accept", PendingIntent.getActivity(
+                ctx, (roomId + ":accept").hashCode(), accept, flags));
+
+            Intent decline = new Intent(ctx, MessageActionReceiver.class);
+            decline.setAction(MessageActionReceiver.ACTION_DECLINE_INVITE);
+            decline.putExtra("room_id", roomId);
+            decline.putExtra("user_id", postedBy);
+            builder.addAction(0, "Decline", PendingIntent.getBroadcast(
+                ctx, (roomId + ":decline").hashCode(), decline, flags));
+        }
+        try {
+            NotificationManagerCompat.from(ctx).notify(roomId.hashCode(), builder.build());
+            PushLog.log(ctx, "posted invite for room " + PushLog.shortId(roomId)
+                + describeDelivery(ctx, CHANNEL_ID));
+        } catch (SecurityException e) {
+            PushLog.log(ctx, "post refused (no notification permission) for room "
+                + PushLog.shortId(roomId));
+        }
+    }
+
     /** A user's avatar: per-room member state first, then global profile. */
     private static String fetchUserAvatar(String hs, String token, String roomId, String userId) {
         String memberUrl = hs + "/_matrix/client/v3/rooms/" + enc(roomId)
@@ -737,6 +1074,139 @@ public class MatrixMessagingService extends FirebaseMessagingService {
         return null;
     }
 
+    private static final int IMAGE_MAX_PX = 800;
+    private static final int IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+    /**
+     * The picture of an m.image / m.sticker, for the notification. A GIF comes
+     * back as its first frame (a notification cannot animate). Null on any
+     * failure, so the notification just says an image was sent.
+     */
+    private static Bitmap fetchNotificationImage(Context ctx, String hs, String token,
+            JSONObject content) {
+        try {
+            JSONObject file = content.optJSONObject("file");
+            if (file != null) {
+                // Encrypted: download the ciphertext, check it, decrypt it here.
+                String mxc = file.optString("url", "");
+                JSONObject key = file.optJSONObject("key");
+                String iv = file.optString("iv", "");
+                JSONObject hashes = file.optJSONObject("hashes");
+                if (!mxc.startsWith("mxc://") || key == null || iv.isEmpty()) return null;
+                byte[] cipher = downloadMxc(hs, token, mxc);
+                if (cipher == null) return null;
+                String want = hashes != null ? hashes.optString("sha256", "") : "";
+                if (want.isEmpty()) return null;
+                byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(cipher);
+                String got = android.util.Base64.encodeToString(digest,
+                    android.util.Base64.NO_PADDING | android.util.Base64.NO_WRAP);
+                if (!got.equals(want.replace("=", ""))) return null;
+                byte[] k = android.util.Base64.decode(key.optString("k", ""),
+                    android.util.Base64.URL_SAFE | android.util.Base64.NO_PADDING);
+                byte[] ivBytes = android.util.Base64.decode(iv, android.util.Base64.DEFAULT);
+                javax.crypto.Cipher aes = javax.crypto.Cipher.getInstance("AES/CTR/NoPadding");
+                aes.init(javax.crypto.Cipher.DECRYPT_MODE,
+                    new javax.crypto.spec.SecretKeySpec(k, "AES"),
+                    new javax.crypto.spec.IvParameterSpec(ivBytes));
+                return decodeScaled(aes.doFinal(cipher));
+            }
+            String mxc = content.optString("url", "");
+            if (!mxc.startsWith("mxc://")) return null;
+            // Plain: ask the server for a small still (animated=false).
+            String rest = mxc.substring("mxc://".length());
+            int slash = rest.indexOf('/');
+            if (slash < 0) return null;
+            String url = hs + "/_matrix/client/v1/media/thumbnail/"
+                + enc(rest.substring(0, slash)) + "/" + enc(rest.substring(slash + 1))
+                + "?width=" + IMAGE_MAX_PX + "&height=" + IMAGE_MAX_PX
+                + "&method=scale&animated=false";
+            byte[] data = httpGetBytes(url, token);
+            Bitmap bmp = data != null ? decodeScaled(data) : null;
+            if (bmp != null) return bmp;
+            // No thumbnail (some servers): fall back to the file itself.
+            byte[] full = downloadMxc(hs, token, mxc);
+            return full != null ? decodeScaled(full) : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static byte[] downloadMxc(String hs, String token, String mxc) {
+        String rest = mxc.substring("mxc://".length());
+        int slash = rest.indexOf('/');
+        if (slash < 0) return null;
+        return httpGetBytes(hs + "/_matrix/client/v1/media/download/"
+            + enc(rest.substring(0, slash)) + "/" + enc(rest.substring(slash + 1)), token);
+    }
+
+    /** GET returning at most IMAGE_MAX_BYTES; null on error or when larger. */
+    private static byte[] httpGetBytes(String urlStr, String token) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlStr).openConnection();
+            conn.setConnectTimeout(CONNECT_TIMEOUT);
+            conn.setReadTimeout(READ_TIMEOUT);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            if (conn.getResponseCode() != 200) return null;
+            if (conn.getContentLengthLong() > IMAGE_MAX_BYTES) return null;
+            try (InputStream is = conn.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = is.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                    if (out.size() > IMAGE_MAX_BYTES) return null;
+                }
+                return out.toByteArray();
+            }
+        } catch (Exception e) {
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Decode no larger than IMAGE_MAX_PX on a side (first frame of a GIF). */
+    private static Bitmap decodeScaled(byte[] data) {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+        int sample = 1;
+        while (Math.max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= IMAGE_MAX_PX) {
+            sample *= 2;
+        }
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = sample;
+        return BitmapFactory.decodeByteArray(data, 0, data.length, opts);
+    }
+
+    /**
+     * Write the picture where the system UI can read it: an app-private cache
+     * file behind the FileProvider, granted to System UI for this URI only.
+     * Files older than a day are removed on the way.
+     */
+    private static Uri saveNotificationImage(Context ctx, Bitmap bmp) {
+        try {
+            java.io.File dir = new java.io.File(ctx.getCacheDir(), "notif-images");
+            if (!dir.isDirectory() && !dir.mkdirs()) return null;
+            long cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File f : old) if (f.lastModified() < cutoff) f.delete();
+            java.io.File out = java.io.File.createTempFile("img", ".jpg", dir);
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                bmp.compress(Bitmap.CompressFormat.JPEG, 85, fos);
+            }
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                ctx, ctx.getPackageName() + ".fileprovider", out);
+            ctx.grantUriPermission("com.android.systemui", uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            return uri;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     /** Download an mxc:// thumbnail as a Bitmap (authenticated media endpoint). */
     private static Bitmap fetchMxcThumbnail(String hs, String token, String mxc, int size) {
         // mxc://server/mediaId
@@ -755,13 +1225,35 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             conn.setRequestProperty("Authorization", "Bearer " + token);
             if (conn.getResponseCode() != 200) return null;
             try (InputStream is = conn.getInputStream()) {
-                return BitmapFactory.decodeStream(is);
+                return circleCrop(BitmapFactory.decodeStream(is), size);
             }
         } catch (Exception e) {
             return null;
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /**
+     * Centre-crop to a square (never stretch, whatever the server returned) and
+     * mask to a circle, the shape Android avatars use.
+     */
+    private static Bitmap circleCrop(Bitmap src, int size) {
+        if (src == null) return null;
+        int side = Math.min(src.getWidth(), src.getHeight());
+        if (side <= 0) return null;
+        int x = (src.getWidth() - side) / 2;
+        int y = (src.getHeight() - side) / 2;
+        Bitmap out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(out);
+        android.graphics.Paint paint = new android.graphics.Paint(
+            android.graphics.Paint.ANTI_ALIAS_FLAG | android.graphics.Paint.FILTER_BITMAP_FLAG);
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+        paint.setXfermode(new android.graphics.PorterDuffXfermode(
+            android.graphics.PorterDuff.Mode.SRC_IN));
+        canvas.drawBitmap(src, new android.graphics.Rect(x, y, x + side, y + side),
+            new android.graphics.Rect(0, 0, size, size), paint);
+        return out;
     }
 
     private static String httpGet(String urlStr, String token) {
@@ -798,8 +1290,14 @@ public class MatrixMessagingService extends FirebaseMessagingService {
     // ── Notification ──────────────────────────────────────────────────────────
 
     private static void showNotification(Context ctx, String title, String body, String roomId,
-            String eventId, Bitmap largeIcon, String postedBy) {
+            String eventId, Bitmap largeIcon, String postedBy, String senderId,
+            String senderName, Bitmap senderIcon, boolean dm, long ts, String msgBody,
+            Bitmap msgImage) {
         createChannel(ctx);
+        // One channel per conversation (Android 11+): the system lists it under
+        // Conversations, where the user sets sound, priority and bubbles for
+        // that person or room alone. Older Androids use the shared channel.
+        String channelId = conversationChannel(ctx, roomId, title);
 
         Intent intent = new Intent(ctx, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -829,7 +1327,7 @@ public class MatrixMessagingService extends FirebaseMessagingService {
         PendingIntent pending = PendingIntent.getActivity(
             ctx, roomId != null ? roomId.hashCode() : 0, intent, flags);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, channelId)
             // Small (status-bar) icon: Android renders it from the alpha channel
             // only, so it must be a transparent-background silhouette. The
             // adaptive foreground layer is a white-on-transparent logo, unlike
@@ -869,6 +1367,11 @@ public class MatrixMessagingService extends FirebaseMessagingService {
             replyIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             replyIntent.putExtra("room_id", roomId);
             replyIntent.putExtra("user_id", postedBy);
+            // One reply per posted notification: MainActivity remembers the
+            // nonces it has sent, so the same intent handed back on a later
+            // reopen cannot send the reply again.
+            replyIntent.putExtra("reply_nonce",
+                java.util.UUID.randomUUID().toString());
             if (eventId != null && !eventId.isEmpty()) {
                 replyIntent.putExtra("event_id", eventId);
             }
@@ -901,9 +1404,174 @@ public class MatrixMessagingService extends FirebaseMessagingService {
 
         int notificationId = roomId != null ? roomId.hashCode() : (int) System.currentTimeMillis();
 
+        // Conversation style: every unread message from this room stays in the
+        // one notification, each with its author. The messages already showing
+        // are read back from the notification being replaced, so the history
+        // survives this service being restarted between pushes.
+        if (roomId != null && postedBy != null && !postedBy.isEmpty()) {
+            try {
+                Person me = new Person.Builder().setName("You").setKey(postedBy).build();
+                Person.Builder author = new Person.Builder()
+                    .setName(senderName != null && !senderName.isEmpty() ? senderName : title)
+                    .setKey(senderId != null && !senderId.isEmpty() ? senderId : roomId);
+                if (senderIcon != null) author.setIcon(IconCompat.createWithBitmap(senderIcon));
+                else if (largeIcon != null && dm) author.setIcon(IconCompat.createWithBitmap(largeIcon));
+                Person authorPerson = author.build();
+
+                NotificationCompat.MessagingStyle style = null;
+                try {
+                    NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+                    if (nm != null) {
+                        for (StatusBarNotification sbn : nm.getActiveNotifications()) {
+                            if (sbn.getId() == notificationId && sbn.getTag() == null) {
+                                style = NotificationCompat.MessagingStyle
+                                    .extractMessagingStyleFromNotification(sbn.getNotification());
+                                break;
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+                if (style == null) style = new NotificationCompat.MessagingStyle(me);
+                if (!dm) {
+                    style.setConversationTitle(title);
+                    style.setGroupConversation(true);
+                } else {
+                    style.setGroupConversation(false);
+                }
+                // The message itself when there is one (the "sent a message"
+                // placeholder when its text is hidden).
+                NotificationCompat.MessagingStyle.Message line =
+                    new NotificationCompat.MessagingStyle.Message(
+                        msgBody != null ? msgBody : body, ts, authorPerson);
+                if (msgImage != null) {
+                    Uri imageUri = saveNotificationImage(ctx, msgImage);
+                    if (imageUri != null) line.setData("image/jpeg", imageUri);
+                }
+                style.addMessage(line);
+                // Keep the tray notification short: the newest 12.
+                java.util.List<NotificationCompat.MessagingStyle.Message> all = style.getMessages();
+                if (all.size() > 12) {
+                    NotificationCompat.MessagingStyle trimmed =
+                        new NotificationCompat.MessagingStyle(me);
+                    trimmed.setConversationTitle(style.getConversationTitle());
+                    trimmed.setGroupConversation(style.isGroupConversation());
+                    for (NotificationCompat.MessagingStyle.Message m
+                            : all.subList(all.size() - 12, all.size())) {
+                        trimmed.addMessage(m);
+                    }
+                    style = trimmed;
+                }
+                builder.setStyle(style);
+                builder.setCategory(NotificationCompat.CATEGORY_MESSAGE);
+                // Lets the system treat it as a conversation: a per-person
+                // entry in the share sheet and in notification settings.
+                builder.setShortcutId(publishShortcut(ctx, roomId, title,
+                    dm ? (senderIcon != null ? senderIcon : largeIcon) : largeIcon,
+                    dm ? authorPerson : null, postedBy));
+            } catch (Throwable ignored) {
+                // Plain BigText notification already set above.
+            }
+        }
+
         try {
             NotificationManagerCompat.from(ctx).notify(notificationId, builder.build());
-        } catch (SecurityException ignored) {}
+            PushLog.log(ctx, "posted room " + PushLog.shortId(roomId) + " event "
+                + PushLog.shortId(eventId) + describeDelivery(ctx, channelId));
+        } catch (SecurityException e) {
+            PushLog.log(ctx, "post refused (no notification permission) for room "
+                + PushLog.shortId(roomId));
+        }
+    }
+
+    /**
+     * What could still stop a posted notification from being seen: the app's
+     * notifications switched off, the channel blocked or quietened, Do Not
+     * Disturb. Empty when nothing is in the way.
+     */
+    private static String describeDelivery(Context ctx, String channelId) {
+        StringBuilder sb = new StringBuilder();
+        try {
+            if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) {
+                sb.append(", BUT app notifications are off");
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+                if (nm != null) {
+                    NotificationChannel ch = nm.getNotificationChannel(channelId);
+                    if (ch == null) sb.append(", channel missing");
+                    else if (ch.getImportance() == NotificationManager.IMPORTANCE_NONE) {
+                        sb.append(", BUT channel ").append(channelId.equals(CHANNEL_ID)
+                            ? "(shared)" : "(conversation)").append(" is blocked");
+                    } else if (ch.getImportance() < NotificationManager.IMPORTANCE_DEFAULT) {
+                        sb.append(", channel importance ").append(ch.getImportance())
+                            .append(" (silent)");
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        int filter = nm.getCurrentInterruptionFilter();
+                        if (filter > NotificationManager.INTERRUPTION_FILTER_ALL) {
+                            sb.append(", system Do Not Disturb on (filter ")
+                                .append(filter).append(")");
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return sb.toString();
+    }
+
+    /**
+     * The per-conversation channel for a room, created on first use (API 30+,
+     * where a channel can be tied to a conversation). Falls back to the shared
+     * channel on older Androids or on any failure.
+     */
+    private static String conversationChannel(Context ctx, String roomId, String title) {
+        if (roomId == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return CHANNEL_ID;
+        try {
+            NotificationManager manager = ctx.getSystemService(NotificationManager.class);
+            if (manager == null) return CHANNEL_ID;
+            String id = CHANNEL_ID + ":" + roomId;
+            NotificationChannel existing = manager.getNotificationChannel(id);
+            if (existing == null) {
+                NotificationChannel channel = new NotificationChannel(
+                    id, title, NotificationManager.IMPORTANCE_HIGH);
+                channel.setConversationId(CHANNEL_ID, roomId);
+                manager.createNotificationChannel(channel);
+            } else if (!title.contentEquals(existing.getName())) {
+                // Renamed room / person: keep the label current. The user's own
+                // settings on the channel are not touched by a rename.
+                existing.setName(title);
+                manager.createNotificationChannel(existing);
+            }
+            return id;
+        } catch (Throwable t) {
+            return CHANNEL_ID;
+        }
+    }
+
+    /**
+     * Publish a long-lived sharing shortcut for the conversation (one per room),
+     * which the system needs to show it as a conversation and offers as a
+     * direct-share target. Returns the shortcut id.
+     */
+    private static String publishShortcut(Context ctx, String roomId, String title,
+            Bitmap icon, Person person, String postedBy) {
+        try {
+            Intent open = new Intent(ctx, MainActivity.class);
+            open.setAction(Intent.ACTION_VIEW);
+            open.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            open.putExtra("room_id", roomId);
+            open.putExtra("user_id", postedBy);
+            ShortcutInfoCompat.Builder sc = new ShortcutInfoCompat.Builder(ctx, roomId)
+                .setShortLabel(title)
+                .setLongLived(true)
+                .setIntent(open)
+                .setCategories(java.util.Collections.singleton(
+                    "moe.crafty.matrix.category.CONVERSATION"));
+            if (person != null) sc.setPerson(person);
+            if (icon != null) sc.setIcon(IconCompat.createWithBitmap(icon));
+            ShortcutManagerCompat.pushDynamicShortcut(ctx, sc.build());
+        } catch (Throwable ignored) {}
+        return roomId;
     }
 
     private static void createChannel(Context ctx) {

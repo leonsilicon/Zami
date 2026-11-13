@@ -167,8 +167,36 @@ function buildReadReceiptPath(roomId, eventId, receiptType) {
 	return `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/receipt/${receiptType}/${encodeURIComponent(eventId)}`;
 }
 
-function swReceiptTypeFor(privacyByUser, userId) {
-	if (!userId || !privacyByUser) return "m.read.private";
+// Per-room receipt privacy for ONE account: { roomId: bool }, true = private.
+// Holds only rooms whose effective value differs from the account default.
+// Junk → {} (the account default then applies, fail closed). An object over
+// the entry cap is rejected whole. Mirrors parseReceiptRoomPrivacy in
+// src/lib/utils/notifActions.ts.
+const RECEIPT_ROOM_PRIVACY_MAX = 5000;
+const RECEIPT_ROOM_ID_MAX = 255;
+
+function parseReceiptRoomPrivacy(raw) {
+	const out = {};
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+	const keys = Object.keys(raw);
+	if (keys.length > RECEIPT_ROOM_PRIVACY_MAX) return out;
+	for (const key of keys) {
+		const value = raw[key];
+		if (typeof value !== "boolean") continue;
+		if (!key.startsWith("!") || key.length > RECEIPT_ROOM_ID_MAX) continue;
+		out[key] = value;
+	}
+	return out;
+}
+
+// A per-room entry (roomPrivacy[roomId]) wins over the account default
+// (privacyByUser[userId]). Unknown/missing user → "m.read.private".
+function swReceiptTypeFor(privacyByUser, userId, roomId, roomPrivacy) {
+	if (!userId) return "m.read.private";
+	if (typeof roomId === "string" && roomPrivacy && typeof roomPrivacy[roomId] === "boolean") {
+		return roomPrivacy[roomId] ? "m.read.private" : "m.read";
+	}
+	if (!privacyByUser) return "m.read.private";
 	return privacyByUser[userId] === false ? "m.read" : "m.read.private";
 }
 
@@ -708,6 +736,9 @@ let ringEnabled = true;
 // Per-user read receipt privacy: { userId: boolean } where true = private receipts.
 // Hydrated from IDB and kept in sync via SET_RECEIPT_PRIVACY.
 let receiptPrivacyByUser = {};
+// Per-room overrides: { userId: { roomId: bool } }, from the same message's
+// optional `rooms` field. Persisted under "receiptRoomPrivacyByUser".
+let receiptRoomPrivacyByUser = {};
 // Every account signed in on this origin, user id → session, mirrored from the
 // page (SET_ACCOUNTS) and kept in IndexedDB. A push names its account (the
 // pusher's default_payload `zam_account`) and is handled with THAT account's
@@ -765,6 +796,15 @@ const authReady = (async () => {
 	const storedPrivacy = await dbGet("receiptPrivacyByUser").catch(() => null);
 	receiptPrivacyByUser =
 		storedPrivacy && typeof storedPrivacy === "object" ? storedPrivacy : {};
+	// Same junk-tolerant shape for the per-room map: each user's entry is
+	// re-validated, anything malformed becomes {} for that user.
+	const storedRooms = await dbGet("receiptRoomPrivacyByUser").catch(() => null);
+	receiptRoomPrivacyByUser = {};
+	if (storedRooms && typeof storedRooms === "object" && !Array.isArray(storedRooms)) {
+		for (const uid of Object.keys(storedRooms)) {
+			receiptRoomPrivacyByUser[uid] = parseReceiptRoomPrivacy(storedRooms[uid]);
+		}
+	}
 	// Installs that predate the record still have the four per-key values at
 	// rest. They are NEVER read back — reading them is the bug — but they are
 	// swept so a stale token does not sit there forever. Slot 0 is the access
@@ -842,7 +882,7 @@ function closeAllNotifications() {
  * without reopening PRIV-02: nothing this build posts is both routable and
  * unattributable.
  */
-function notificationData(roomId, isCall, eventId, postedBy) {
+function notificationData(roomId, isCall, eventId, postedBy, built) {
 	if (!postedBy) return {};
 	const d = roomId
 		? { roomId: roomId, userId: postedBy }
@@ -853,6 +893,13 @@ function notificationData(roomId, isCall, eventId, postedBy) {
 	// A call notification carries this so notificationclick's Accept knows to
 	// join, not just open the room.
 	if (isCall) d.isCall = true;
+	// An invite carries what Accept needs with no page open: whether it is a
+	// DM, and who sent it (see handleInviteAction).
+	if (roomId && built && built.isInvite) {
+		d.invite = true;
+		d.inviteDirect = !!built.inviteDirect;
+		d.inviterId = built.inviterId || "";
+	}
 	return d;
 }
 
@@ -1119,6 +1166,12 @@ self.addEventListener("message", (event) => {
 					// next handler that might mutate the live object).
 					const copy = { ...receiptPrivacyByUser };
 					await queueWrite(() => dbSet("receiptPrivacyByUser", copy));
+					// `rooms` REPLACES this user's map; absent or junk → {}.
+					receiptRoomPrivacyByUser[userId] = parseReceiptRoomPrivacy(
+						event.data.rooms,
+					);
+					const roomsCopy = { ...receiptRoomPrivacyByUser };
+					await queueWrite(() => dbSet("receiptRoomPrivacyByUser", roomsCopy));
 				}
 			}
 		})().catch(() => {}),
@@ -1437,6 +1490,149 @@ async function decryptInWorker(roomId, event, session) {
 	}
 }
 
+/** An authenticated 128px thumbnail URL for an mxc:// URI, or null. */
+function thumbnailUrl(mxc, session) {
+	if (typeof mxc !== "string" || !mxc.startsWith("mxc://")) return null;
+	const rest = mxc.slice("mxc://".length);
+	const slash = rest.indexOf("/");
+	if (slash <= 0) return null;
+	const server = rest.slice(0, slash);
+	const mediaId = rest.slice(slash + 1);
+	const base = session.homeserverUrl.endsWith("/")
+		? session.homeserverUrl.slice(0, -1)
+		: session.homeserverUrl;
+	// authenticated thumbnail — the SW fetch handler injects auth too,
+	// but build the URL explicitly so the OS-side fetch carries it.
+	return (
+		`${base}/_matrix/client/v1/media/thumbnail/${encodeURIComponent(server)}/` +
+		`${encodeURIComponent(mediaId)}?width=128&height=128&method=crop`
+	);
+}
+
+// #region mirrored:invite
+/**
+ * What an invite's stripped state says: who invited us, the room's name and
+ * picture, and whether it is a space or a DM. Null when the events hold no
+ * pending invite for `selfUserId`. Mirrored by parseInviteState() in
+ * MatrixMessagingService.java.
+ */
+function parseInviteState(events, selfUserId) {
+	if (!Array.isArray(events)) return null;
+	const str = (v) => (typeof v === "string" ? v.trim() : "");
+	let invite = null;
+	let roomName = "";
+	let alias = "";
+	let roomAvatar = "";
+	let isSpace = false;
+	const members = new Map();
+	for (const e of events) {
+		if (!e || typeof e !== "object") continue;
+		const c = e.content && typeof e.content === "object" ? e.content : {};
+		if (e.type === "m.room.member" && typeof e.state_key === "string") {
+			members.set(e.state_key, c);
+			if (e.state_key === selfUserId && c.membership === "invite") invite = e;
+		} else if (e.type === "m.room.create") {
+			isSpace = c.type === "m.space";
+		} else if (e.type === "m.room.name") {
+			roomName = str(c.name);
+		} else if (e.type === "m.room.canonical_alias") {
+			alias = str(c.alias);
+		} else if (e.type === "m.room.avatar") {
+			roomAvatar = str(c.url);
+		}
+	}
+	if (!invite) return null;
+	const inviterId = str(invite.sender);
+	const inviter = members.get(inviterId) || {};
+	return {
+		inviterId,
+		inviterName: str(inviter.displayname),
+		inviterAvatar: str(inviter.avatar_url),
+		roomName: roomName || alias,
+		roomAvatar,
+		isSpace,
+		isDirect: invite.content && invite.content.is_direct === true,
+	};
+}
+
+/**
+ * Title, text and picture for an invite. A DM is the inviter's; a space or a
+ * named room is the room's, with the inviter in the text. Mirrored by
+ * inviteNotification() in MatrixMessagingService.java.
+ */
+function inviteNotificationText(info) {
+	const who = info.inviterName || info.inviterId || "Someone";
+	if (info.isSpace) {
+		return {
+			title: info.roomName || "Space invite",
+			body: `${who} invited you to join this space`,
+			avatar: info.roomAvatar || info.inviterAvatar,
+		};
+	}
+	if (info.isDirect || !info.roomName) {
+		return {
+			title: who,
+			body: info.isDirect
+				? "Invited you to a direct chat"
+				: "Invited you to a room",
+			avatar: info.inviterAvatar || info.roomAvatar,
+		};
+	}
+	return {
+		title: info.roomName,
+		body: `${who} invited you to join this room`,
+		avatar: info.roomAvatar || info.inviterAvatar,
+	};
+}
+
+// #endregion mirrored:invite
+
+/**
+ * The room's pending invite for this account, read from a one-room /sync: an
+ * invited user cannot read the room's events or state, but sync hands out
+ * the invite's stripped state. timeout=0 and set_presence=offline so this
+ * neither waits nor marks the account online; the next_batch is discarded,
+ * so the app's own sync (and its to-device queue) is untouched.
+ */
+async function fetchInvite(roomId, session) {
+	if (!session || !session.userId) return null;
+	const none = { not_types: ["*"] };
+	const filter = {
+		room: {
+			rooms: [roomId],
+			timeline: { limit: 0, not_types: ["*"] },
+			state: none,
+			ephemeral: none,
+			account_data: none,
+			include_leave: false,
+		},
+		presence: none,
+		account_data: none,
+	};
+	const res = await mxGet(
+		`/_matrix/client/v3/sync?timeout=0&set_presence=offline&filter=${encodeURIComponent(JSON.stringify(filter))}`,
+		session,
+	);
+	const invited =
+		res && res.rooms && res.rooms.invite && res.rooms.invite[roomId];
+	const events = invited && invited.invite_state && invited.invite_state.events;
+	const info = parseInviteState(events, session.userId);
+	// Stripped state may lack the inviter's member event: their profile.
+	if (info && info.inviterId && (!info.inviterName || !info.inviterAvatar)) {
+		const p = await mxGet(
+			`/_matrix/client/v3/profile/${encodeURIComponent(info.inviterId)}`,
+			session,
+		);
+		if (p && typeof p === "object") {
+			if (!info.inviterName && typeof p.displayname === "string")
+				info.inviterName = p.displayname.trim();
+			if (!info.inviterAvatar && typeof p.avatar_url === "string")
+				info.inviterAvatar = p.avatar_url.trim();
+		}
+	}
+	return info;
+}
+
 // `session` is the account the push is for; null → the generic text.
 async function buildNotification(data, session) {
 	// Never compose a body before the privacy flag has been hydrated from
@@ -1468,6 +1664,33 @@ async function buildNotification(data, session) {
 		// for it. Checked before decryption so none of that work runs.
 		if (event && session && event.sender === session.userId) {
 			return { own: true };
+		}
+		// An invite: the push names our own invite event, which an invitee can
+		// usually not fetch (only joined members see a room under "shared"
+		// history). Either way the room's stripped state says who invited us.
+		if (
+			!event ||
+			(event.type === "m.room.member" &&
+				event.state_key === session.userId &&
+				event.content &&
+				event.content.membership === "invite")
+		) {
+			const invite = await fetchInvite(roomId, session);
+			if (invite) {
+				const text = inviteNotificationText(invite);
+				return {
+					title: text.title,
+					body: text.body,
+					icon: thumbnailUrl(text.avatar, session) || "/favicon.png",
+					roomId,
+					eventId: null,
+					isCall: false,
+					isInvite: true,
+					// For an Accept with no page open (see handleInviteAction).
+					inviteDirect: invite.isDirect,
+					inviterId: invite.inviterId,
+				};
+			}
 		}
 		// This worker holds no E2EE keys, so an encrypted message is still
 		// m.room.encrypted here. Ask an open page to decrypt it (see
@@ -1567,23 +1790,7 @@ async function buildNotification(data, session) {
 			`/_matrix/client/v3/rooms/${rid}/state/m.room.avatar/`,
 			session,
 		);
-		const mxc = avatarRes && avatarRes.url;
-		if (mxc && mxc.startsWith("mxc://")) {
-			const rest = mxc.slice("mxc://".length);
-			const slash = rest.indexOf("/");
-			if (slash > 0) {
-				const server = rest.slice(0, slash);
-				const mediaId = rest.slice(slash + 1);
-				const base = session.homeserverUrl.endsWith("/")
-					? session.homeserverUrl.slice(0, -1)
-					: session.homeserverUrl;
-				// authenticated thumbnail — the SW fetch handler injects auth too,
-				// but build the URL explicitly so the OS-side fetch carries it.
-				icon =
-					`${base}/_matrix/client/v1/media/thumbnail/${encodeURIComponent(server)}/` +
-					`${encodeURIComponent(mediaId)}?width=128&height=128&method=crop`;
-			}
-		}
+		icon = thumbnailUrl(avatarRes && avatarRes.url, session) || icon;
 	}
 
 	return { title, body, icon, roomId, eventId, isCall };
@@ -1801,7 +2008,10 @@ self.addEventListener("push", (event) => {
 	// even if enrichment fails.
 	event.waitUntil(
 		(async () => {
-			if (duplicatePush) {
+			if (
+				duplicatePush ||
+				(await alreadyNotified(data.room_id, data.event_id))
+			) {
 				await showAndCloseSilently();
 				return;
 			}
@@ -1845,6 +2055,7 @@ self.addEventListener("push", (event) => {
 					n.isCall,
 					n.eventId,
 					session ? session.userId : null,
+					n,
 				),
 				// A call persists until answered/dismissed and offers
 				// Accept/Decline; a message is a normal transient popup with
@@ -1857,7 +2068,16 @@ self.addEventListener("push", (event) => {
 								{ action: "decline", title: "Decline" },
 							],
 						}
-					: n.roomId
+					: n.isInvite
+						? n.roomId && session
+							? {
+									actions: [
+										{ action: "invite-accept", title: "Accept" },
+										{ action: "invite-decline", title: "Decline" },
+									],
+								}
+							: {}
+						: n.roomId
 						? {
 								actions: [
 									{
@@ -1994,6 +2214,8 @@ async function handleQuickMarkRead(roomId, eventId, postedBy) {
 			const receiptType = swReceiptTypeFor(
 				receiptPrivacyByUser,
 				session.userId,
+				roomId,
+				receiptRoomPrivacyByUser[session.userId],
 			);
 			await mxPost(
 				buildReadReceiptPath(roomId, eventId, receiptType),
@@ -2004,6 +2226,98 @@ async function handleQuickMarkRead(roomId, eventId, postedBy) {
 	} catch {
 		// Swallow — waitUntil must never reject.
 	}
+}
+
+/**
+ * Accept / Decline on an invite notification. An open page does it (its
+ * accept records a DM in m.direct and loads the room's state, and its decline
+ * settles the room list); Accept also brings the page forward. With no page
+ * open, the worker joins or leaves itself, and Accept opens the room.
+ */
+async function handleInviteAction(roomId, postedBy, accept, data) {
+	try {
+		if (!roomId || !postedBy) return;
+		const clients = await self.clients.matchAll({
+			type: "window",
+			includeUncontrolled: true,
+		});
+		const open = clients.find((c) => "focus" in c);
+		if (open) {
+			if (accept) await open.focus().catch(() => {});
+			open.postMessage({
+				type: "NOTIF_INVITE",
+				roomId,
+				userId: postedBy,
+				accept,
+			});
+			return;
+		}
+		await Promise.race([
+			authReady,
+			new Promise((resolve) => setTimeout(resolve, 3000)),
+		]).catch(() => {});
+		const session = sessionForAccount(postedBy);
+		if (!session) return;
+		const rid = encodeURIComponent(roomId);
+		if (!accept) {
+			await mxPost(`/_matrix/client/v3/rooms/${rid}/leave`, {}, session);
+			return;
+		}
+		const joined = await mxPost(
+			`/_matrix/client/v3/rooms/${rid}/join`,
+			{},
+			session,
+		);
+		// A DM accepted here goes into m.direct, as the app's own accept does.
+		if (joined && data.inviteDirect && data.inviterId) {
+			await addDirectRoom(session, data.inviterId, roomId);
+		}
+		// Joined: open the room. Failed: the same link shows the invites
+		// inbox once the invite has synced, to try again there.
+		await self.clients.openWindow(deepLinkUrl(roomId, null, postedBy));
+	} catch {
+		// Swallow — waitUntil must never reject.
+	}
+}
+
+/** Add `roomId` to the account's m.direct under `userId`. Best effort. */
+async function addDirectRoom(session, userId, roomId) {
+	const path = `/_matrix/client/v3/user/${encodeURIComponent(session.userId)}/account_data/m.direct`;
+	const current = (await mxGet(path, session)) || {};
+	const rooms = Array.isArray(current[userId]) ? current[userId] : [];
+	if (rooms.includes(roomId)) return;
+	const base = session.homeserverUrl.endsWith("/")
+		? session.homeserverUrl.slice(0, -1)
+		: session.homeserverUrl;
+	try {
+		await fetch(base + path, {
+			method: "PUT",
+			headers: {
+				Authorization: `Bearer ${session.accessToken}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ ...current, [userId]: [...rooms, roomId] }),
+		});
+	} catch {
+		// The room still opens; it just files as a room, not a DM.
+	}
+}
+
+// The same check against what is still on screen. iOS starts a fresh worker
+// for most pushes, so the in-memory record above rarely sees the second copy
+// there; a notification this worker posted earlier carries its event id in
+// `data` and survives the restart.
+async function alreadyNotified(roomId, eventId) {
+	if (typeof roomId !== "string" || typeof eventId !== "string") return false;
+	try {
+		for (const tag of roomNotificationTags(roomId)) {
+			const list = await self.registration.getNotifications({ tag });
+			if (list.some((n) => n.data && n.data.eventId === eventId)) return true;
+		}
+	} catch {
+		/* no lookup: treat as new */
+	}
+	return false;
 }
 
 let silentPushCount = 0;
@@ -2032,6 +2346,12 @@ self.addEventListener("notificationclick", (event) => {
 	const postedBy = data.userId;
 	// Decline on a call notification just takes it down — open nothing.
 	if (event.action === "decline") return;
+	if (event.action === "invite-accept" || event.action === "invite-decline") {
+		event.waitUntil(
+			handleInviteAction(roomId, postedBy, event.action === "invite-accept", data),
+		);
+		return;
+	}
 	// Quick-reply: routes to page postMessage when open+text, else opens room.
 	if (event.action === "reply") {
 		event.waitUntil(

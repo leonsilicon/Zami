@@ -49,6 +49,8 @@ import {
     isFavouriteGif,
     addFavouriteGif,
     removeFavouriteGif,
+    favouriteSize,
+    favouriteUrlForMxc,
 } from "$lib/stores/favourites.svelte";
 import {
     fetchAttachmentBlob,
@@ -86,6 +88,13 @@ interface Props {
         previewUrl: string;
         /** Pointer to the message, for an encrypted gif (see favouriteFile.ts). */
         source?: { roomId: string; eventId: string };
+        /** The image's media mxc: a favourite holding that media counts as
+         *  this one, and an encrypted gif is saved with it. */
+        mxc?: string;
+        /** The file name, saved with an unencrypted gif so the picker sends
+         *  it under that name. Not stored for an encrypted one: its name is
+         *  read from its message. */
+        name?: string;
     };
     /** Gallery navigation. When supplied, a chevron and the matching arrow
      *  key step to the neighbouring item; omit at the ends of the list. */
@@ -121,7 +130,8 @@ function isObjectUrl(url: string): boolean {
     return url.startsWith("blob:") || url.startsWith("file:");
 }
 
-const MIN_SCALE = 1;
+// Below 1 the image shrinks inside its fitted size.
+const MIN_SCALE = 0.1;
 const MAX_SCALE = 16;
 const ZOOM_STEP = 1.25;
 
@@ -195,22 +205,52 @@ export default function Lightbox({
         ? t("lightbox.videoNoun")
         : t("lightbox.imageNoun");
 
+    /** The favourite this image is saved as, by its URL or else by its media,
+     *  or undefined. Reads favouritesState, so callers stay reactive. */
+    function savedFavouriteUrl(f: NonNullable<typeof favourite>) {
+        if (isFavouriteGif(f.url)) return f.url;
+        return f.mxc ? favouriteUrlForMxc(f.mxc) : undefined;
+    }
+
     // Reactively tracks favourite state (reads favouritesState.gifs $state).
     const favouriteUrl = favourite?.url;
+    const favouriteMxc = favourite?.mxc;
     const favourited = useRune(
-        () => (favouriteUrl ? isFavouriteGif(favouriteUrl) : false),
-        [favouriteUrl],
+        () =>
+            favouriteUrl
+                ? savedFavouriteUrl({
+                      url: favouriteUrl,
+                      previewUrl: "",
+                      mxc: favouriteMxc,
+                  }) !== undefined
+                : false,
+        [favouriteUrl, favouriteMxc],
     );
 
     function toggleFavourite() {
         if (!favourite) return;
-        if (isFavouriteGif(favourite.url)) {
-            void removeFavouriteGif(favourite.url);
+        const saved = savedFavouriteUrl(favourite);
+        if (saved !== undefined) {
+            void removeFavouriteGif(saved);
         } else {
+            // The loaded file's own size, else the size it was sent with.
+            const natural =
+                imgLoaded && loaded
+                    ? favouriteSize(loaded.width, loaded.height)
+                    : {};
             void addFavouriteGif({
                 url: favourite.url,
                 previewUrl: favourite.previewUrl,
                 source: favourite.source,
+                // Only an encrypted gif is stored with its mxc: a plain one
+                // already matches through the media its URL names.
+                ...(favourite.source && favourite.mxc
+                    ? { mxc: favourite.mxc }
+                    : {}),
+                ...(!favourite.source && favourite.name
+                    ? { name: favourite.name }
+                    : {}),
+                ...(natural.width ? natural : favouriteSize(dims?.w, dims?.h)),
             });
         }
     }
@@ -370,6 +410,14 @@ export default function Lightbox({
         imgH.value = imageH;
     }, [imageW, imageH, imgW, imgH]);
 
+    // ── Sharp vectors ───────────────────────────────────────────────────────
+    // Zami: not ported: re-laying out a zoomed SVG at its zoom (and scaling
+    // the transform down by as much) so it is drawn again sharp. expo-image
+    // rasterizes the SVG once, and whether a larger layout makes it decode
+    // again has not been checked on a device; a zoomed SVG may stay blurry.
+    // A vector without a size already takes its ratio from the loaded file
+    // (`naturalBox` above), upstream's `loadedRatio`.
+
     // Clamp the pan so the image can't be dragged past its visible edges.
     function maxPan(s: number) {
         "worklet";
@@ -478,7 +526,7 @@ export default function Lightbox({
             cancelAnimation(ty);
             cancelAnimation(dismiss);
             panPointers.value = e.numberOfPointers;
-            panDismiss.value = scale.value <= MIN_SCALE;
+            panDismiss.value = scale.value <= 1;
         },
         onUpdate: (e) => {
             "worklet";
@@ -490,7 +538,7 @@ export default function Lightbox({
             }
             // Two fingers are the pinch's.
             if (e.numberOfPointers >= 2) return;
-            if (scale.value > MIN_SCALE) {
+            if (scale.value > 1) {
                 tx.value += e.changeX;
                 ty.value += e.changeY;
                 clampPan();
@@ -514,7 +562,7 @@ export default function Lightbox({
         onActivate: (e) => {
             "worklet";
             if (!onImage(e.x, e.y)) return;
-            if (scale.value > MIN_SCALE) {
+            if (scale.value !== 1) {
                 scale.value = withTiming(1, ZOOM_TIMING);
                 tx.value = withTiming(0, ZOOM_TIMING);
                 ty.value = withTiming(0, ZOOM_TIMING);
@@ -525,7 +573,12 @@ export default function Lightbox({
     });
 
     // Zami: the gestures take the whole viewer, so a pinch can start beside a
-    // small image; a tap off the image is then the backdrop's click.
+    // small image; a tap off the image is then the backdrop's click. A tap
+    // fails once it moves, so a drag or pinch that ends off the image never
+    // closes the viewer (upstream's `gestureEndedAt` / `onBackdropClick`).
+    // Zami: not ported: a tap on an empty (transparent) part of a vector's
+    // box also closing the viewer. Upstream reads the pixel back through a
+    // canvas, which React Native lacks; here the whole box counts as image.
     const backdropTap = useTapGesture({
         onActivate: (e) => {
             "worklet";

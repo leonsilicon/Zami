@@ -16,6 +16,17 @@ vi.mock("../matrix/pluginHost", () => ({
         memberCount: 2,
     }),
     getPluginRoomMembers: vi.fn().mockReturnValue([]),
+    sendPluginEvent: vi.fn().mockResolvedValue("$evt"),
+    getPluginEvent: vi.fn().mockResolvedValue(null),
+    getPluginRooms: vi.fn().mockReturnValue([]),
+    getPluginState: vi.fn().mockReturnValue(null),
+    listPluginState: vi.fn().mockReturnValue([]),
+    canSetPluginState: vi.fn().mockReturnValue(false),
+    setPluginState: vi.fn().mockResolvedValue(undefined),
+    getPluginAccountData: vi.fn().mockReturnValue(null),
+    setPluginAccountData: vi.fn().mockResolvedValue(undefined),
+    getPluginProfile: vi.fn().mockResolvedValue(null),
+    getPluginPresence: vi.fn().mockReturnValue([]),
 }));
 
 import * as client from "../matrix/client";
@@ -24,6 +35,7 @@ import { buildHostApi } from "./hostApi";
 import { createRegistryData, countEntries } from "./registry";
 import type { Manifest } from "./manifest";
 import { hostBridge } from "./hostBridge";
+import * as richPresence from "../stores/richPresence.svelte";
 
 const manifest = (id: string): Manifest => ({
     id,
@@ -425,5 +437,190 @@ describe("buildHostApi — zam.frames", () => {
             appVersion: "1",
         });
         expect(host.zam.frames.available()).toBe(false);
+    });
+});
+
+describe("buildHostApi — presence", () => {
+    const build = (capabilities?: string[]) =>
+        buildHostApi({
+            pluginId: "p",
+            manifest: { ...manifest("p"), name: "Plug", capabilities },
+            registry: createRegistryData(),
+            appVersion: "1",
+        });
+    const activity = {
+        kind: "activity" as const,
+        id: "a",
+        name: "Game",
+    };
+
+    it("needs the presence capability to publish", () => {
+        expect(() => build().zam.presence.set(activity)).toThrow(/capability/);
+    });
+
+    it("refuses a malformed entry", () => {
+        expect(() =>
+            build(["presence"]).zam.presence.set({
+                kind: "activity",
+                id: "a",
+            } as never),
+        ).toThrow(/name/);
+    });
+
+    it("publishes under the plugin, and unloading takes it off", () => {
+        const set = vi.spyOn(richPresence, "setPluginPresence");
+        const clear = vi.spyOn(richPresence, "clearPluginPresence");
+        const host = build(["presence"]);
+        const d = host.zam.presence.set(activity);
+        expect(set).toHaveBeenCalledWith(
+            "p",
+            "Plug",
+            expect.objectContaining({ id: "a", name: "Game" }),
+            false,
+        );
+        d.dispose();
+        expect(clear).toHaveBeenLastCalledWith("p", "a");
+        host.disposeAll();
+        expect(clear).toHaveBeenLastCalledWith("p");
+    });
+});
+
+describe("buildHostApi — UI and message extension points", () => {
+    const kinds = [
+        [
+            "messageRenderers",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.messages.registerRenderer({
+                    eventType: "com.example.x",
+                    render() {},
+                }),
+        ],
+        [
+            "roomSettingsTabs",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.room.addSettingsTab({ id: "t", label: "T", render() {} }),
+        ],
+        [
+            "settingsPages",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.ui.addSettingsPage({ id: "p", label: "P", render() {} }),
+        ],
+        [
+            "memberDecorators",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.members.decorate(() => null),
+        ],
+        [
+            "userActions",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.members.addAction({ id: "a", label: "A", onSelect() {} }),
+        ],
+        [
+            "roomActions",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.rooms.addAction({ id: "r", label: "R", onSelect() {} }),
+        ],
+        [
+            "overlays",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.ui.addOverlay({ render() {} }),
+        ],
+        [
+            "callControls",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addControl({ id: "c", label: "C", onClick() {} }),
+        ],
+        [
+            "callPanels",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addPanel({ id: "p", title: "P", render() {} }),
+        ],
+        [
+            "callTileDecorations",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addTileDecoration({ id: "d", render() {} }),
+        ],
+    ] as const;
+
+    for (const [kind, add] of kinds) {
+        it(`${kind}: one registration adds one entry, disposeAll removes it`, () => {
+            const registry = createRegistryData();
+            const host = buildHostApi({
+                pluginId: "a",
+                manifest: { ...manifest("a"), capabilities: ["call"] },
+                registry,
+                appVersion: "1",
+            });
+            add(host);
+            expect(registry[kind].length).toBe(1);
+            expect(registry[kind][0].pluginId).toBe("a");
+            host.disposeAll();
+            expect(registry[kind].length).toBe(0);
+        });
+    }
+
+    it("registerRenderer refuses m.room.message and accepts a custom type", () => {
+        const registry = createRegistryData();
+        const host = buildHostApi({
+            pluginId: "a",
+            manifest: manifest("a"),
+            registry,
+            appVersion: "1",
+        });
+        expect(() =>
+            host.zam.messages.registerRenderer({
+                eventType: "m.room.message",
+                render() {},
+            }),
+        ).toThrow(/m\.room\.message/);
+        expect(registry.messageRenderers.length).toBe(0);
+        host.zam.messages.registerRenderer({
+            eventType: "com.example.x",
+            render() {},
+        });
+        expect(registry.messageRenderers.length).toBe(1);
+        expect(registry.messageRenderers[0].value.eventType).toBe(
+            "com.example.x",
+        );
+    });
+
+    it("ui.openPanel throws for a panel this plugin did not register", () => {
+        const host = buildHostApi({
+            pluginId: "a",
+            manifest: manifest("a"),
+            registry: createRegistryData(),
+            appVersion: "1",
+        });
+        expect(() => host.zam.ui.openPanel("missing")).toThrow(/missing/);
+    });
+});
+
+describe("buildHostApi — call and midi capabilities", () => {
+    const build = (capabilities?: string[]) =>
+        buildHostApi({
+            pluginId: "p",
+            manifest: { ...manifest("p"), name: "Plug", capabilities },
+            registry: createRegistryData(),
+            appVersion: "1",
+        });
+
+    it("call needs the call capability", async () => {
+        const { zam } = build();
+        await expect(zam.call.sendData("t", new Uint8Array(1))).rejects.toThrow(
+            /"call" capability/,
+        );
+        await expect(zam.call.publishDataTrack("t")).rejects.toThrow(
+            /"call" capability/,
+        );
+        expect(() => zam.call.onData("t", () => {})).toThrow(/capability/);
+        expect(() => zam.call.onDataTrack(() => {})).toThrow(/capability/);
+    });
+
+    it("midi needs the midi capability", async () => {
+        const { zam } = build();
+        await expect(zam.midi.openSynth()).rejects.toThrow(/"midi" capability/);
+        await expect(zam.midi.play(new ArrayBuffer(1))).rejects.toThrow(
+            /"midi" capability/,
+        );
     });
 });

@@ -532,6 +532,41 @@ export function clearDeliveredNativeNotifications(): void {
     PushNotifications.removeAllDeliveredNotifications().catch(() => {});
 }
 
+/** Java's String.hashCode(): the native service ids a room's notification with it. */
+function javaStringHash(s: string): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++)
+        h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+    return h;
+}
+
+/**
+ * Take down the Android notifications of rooms that have been read (here or on
+ * another device). MatrixMessagingService posts one per room, with the room id's
+ * hash as its id; a server that sends no "clear" push would otherwise leave
+ * them up after the messages were read.
+ */
+export async function dismissNativeRoomNotifications(
+    roomIds: readonly string[],
+): Promise<void> {
+    // Zami: the pushes the OS showed on iOS and Android, which carry their
+    // room in their data (Zami's push gateway).
+    if (ZAMI_NATIVE) return dismissExpoRoomNotifications(roomIds);
+    if (!Capacitor.isNativePlatform() || roomIds.length === 0) return;
+    try {
+        const wanted = new Set(roomIds.map((r) => String(javaStringHash(r))));
+        const { notifications } =
+            await PushNotifications.getDeliveredNotifications();
+        const hits = notifications.filter((n) => wanted.has(String(n.id)));
+        if (hits.length > 0)
+            await PushNotifications.removeDeliveredNotifications({
+                notifications: hits,
+            });
+    } catch {
+        /* best effort: a stale notification is not worth an error */
+    }
+}
+
 // ── Diagnostics queries (used by Settings → Debug Info) ─────────────────────
 
 export interface RegisteredPusher {
@@ -681,6 +716,13 @@ export const PUSH_APP_ID = APP_ID;
 // room the push names, through the shell's __matrixOpenRoom, as
 // MainActivity's taps do in Zam.
 
+// Zami: not ported: what MatrixMessagingService and sw.js do with a push's
+// event: invites naming the inviter and the room or space, with Accept and
+// Decline (the shell's __matrixInviteFromNotification), conversation
+// notifications with DM titles, avatars and pictures, Reply and Mark as read
+// (with the per-room receipt privacy), and the debug push log. An
+// event_id_only push doesn't say what its event is, so they need the
+// extension and background task above, which would fetch it.
 /** The alert the OS shows for a push: Expo message fields, for the gateway. */
 const ZAMI_EXPO_FIELDS: Record<string, unknown> = {
     body: GENERIC_NOTIFICATION_BODY,
@@ -816,6 +858,34 @@ async function initExpoPush(
         stopPushTokenListener();
         pushDebug.lastError = "Push registration failed: " + String(err);
         console.warn("[push] Push init failed - continuing without push.", err);
+    }
+}
+
+/** Take down the delivered pushes of rooms that have been read. */
+async function dismissExpoRoomNotifications(
+    roomIds: readonly string[],
+): Promise<void> {
+    if (roomIds.length === 0) return;
+    try {
+        const read = new Set(roomIds);
+        const presented = await Notifications.getPresentedNotificationsAsync();
+        await Promise.all(
+            presented
+                .filter(({ request }) => {
+                    const trigger = request.trigger as { type?: string } | null;
+                    const roomId = request.content.data?.room_id;
+                    return (
+                        trigger?.type === "push" &&
+                        typeof roomId === "string" &&
+                        read.has(roomId)
+                    );
+                })
+                .map(({ request }) =>
+                    Notifications.dismissNotificationAsync(request.identifier),
+                ),
+        );
+    } catch {
+        /* best effort: a stale notification is not worth an error */
     }
 }
 

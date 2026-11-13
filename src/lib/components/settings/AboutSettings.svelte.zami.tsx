@@ -34,6 +34,7 @@ import {
     downloadApk,
     apkDownloadInFlight,
     installApk,
+    installedBy,
     canInstall,
     openUnknownSourcesSettings,
 } from "$lib/androidUpdater";
@@ -162,6 +163,18 @@ export default function AboutSettings() {
                     ...s,
                     phase: "up-to-date",
                     version: result.latest,
+                }));
+                return;
+            }
+            // A store or package manager updates its own installs.
+            const manager = await installedBy();
+            if (manager) {
+                setAndroidStatus((s) => ({
+                    ...s,
+                    phase: "unsupported",
+                    version: result.latest,
+                    manual: "package-manager",
+                    manager,
                 }));
                 return;
             }

@@ -7,12 +7,18 @@
 // sync lands. See stores/customizationSync.svelte for the transport.
 import { t } from "$lib/i18n";
 import { MIN_SOUND_INTERVAL_MS } from "$lib/utils/soundboard";
+import {
+    parseReceiptOverrides,
+    type ReceiptOverride,
+} from "$lib/utils/receiptPrivacy";
 
 import { isPresenceState, type PresenceState } from "$lib/utils/presence";
+import { isDmSortOrder, type DmSortOrder } from "$lib/utils/roomOrdering";
 import {
     applyTheme,
     applyPreset,
     applyReduceMotion,
+    applyStreamerMode,
     normalizeTheme,
     themeColorsToCssText,
     type Theme,
@@ -177,6 +183,11 @@ function readSoundInterval(): number {
     return v === null ? MIN_SOUND_INTERVAL_MS : clampSoundInterval(Number(v));
 }
 
+function readDmSortOrder(): DmSortOrder {
+    const v = readAccountString("dmSortOrder");
+    return isDmSortOrder(v) ? v : "recent";
+}
+
 function readPresence(key: string, fallback: PresenceState): PresenceState {
     const v = readAccountString(key);
     return isPresenceState(v) ? v : fallback;
@@ -268,6 +279,10 @@ export const settingsState = $state({
     /** Debug: send and obey the order hint (matrix/orderHint). Default ON; off
      *  shows messages in the server's order, as Element does. */
     orderHints: readBool("orderHints", true),
+    /** Debug: announce our call membership as a sticky m.rtc.member (MSC4354)
+     *  instead of an m.call.member state event. Default OFF: clients that
+     *  only read state events won't see us in the call. */
+    stickyCallMembership: readBool("stickyCallMembership", false),
     /** Device-global: whether the packaged desktop/Android build auto-downloads
      *  updates. Default ON; the escape hatch is this toggle. */
     autoUpdateEnabled: readBool("autoUpdateEnabled", true),
@@ -306,6 +321,10 @@ export const settingsState = $state({
      *  computer are playing, from the system's now-playing info (SMTC/MPRIS).
      *  Needs richPresenceEnabled. Default OFF. */
     richPresenceMedia: readBool("richPresenceMedia", false),
+    /** Device-global (desktop only): report the Steam game being played and
+     *  its rich presence line, read through Steam's local debugging port.
+     *  Needs richPresenceEnabled. Default OFF. */
+    richPresenceSteam: readBool("richPresenceSteam", false),
     /** Device-global: render the read-receipt avatars under messages. Default
      *  ON (existing behaviour). Display only — it does not change whether we
      *  SEND receipts; that is `privateReadReceipts`. */
@@ -411,6 +430,17 @@ export const settingsState = $state({
      *  key into the ACTIVE account's scope and DELETE it, silently dropping the
      *  toggle for every other account on this device — with no error anywhere. */
     hideNotificationBody: readBool("hideNotificationBody", false),
+    /** Device-global: streamer mode. Blurs account identifiers and secrets
+     *  (`.streamer-hide`) and forces notification text off, so nothing private
+     *  lands on a live stream. Default OFF.
+     *
+     *  ⚠ Must stay readBool/writeBool (device-global), for the same reason as
+     *  hideNotificationBody. */
+    streamerMode: readBool("streamerMode", false),
+    /** Device-local master switch for notifications on THIS device: popups,
+     *  sound and push delivery. Off unregisters this device's pusher; other
+     *  devices and the account's push rules are untouched. */
+    deviceNotifications: readBool("deviceNotifications", true),
     /** Device-global: which notifications raise the OS pop-up and taskbar
      *  flash: "loud" (sound tweak only), "all" (loud + silent, the default) or
      *  "none". Device-local by design (readString/writeString, never scoped):
@@ -422,6 +452,11 @@ export const settingsState = $state({
     /** Send private read receipts (m.read.private): the server still tracks
      *  what you've read, but other users can't see it. Default is public. */
     privateReadReceipts: readAccountBool("privateReadReceipts", false),
+    /** Per-room / per-space overrides of `privateReadReceipts`, keyed by room
+     *  or space id (see utils/receiptPrivacy.ts). Absent = use the default. */
+    receiptOverrides: parseReceiptOverrides(
+        readAccountString("receiptOverrides"),
+    ),
     /** Tell other room members when you are typing. Default ON. Turning it
      *  off means no typing notification is ever sent (see sendTyping). */
     sendTypingIndicators: readAccountBool("sendTypingIndicators", true),
@@ -451,6 +486,11 @@ export const settingsState = $state({
     excludeInsecureDevices: readAccountBool("excludeInsecureDevices", false),
     /** Presence advertised to the homeserver (Settings → Account). */
     ownPresence: readPresence("ownPresence", "online"),
+    /** Do Not Disturb: silences notifications and ringing on every device
+     *  (the account's master push rule) and shows as idle to others. */
+    doNotDisturb: readAccountBool("doNotDisturb", false),
+    /** How untagged DMs are ordered (the DM list's header menu). */
+    dmSortOrder: readDmSortOrder(),
     /** The presence status_msg we last mirrored our profile status into. A
      *  presence update without a status_msg clears it on some servers, so it
      *  is re-sent with every presence change. */
@@ -529,6 +569,14 @@ export const settingsState = $state({
     /** Ask the SFU for video sized to the tile showing it, and pause video
      *  that isn't on screen (LiveKit adaptiveStream). Read at join. */
     adaptiveStream: readAccountBool("adaptiveStream", false),
+    /** Peer-to-peer calls (MSC4575) only through the homeserver's TURN
+     *  server, so the others see its address instead of ours. Read when a
+     *  connection is made. */
+    meshRelayOnly: readAccountBool("meshRelayOnly", false),
+    /** When the homeserver offers no TURN/STUN server: let peer-to-peer
+     *  calls ask a public STUN server (meshPolicy PUBLIC_STUN_URL) for our
+     *  public address. Off until the user says yes. */
+    meshPublicStun: readAccountBool("meshPublicStun", false),
     callSoundsEnabled: readAccountBool("callSoundsEnabled", true),
     callSoundsVolume: readAccountNumber("callSoundsVolume", 0.5),
     /** Ring for incoming DM calls. Deliberately independent of
@@ -575,6 +623,7 @@ writeString("themeVars", themeColorsToCssText(bootColors));
 // element so CSS suppression is live before first paint, not only after a
 // toggle. The OS media query works independently of this attribute.
 applyReduceMotion(settingsState.reduceMotion);
+applyStreamerMode(settingsState.streamerMode);
 
 // Boot apply: the user's own stylesheet, unless the URL asks for none.
 applyCustomCss();
@@ -781,6 +830,9 @@ export function reloadAccountSettings(): void {
         "privateReadReceipts",
         false,
     );
+    settingsState.receiptOverrides = parseReceiptOverrides(
+        readAccountString("receiptOverrides"),
+    );
     settingsState.sendTypingIndicators = readAccountBool(
         "sendTypingIndicators",
         true,
@@ -801,6 +853,8 @@ export function reloadAccountSettings(): void {
         false,
     );
     settingsState.ownPresence = readPresence("ownPresence", "online");
+    settingsState.doNotDisturb = readAccountBool("doNotDisturb", false);
+    settingsState.dmSortOrder = readDmSortOrder();
     settingsState.ownStatusMessage =
         readAccountString("ownStatusMessage") ?? "";
     settingsState.audioInputDeviceId =
@@ -851,6 +905,8 @@ export function reloadAccountSettings(): void {
         readAccountString("callVideoCodec"),
     );
     settingsState.adaptiveStream = readAccountBool("adaptiveStream", false);
+    settingsState.meshRelayOnly = readAccountBool("meshRelayOnly", false);
+    settingsState.meshPublicStun = readAccountBool("meshPublicStun", false);
     settingsState.callSoundsEnabled = readAccountBool(
         "callSoundsEnabled",
         true,
@@ -934,6 +990,11 @@ export function setOrderHints(value: boolean): void {
     writeBool("orderHints", value);
 }
 
+export function setStickyCallMembership(value: boolean): void {
+    settingsState.stickyCallMembership = value;
+    writeBool("stickyCallMembership", value);
+}
+
 export function setAutoUpdateEnabled(value: boolean): void {
     settingsState.autoUpdateEnabled = value;
     writeBool("autoUpdateEnabled", value);
@@ -998,6 +1059,11 @@ export function setRichPresenceScan(value: boolean): void {
 export function setRichPresenceMedia(value: boolean): void {
     settingsState.richPresenceMedia = value;
     writeBool("richPresenceMedia", value);
+}
+
+export function setRichPresenceSteam(value: boolean): void {
+    settingsState.richPresenceSteam = value;
+    writeBool("richPresenceSteam", value);
 }
 
 /** Device-local: pictures already uploaded for rich presence, by source
@@ -1192,6 +1258,23 @@ export function setHideNotificationBody(value: boolean): void {
     writeBool("hideNotificationBody", value);
 }
 
+export function setStreamerMode(value: boolean): void {
+    settingsState.streamerMode = value;
+    writeBool("streamerMode", value);
+    applyStreamerMode(value);
+}
+
+/** Whether notification text must be withheld: the explicit setting, or
+ *  streamer mode. Every notification producer reads this, never the raw flag. */
+export function notificationBodyHidden(): boolean {
+    return settingsState.hideNotificationBody || settingsState.streamerMode;
+}
+
+export function setDeviceNotifications(value: boolean): void {
+    settingsState.deviceNotifications = value;
+    writeBool("deviceNotifications", value);
+}
+
 export function setDesktopAlertMode(value: DesktopAlertMode): void {
     const next = normalizeDesktopAlertMode(value);
     settingsState.desktopAlertMode = next;
@@ -1207,6 +1290,18 @@ export function setKeepSidebarOpen(value: boolean): void {
 export function setPrivateReadReceipts(value: boolean): void {
     settingsState.privateReadReceipts = value;
     writeAccountBool("privateReadReceipts", value);
+}
+
+/** Set (or, with null, clear) a room's or space's read-receipt override. */
+export function setReceiptOverride(
+    id: string,
+    value: ReceiptOverride | null,
+): void {
+    const next = { ...settingsState.receiptOverrides };
+    if (value) next[id] = value;
+    else delete next[id];
+    settingsState.receiptOverrides = next;
+    writeAccountString("receiptOverrides", JSON.stringify(next));
 }
 
 export function setSendTypingIndicators(value: boolean): void {
@@ -1241,6 +1336,16 @@ export function setExcludeInsecureDevices(value: boolean): void {
 export function setOwnStatusMessageSetting(value: string): void {
     settingsState.ownStatusMessage = value;
     writeAccountString("ownStatusMessage", value);
+}
+
+export function setDoNotDisturbSetting(value: boolean): void {
+    settingsState.doNotDisturb = value;
+    writeAccountBool("doNotDisturb", value);
+}
+
+export function setDmSortOrder(value: DmSortOrder): void {
+    settingsState.dmSortOrder = value;
+    writeAccountString("dmSortOrder", value);
 }
 
 export function setOwnPresenceSetting(value: PresenceState): void {
@@ -1440,6 +1545,16 @@ export function setBlockedDecodeCodecs(codecs: readonly VideoCodec[]): void {
 export function setCallVideoCodec(value: string): void {
     settingsState.callVideoCodec = normalizeCallVideoCodec(value);
     writeAccountString("callVideoCodec", settingsState.callVideoCodec);
+}
+
+export function setMeshRelayOnly(value: boolean): void {
+    settingsState.meshRelayOnly = value;
+    writeAccountBool("meshRelayOnly", value);
+}
+
+export function setMeshPublicStun(value: boolean): void {
+    settingsState.meshPublicStun = value;
+    writeAccountBool("meshPublicStun", value);
 }
 
 export function setAdaptiveStream(value: boolean): void {

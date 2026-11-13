@@ -81,6 +81,9 @@
       "*/**/*.woff2": {
         "when": "$(basename).zami.woff2"
       },
+      "*/**/*.yml": {
+        "when": "$(basename).zami.yml"
+      },
       "*/**/LICENSE_APACHE": {
         "when": "$(basename).zami"
       },

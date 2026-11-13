@@ -5,6 +5,10 @@ import {
     roomTagKind,
     groupRoomsByTag,
     sortRoomsByTag,
+    byRecency,
+    dmComparator,
+    isDmSortOrder,
+    type DmSortFacts,
     tagUpdatesForToggle,
     tagOrderRollback,
     type RoomTagMap,
@@ -271,5 +275,132 @@ describe("tagOrderRollback", () => {
         expect(tagOrderRollback(["a"], [0.1], 5)).toEqual([
             { roomId: "a", order: 0.1 },
         ]);
+    });
+});
+
+describe("sortRoomsByTag with a normal-room comparator", () => {
+    const tagsOf: Record<string, RoomTagMap> = {
+        fav: { "m.favourite": { order: 0.5 } },
+        low: { "m.lowpriority": { order: 0.5 } },
+    };
+    const ts: Record<string, number | null> = {
+        old: 100,
+        new: 300,
+        mid: 200,
+        none: null,
+        fav: 1,
+        low: 999,
+    };
+    const sorted = (ids: string[]) =>
+        sortRoomsByTag(
+            ids,
+            (id) => tagsOf[id] ?? {},
+            byRecency((id) => ts[id]),
+        );
+
+    it("puts the newest untagged room first, unknown times last", () => {
+        expect(sorted(["none", "old", "new", "mid"])).toEqual([
+            "new",
+            "mid",
+            "old",
+            "none",
+        ]);
+    });
+
+    it("keeps favourites first and low priority last whatever their age", () => {
+        expect(sorted(["low", "old", "fav", "new"])).toEqual([
+            "fav",
+            "new",
+            "old",
+            "low",
+        ]);
+    });
+
+    it("keeps the input order without a comparator", () => {
+        expect(sortRoomsByTag(["b", "a"], () => ({}))).toEqual(["b", "a"]);
+    });
+});
+
+describe("dmComparator", () => {
+    const facts: Record<string, DmSortFacts> = {
+        alice: {
+            lastMessageTs: 100,
+            unread: false,
+            presence: "offline",
+            name: "alice",
+        },
+        bob: {
+            lastMessageTs: 300,
+            unread: false,
+            presence: "unavailable",
+            name: "Bob",
+        },
+        carol: {
+            lastMessageTs: 200,
+            unread: true,
+            presence: "online",
+            name: "carol",
+        },
+        dave: {
+            lastMessageTs: 50,
+            unread: true,
+            presence: "busy",
+            name: "Dave",
+        },
+        erin: {
+            lastMessageTs: 400,
+            unread: false,
+            presence: "org.matrix.weird",
+            name: "erin",
+        },
+    };
+    const ids = Object.keys(facts);
+    const sortBy = (order: Parameters<typeof dmComparator>[0]) =>
+        [...ids].sort(dmComparator(order, (id: string) => facts[id]));
+
+    it("recent: newest message first", () => {
+        expect(sortBy("recent")).toEqual([
+            "erin",
+            "bob",
+            "carol",
+            "alice",
+            "dave",
+        ]);
+    });
+
+    it("unread: unread first, each group newest first", () => {
+        expect(sortBy("unread")).toEqual([
+            "carol",
+            "dave",
+            "erin",
+            "bob",
+            "alice",
+        ]);
+    });
+
+    it("online: online, busy, away, then offline and unknown by recency", () => {
+        expect(sortBy("online")).toEqual([
+            "carol",
+            "dave",
+            "bob",
+            "erin",
+            "alice",
+        ]);
+    });
+
+    it("name: case-insensitive A–Z", () => {
+        expect(sortBy("name")).toEqual([
+            "alice",
+            "bob",
+            "carol",
+            "dave",
+            "erin",
+        ]);
+    });
+
+    it("validates stored values", () => {
+        expect(isDmSortOrder("online")).toBe(true);
+        expect(isDmSortOrder("bogus")).toBe(false);
+        expect(isDmSortOrder(null)).toBe(false);
     });
 });

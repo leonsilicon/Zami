@@ -39,6 +39,7 @@ import {
 import Svg, { Circle, G, Line, Path } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 import {
+    DomMount,
     Html,
     Image,
     Portal,
@@ -68,6 +69,7 @@ import Avatar from "$lib/components/ui/Avatar.svelte";
 import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
 import PollBody from "$lib/components/messages/PollBody.svelte";
 import FileOfferCard from "$lib/components/messages/FileOfferCard.svelte";
+import GameInviteCard from "$lib/components/messages/GameInviteCard.svelte";
 import MessageVideo from "$lib/components/messages/MessageVideo.svelte";
 import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
@@ -98,13 +100,14 @@ import MessageRedactAction, {
     type MessageRedactActionHandle,
 } from "$lib/components/messages/MessageRedactAction.svelte";
 import MessageActionsSheet from "$lib/components/messages/MessageActionsSheet.svelte";
+import ViewSourceDialog from "$lib/components/messages/ViewSourceDialog.svelte";
 import {
     messageActionsMenu,
     type MessageActionKey,
 } from "$lib/utils/messageActionsMenu";
 import EventShield from "./EventShield.svelte";
 import MessageDecorations from "$lib/components/messages/MessageDecorations.svelte";
-import { Check, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
+import { Check, Code, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
 import Reactions from "$lib/components/messages/Reactions.svelte";
 import ReactorPopover from "./ReactorPopover.svelte";
 import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
@@ -131,6 +134,7 @@ import {
     resendMessage,
     deleteFailedMessage,
     getRoom,
+    isRoomCachedOnly,
     getMessageShareLink,
     joinRoom,
     seedRoomStateIfMissing,
@@ -162,6 +166,7 @@ import { describeJoinTarget, needsJoinConsent } from "$lib/utils/joinConsent";
 import { requestJoinConsent } from "$lib/stores/joinConsent.svelte";
 import { isPollStartEventType } from "$lib/utils/pollContent";
 import { isFileOfferEventType } from "$lib/utils/fileTransfer";
+import { gameInviteOf } from "$lib/utils/gameInvite";
 import { isCallEventType, type CallSummary } from "$lib/utils/callSummary";
 import { mayRedactEvent } from "$lib/utils/redaction";
 import { isVerificationRequestMessage } from "$lib/utils/verificationMessage";
@@ -172,7 +177,11 @@ import { isTrackerAttachment, trackerUrlToWavUrl } from "$lib/utils/tracker";
 import { reservedMediaBox, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
 import { videoPoster } from "$lib/utils/roomMedia";
-import { utdPlaceholderText } from "$lib/utils/encryptionState";
+import {
+    DECRYPTING_MESSAGE_TEXT,
+    isDecryptionPending,
+    utdPlaceholderText,
+} from "$lib/utils/encryptionState";
 import { canRequestRoomKeys, requestRoomKeys } from "$lib/matrix/keyBackfill";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import { getEventShield, isRoomEncrypted } from "$lib/matrix/crypto";
@@ -196,6 +205,8 @@ import {
     type PluginMessageActionView,
 } from "$lib/utils/pluginMessageActions";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { findRenderer } from "$lib/plugins/pluginRenderers";
+import { pluginMount } from "$lib/plugins/pluginMount";
 
 import { messagesState } from "$lib/stores/messages.svelte";
 import {
@@ -205,7 +216,11 @@ import {
 } from "$lib/stores/rooms.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { securityState } from "$lib/stores/security.svelte";
-import { messageTimestamp, timeOnly } from "$lib/utils/timeFormat";
+import {
+    fullTimestamp,
+    messageTimestamp,
+    timeOnly,
+} from "$lib/utils/timeFormat";
 import { renderHtml } from "$lib/utils/twemoji";
 import { sanitizeMatrixHtml } from "$lib/utils/sanitizeHtml";
 import { renderMessageTimestamps } from "$lib/utils/timestampMarkup";
@@ -213,8 +228,11 @@ import {
     isFavouriteGif,
     addFavouriteGif,
     removeFavouriteGif,
+    favouriteSize,
     favouritesState,
+    favouriteUrlForMxc,
 } from "$lib/stores/favourites.svelte";
+import { parseMxc } from "$lib/utils/mxcUri";
 import {
     interfaceState,
     openModal,
@@ -224,7 +242,7 @@ import {
 } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
 import { nameColourFor } from "$lib/stores/profileFields.svelte";
-import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { isDoubleTap, type TapPoint } from "$lib/utils/doubleTap";
 import {
@@ -500,6 +518,7 @@ function MessageItem({
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const [pinning, setPinning] = useState(false);
     const [showForwardDialog, setShowForwardDialog] = useState(false);
+    const [showViewSourceDialog, setShowViewSourceDialog] = useState(false);
 
     // Zami: no INTERACTIVE_TARGET_SELECTOR: a touch on a link, button or other
     // pressable inside the row is that element's (the responder system gives it
@@ -597,6 +616,9 @@ function MessageItem({
         interfaceState.selectedMessageId = null;
     }
 
+    // A long-press always opens the full actions sheet (see the longPress
+    // action on the row), so the tap/hold setting only decides whether a tap
+    // brings up the quick action bar.
     function handleRowGesture(kind: "tap" | "hold") {
         if (!interfaceState.isTouchscreen) return;
         if (!shouldOpenMessageMenu(menuMode, kind)) return;
@@ -717,12 +739,15 @@ function MessageItem({
         handleRowGesture("tap");
     }
 
-    // Zami: `use:longPress` (500 ms, 50 ms vibrate), offered only in hold mode,
-    // as its `shouldStart` gate. Pressable's own hold timer cancels on a move.
+    // Zami: `use:longPress` (500 ms, 50 ms vibrate), offered on a
+    // touchscreen while not editing, as its `shouldStart` gate. Pressable's own
+    // hold timer cancels on a move. An image embed is its own Pressable, which
+    // takes the same hold (onLongPress below), as upstream's gate lets a hold
+    // on an <img> through.
     function onRowLongPress() {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         previousTap.current = null;
-        handleRowGesture("hold");
+        openActionsSheet();
     }
 
     const [showReportDialog, setShowReportDialog] = useState(false);
@@ -854,6 +879,10 @@ function MessageItem({
     const [emojiPickerBelow, setEmojiPickerBelow] = useState(false);
     const reactionBtnEl = useRef<HostInstance>(null);
     const [isEditing, setIsEditing] = useState(false);
+    // Zami: the row's (and an image embed's) hold, `use:longPress`'s
+    // `shouldStart` gate.
+    const rowLongPress =
+        isTouchscreen && !isEditing ? onRowLongPress : undefined;
     const editFromKeyboard = useRef(false);
     const [editText, setEditText] = useState("");
     const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -982,6 +1011,24 @@ function MessageItem({
     const eventType = event.getType();
 
     const msgtype: string = content?.msgtype ?? "";
+
+    // An encrypted envelope nobody has decided yet (a cached replay before the
+    // background decryption pass reaches it, or an attempt in flight) is NOT a
+    // failure. It gets a neutral row; the missing-keys copy is reserved for
+    // events whose decryption actually failed.
+    const decryptionPending = useRune(() => {
+        void messagesState.timelineTick;
+        // Rooms tick too: a cached-only room stops being cached when sync
+        // publishes the live rooms, which changes the answer below.
+        void roomsState.roomsTick;
+        if (!isDecryptionPending(eventType, event.decryptionFailureReason))
+            return false;
+        // Only promise progress where something will actually attempt it: an
+        // attempt already in flight, or a cached room whose background pass is
+        // still coming. A live event that nobody is decrypting (crypto never
+        // started) keeps the UTD copy instead of an eternal spinner.
+        return event.isBeingDecrypted() || isRoomCachedOnly(room.roomId);
+    }, [event, eventType, room]);
 
     // Still encrypted, or failed to decrypt: a failure swaps in an
     // m.room.message stand-in (msgtype m.bad.encrypted) whose body is the
@@ -1204,10 +1251,57 @@ function MessageItem({
         setShowActionsSheet(true);
     }
 
+    function openViewSourceDialog() {
+        slotToken.current = openModal("view-source", () => {
+            setShowViewSourceDialog(false);
+        });
+        setShowViewSourceDialog(true);
+    }
+
+    async function copyMessageText() {
+        try {
+            // Zami: expo-clipboard for navigator.clipboard.
+            await Clipboard.setStringAsync(copyableText);
+            showToast(t("messageActionsMenu.textCopied"), { tone: "accent" });
+        } catch {
+            showErrorToast(t("messageActionsMenu.couldnTCopyText"));
+        }
+    }
+
+    // Report/redact/delete live in the hover action bar on desktop, which is
+    // only mounted while the row is hovered, focused or pinned. A native menu
+    // pick can land after the pointer has left, so mount it before driving it.
+    // Zami: React applies both state updates in the same render.
+    function mountBarThen(run: () => void) {
+        setRowHovered(true);
+        run();
+    }
+
     function handleActionChoose(key: MessageActionKey) {
         // The sheet has already released the modal slot (it closes before
         // choosing), so report/redact are free to claim it via show().
         switch (key) {
+            case "react":
+                // Zami: the row's top in the window, measured after the
+                // picker opens.
+                setEmojiPickerBelow(false);
+                rootEl.current?.measureInWindow((_x, top) =>
+                    setEmojiPickerBelow((top ?? 400) < 400),
+                );
+                openReactionPicker();
+                break;
+            case "reply":
+                onReply(event);
+                break;
+            case "forward":
+                openForwardDialog();
+                break;
+            case "copy-text":
+                void copyMessageText();
+                break;
+            case "view-source":
+                openViewSourceDialog();
+                break;
             case "thread":
                 onOpenThread?.(threadRootId);
                 break;
@@ -1220,6 +1314,8 @@ function MessageItem({
             case "copy-link":
                 void copyMessageLink();
                 break;
+            // Zami: only the touch sheet chooses here (the desktop right-click
+            // menu isn't ported), so report/redact drive the touch instances.
             case "report":
                 showTouchDialog("report");
                 break;
@@ -1227,6 +1323,12 @@ function MessageItem({
                 showTouchDialog("redact");
                 break;
             case "delete":
+                // The touch sheet has already confirmed; desktop confirms in
+                // the action bar, like its own delete button.
+                if (!interfaceState.isTouchscreen) {
+                    mountBarThen(() => setConfirmingDelete(true));
+                    break;
+                }
                 deleteMessage(room.roomId, eventId).catch((err) => {
                     console.error("[MessageItem] delete failed", err);
                     showErrorToast(t("messageItem.couldnTDeleteTheMessage"));
@@ -1234,6 +1336,11 @@ function MessageItem({
                 break;
         }
     }
+
+    // Desktop right-click: hand the native menu this row's actions (plugin
+    // actions before the destructive rows) and run whichever one is picked.
+    // Zami: not ported: onRowContextMenu (publishMessageMenu), the Electron
+    // context menu. A touchscreen's long-press opens the actions sheet.
 
     function handlePluginAction(key: string) {
         const view = pluginActionViews.find((v) => v.key === key);
@@ -1251,6 +1358,21 @@ function MessageItem({
 
     const isPoll = isPollStartEventType(eventType);
     const isFileOffer = isFileOfferEventType(eventType);
+    // A text message that carries a game invite under Zam's key. Read from the
+    // original content, and never from an edit: an edit cannot add or change it.
+    const gameInvite =
+        eventType === "m.room.message" &&
+        event.getRelation()?.rel_type !== "m.replace"
+            ? gameInviteOf(event.getOriginalContent())
+            : null;
+    // A plugin's message renderer for this event (first registered wins).
+    // Zami: read in `rowState` (readPluginHooks).
+    const pluginRenderer = rowState.pluginRenderer;
+    // Remount a plugin's view only when the event's content really changes
+    // (an edit), not on every reaction or receipt that re-runs `content`.
+    const pluginRenderKey = pluginRenderer
+        ? `${eventId}:${JSON.stringify(content ?? {})}`
+        : "";
     const isCallEvent = isCallEventType(eventType);
     // In-room verification requests ride in as m.room.message; their plain-text
     // body claims this client can't do in-chat verification (it can), so they
@@ -1450,6 +1572,19 @@ function MessageItem({
             [mediaFilename, content?.body as string | undefined].some((n) =>
                 (n ?? "").trim().toLowerCase().endsWith(".gif"),
             ));
+
+    // Whether this uploaded image is a WebP. The "send GIFs as animated WebP"
+    // setting turns a GIF into one, named *.webp, so it can still be starred.
+    const isWebp =
+        msgtype === "m.image" &&
+        (((content?.info as { mimetype?: string } | undefined)?.mimetype ?? "")
+            .trim()
+            .toLowerCase() === "image/webp" ||
+            [mediaFilename, content?.body as string | undefined].some((n) =>
+                (n ?? "").trim().toLowerCase().endsWith(".webp"),
+            ));
+    // Whether this image can be starred as a favourite GIF.
+    const canFavouriteImage = isGif || isWebp;
 
     const isSvgImage =
         msgtype === "m.image" &&
@@ -2030,14 +2165,33 @@ function MessageItem({
         () => ({ roomId: room.roomId, eventId }),
         [room.roomId, eventId],
     );
-    // Zami: only a GIF can be a favourite, and only the tile's hover star shows
-    // whether it is one, so that star (GifFavouriteStar) reads the list, and
-    // no other row does.
-    const imageFavouriteKey = isGif
+    /** An mxc URI from event content, or undefined. */
+    function validMxc(value: unknown): string | undefined {
+        return typeof value === "string" && parseMxc(value) ? value : undefined;
+    }
+
+    // The media's mxc, whichever kind of image this is. A message that reuses
+    // a starred GIF's media carries the same mxc, so it matches that favourite.
+    const encryptedMxc = validMxc(
+        (content?.file as { url?: unknown } | undefined)?.url,
+    );
+    const imageMediaMxc = validMxc(content?.url) ?? encryptedMxc;
+    // Zami: only a GIF or WebP can be a favourite, and only the tile's hover
+    // star shows whether it is one, so that star (GifFavouriteStar) reads the
+    // list, and no other row does.
+    const imageFavouriteKey = canFavouriteImage
         ? (imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource))
         : null;
 
     function toggleImageFavourite() {
+        // Remove the favourite of this media first, whichever message starred it.
+        const byMedia = imageMediaMxc
+            ? favouriteUrlForMxc(imageMediaMxc)
+            : undefined;
+        if (byMedia !== undefined) {
+            removeFavouriteGif(byMedia);
+            return;
+        }
         const full = imageFullUrl();
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
@@ -2047,13 +2201,23 @@ function MessageItem({
                     url: key,
                     previewUrl: key,
                     source: encryptedFavouriteSource,
+                    ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
         }
         if (isFavouriteGif(full)) {
             removeFavouriteGif(full);
         } else {
-            addFavouriteGif({ url: full, previewUrl: imageThumbUrl() ?? full });
+            addFavouriteGif({
+                url: full,
+                previewUrl: imageThumbUrl() ?? full,
+                // Kept so a GIF sent from the picker goes out under its name.
+                ...(typeof mediaFilename === "string" && mediaFilename
+                    ? { name: mediaFilename }
+                    : {}),
+                ...favouriteSize(imgInfoW, imgInfoH),
+            });
         }
     }
 
@@ -2085,22 +2249,43 @@ function MessageItem({
                 ? "open"
                 : "reply"
             : null;
-    // The overflow rows for THIS message, gated exactly like the desktop
-    // buttons. Drives the mobile ⋯ sheet only; desktop keeps every button
-    // inline.
+    // Plain text a "Copy message text" action and the sheet's preview use:
+    // the message's text (or a media caption), never a bare file name.
+    const copyableText = (() => {
+        if (eventType !== "m.room.message" || isFailed) return "";
+        const textual =
+            msgtype === "m.text" ||
+            msgtype === "m.notice" ||
+            msgtype === "m.emote" ||
+            hasCaption();
+        return textual ? body().trim() : "";
+    })();
+    // Every action this message offers, with full names. Drives the mobile ⋯
+    // / long-press sheet and the desktop right-click menu; the hover bar keeps
+    // its icon buttons for the everyday ones.
     const overflowRows = useMemo(
         () =>
             messageActionsMenu({
+                canReact: eventId.startsWith("$") && !isFailed,
+                canReply: true,
+                canForward:
+                    (eventType === "m.room.message" ||
+                        eventType === "m.sticker") &&
+                    !isFailed,
+                canCopyText: copyableText.length > 0,
                 canEdit: canEditMessage,
                 thread: threadAction,
                 canPin,
                 isPinned,
                 hasLink: eventId.startsWith("$") && !isFailed,
+                canViewSource: true,
                 canReport: !isOwnMessage && !isFailed,
                 canRedact: !isOwnMessage && !isFailed && canRedact,
                 canDelete: isOwnMessage,
             }),
         [
+            eventType,
+            copyableText,
             canEditMessage,
             threadAction,
             canPin,
@@ -2138,18 +2323,31 @@ function MessageItem({
         return extractEventPermalinks(body(), formattedBody());
     }, [msgtype, body, formattedBody]);
 
-    // Extract http/https URLs from the plain body for link previews
-    const linkedUrls = useMemo(() => {
-        if (msgtype !== "m.text") return [];
-        const matches = body().match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
+    /** The http/https URLs in `text` worth a link preview. */
+    function previewableUrls(text: string): string[] {
+        const matches = text.match(/https?:\/\/[^\s<>"')\]]+/g) ?? [];
         return [...new Set(matches)].filter((url) => {
             const target = parseMatrixLink(url);
             return !(target && target.kind !== "user" && target.eventId);
         });
+    }
+
+    // Extract http/https URLs from the plain body for link previews
+    const linkedUrls = useMemo(() => {
+        if (msgtype !== "m.text") return [];
+        return previewableUrls(body());
     }, [msgtype, body]);
+
+    // A media caption gets the same previews, shown under it. Without a caption
+    // `body` is only the file name, which is not text to preview.
+    const captionLinkedUrls = useMemo(
+        () => (hasCaption() ? previewableUrls(body()) : []),
+        [hasCaption, body],
+    );
     // Zami: the setting is read in `rowState`.
     const linkPreviewsEnabled =
-        linkedUrls.length > 0 && rowState.linkPreviewsEnabled;
+        (linkedUrls.length > 0 || captionLinkedUrls.length > 0) &&
+        rowState.linkPreviewsEnabled;
 
     // True if the body text consists entirely of emoji + whitespace (no other characters)
     const emojiOnly = useMemo(() => {
@@ -2603,7 +2801,16 @@ function MessageItem({
     function mediaCaption() {
         if (isEditing) return editBox();
         if (!hasCaption()) return null;
-        return bodyWithTrailing(bodyHtml, bodyTextClass, 0);
+        return (
+            <>
+                {bodyWithTrailing(bodyHtml, bodyTextClass, 0)}
+                {linkPreviewsEnabled
+                    ? captionLinkedUrls.map((url) => (
+                          <LinkPreview key={url} url={url} />
+                      ))
+                    : null}
+            </>
+        );
     }
 
     // Message body
@@ -2615,6 +2822,51 @@ function MessageItem({
         }
         if (isPoll) return <PollBody event={event} room={room} />;
         if (isFileOffer) return <FileOfferCard event={event} />;
+        if (gameInvite) return <GameInviteCard invite={gameInvite} />;
+        if (pluginRenderer && !decryptionPending && !isUtd) {
+            const r = pluginRenderer;
+            const ctx = {
+                roomId: room.roomId,
+                eventId,
+                sender: senderId,
+                type: eventType,
+                content: { ...(content ?? {}) },
+                timestamp,
+                isOwn: isOwnMessage,
+            };
+            // Zami: the plugin builds DOM into the element (pluginMount), which
+            // DomMount shows, as LinkPreview does for a plugin embed; Html's
+            // `.message-body` text classes are the view's.
+            return (
+                <DomMount
+                    key={pluginRenderKey}
+                    textClassName={bodyTextClass}
+                    resolveMxc={mxcToHttp}
+                    document={document}
+                    mount={(el) =>
+                        pluginMount(el, (e) => r.render(e, ctx)).destroy
+                    }
+                />
+            );
+        }
+        if (decryptionPending) {
+            // Encrypted, not attempted/failed yet. Neutral copy: the
+            // missing-keys line would be a claim we cannot make until the
+            // decryption attempt actually fails. When it finishes the
+            // decryption tick re-runs this derived timeline and the row
+            // swaps to real content (or to the UTD branch below).
+            return (
+                <Pulse className="flex-row items-center gap-1.5">
+                    <Lock
+                        size={14}
+                        className="flex-shrink-0 text-discord-textMuted"
+                    />
+                    <Text className="text-sm italic text-discord-textMuted leading-relaxed">
+                        {DECRYPTING_MESSAGE_TEXT}
+                    </Text>
+                </Pulse>
+            );
+        }
         if (isUtd) {
             // E2EE UTD (unable-to-decrypt) placeholder. The row chrome
             // (avatar / sender / timestamp) is cleartext; only the body is
@@ -2701,6 +2953,8 @@ function MessageItem({
                                         mediaFilename || undefined
                                     }
                                     onPress={openImageUpload}
+                                    onLongPress={rowLongPress}
+                                    delayLongPress={500}
                                     style={
                                         imageBox
                                             ? boxStyle(imageBox)
@@ -2808,6 +3062,8 @@ function MessageItem({
                                 accessibilityRole="imagebutton"
                                 accessibilityLabel={mediaFilename || undefined}
                                 onPress={openImageUpload}
+                                onLongPress={rowLongPress}
+                                delayLongPress={500}
                                 className="w-full h-full"
                             >
                                 <Image
@@ -2833,9 +3089,10 @@ function MessageItem({
                             </Pressable>
                             {/* Zami: the GIF star shows on hover, which touch
                                 doesn't have: there the viewer offers it. */}
-                            {isGif && !isTouchscreen ? (
+                            {canFavouriteImage && !isTouchscreen ? (
                                 <GifFavouriteStar
                                     favouriteKey={imageFavouriteKey}
+                                    mediaMxc={imageMediaMxc}
                                     onPress={toggleImageFavourite}
                                 />
                             ) : null}
@@ -2873,7 +3130,7 @@ function MessageItem({
                             preview={file ? imagePreview : null}
                             dims={{ w: imgInfoW, h: imgInfoH }}
                             favourite={
-                                !isGif
+                                !canFavouriteImage
                                     ? undefined
                                     : file
                                       ? {
@@ -2884,11 +3141,14 @@ function MessageItem({
                                                 encryptedFavouriteSource,
                                             ),
                                             source: encryptedFavouriteSource,
+                                            mxc: encryptedMxc,
                                         }
                                       : full
                                         ? {
                                               url: full,
                                               previewUrl: thumb ?? full,
+                                              mxc: imageMediaMxc,
+                                              name: mediaFilename || undefined,
                                           }
                                         : undefined
                             }
@@ -3083,6 +3343,39 @@ function MessageItem({
         );
     }
 
+    // The long-press sheet's preview: the same body markup the chat log
+    // renders (formatting, emoji, emote prefix, edited mark), so the sheet shows
+    // the message as it looks in the timeline.
+    // Zami: `{#snippet sheetPreviewBody()}`; the emote's name goes into Html's
+    // markup as in messageBody. Not ported: `use:spoilers`, as in the body,
+    // and selecting part of it (Html's text isn't selectable; the sheet's
+    // "Copy message text" copies all of it).
+    function sheetPreviewBody(): ReactNode {
+        const html =
+            msgtype === "m.emote"
+                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                : bodyHtml;
+        return (
+            <View className="flex-row flex-wrap items-end">
+                <Html
+                    html={html}
+                    className={`text-sm text-discord-textPrimary leading-relaxed${
+                        emojiOnly ? " emoji-only" : ""
+                    }${msgtype === "m.emote" ? " italic" : ""}${
+                        msgtype === "m.notice" ? " opacity-70" : ""
+                    }`}
+                    resolveMxc={mxcToHttp}
+                    onLinkPress={matrixLinks}
+                />
+                {isEdited ? (
+                    <Text className="text-xs text-discord-textMuted ms-1 leading-relaxed">
+                        {t("messageItem.edited")}
+                    </Text>
+                ) : null}
+            </View>
+        );
+    }
+
     // Zami: the receipt cluster's padding gutter on touch and the right-aligned
     // layout, as upstream's class toggles.
     const reactionsClass = `${
@@ -3124,7 +3417,7 @@ function MessageItem({
                 setRowHovered(false);
             }}
             onPress={onRowPress}
-            onLongPress={menuMode === "hold" ? onRowLongPress : undefined}
+            onLongPress={rowLongPress}
             delayLongPress={500}
         >
             <SwipeShift store={swipe}>
@@ -3413,6 +3706,10 @@ function MessageItem({
                             bubble.alignOwn ? "start-4" : "end-4"
                         }`}
                     >
+                        {/* Zami: not ported: receiptGlide (an avatar gliding
+                            from the message its receipt left). It measures DOM
+                            rects across rows and animates with the Web
+                            Animations API; each avatar here just appears. */}
                         {receiptCluster.shown.map((r) => (
                             <Avatar
                                 key={r.userId}
@@ -3677,6 +3974,17 @@ function MessageItem({
                             )}
                         </ActionButton>
                     ) : null}
+                    {!isTouchscreen ? (
+                        <ActionButton
+                            label={t("messageItem.viewSource")}
+                            onPress={openViewSourceDialog}
+                        >
+                            <Code
+                                size={16}
+                                className="text-discord-textMuted"
+                            />
+                        </ActionButton>
+                    ) : null}
                     {!isTouchscreen && !isOwnMessage && !isFailed ? (
                         <MessageReportAction
                             roomId={room.roomId}
@@ -3789,8 +4097,8 @@ function MessageItem({
                     </View>
                 </Portal>
             ) : null}
-            {/* Zami: `data-event-id` is how MessageArea finds a row in the DOM;
-                its list finds rows by index instead. */}
+            {/* Zami: `data-event-id` and `data-sender` are how MessageArea finds
+                a row in the DOM; its list finds rows by index instead. */}
             {swipeOffered ? (
                 <SwipePan handlers={swipeHandlers}>{row}</SwipePan>
             ) : (
@@ -3836,6 +4144,16 @@ function MessageItem({
             {showActionsSheet ? (
                 <MessageActionsSheet
                     rows={overflowRows}
+                    preview={copyableText}
+                    previewBody={sheetPreviewBody()}
+                    sender={{
+                        id: senderId,
+                        name: displayName,
+                        avatarSrc,
+                        colour: nameColour,
+                        time: messageTimestamp(timestamp),
+                        fullTime: fullTimestamp(timestamp),
+                    }}
                     pluginRows={pluginActionViews}
                     onChoose={handleActionChoose}
                     onChoosePlugin={handlePluginAction}
@@ -3844,6 +4162,8 @@ function MessageItem({
             ) : null}
 
             {showForwardDialog ? <ForwardMessageDialog event={event} /> : null}
+
+            {showViewSourceDialog ? <ViewSourceDialog event={event} /> : null}
         </>
     );
 }
@@ -4001,9 +4321,18 @@ function readPluginHooks(
             : next;
     }
     lastDecorations.current = decorations;
+    const pluginRenderer =
+        pluginRegistry.messageRenderers.length > 0
+            ? findRenderer(
+                  pluginRegistry.messageRenderers.map((e) => e.value),
+                  event.getType(),
+                  msgtype,
+              )
+            : null;
     return {
         swipeOffered: touch && pluginRegistry.swipeHandlers.length > 0,
         pluginActionViews,
+        pluginRenderer,
         pluginAnnotationKey,
         decorations,
     };
@@ -4029,20 +4358,24 @@ const NO_REPLY: {
 } = { timelineTarget: null, sender: null, body: null, redacted: false };
 
 /**
- * Zami: the GIF tile's hover star. It reads the favourites (upstream's
- * `imageIsFavourited`), so only a GIF row on a pointer device follows them.
+ * Zami: the GIF or WebP tile's hover star. It reads the favourites (upstream's
+ * `imageIsFavourited`), so only such a row on a pointer device follows them.
  */
 function GifFavouriteStar({
     favouriteKey,
+    mediaMxc,
     onPress,
 }: {
     favouriteKey: string | null;
+    /** The media's mxc: a message reusing a favourite's media matches it. */
+    mediaMxc: string | undefined;
     onPress: () => void;
 }) {
     const imageIsFavourited = useRune(() => {
         void favouritesState.gifs; // track
-        return !!favouriteKey && isFavouriteGif(favouriteKey);
-    }, [favouriteKey]);
+        if (!!favouriteKey && isFavouriteGif(favouriteKey)) return true;
+        return !!mediaMxc && favouriteUrlForMxc(mediaMxc) !== undefined;
+    }, [favouriteKey, mediaMxc]);
     return (
         <Pressable
             accessibilityRole="button"

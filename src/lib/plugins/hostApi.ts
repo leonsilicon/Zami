@@ -22,6 +22,17 @@ import { createAssetAccess, type PluginFileSource } from "./pluginAssets";
 import { connectNative, nativeAvailable } from "./pluginNative";
 import { framesAvailable, injectFrameScript } from "./pluginFrames";
 import { removeStyleSheet, setStyleSheet } from "../utils/customCss";
+import {
+    messageElement,
+    observeDom,
+    regionElement,
+    styleElement,
+} from "./pluginDom";
+import { rendererProblem } from "./pluginRenderers";
+import { gifProviderProblem } from "./pluginGifs";
+import { closePluginPanelOf, openRegisteredPanel } from "./pluginPanel.svelte";
+import { navigateToRoom } from "../stores/rooms.svelte";
+import { viewedRoomId } from "./pluginNav.svelte";
 import { sendReaction, getOwnUserId, getClient } from "../matrix/client";
 import {
     sendEventContent,
@@ -33,7 +44,44 @@ import {
     sendPluginMedia,
     redactOwnEvent,
     getPluginMedia,
+    sendPluginEvent,
+    getPluginEvent,
+    getPluginRooms,
+    getPluginState,
+    listPluginState,
+    canSetPluginState,
+    setPluginState,
+    getPluginAccountData,
+    setPluginAccountData,
+    getPluginProfile,
+    getPluginPresence,
 } from "../matrix/pluginHost";
+import {
+    clearPluginPresence,
+    setPluginPresence,
+} from "../stores/richPresence.svelte";
+import {
+    getCachedProfile,
+    requestProfile,
+} from "../stores/profileFields.svelte";
+import { PROFILE_FIELDS, readFieldWithLegacy } from "../utils/extendedProfile";
+import { parseRpcField } from "../utils/richPresence";
+import { entryToPluginPresence, pluginPresenceToEntry } from "./pluginPresence";
+import {
+    clearPluginCallData,
+    getPluginCallRoomId,
+    onPluginCallChange,
+    onPluginCallData,
+    onPluginDataTrack,
+    publishPluginDataTrack,
+    sendPluginCallData,
+} from "../matrix/callPluginData";
+import {
+    closeCallPanel,
+    openCallPanel,
+    refreshCallUi,
+} from "./pluginCall.svelte";
+import { midiAvailable, openSynth, playSong } from "./pluginMidiApi";
 
 export interface BuildHostApiOptions {
     pluginId: string;
@@ -67,6 +115,22 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
     // removal.
     const disposables = new Set<Disposable>();
     let styleCount = 0;
+    const needCapability = (cap: string, what: string): void => {
+        if (!manifest.capabilities?.includes(cap))
+            throw new Error(
+                `[plugin ${pluginId}] ${what} needs the "${cap}" capability`,
+            );
+    };
+    /** A handler that cannot take the host's own code down with it. */
+    const guarded =
+        <A extends unknown[]>(id: string, fn: (...args: A) => void) =>
+        (...args: A): void => {
+            try {
+                fn(...args);
+            } catch (e) {
+                console.error(`[plugin ${id}] handler threw`, e);
+            }
+        };
     const track = (inner: Disposable): Disposable => {
         let done = false;
         const wrapped: Disposable = {
@@ -250,11 +314,64 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
             },
             registerEmbed: (e) =>
                 track(addEntry(registry, "embeds", pluginId, e)),
+            registerRenderer: (r) => {
+                const problem = rendererProblem(r);
+                if (problem)
+                    throw new Error(
+                        `[plugin ${pluginId}] registerRenderer: ${problem}`,
+                    );
+                return track(
+                    addEntry(registry, "messageRenderers", pluginId, r),
+                );
+            },
+        },
+
+        gifs: {
+            registerProvider: (p) => {
+                const problem = gifProviderProblem(p);
+                if (problem)
+                    throw new Error(
+                        `[plugin ${pluginId}] gifs.registerProvider: ${problem}`,
+                    );
+                return track(addEntry(registry, "gifProviders", pluginId, p));
+            },
         },
 
         room: {
             addHeaderButton: (btn) =>
                 track(addEntry(registry, "headerButtons", pluginId, btn)),
+            addSettingsTab: (tab) =>
+                track(addEntry(registry, "roomSettingsTabs", pluginId, tab)),
+        },
+
+        rooms: {
+            addAction: (a) =>
+                track(addEntry(registry, "roomActions", pluginId, a)),
+        },
+
+        members: {
+            decorate: (fn) =>
+                track(addEntry(registry, "memberDecorators", pluginId, fn)),
+            refresh: () => {
+                registry.tick++;
+            },
+            addAction: (a) =>
+                track(addEntry(registry, "userActions", pluginId, a)),
+            addProfileSection: (sec) =>
+                track(addEntry(registry, "profileSections", pluginId, sec)),
+        },
+
+        navigation: {
+            getActiveRoomId: () => viewedRoomId(),
+            openRoom: (roomId, o) => navigateToRoom(roomId, o?.eventId),
+        },
+
+        dom: {
+            region: (name) => regionElement(name),
+            messageElement: (eventId) => messageElement(eventId),
+            observe: (selector, observer) =>
+                track(observeDom(selector, observer)),
+            style: (el, props) => track(styleElement(el, props)),
         },
 
         shortcuts: {
@@ -274,6 +391,23 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
                     : warnNoopDisposable("ui.openPopover"),
             registerPanel: (p) =>
                 track(addEntry(registry, "panels", pluginId, p)),
+            openPanel: (id, o) => {
+                const entry = registry.panels.find(
+                    (e) => e.pluginId === pluginId && e.value.id === id,
+                );
+                if (!entry)
+                    throw new Error(
+                        `[plugin ${pluginId}] openPanel: no panel "${id}" registered`,
+                    );
+                const roomId = o?.roomId ?? viewedRoomId();
+                if (!roomId) return;
+                openRegisteredPanel(pluginId, roomId, entry.value);
+            },
+            closePanel: () => closePluginPanelOf(pluginId),
+            addOverlay: (o) =>
+                track(addEntry(registry, "overlays", pluginId, o)),
+            addSettingsPage: (page) =>
+                track(addEntry(registry, "settingsPages", pluginId, page)),
             addStyles: (css) => {
                 const id = `plugin:${pluginId}:${++styleCount}`;
                 setStyleSheet(id, String(css));
@@ -295,7 +429,7 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
                 track(
                     addEntry(registry, "eventSubs", pluginId, {
                         event,
-                        handler,
+                        handler: handler as (payload: unknown) => void,
                     }),
                 ),
         },
@@ -333,6 +467,145 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
             }),
             redactOwn: (roomId, eventId, reason) =>
                 redactOwnEvent(roomId, eventId, reason),
+            sendEvent: async (roomId, type, content) => ({
+                eventId: await sendPluginEvent(roomId, type, content),
+            }),
+            getEvent: (roomId, eventId) => getPluginEvent(roomId, eventId),
+            getRooms: () => getPluginRooms(),
+            getState: (roomId, type, stateKey) =>
+                getPluginState(roomId, type, stateKey),
+            listState: (roomId, type) => listPluginState(roomId, type),
+            canSetState: (roomId, type) => canSetPluginState(roomId, type),
+            setState: (roomId, type, content, stateKey) =>
+                setPluginState(roomId, type, content, stateKey),
+            getAccountData: (type, roomId) =>
+                getPluginAccountData(type, roomId),
+            setAccountData: (type, content, roomId) =>
+                setPluginAccountData(type, content, roomId),
+            getProfile: (userId) => getPluginProfile(userId),
+            getPresence: (userId) => getPluginPresence(userId),
+        },
+
+        presence: {
+            set: (entry) => {
+                if (!manifest.capabilities?.includes("presence"))
+                    throw new Error(
+                        `[plugin ${pluginId}] presence.set needs the "presence" capability`,
+                    );
+                const parsed = pluginPresenceToEntry(entry, Date.now());
+                if (typeof parsed === "string")
+                    throw new Error(
+                        `[plugin ${pluginId}] presence.set: ${parsed}`,
+                    );
+                setPluginPresence(
+                    pluginId,
+                    manifest.name,
+                    parsed,
+                    entry.expiry !== undefined,
+                );
+                const id = parsed.id;
+                return track({
+                    dispose: () => clearPluginPresence(pluginId, id),
+                });
+            },
+            clear: (id) => clearPluginPresence(pluginId, id),
+            get: (userId) => {
+                const who = userId ?? getOwnUserId();
+                if (!who) return [];
+                requestProfile(who, 60_000);
+                const value = readFieldWithLegacy(
+                    getCachedProfile(who),
+                    PROFILE_FIELDS.rpc,
+                );
+                return parseRpcField(value, Date.now()).map(
+                    entryToPluginPresence,
+                );
+            },
+        },
+
+        call: {
+            getRoomId: () => getPluginCallRoomId(),
+            onChange: (handler) =>
+                track({
+                    dispose: onPluginCallChange(
+                        pluginId,
+                        guarded(pluginId, handler),
+                    ),
+                }),
+            sendData: async (topic, payload, opts) => {
+                needCapability("call", "call.sendData");
+                return sendPluginCallData(pluginId, topic, payload, opts);
+            },
+            onData: (topic, handler) => {
+                needCapability("call", "call.onData");
+                return track({
+                    dispose: onPluginCallData(
+                        pluginId,
+                        topic,
+                        guarded(pluginId, handler),
+                    ),
+                });
+            },
+            addControl: (control) => {
+                needCapability("call", "call.addControl");
+                return track(
+                    addEntry(registry, "callControls", pluginId, control),
+                );
+            },
+            addPanel: (panel) => {
+                needCapability("call", "call.addPanel");
+                const entry = track(
+                    addEntry(registry, "callPanels", pluginId, panel),
+                );
+                return track({
+                    dispose: () => {
+                        entry.dispose();
+                        closeCallPanel(pluginId, panel.id);
+                    },
+                });
+            },
+            openPanel: (id) => {
+                needCapability("call", "call.openPanel");
+                openCallPanel(pluginId, id);
+            },
+            closePanel: (id) => closeCallPanel(pluginId, id),
+            addTileDecoration: (decoration) => {
+                needCapability("call", "call.addTileDecoration");
+                return track(
+                    addEntry(
+                        registry,
+                        "callTileDecorations",
+                        pluginId,
+                        decoration,
+                    ),
+                );
+            },
+            refreshUi: () => refreshCallUi(),
+            publishDataTrack: async (name) => {
+                needCapability("call", "call.publishDataTrack");
+                return publishPluginDataTrack(pluginId, name);
+            },
+            onDataTrack: (handler) => {
+                needCapability("call", "call.onDataTrack");
+                return track({
+                    dispose: onPluginDataTrack(
+                        pluginId,
+                        guarded(pluginId, handler),
+                    ),
+                });
+            },
+        },
+
+        midi: {
+            available: () => midiAvailable(),
+            openSynth: async () => {
+                needCapability("midi", "midi.openSynth");
+                return openSynth(track);
+            },
+            play: async (midi) => {
+                needCapability("midi", "midi.play");
+                return playSong(midi, track);
+            },
         },
 
         unsafe: {
@@ -371,6 +644,11 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
         }
         disposables.clear();
         changeListeners.clear();
+        // Entries set without keeping the handle go too.
+        clearPluginPresence(pluginId);
+        clearPluginCallData(pluginId);
+        closeCallPanel(pluginId);
+        closePluginPanelOf(pluginId);
     };
 
     return { zam, disposeAll, setSettings };

@@ -20,6 +20,13 @@
             previewUrl: string;
             /** Pointer to the message, for an encrypted gif (see favouriteFile.ts). */
             source?: { roomId: string; eventId: string };
+            /** The image's media mxc: a favourite holding that media counts as
+             *  this one, and an encrypted gif is saved with it. */
+            mxc?: string;
+            /** The file name, saved with an unencrypted gif so the picker sends
+             *  it under that name. Not stored for an encrypted one: its name is
+             *  read from its message. */
+            name?: string;
         };
         /** Gallery navigation. When supplied, a chevron and the matching arrow
          *  key step to the neighbouring item; omit at the ends of the list. */
@@ -58,6 +65,8 @@
         isFavouriteGif,
         addFavouriteGif,
         removeFavouriteGif,
+        favouriteSize,
+        favouriteUrlForMxc,
     } from "$lib/stores/favourites.svelte";
     import {
         fetchAttachmentBlob,
@@ -118,21 +127,43 @@
         isVideo ? t("lightbox.videoNoun") : t("lightbox.imageNoun"),
     );
 
+    /** The favourite this image is saved as, by its URL or else by its media,
+     *  or undefined. Reads favouritesState, so callers stay reactive. */
+    function savedFavouriteUrl(f: NonNullable<typeof favourite>) {
+        if (isFavouriteGif(f.url)) return f.url;
+        return f.mxc ? favouriteUrlForMxc(f.mxc) : undefined;
+    }
+
     // Reactively tracks favourite state (reads favouritesState.gifs $state).
     const favourited = $derived(
-        favourite ? isFavouriteGif(favourite.url) : false,
+        favourite ? savedFavouriteUrl(favourite) !== undefined : false,
     );
 
     function toggleFavourite(e: MouseEvent) {
         e.stopPropagation();
         if (!favourite) return;
-        if (isFavouriteGif(favourite.url)) {
-            removeFavouriteGif(favourite.url);
+        const saved = savedFavouriteUrl(favourite);
+        if (saved !== undefined) {
+            removeFavouriteGif(saved);
         } else {
+            // The loaded file's own size, else the size it was sent with.
+            const natural =
+                imgLoaded && imgEl
+                    ? favouriteSize(imgEl.naturalWidth, imgEl.naturalHeight)
+                    : {};
             addFavouriteGif({
                 url: favourite.url,
                 previewUrl: favourite.previewUrl,
                 source: favourite.source,
+                // Only an encrypted gif is stored with its mxc: a plain one
+                // already matches through the media its URL names.
+                ...(favourite.source && favourite.mxc
+                    ? { mxc: favourite.mxc }
+                    : {}),
+                ...(!favourite.source && favourite.name
+                    ? { name: favourite.name }
+                    : {}),
+                ...(natural.width ? natural : favouriteSize(dims?.w, dims?.h)),
             });
         }
     }
@@ -296,6 +327,8 @@
             scale = 1;
             tx = 0;
             ty = 0;
+            renderScale = 1;
+            loadedRatio = null;
             imgLoaded = false;
             authedSrc = null;
             authedFallbackTried = false;
@@ -334,10 +367,17 @@
     // in a box sized from `dims` (otherwise an unloaded <img> is 0×0). They
     // are dropped once it loads so a transparent image doesn't show them.
     let imgLoaded = $state(false);
+    // A vector sent without a size takes its ratio from the loaded file, so
+    // its box hugs the drawing instead of spanning the whole viewport width.
+    let loadedRatio = $state<{ w: number; h: number } | null>(null);
     const viewGutter = $derived(interfaceState.isMobile ? "6em" : "2em");
     const imgBoxStyle = $derived.by(() => {
-        const w = safeDimension(dims?.w);
-        const h = safeDimension(dims?.h);
+        const w =
+            safeDimension(dims?.w) ??
+            (vector ? (loadedRatio?.w ?? null) : null);
+        const h =
+            safeDimension(dims?.h) ??
+            (vector ? (loadedRatio?.h ?? null) : null);
         const fitViewport = `calc(100${vu}vw - ${viewGutter})`;
         if (vector) {
             // A vector has no pixel size to cap at, so it fills the viewport
@@ -396,7 +436,8 @@
     const DOUBLE_TAP_MS = 300;
     const DOUBLE_TAP_DIST = 40;
 
-    const MIN_SCALE = 1;
+    // Below 1 the image shrinks inside its fitted size.
+    const MIN_SCALE = 0.1;
     const MAX_SCALE = 16;
     // One +/- press, button or key, multiplies the zoom by this.
     const ZOOM_STEP = 1.25;
@@ -405,11 +446,90 @@
     // onPointerUp below.
     let lastPointerType = "";
 
+    // ── Sharp vectors ───────────────────────────────────────────────────────
+    // A CSS transform scales the bitmap the browser drew at layout size, so a
+    // zoomed SVG came out as blurry as a placeholder. Once the zoom settles,
+    // the vector is laid out at `renderScale` times its fitted size (and the
+    // transform scaled down by as much), which makes the browser draw it again
+    // at that resolution. Capped: past 8x the layers get large on phones.
+    const MAX_RENDER_SCALE = 8;
+    let renderScale = $state(1);
+    // Fitted layout size, measured while renderScale is 1.
+    let baseW = 0;
+    let baseH = 0;
+    // True for the frames in which renderScale changes, so the transform
+    // swaps without the transition animating it from the old ratio.
+    let rebasing = $state(false);
+    function setRenderScale(next: number) {
+        rebasing = true;
+        renderScale = next;
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => (rebasing = false)),
+        );
+    }
+    $effect(() => {
+        if (!vector || !imgLoaded) return;
+        const target = Math.min(MAX_RENDER_SCALE, Math.max(1, scale));
+        if (target === renderScale) return;
+        const timer = setTimeout(() => {
+            if (!imgEl) return;
+            if (renderScale === 1) {
+                baseW = imgEl.offsetWidth;
+                baseH = imgEl.offsetHeight;
+            }
+            setRenderScale(target);
+        }, 250);
+        return () => clearTimeout(timer);
+    });
+    // The fitted size changes with the window; measure it again.
+    onMount(() => {
+        const onResize = () => {
+            if (renderScale !== 1) setRenderScale(1);
+        };
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    });
+    const renderSizeStyle = $derived(
+        renderScale > 1
+            ? `width: ${baseW * renderScale}px; height: ${baseH * renderScale}px; max-width: none; max-height: none;`
+            : "",
+    );
+
+    /** Whether the vector draws nothing at (x,y), give or take a few pixels,
+     *  so a click there closes the viewer like one on the backdrop: much of
+     *  an SVG's box is often empty. False when it can't tell (a cross-origin
+     *  image taints the canvas). */
+    function vectorEmptyAt(x: number, y: number): boolean {
+        if (!imgEl) return false;
+        const r = imgEl.getBoundingClientRect();
+        if (x < r.left || x >= r.right || y < r.top || y >= r.bottom)
+            return true;
+        const PAD = 4;
+        try {
+            const c = document.createElement("canvas");
+            c.width = c.height = PAD * 2 + 1;
+            const ctx = c.getContext("2d", { willReadFrequently: true });
+            if (!ctx) return false;
+            ctx.drawImage(
+                imgEl,
+                PAD - (x - r.left),
+                PAD - (y - r.top),
+                r.width,
+                r.height,
+            );
+            const px = ctx.getImageData(0, 0, c.width, c.height).data;
+            for (let i = 3; i < px.length; i += 4) if (px[i] > 0) return false;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     /** Clamp the pan so the image can't be dragged past its visible edges. */
     function clampPan() {
         if (!imgEl) return;
-        const w = imgEl.offsetWidth * scale;
-        const h = imgEl.offsetHeight * scale;
+        const w = (imgEl.offsetWidth * scale) / renderScale;
+        const h = (imgEl.offsetHeight * scale) / renderScale;
         const maxX = Math.max(0, (w - window.innerWidth) / 2);
         const maxY = Math.max(0, (h - window.innerHeight) / 2);
         tx = Math.min(maxX, Math.max(-maxX, tx));
@@ -458,7 +578,7 @@
     // only; a touch double-tap that also fires dblclick is ignored here.
     function onImgDblClick(e: MouseEvent) {
         if (lastPointerType !== "mouse") return;
-        if (scale > 1) resetZoom();
+        if (scale !== 1) resetZoom();
         else zoomAt(2, e.clientX, e.clientY);
     }
 
@@ -479,7 +599,17 @@
         return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
 
+    // When a drag or pinch last ended. The backdrop is a button, so the
+    // pointer-up that ends a gesture started on it would otherwise click it
+    // and close the viewer.
+    let gestureEndedAt = -Infinity;
+    function onBackdropClick() {
+        if (performance.now() - gestureEndedAt < 400) return;
+        onClose();
+    }
+
     function onPointerDown(e: PointerEvent) {
+        if (isVideo) return;
         (e.target as Element).setPointerCapture?.(e.pointerId);
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         lastPointerType = e.pointerType;
@@ -537,6 +667,21 @@
         if (pointers.size > 0) return;
         lastDist = 0;
 
+        // A click or tap on an empty part of a vector's box is a click on
+        // the backdrop.
+        if (moved) gestureEndedAt = performance.now();
+        if (
+            e.type === "pointerup" &&
+            e.target === imgEl &&
+            !moved &&
+            !wasPinch &&
+            vector &&
+            vectorEmptyAt(e.clientX, e.clientY)
+        ) {
+            onClose();
+            return;
+        }
+
         // Zoom only on a DOUBLE tap: the first zooms in at the tap point, the
         // next resets. A single tap does nothing, so the gesture no longer
         // zooms-in-then-out on a quick double tap.
@@ -547,7 +692,7 @@
                 Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) <
                     DOUBLE_TAP_DIST;
             if (isDoubleTap) {
-                if (scale > 1) {
+                if (scale !== 1) {
                     scale = 1;
                     tx = 0;
                     ty = 0;
@@ -660,7 +805,12 @@
         aria-label={t("lightbox.closeViewer", { mediaNoun: mediaNounLabel })}
         in:fade={{ duration: motionOK() ? 150 : 0 }}
         class="absolute inset-0 bg-black/80"
-        onclick={onClose}
+        style="touch-action: none;"
+        onclick={onBackdropClick}
+        onpointerdown={onPointerDown}
+        onpointermove={onPointerMove}
+        onpointerup={onPointerUp}
+        onpointercancel={onPointerUp}
     ></button>
 
     <!-- Dialog: full-screen flex-centered layer. pointer-events-none lets clicks
@@ -928,7 +1078,13 @@
                     {alt}
                     class="pointer-events-auto"
                     onload={() => {
-                        if (src) imgLoaded = true;
+                        if (!src) return;
+                        imgLoaded = true;
+                        if (imgEl?.naturalWidth && imgEl.naturalHeight)
+                            loadedRatio = {
+                                w: imgEl.naturalWidth,
+                                h: imgEl.naturalHeight,
+                            };
                     }}
                     onerror={onImgError}
                     onpointerdown={onPointerDown}
@@ -941,12 +1097,13 @@
                         ? '6em'
                         : '2em'}); max-height: calc(100{vu}vh - {interfaceState.isMobile
                         ? '6em'
-                        : '2em'}); object-fit: contain; border-radius: 0.5em; touch-action: none; transform: translate({tx}px, {ty}px) scale({scale}); transition: {pointers.size ===
-                    0
+                        : '2em'}); object-fit: contain; border-radius: 0.5em; touch-action: none; transform: translate({tx}px, {ty}px) scale({scale /
+                        renderScale}); transition: {pointers.size === 0 &&
+                    !rebasing
                         ? 'transform 0.2s ease'
                         : 'none'}; cursor: {scale > 1
                         ? 'grab'
-                        : 'zoom-in'}; {imgBoxStyle} {imgPlaceholderStyle}"
+                        : 'zoom-in'}; {imgBoxStyle} {renderSizeStyle} {imgPlaceholderStyle}"
                     class:hidden={previewShown && !imgBoxStyle}
                 />
                 {#if preview && !imgLoaded}

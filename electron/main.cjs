@@ -27,6 +27,7 @@ const {
     dialog,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { detectInstallSource } = require("./installSource.cjs");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -40,6 +41,7 @@ const { registerPluginFrames } = require("./pluginFrames.cjs");
 const { registerGlobalHotkeys } = require("./globalHotkeys.cjs");
 const { createUpdateSchedule } = require("./updateSchedule.cjs");
 const { createCallPriority } = require("./callPriority.cjs");
+const { createGameGpuPause } = require("./gameGpuPause.cjs");
 const { createProxyManager } = require("./proxy.cjs");
 const { recordMemoryReport } = require("./memoryReport.cjs");
 const { createAutostart } = require("./autostart.cjs");
@@ -50,6 +52,11 @@ const { createAppAudio } = require("./appAudio.cjs");
 const { resolveShareAudio } = require("./shareAudio.cjs");
 const { createFileLog } = require("./fileLog.cjs");
 const { createUpdateGuard } = require("./updateGuard.cjs");
+const {
+    createFlatpakShellUpdate,
+    AFTER_UPDATE_FLAG,
+} = require("./flatpakShellUpdate.cjs");
+const { createFlatpakUpdateMonitor } = require("./portalFlatpakUpdate.cjs");
 
 // userData/main.log: what a packaged app would otherwise lose (crashes, renderer
 // and GPU exits). Capped at start by fileLog.cjs.
@@ -301,10 +308,10 @@ registerPluginFrames(app, ipcMain, () => mainWindow);
 // and only then asks for the download.
 let autoUpdatePref = false;
 
-// Inside Flatpak the app is updated by `flatpak update` from our repo, and
-// electron-updater has nothing it can replace (it only updates AppImages on
-// Linux). Every updater entry point is a no-op there, and the preload leaves
-// `desktop.updates` out so Settings doesn't offer the control at all.
+// Inside Flatpak electron-updater has nothing it can replace (it only updates
+// AppImages on Linux). The web UI updates through bundles as everywhere else,
+// and a new shell comes from our Flatpak repo through the Flatpak portal
+// (flatpakShellUpdate.cjs), or `flatpak update` where the portal can't.
 const IN_FLATPAK = !!process.env.FLATPAK_ID;
 
 // A portable build (the single .exe, run from a temporary folder) cannot be
@@ -314,6 +321,14 @@ const IN_FLATPAK = !!process.env.FLATPAK_ID;
 // Like Flatpak, such a build is told about new releases and sent to the
 // release page instead of installing one.
 const IS_PORTABLE = !!process.env.PORTABLE_EXECUTABLE_FILE;
+
+// Installed by a package manager (winget, Scoop, …; installSource.cjs): it owns
+// upgrades, so the installer path stays off like it does for a portable build.
+const INSTALL_SOURCE = detectInstallSource({
+    exeDir: path.dirname(app.getPath("exe")),
+});
+const IS_MANAGED = INSTALL_SOURCE.managed;
+const NO_SHELL_INSTALL = IS_PORTABLE || IS_MANAGED;
 
 // Logs for the installer path (userData/updater.log) and the failed-install
 // record that keeps a broken installer from looping (updateGuard.cjs).
@@ -512,13 +527,28 @@ async function checkBundleThenInstaller(manual) {
             console.error("[bundle] check failed:", err);
         }
     }
-    if (IN_FLATPAK || IS_PORTABLE) {
-        // `flatpak update` owns shell updates in Flatpak, and a portable build
-        // cannot install one (see IS_PORTABLE): either way there is nothing to
-        // install here, so a newer release is only pointed at.
+    if (IN_FLATPAK && shellVersion && flatpakShell) {
+        flatpakShell.offer(shellVersion, { manual, auto: autoUpdatePref });
+        return;
+    }
+    if (IN_FLATPAK || NO_SHELL_INSTALL) {
+        // A Flatpak without the portal's update monitor needs `flatpak update`,
+        // a portable build cannot install a shell (see IS_PORTABLE) and a
+        // package manager upgrades its own: either way a newer release is only
+        // pointed at.
         sendUpdateStatus(
             shellVersion
-                ? { phase: "unsupported", version: shellVersion }
+                ? {
+                      phase: "unsupported",
+                      version: shellVersion,
+                      ...(IN_FLATPAK ? { manual: "flatpak" } : {}),
+                      ...(IS_MANAGED
+                          ? {
+                                manual: "package-manager",
+                                manager: INSTALL_SOURCE.manager,
+                            }
+                          : {}),
+                  }
                 : {
                       phase: "up-to-date",
                       version:
@@ -569,8 +599,76 @@ async function applyStagedBundle() {
     mainWindow.webContents.reloadIgnoringCache();
 }
 
+// --- Flatpak shell updates (flatpakShellUpdate.cjs) ------------------------
+
+let flatpakShell = null;
+
+// Published with the Flatpak repo by the release workflow (GitHub Pages).
+const FLATPAK_REPO_VERSION_URL = "https://az4521.github.io/Zam/version.json";
+
+function setupFlatpakUpdater() {
+    const log = (...a) =>
+        updaterLog.info(
+            `[flatpak] ${a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ")}`,
+        );
+    const monitor = createFlatpakUpdateMonitor({
+        log,
+        onUpdateAvailable: (info) => {
+            flatpakShell?.updateAvailable(info);
+            // The release check says what it is: often a web bundle, which
+            // needs no restart, and it names the version for the UI.
+            runUpdateCheck(false);
+        },
+    });
+    monitor
+        .start()
+        .then(() => {
+            flatpakShell = createFlatpakShellUpdate({
+                monitor,
+                runningVersion: app.getVersion(),
+                sendStatus: sendUpdateStatus,
+                isFailed: (v) => updateGuard.isFailed(v),
+                repoVersion: async () => {
+                    const res = await net.fetch(FLATPAK_REPO_VERSION_URL, {
+                        cache: "no-store",
+                    });
+                    if (!res.ok) return null;
+                    const { version } = await res.json();
+                    return typeof version === "string" ? version : null;
+                },
+                log,
+            });
+        })
+        .catch((err) => {
+            // Flatpak before 1.5, or no session bus: `flatpak update` it is.
+            monitor.close();
+            updaterLog.warn(
+                `[flatpak] no update portal: ${err?.message ?? err}`,
+            );
+        });
+}
+
+// The portal starts the installed version in a sandbox of its own; this one
+// quits, and the new one waits for it to let go (AFTER_UPDATE_FLAG).
+async function restartIntoFlatpakUpdate() {
+    if (!flatpakShell?.isInstalled()) return;
+    try {
+        await flatpakShell.restart();
+    } catch (err) {
+        updaterLog.error("[flatpak] could not start the update:", err);
+        sendUpdateStatus(mapUpdateError(err));
+        return;
+    }
+    if (lastUpdateStatus?.version) {
+        updateGuard.beginInstall(lastUpdateStatus.version);
+        sendUpdateStatus(lastUpdateStatus);
+    }
+    isQuitting = true;
+    app.quit();
+}
+
 function runInstallerCheck(manual) {
-    if (IN_FLATPAK || IS_PORTABLE) return;
+    if (IN_FLATPAK || NO_SHELL_INSTALL) return;
     autoUpdater.autoDownload = manual ? false : autoUpdatePref;
     try {
         const p = autoUpdater.checkForUpdates();
@@ -680,9 +778,11 @@ function setupAutoUpdater() {
     // The saved choice (on unless turned off) governs from the first check; the
     // renderer re-sends it at boot.
     autoUpdatePref = readAutoUpdatePref();
-    // Flatpak builds take their shell from `flatpak update`, and portable ones
-    // cannot install one (IS_PORTABLE); both still check for web bundles below.
-    if (!IN_FLATPAK && !IS_PORTABLE) setupInstallerUpdater();
+    // Flatpak builds take their shell through the Flatpak portal, and portable
+    // ones cannot install one (IS_PORTABLE); both still check for web bundles
+    // below.
+    if (!IN_FLATPAK && !NO_SHELL_INSTALL) setupInstallerUpdater();
+    if (IN_FLATPAK) setupFlatpakUpdater();
 
     // Background checks: ~10s after launch (so it never blocks or races
     // startup), then every few hours and after waking from sleep, so an app
@@ -707,7 +807,8 @@ ipcMain.on("updates:download", () => {
         void downloadFoundBundle();
         return;
     }
-    if (IN_FLATPAK || IS_PORTABLE) return;
+    if (IN_FLATPAK) void flatpakShell?.install();
+    if (IN_FLATPAK || NO_SHELL_INSTALL) return;
     try {
         const p = autoUpdater.downloadUpdate();
         if (p && typeof p.catch === "function") {
@@ -912,6 +1013,10 @@ ipcMain.on("updates:quit-and-install", () => {
         return;
     }
     if (IS_PORTABLE) return;
+    if (IN_FLATPAK) {
+        void restartIntoFlatpakUpdate();
+        return;
+    }
     // Recorded before quitting, so a launch that still finds this version
     // running knows the install did not take (updateGuard.cjs). The status is
     // re-sent so the renderer stops offering to apply the same version again.
@@ -966,7 +1071,10 @@ const richPresence = createRichPresence({
     mediaDir: app.isPackaged
         ? path.join(process.resourcesPath, "mediaremote")
         : path.join(app.getAppPath(), "native", "mediaremote-adapter"),
+    // Steam game invites open their steam:// link (richPresence joinGame).
+    openExternal: (url) => shell.openExternal(url),
     send: (event) => {
+        gameGpuPause.onPresence(event);
         if (mainWindow && !mainWindow.isDestroyed())
             mainWindow.webContents.send("rich-presence:event", event);
     },
@@ -979,6 +1087,7 @@ ipcMain.handle("rich-presence:configure", (_e, want) =>
         scan: want?.scan === true,
         fake: want?.fake === true,
         media: want?.media === true,
+        steam: want?.steam === true,
         autoRestartDiscord: want?.autoRestartDiscord === true,
         userId: typeof want?.userId === "string" ? want.userId : "",
         games: want?.games,
@@ -1052,9 +1161,18 @@ const presenceImages = createPresenceImages({
 ipcMain.handle("rich-presence:image", (_e, appId, ref) =>
     presenceImages.fetchImage(appId, ref),
 );
-ipcMain.handle("rich-presence:status", () => richPresence.getStatus());
+ipcMain.handle("rich-presence:status", () => richPresence.refreshStatus());
 ipcMain.handle("rich-presence:restart-discord", () =>
     richPresence.restartDiscord(),
+);
+ipcMain.handle("rich-presence:steam-debugging", (_e, enabled) =>
+    richPresence.setSteamDebugging(enabled === true),
+);
+ipcMain.handle("rich-presence:restart-steam", () =>
+    richPresence.restartSteam(),
+);
+ipcMain.handle("rich-presence:join-game", (_e, req) =>
+    richPresence.joinGame(req),
 );
 app.on("will-quit", () => richPresence.stop());
 
@@ -1065,6 +1183,7 @@ const callPriority = createCallPriority(app);
 let callActive = false;
 ipcMain.on("call:set-active", (e, active) => {
     callActive = !!active;
+    gameGpuPause.onCallChange();
     callPriority.set(callActive, e.sender);
     // Hidden to the tray, a call with nobody talking isn't "audible" to
     // Chromium, so its timers would drop to once a second, and with them the
@@ -1072,6 +1191,40 @@ ipcMain.on("call:set-active", (e, active) => {
     e.sender.setBackgroundThrottling(!callActive);
 });
 app.on("will-quit", () => callPriority.restore());
+
+// Message actions the renderer offers for the next right-click (see the
+// context-menu handler in createWindow). Set by a sendSync from the page, so it
+// is stored before Chromium's context-menu event for the same click.
+let pendingMessageActions = null;
+ipcMain.on("context-menu:message-actions", (e, items) => {
+    e.returnValue = null;
+    if (!mainWindow || e.sender !== mainWindow.webContents) return;
+    const valid = Array.isArray(items)
+        ? items
+              .slice(0, 20)
+              .filter(
+                  (it) =>
+                      it &&
+                      typeof it === "object" &&
+                      typeof it.key === "string" &&
+                      it.key.length > 0 &&
+                      it.key.length <= 40 &&
+                      typeof it.label === "string" &&
+                      it.label.length > 0 &&
+                      it.label.length <= 120 &&
+                      (it.danger === undefined ||
+                          typeof it.danger === "boolean"),
+              )
+              .map((it) => ({
+                  key: it.key,
+                  label: it.label,
+                  danger: it.danger === true,
+              }))
+        : [];
+    pendingMessageActions = valid.length
+        ? { items: valid, at: Date.now() }
+        : null;
+});
 
 // --- GPU (Settings > Debug) ------------------------------------------------
 //
@@ -1095,7 +1248,16 @@ const hardwareAccelerationAtLaunch =
 // Set by the crash-loop guard below: this one run goes without the GPU.
 const gpuCrashLoopAtLaunch =
     hardwareAccelerationAtLaunch && !!readGpuPrefs().gpuCrashLoopAt;
-if (!hardwareAccelerationAtLaunch || gpuCrashLoopAtLaunch) {
+// Set by gameGpuPause.cjs: a game is running and held the GPU's memory.
+const gamePausedAtLaunch =
+    hardwareAccelerationAtLaunch &&
+    readGpuPrefs().gameGpuAuto === true &&
+    !!readGpuPrefs().gamePausedAt;
+if (
+    !hardwareAccelerationAtLaunch ||
+    gpuCrashLoopAtLaunch ||
+    gamePausedAtLaunch
+) {
     app.disableHardwareAcceleration();
 } else {
     // Chromium gives up on the GPU after its third crash in a run, falling
@@ -1177,6 +1339,10 @@ ipcMain.handle("gpu:info", async () => {
                       activeAtLaunch: hardwareVideoEncode,
                   }
                 : null,
+        gameAuto: {
+            enabled: prefs.gameGpuAuto === true,
+            pausedAtLaunch: gamePausedAtLaunch,
+        },
         skiaGraphite: {
             enabled: prefs.skiaGraphite === true,
             activeAtLaunch: skiaGraphiteAtLaunch,
@@ -1198,6 +1364,23 @@ function writeGpuPrefs(patch) {
     }
     fs.writeFileSync(gpuPrefsPath(), JSON.stringify(prefs));
 }
+
+const gameGpuPause = createGameGpuPause({
+    enabled: () => readGpuPrefs().gameGpuAuto === true,
+    pausedAtLaunch: () => gamePausedAtLaunch,
+    hardwareAccelerationOn: () => hardwareAccelerationAtLaunch,
+    callActive: () => callActive,
+    writePrefs: writeGpuPrefs,
+    relaunch: () => relaunchApp(),
+    log: (msg) => mainLog.info("gameGpuPause", msg),
+});
+gameGpuPause.start();
+app.on("will-quit", () => gameGpuPause.stop());
+
+ipcMain.handle("gpu:set-game-auto", (_e, enabled) => {
+    // Turning it off while paused ends the pause on the next launch.
+    writeGpuPrefs({ gameGpuAuto: enabled ? true : undefined });
+});
 
 // Settings > Debug: Chromium's memory by process and allocator, plus each
 // process's resident memory as Task Manager counts it. One trace at a time:
@@ -1516,6 +1699,15 @@ app.on("child-process-gone", (_e, details) => {
     if (!videoPlaying && Date.now() - videoStoppedAt > 5000) return;
     if (++gpuCrashes < 2 || readGpuPrefs().nvidiaVideo === "vulkan") return;
     writeGpuPrefs({ nvidiaVulkanFailed: Date.now() });
+});
+
+// A game holding the video memory: restart without the GPU while it runs
+// (opt-in, Settings > Debug). The game state is fed from rich presence.
+app.on("child-process-gone", (_e, details) => {
+    if (details.type !== "GPU") return;
+    if (details.reason === "clean-exit" || details.reason === "killed") return;
+    if (isRepaintExit()) return;
+    gameGpuPause.onGpuExit();
 });
 
 // Any GPU-process exit, crash or not, leaves the page's WebRTC video stuck in
@@ -2033,7 +2225,7 @@ async function createWindow() {
     });
 
     // Electron shows no context menu by default; build a Chromium-like one
-    // (links, images, text editing, spellcheck) so right-click works.
+    // (reload, links, images, text editing, spellcheck) so right-click works.
     mainWindow.webContents.on("context-menu", (_e, params) => {
         const wc = mainWindow.webContents;
         const items = [];
@@ -2043,6 +2235,30 @@ async function createWindow() {
             items.push(...group);
         };
         const { editFlags } = params;
+
+        // Message actions the page offered for this click, if it offered any
+        // just now. Always cleared so they never leak into a later right-click.
+        const msgActions = pendingMessageActions;
+        pendingMessageActions = null;
+        const useMessageActions =
+            !!msgActions &&
+            Date.now() - msgActions.at < 1500 &&
+            !params.isEditable;
+        if (useMessageActions) {
+            const group = [];
+            let dangerSeparated = false;
+            for (const it of msgActions.items) {
+                if (it.danger && !dangerSeparated && group.length) {
+                    group.push({ type: "separator" });
+                    dangerSeparated = true;
+                }
+                group.push({
+                    label: it.label,
+                    click: () => wc.send("context-menu:message-action", it.key),
+                });
+            }
+            section(group);
+        }
 
         if (params.misspelledWord) {
             section([
@@ -2092,6 +2308,11 @@ async function createWindow() {
                     click: () =>
                         wc.send("context-menu:save-image", params.srcURL),
                 },
+                {
+                    label: "Copy image address",
+                    click: () =>
+                        clipboard.writeText(params.srcURL).catch(() => {}),
+                },
             ]);
         }
         if (params.isEditable) {
@@ -2108,10 +2329,24 @@ async function createWindow() {
                 { role: "selectAll", enabled: editFlags.canSelectAll },
             ]);
         } else if (params.selectionText.trim()) {
-            section([{ role: "copy" }]);
+            section([{ role: "copy" }, { role: "selectAll" }]);
+        } else {
+            if (
+                !params.linkURL &&
+                params.mediaType !== "image" &&
+                !useMessageActions
+            ) {
+                section([{ label: "Reload", click: () => wc.reload() }]);
+            }
+            section([{ role: "selectAll" }]);
         }
-        if (items.length)
-            Menu.buildFromTemplate(items).popup({ window: mainWindow });
+        section([
+            {
+                label: "Inspect",
+                click: () => wc.inspectElement(params.x, params.y),
+            },
+        ]);
+        Menu.buildFromTemplate(items).popup({ window: mainWindow });
     });
 
     // Close button (X): hide to the system tray, or quit, per the device-local
@@ -2342,10 +2577,28 @@ app.commandLine.appendSwitch(
         .join(","),
 );
 
-if (!app.requestSingleInstanceLock()) {
-    app.quit();
-} else {
-    app.on("second-instance", showWindow);
+// Started by a Flatpak update (restartIntoFlatpakUpdate): the old version is
+// still quitting and holds the lock, and two processes must never share the
+// profile, so wait for it instead of handing over and quitting.
+const AFTER_UPDATE_WAIT_MS = 30 * 1000;
+const AFTER_UPDATE_RETRY_MS = 250;
+
+if (app.requestSingleInstanceLock()) startApp();
+else if (process.argv.includes(AFTER_UPDATE_FLAG)) {
+    const deadline = Date.now() + AFTER_UPDATE_WAIT_MS;
+    const retry = () => {
+        if (app.requestSingleInstanceLock()) startApp();
+        else if (Date.now() > deadline) app.quit();
+        else setTimeout(retry, AFTER_UPDATE_RETRY_MS);
+    };
+    setTimeout(retry, AFTER_UPDATE_RETRY_MS);
+} else app.quit();
+
+function startApp() {
+    app.on("second-instance", (_e, argv) => {
+        // The update we just started, waiting for this process to quit.
+        if (!argv.includes(AFTER_UPDATE_FLAG)) showWindow();
+    });
 
     app.whenReady().then(() => {
         // Required on Windows for native (Web Notification API) notifications

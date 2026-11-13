@@ -14,6 +14,7 @@
     import RoomSettings from "$lib/components/layout/RoomSettings.svelte";
     import InviteModal from "$lib/components/layout/InviteModal.svelte";
     import CreatePollDialog from "$lib/components/messages/CreatePollDialog.svelte";
+    import GameInviteDialog from "$lib/components/messages/GameInviteDialog.svelte";
     import ShareLocationDialog from "$lib/components/messages/ShareLocationDialog.svelte";
     import ShareTargetSheet from "$lib/components/messages/ShareTargetSheet.svelte";
     import AppSettings from "$lib/components/layout/AppSettings.svelte";
@@ -33,7 +34,9 @@
     import ErrorToasts from "$lib/components/ui/ErrorToasts.svelte";
     import ScreenSharePicker from "$lib/components/layout/ScreenSharePicker.svelte";
     import JoinConsentDialog from "$lib/components/layout/JoinConsentDialog.svelte";
+    import MeshConsentDialog from "$lib/components/layout/MeshConsentDialog.svelte";
     import PluginPopoverHost from "$lib/components/plugins/PluginPopoverHost.svelte";
+    import PluginOverlayHost from "$lib/components/plugins/PluginOverlayHost.svelte";
     import QuickSwitcher from "$lib/components/layout/QuickSwitcher.svelte";
     import QuickActions from "$lib/components/layout/QuickActions.svelte";
     import KeyboardShortcutsDialog from "$lib/components/keybinds/KeyboardShortcutsDialog.svelte";
@@ -60,6 +63,8 @@
         roomsState,
         setActiveSpace,
         navigateToRoom,
+        isPendingInvite,
+        showInviteInbox,
         bumpUnreadTick,
         reloadLastLocationFromStorage,
         resolvePendingSurface,
@@ -75,6 +80,7 @@
     } from "$lib/stores/interface.svelte";
     import { inviteDialogState } from "$lib/stores/inviteDialog.svelte";
     import { pollDialogState } from "$lib/stores/pollDialog.svelte";
+    import { gameInviteDialogState } from "$lib/stores/gameInviteDialog.svelte";
     import { locationDialogState } from "$lib/stores/locationDialog.svelte";
     import {
         shareInboxState,
@@ -113,7 +119,10 @@
     import { initOutbox } from "$lib/stores/outbox.svelte";
     import { initBackgroundRelease } from "$lib/backgroundRelease";
     import { initHistoryTrim, noteOpenRoom } from "$lib/historyTrim";
-    import { initPlugins } from "$lib/plugins/pluginBoot";
+    import {
+        initPlugins,
+        emitPluginNotification,
+    } from "$lib/plugins/pluginBoot";
     import { pluginRegistry } from "$lib/stores/plugins.svelte";
     import {
         resolveShortcut,
@@ -138,6 +147,7 @@
         reloadAccountSettings,
         setActiveSessionGraceMs,
         settingsState,
+        notificationBodyHidden,
         getLastSeenVersion,
         setLastSeenVersion,
     } from "$lib/stores/settings.svelte";
@@ -151,6 +161,8 @@
     import { isDesktopTray, setMinimizeToTray } from "$lib/desktopTray";
     import { startRichPresence } from "$lib/stores/richPresence.svelte";
     import { installDesktopSaveImage } from "$lib/desktopContextMenu";
+    import { installDesktopMessageMenu } from "$lib/desktopMessageMenu";
+    import { mirrorReceiptPrivacy } from "$lib/receiptPrivacySync";
     import { watchVideoPlayback } from "$lib/utils/videoPlaybackWatch";
     import { initUpdateWatch } from "$lib/stores/updateBanner.svelte";
     import UpdateBanner from "$lib/components/layout/UpdateBanner.svelte";
@@ -178,6 +190,7 @@
         getSpaceLayout,
         getSpaceChildSignature,
         fetchSpaceHierarchy,
+        getCachedHierarchy,
         scheduleJoinedRoomsReconcile,
         setSlidingSyncActiveRoom,
         getRoom,
@@ -195,6 +208,10 @@
         onTimelineEvent,
         onAnyReceiptEvent,
         getClient,
+        acceptInvite,
+        rejectInvite,
+        lookupInvite,
+        settleDeclinedInvite,
         getOwnUserId,
         isInitialSyncComplete,
         clearServiceWorkerAuth,
@@ -209,7 +226,6 @@
         publishActiveSession,
         getActiveSessionHeartbeat,
         updateServiceWorkerNotificationPrivacy,
-        updateServiceWorkerReceiptPrivacy,
         updateServiceWorkerRingEnabled,
         clearServiceWorkerNotifications,
         ensureCallNotifyPushRule,
@@ -266,6 +282,7 @@
         appendPostedEventId,
         type PostedNotificationEntry,
     } from "$lib/utils/notificationDismiss";
+    import { consumeNativeDeclines } from "$lib/declinedInvites";
     import { decideNotificationRoute } from "$lib/utils/notificationRouting";
     import { parseDeepLinkHash } from "$lib/utils/deepLinkHash";
     import { shouldShowWhatsNew } from "$lib/utils/changelog";
@@ -278,11 +295,14 @@
         initPush,
         unregisterPush,
         clearDeliveredNativeNotifications,
+        dismissNativeRoomNotifications,
     } from "$lib/push";
     import {
         initWebPush,
         readWebPushState,
         teardownWebPush,
+        webPushDelivers,
+        isIosHomeScreenApp,
     } from "$lib/webPush";
     import {
         syncNativeAccounts,
@@ -290,7 +310,6 @@
         clearNativeSession,
         syncNativeNotificationPrivacy,
         syncNativeRingEnabled,
-        syncNativeReceiptPrivacy,
     } from "$lib/nativeSession";
     import { onNativeCallEvent } from "$lib/nativeCall";
     import { startPushDecryptResponder } from "$lib/pushDecrypt";
@@ -828,6 +847,9 @@
         // This session's notifications have already been taken down; posting
         // another one now would strand it above the next account's session.
         if (notificationsShutDown) return;
+        // Streamer mode: not even "<sender> in <room>" may pop over a stream.
+        if (settingsState.streamerMode || !settingsState.deviceNotifications)
+            return;
         if (!shouldAlertDesktop(settingsState.desktopAlertMode, loud)) return;
         if (
             document.hasFocus() &&
@@ -846,8 +868,18 @@
         const text = notificationBody({
             sender,
             body,
-            hideBody: settingsState.hideNotificationBody,
+            hideBody: notificationBodyHidden(),
         });
+        try {
+            emitPluginNotification({
+                roomId: room.roomId,
+                eventId: eventId ?? "",
+                title,
+                body: text,
+            });
+        } catch {
+            // A plugin listener must never break posting the notification.
+        }
         try {
             // The desktop shell posts through the main process (no web
             // permission involved); the browser uses the Web Notification API.
@@ -863,6 +895,10 @@
                     Notification.permission !== "granted")
             )
                 return;
+            // An iOS Home Screen app gets every message as a web push too, and
+            // iOS does not let the page's popup and the worker's replace each
+            // other by tag, so both showed. The worker's one stays.
+            if (!native && isIosHomeScreenApp() && webPushDelivers()) return;
             const n: NativeNotificationHandle =
                 native ??
                 (new Notification(title, {
@@ -941,13 +977,15 @@
      */
     function postAccountNotification(notice: AccountNotice) {
         if (notificationsShutDown) return;
+        if (settingsState.streamerMode || !settingsState.deviceNotifications)
+            return;
         if (!shouldAlertDesktop(settingsState.desktopAlertMode, notice.loud))
             return;
         flashTaskbar();
         const text = notificationBody({
             sender: notice.sender,
             body: notice.body,
-            hideBody: settingsState.hideNotificationBody,
+            hideBody: notificationBodyHidden(),
         });
         try {
             const native = showNativeNotification({
@@ -1058,6 +1096,9 @@
         loud: boolean,
         live: boolean,
     ) {
+        // Do Not Disturb: no popup, sound or inbox ping on this device either
+        // (the master push rule only silences the server's pushes).
+        if (settingsState.doNotDisturb) return;
         const content = event.getContent() as any;
         // Extensible events (e.g. polls) carry their text fallback in the
         // MSC1767 key instead of body.
@@ -1098,7 +1139,13 @@
         if (loud) {
             const soundEnabled =
                 localStorage.getItem("notifSoundEnabled") !== "false";
-            if (live && soundEnabled && !quietForOtherDevice) {
+            if (
+                live &&
+                soundEnabled &&
+                !quietForOtherDevice &&
+                settingsState.deviceNotifications &&
+                !settingsState.streamerMode
+            ) {
                 playPing();
             }
         }
@@ -1362,6 +1409,23 @@
         setSlidingSyncActiveRoom(roomsState.activeRoomId);
     });
 
+    // Per-room read-receipt overrides reach the service worker and Android
+    // notification action as a resolved room list, so re-send it when the
+    // overrides change or the room/space tree does (rooms load after boot).
+    // Throttled, not debounced: roomsTick fires on every sync, which would
+    // keep resetting a debounce. An unchanged payload is dropped inside
+    // mirrorReceiptPrivacy.
+    let receiptMirrorTimer: ReturnType<typeof setTimeout> | undefined;
+    $effect(() => {
+        void roomsState.roomsTick;
+        void settingsState.receiptOverrides;
+        void settingsState.privateReadReceipts;
+        receiptMirrorTimer ??= setTimeout(() => {
+            receiptMirrorTimer = undefined;
+            mirrorReceiptPrivacy();
+        }, 3000);
+    });
+
     // MSC4153: surface changed cross-signing identities among the open room's
     // members.
     $effect(() => {
@@ -1399,14 +1463,16 @@
     // stayed open.
     let hierarchyGeneration = 0;
     let hierarchyInFlightKey: string | null = null;
-    let hierarchyLastAppliedKey: string | null = null;
-    let hierarchyLastAppliedAt: number | null = null;
+    // Per key, not just the latest: re-opening a space whose hierarchy was
+    // applied a moment ago must not refetch it because another space was
+    // opened in between. Bounded; keys carry child signatures so they churn.
+    const hierarchyAppliedAt = new Map<string, number>();
     let hierarchyLastFailedKey: string | null = null;
     let hierarchyLastFailedAt: number | null = null;
 
     function requestHierarchy(spaceId: string, force: boolean) {
         const parentSpaceId = roomsState.spaceDrillParentId ?? null;
-        const key = hierarchyKey({
+        const key: string = hierarchyKey({
             spaceId,
             parentSpaceId,
             drillDepth: roomsState.spaceDrillDepth || 1,
@@ -1417,12 +1483,28 @@
             // Cheap: the child list behind this is memoized by signature.
             joinedChildCount: getRoomsInSpace(spaceId).length,
         });
+        const appliedAt = hierarchyAppliedAt.get(key) ?? null;
+        // A user-driven open of a space we already hold a fresh answer for
+        // (same key: its child state is unchanged) reuses it instead of
+        // re-walking a possibly huge, nested hierarchy. Stale-while-
+        // revalidate: the TTL path below still refreshes it in the
+        // background once it ages out.
+        if (
+            force &&
+            appliedAt !== null &&
+            Date.now() - appliedAt < HIERARCHY_TTL_MS &&
+            getCachedHierarchy(spaceId)
+        ) {
+            roomsState.spaceHierarchy = getCachedHierarchy(spaceId) ?? [];
+            roomsState.hierarchyLoading = false;
+            return;
+        }
         if (
             !shouldFetchHierarchy({
                 key,
                 inFlightKey: hierarchyInFlightKey,
-                lastAppliedKey: hierarchyLastAppliedKey,
-                lastAppliedAt: hierarchyLastAppliedAt,
+                lastAppliedKey: appliedAt === null ? null : key,
+                lastAppliedAt: appliedAt,
                 lastFailedKey: hierarchyLastFailedKey,
                 lastFailedAt: hierarchyLastFailedAt,
                 failureBackoffMs: HIERARCHY_FAILURE_BACKOFF_MS,
@@ -1439,16 +1521,23 @@
             // Cannot strand — the request holding this key settles into apply
             // or keep-previous, both of which clear the flag, and leaving for
             // Home clears it too.
-            if (force && hierarchyInFlightKey === key)
+            if (
+                force &&
+                hierarchyInFlightKey === key &&
+                !getCachedHierarchy(spaceId)
+            )
                 roomsState.hierarchyLoading = true;
             return;
         }
 
         const generation = ++hierarchyGeneration;
         hierarchyInFlightKey = key;
-        // Only a user-driven open shows the spinner; a background TTL refresh
-        // must not flash one over data that is already on screen.
-        if (force) roomsState.hierarchyLoading = true;
+        // Only a user-driven open with nothing cached shows the spinner. A
+        // background TTL refresh, or an open that has the last known listing
+        // on screen (setActiveSpace seeds it from the persisted cache), just
+        // updates it in place when the fetch lands.
+        if (force && !getCachedHierarchy(spaceId))
+            roomsState.hierarchyLoading = true;
 
         fetchSpaceHierarchy(
             spaceId,
@@ -1469,8 +1558,12 @@
                 if (action === "drop") return;
                 if (action === "apply") {
                     roomsState.spaceHierarchy = hierarchy ?? [];
-                    hierarchyLastAppliedKey = key;
-                    hierarchyLastAppliedAt = Date.now();
+                    hierarchyAppliedAt.delete(key);
+                    hierarchyAppliedAt.set(key, Date.now());
+                    if (hierarchyAppliedAt.size > 50)
+                        hierarchyAppliedAt.delete(
+                            hierarchyAppliedAt.keys().next().value as string,
+                        );
                     hierarchyLastFailedKey = null;
                     hierarchyLastFailedAt = null;
                 } else {
@@ -1484,8 +1577,7 @@
                     // minutes with no spinner and no error.
                     hierarchyLastFailedKey = key;
                     hierarchyLastFailedAt = Date.now();
-                    hierarchyLastAppliedKey = null;
-                    hierarchyLastAppliedAt = null;
+                    hierarchyAppliedAt.delete(key);
                 }
                 roomsState.hierarchyLoading = false;
             });
@@ -1549,6 +1641,11 @@
         publishBucket("orphanRooms", classification.orphanRooms);
         publishBucket("directRooms", classification.directRooms);
         publishBucket("invitedRooms", classification.invitedRooms);
+        // A notification's deep link can name an invite before sync has
+        // delivered it (a cold start): once it arrives, show the invites inbox
+        // instead of a room with no timeline.
+        if (roomsState.activeRoomId && isPendingInvite(roomsState.activeRoomId))
+            showInviteInbox();
         publishBucket("knockedRooms", classification.knockedRooms);
         if (roomsState.activeSpaceId) {
             publishBucket("roomsInSpace", classification.roomsInSpace);
@@ -1567,6 +1664,7 @@
 
     // Electron right-click "Save image as" (fetches with auth; see module).
     onMount(installDesktopSaveImage);
+    onMount(installDesktopMessageMenu);
 
     // Tell the main process when video plays (it weighs GPU crashes by it).
     onMount(() => {
@@ -1651,9 +1749,11 @@
 
         refreshRooms();
         const client = getClient();
-        if (client) initPush(client).catch(console.error);
-        // PWA / browser web push (no-op on native or when no VAPID key set).
-        if (client) initWebPush(client).catch(console.error);
+        if (client && settingsState.deviceNotifications) {
+            initPush(client).catch(console.error);
+            // PWA / browser web push (no-op on native or when no VAPID key set).
+            initWebPush(client).catch(console.error);
+        }
         // Ring on a closed device: register the m.call.notify push rule once.
         // Idempotent + best-effort — never blocks or breaks the session.
         if (client) ensureCallNotifyPushRule().catch(() => {});
@@ -1747,22 +1847,9 @@
         // one guaranteed chance to correct a stale one. Deliberately OUTSIDE
         // the session guard above: logout clears the native key and the SW
         // auth, so a logout -> login cycle must re-arm both mirrors.
-        syncNativeNotificationPrivacy(settingsState.hideNotificationBody).catch(
-            () => {},
-        );
-        updateServiceWorkerNotificationPrivacy(
-            settingsState.hideNotificationBody,
-        );
-        if (auth.userId) {
-            updateServiceWorkerReceiptPrivacy(
-                auth.userId,
-                settingsState.privateReadReceipts,
-            );
-            syncNativeReceiptPrivacy(
-                auth.userId,
-                settingsState.privateReadReceipts,
-            ).catch(() => {});
-        }
+        syncNativeNotificationPrivacy(notificationBodyHidden()).catch(() => {});
+        updateServiceWorkerNotificationPrivacy(notificationBodyHidden());
+        mirrorReceiptPrivacy();
         // The DM ring setting, for the native push service and the SW.
         syncNativeRingEnabled(settingsState.ringEnabled).catch(() => {});
         updateServiceWorkerRingEnabled(settingsState.ringEnabled);
@@ -1823,6 +1910,12 @@
             );
         };
 
+        const waitForSignedInClient = async () => {
+            for (let i = 0; i < 60 && !(auth.userId && getClient()); i++) {
+                await new Promise((r) => setTimeout(r, 500));
+            }
+        };
+
         const quickReplyFromNotification = async (
             roomId: string,
             userId?: string | null,
@@ -1831,6 +1924,9 @@
             stashId?: string,
         ) => {
             if (!roomId || !text || !text.trim()) return;
+            // Woken from a dead app, the session and client may still be
+            // loading: wait for them (up to 30s) rather than dropping the reply.
+            await waitForSignedInClient();
             const decision = decideNotificationRoute(
                 { roomId, userId },
                 { userId: auth.userId },
@@ -1879,6 +1975,7 @@
             userId?: string | null,
         ) => {
             if (!roomId) return;
+            await waitForSignedInClient();
             const decision = decideNotificationRoute(
                 { roomId, userId },
                 { userId: auth.userId },
@@ -1890,6 +1987,75 @@
                 /* swallow — a failed background mark-read must not crash the shell */
             }
         };
+
+        // Accept / Decline on an invite notification. Goes through the app's
+        // own accept (it records a DM in m.direct and loads the room's full
+        // state), then opens the room; a failure lands on the invites inbox.
+        const inviteFromNotification = async (
+            roomId: string,
+            userId: string | null | undefined,
+            accept: boolean,
+        ) => {
+            if (!roomId) return;
+            if (accept) restoreAppWindow();
+            await waitForSignedInClient();
+            const decision = decideNotificationRoute(
+                { roomId, userId },
+                { userId: auth.userId },
+            );
+            if (decision.action !== "navigate") {
+                if (accept && decision.reason === "other-account" && userId)
+                    switchAccountForNotification(userId, roomId);
+                return;
+            }
+            // Woken from a dead app, sync may not have delivered the invite
+            // yet, and acceptInvite reads is_direct and the inviter from it.
+            for (let i = 0; i < 20 && !getClient()?.getRoom(roomId); i++) {
+                await new Promise((r) => setTimeout(r, 500));
+            }
+            try {
+                if (accept) {
+                    await acceptInvite(decision.roomId);
+                    navigateToRoom(decision.roomId);
+                } else {
+                    await rejectInvite(decision.roomId);
+                }
+            } catch (err) {
+                console.error("Invite action from notification failed", err);
+                showErrorToast(
+                    t(
+                        accept
+                            ? "inboxPanel.failedToAcceptInvite"
+                            : "inboxPanel.failedToRejectInvite",
+                    ),
+                );
+                if (accept) navigateToRoom(decision.roomId);
+            }
+        };
+
+        // Invites declined from an Android notification: settle them here, on
+        // start and on every return to the foreground (declinedInvites.ts).
+        const settleNotificationDeclines = async () => {
+            await waitForSignedInClient();
+            if (auth.userId)
+                await consumeNativeDeclines(
+                    auth.userId,
+                    lookupInvite,
+                    settleDeclinedInvite,
+                );
+        };
+        void settleNotificationDeclines();
+        const onVisibleSettleDeclines = () => {
+            if (document.visibilityState === "visible")
+                void settleNotificationDeclines();
+        };
+        document.addEventListener("visibilitychange", onVisibleSettleDeclines);
+
+        (window as any).__matrixInviteFromNotification = (
+            roomId: string,
+            userId: string | undefined,
+            accept: boolean,
+        ) => inviteFromNotification(roomId, userId, !!accept);
 
         (window as any).__matrixOpenRoom = (
             roomId: string,
@@ -1990,6 +2156,12 @@
                 );
             } else if (e.data?.type === "NOTIF_MARK_READ" && e.data.roomId) {
                 quickMarkReadFromNotification(e.data.roomId, e.data.userId);
+            } else if (e.data?.type === "NOTIF_INVITE" && e.data.roomId) {
+                void inviteFromNotification(
+                    e.data.roomId,
+                    e.data.userId,
+                    !!e.data.accept,
+                );
             }
         };
         if ("serviceWorker" in navigator) {
@@ -2178,6 +2350,23 @@
                 return;
             emitNotification(event, room, !!(actions?.tweaks as any)?.sound);
         });
+        // Android: the tray notifications are native, so take down the ones for
+        // rooms with nothing unread left (read here, or on another device).
+        // Debounced: receipts arrive in bursts.
+        let nativeSweepTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleNativeNotificationSweep = () => {
+            if (nativeSweepTimer) clearTimeout(nativeSweepTimer);
+            nativeSweepTimer = setTimeout(() => {
+                nativeSweepTimer = null;
+                const client = getClient();
+                if (!client) return;
+                const read = client
+                    .getRooms()
+                    .filter((r) => r.getUnreadNotificationCount() === 0)
+                    .map((r) => r.roomId);
+                void dismissNativeRoomNotifications(read);
+            }, 400);
+        };
         const unsubReceipts = onAnyReceiptEvent(() => {
             const userId = getOwnUserId();
             const client = getClient();
@@ -2212,6 +2401,7 @@
                     readEventIds,
                 }),
             );
+            scheduleNativeNotificationSweep();
         });
         // Fires once the server confirms a read receipt (or it already is
         // confirmed), so the room's loud dot clears without waiting for a
@@ -2387,7 +2577,8 @@
                 roomsState.roomsTick++;
             if (
                 type === "im.client.space_layout" ||
-                type === "im.client.space_order"
+                type === "im.client.space_order" ||
+                type === "chat.commet.sidebar_ordering"
             )
                 refreshRooms();
             if (type === ACTIVE_SESSION_KEY) {
@@ -2497,6 +2688,11 @@
             nativeBackHandle?.remove();
             if (onPopState) window.removeEventListener("popstate", onPopState);
             delete (window as any).__matrixOpenRoom;
+            delete (window as any).__matrixInviteFromNotification;
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibleSettleDeclines,
+            );
             delete (window as any).__matrixKeyboardContent;
             stopAccountPoller?.();
             stopAccountPoller = null;
@@ -2646,6 +2842,7 @@
          get the UI direction back via `dir={uiDir}` wrappers below. -->
     <div
         dir="ltr"
+        data-zam-region="app"
         class="flex overflow-hidden bg-discord-background"
         style="position: fixed; inset: 0;"
         ontouchstart={drawerDragStart}
@@ -2865,6 +3062,10 @@
     <CreatePollDialog />
 {/if}
 
+{#if interfaceState.modal === "game-invite" && gameInviteDialogState.roomId}
+    <GameInviteDialog />
+{/if}
+
 {#if interfaceState.modal === "share-location" && locationDialogState.roomId}
     <ShareLocationDialog />
 {/if}
@@ -2872,6 +3073,8 @@
 {#if interfaceState.modal === "plugin-popover"}
     <PluginPopoverHost />
 {/if}
+
+<PluginOverlayHost />
 
 {#if interfaceState.modal === "share-target" && shareInboxState.payload}
     <ShareTargetSheet />
@@ -2923,3 +3126,4 @@
 <UpdateToastWatch />
 <IdentityChangeBanner />
 <JoinConsentDialog />
+<MeshConsentDialog />

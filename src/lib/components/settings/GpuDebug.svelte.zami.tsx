@@ -312,6 +312,27 @@ export default function GpuDebug() {
         }
     }
 
+    async function setGameAuto(enabled: boolean) {
+        const ga = report?.gameAuto;
+        if (!report || !ga) return;
+        setReport({ ...report, gameAuto: { ...ga, enabled } });
+        try {
+            await window.desktop?.gpu?.setGameAuto(enabled);
+        } catch (e) {
+            setReport(
+                (r) =>
+                    r && {
+                        ...r,
+                        gameAuto: r.gameAuto && {
+                            ...r.gameAuto,
+                            enabled: !enabled,
+                        },
+                    },
+            );
+            setError((e as Error)?.message ?? String(e));
+        }
+    }
+
     async function setVideoEncode(enabled: boolean) {
         const ve = report?.videoEncode;
         if (!report || !ve) return;
@@ -571,6 +592,7 @@ export default function GpuDebug() {
                   : "text-discord-danger"
         }`;
 
+    const ga = report?.gameAuto;
     const sg = report?.skiaGraphite;
     const ve = report?.videoEncode;
     const nv = report?.nvidiaVideo;
@@ -618,6 +640,26 @@ export default function GpuDebug() {
                         checked={report?.hardwareAcceleration ?? true}
                         onChange={setHardwareAcceleration}
                         label={t("gpuDebug.hardwareAcceleration")}
+                    />
+                </View>
+            )}
+            {ga && (
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("gpuDebug.gameAuto")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t("gpuDebug.gameAutoHint")}
+                            {ga.pausedAtLaunch
+                                ? ` ${t("gpuDebug.gameAutoActive")}`
+                                : ""}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={ga.enabled}
+                        onChange={setGameAuto}
+                        label={t("gpuDebug.gameAuto")}
                     />
                 </View>
             )}

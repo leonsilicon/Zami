@@ -15,6 +15,7 @@ import { openEncryptionSetup } from "$lib/stores/onboarding.svelte";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import AccountSwitcher from "$lib/components/layout/AccountSwitcher.svelte";
 import { auth } from "$lib/stores/auth.svelte";
+import { aliasUserLocalpart, shownUserId } from "$lib/utils/streamerAlias";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import {
     presenceDot,
@@ -60,10 +61,18 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
     // The chosen state, not the server's: tuwunel reports the highest
     // state across all our sessions, so an away pick would never show.
     const ownPresenceState = useRune(() => settingsState.ownPresence);
-    const ownPresence = {
-        dotClass: presenceDotClass(presenceDot(ownPresenceState)),
-        label: presenceLabel(ownPresenceState),
-    };
+    const doNotDisturb = useRune(() => settingsState.doNotDisturb);
+    const ownPresence =
+        doNotDisturb && ownPresenceState !== "offline"
+            ? {
+                  dotClass: "bg-discord-dnd",
+                  label: t("presence.doNotDisturb"),
+              }
+            : {
+                  dotClass: presenceDotClass(presenceDot(ownPresenceState)),
+                  label: presenceLabel(ownPresenceState),
+              };
+    const streamerMode = useRune(() => settingsState.streamerMode);
 
     // What Zam is showing on the profile right now (a detected game, an app's
     // rich presence), so it is plain that it is being sent.
@@ -75,22 +84,33 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
         setAccountSwitcherOpen(true);
     }
 
+    // Until the first sync the account data is not in, so the secret storage
+    // key reads as missing and the nudge offered to set up encryption for a
+    // few seconds after switching to an account that already has it.
+    const synced = useRune(
+        () => auth.syncState === "SYNCING" || auth.syncState === "PREPARED",
+    );
+
     // Verification status refresh (guarded by tick to avoid re-triggering).
     // Zami: the effect's dependency on the tick is that guard.
     const verificationTick = useRune(
         () => securityState.securityTick + verificationState.verificationTick,
     );
     useEffect(() => {
+        if (!synced) return;
         refreshVerificationStatus();
-    }, [verificationTick]);
+    }, [synced, verificationTick]);
 
     // Verification nudge (shown only when actionable and not dismissed).
-    const nudge = useRune(() =>
-        verificationStatusState.view &&
-        verificationStatusState.view.actionable &&
-        !verificationStatusState.nudgeDismissed
-            ? verificationStatusState.view
-            : null,
+    const nudge = useRune(
+        () =>
+            synced &&
+            verificationStatusState.view &&
+            verificationStatusState.view.actionable &&
+            !verificationStatusState.nudgeDismissed
+                ? verificationStatusState.view
+                : null,
+        [synced],
     );
 
     // An unverified session can ask its siblings directly instead of going
@@ -255,7 +275,9 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                     >
                         <Avatar
                             src={ownAvatarSrc}
-                            name={userId || "?"}
+                            name={
+                                userId ? shownUserId(userId, streamerMode) : "?"
+                            }
                             id={userId}
                             size={32}
                         />
@@ -270,18 +292,22 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                         onPress={openAccountSwitcher}
                         className="flex-1 min-w-0 rounded p-1 -m-1 hover:bg-discord-messageHover transition-colors"
                     >
+                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                         <Text
                             numberOfLines={1}
                             className="text-sm font-semibold text-discord-textPrimary truncate"
                         >
-                            {userId?.split(":")[0].replace("@", "") ??
-                                t("profileFooter.unknown")}
+                            {userId
+                                ? streamerMode
+                                    ? aliasUserLocalpart(userId)
+                                    : userId.split(":")[0].replace("@", "")
+                                : t("profileFooter.unknown")}
                         </Text>
                         <Text
                             numberOfLines={1}
                             className="text-xs text-discord-textSecondary truncate"
                         >
-                            {userId ?? ""}
+                            {userId ? shownUserId(userId, streamerMode) : ""}
                         </Text>
                     </Pressable>
                 </View>

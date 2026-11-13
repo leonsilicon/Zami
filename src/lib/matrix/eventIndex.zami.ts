@@ -26,6 +26,13 @@ import { matrixClient } from "./runtime";
 import { reportStorageError } from "$lib/stores/storageHealth.svelte";
 import { isRoomEncrypted, deleteDatabaseWithOutcome } from "./crypto";
 import { isSyncStale } from "./client";
+import { attachIndexSync } from "./eventIndexSync";
+import {
+    addRange,
+    entriesInRange,
+    subtractRanges,
+    type Range,
+} from "$lib/utils/eventIndexSync";
 import {
     BLOCK_SIZE,
     decodeBlock,
@@ -53,12 +60,13 @@ import {
     type Slicer,
 } from "@-/com.leonsilicon.zami.sliced";
 
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BLOCKS = "blocks";
 const TAILS = "tails";
 const MEDIA = "media";
 const CRAWL = "crawl";
 const REDACTED = "redacted";
+const COVERAGE = "coverage";
 
 /** How long new messages wait before being written (batches a busy sync). */
 const FLUSH_DELAY_MS = 2_000;
@@ -91,6 +99,24 @@ interface CrawlState {
     /** Where the next backwards page starts; null = from the newest event. */
     from: string | null;
     done: boolean;
+    /** Timestamp the next page's events are older than (the coverage edge). */
+    upTs?: number;
+    /** A walk back from the present to the newest covered moment, filling
+     *  what an offline stretch missed. Kept so a restart resumes it. */
+    gap?: GapWalk;
+}
+interface GapWalk {
+    from: string | null;
+    /** Everything between here and the present is covered. */
+    up: number;
+    /** Newest moment covered before the hole. */
+    stopAt: number;
+}
+/** The time ranges of a room this device has fully indexed. A block's own
+ *  min/max can't say it: a stretch with no messages looks like a hole. */
+interface StoredCoverage {
+    roomId: string;
+    ranges: Range[];
 }
 type StoredMedia = RoomMediaItem & { roomId: string };
 
@@ -126,22 +152,24 @@ function openDb(name: string): Promise<IDBDatabase> {
     if (!factory) return Promise.reject(new Error("IndexedDB unavailable"));
     return new Promise((resolve, reject) => {
         const open = factory.open(name, DB_VERSION);
-        open.onupgradeneeded = () => {
+        open.onupgradeneeded = (ev) => {
             const db = open.result;
-            db.createObjectStore(BLOCKS, {
-                keyPath: "id",
-                autoIncrement: true,
-            }).createIndex("room", "roomId");
-            db.createObjectStore(TAILS, { keyPath: "roomId" });
-            db.createObjectStore(MEDIA, { keyPath: "eventId" }).createIndex(
-                "room_ts",
-                ["roomId", "ts"],
-            );
-            db.createObjectStore(CRAWL, { keyPath: "roomId" });
-            db.createObjectStore(REDACTED, { keyPath: "eventId" }).createIndex(
-                "room",
-                "roomId",
-            );
+            if (ev.oldVersion < 1) {
+                db.createObjectStore(BLOCKS, {
+                    keyPath: "id",
+                    autoIncrement: true,
+                }).createIndex("room", "roomId");
+                db.createObjectStore(TAILS, { keyPath: "roomId" });
+                db.createObjectStore(MEDIA, {
+                    keyPath: "eventId",
+                }).createIndex("room_ts", ["roomId", "ts"]);
+                db.createObjectStore(CRAWL, { keyPath: "roomId" });
+                db.createObjectStore(REDACTED, {
+                    keyPath: "eventId",
+                }).createIndex("room", "roomId");
+            }
+            if (ev.oldVersion < 2)
+                db.createObjectStore(COVERAGE, { keyPath: "roomId" });
         };
         open.onsuccess = () => resolve(open.result);
         open.onerror = () => reject(open.error);
@@ -170,6 +198,8 @@ const pending = new Map<
     { entries: IndexEntry[]; media: StoredMedia[]; redacted: string[] }
 >();
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+const LIVE_TICK_MS = 30_000;
 // Ids already queued this session: a message is both added to the timeline
 // and then decrypted, and both fire.
 const seen = new Set<string>();
@@ -313,6 +343,74 @@ function liveRedaction(ev: MatrixEvent, room: Room): void {
     scheduleFlush();
 }
 
+// ── Coverage ───────────────────────────────────────────────────────────────
+
+/** Ranges are only ever added, so two writers can't undo each other. */
+function addCoverage(roomId: string, range: Range): Promise<void> {
+    const s = session;
+    if (!s || !(range[0] <= range[1])) return writeChain;
+    writeChain = writeChain
+        .then(async () => {
+            const db = await s.db;
+            const store = (m: IDBTransactionMode) =>
+                db.transaction(COVERAGE, m).objectStore(COVERAGE);
+            const row = (await req(store("readonly").get(roomId))) as
+                | StoredCoverage
+                | undefined;
+            const ranges = addRange(row?.ranges ?? [], range);
+            await req(
+                store("readwrite").put({ roomId, ranges } as StoredCoverage),
+            );
+        })
+        .catch((e) => {
+            reportStorageError(e, { fromIndexedDB: true });
+            console.warn("[eventIndex] coverage write failed", e);
+        });
+    return writeChain;
+}
+
+/** What this device has fully indexed of a room. */
+export async function getCoverage(roomId: string): Promise<Range[]> {
+    const s = session;
+    if (!s) return [];
+    const db = await s.db;
+    await writeChain;
+    const row = (await req(
+        db.transaction(COVERAGE).objectStore(COVERAGE).get(roomId),
+    )) as StoredCoverage | undefined;
+    return row?.ranges ?? [];
+}
+
+/** Rooms an index from before coverage existed already holds: claim only the
+ *  span between their oldest and newest message, and all the way back when
+ *  the crawler had finished. Gaps inside that span are unknowable. */
+async function seedCoverage(s: Session): Promise<void> {
+    const db = await s.db;
+    const tx = db.transaction([BLOCKS, TAILS, CRAWL, COVERAGE]);
+    const [blocks, tails, crawls, covs] = await Promise.all([
+        req(tx.objectStore(BLOCKS).getAll()) as Promise<StoredBlock[]>,
+        req(tx.objectStore(TAILS).getAll()) as Promise<StoredTail[]>,
+        req(tx.objectStore(CRAWL).getAll()) as Promise<CrawlState[]>,
+        req(tx.objectStore(COVERAGE).getAllKeys()) as Promise<IDBValidKey[]>,
+    ]);
+    const has = new Set(covs);
+    const span = new Map<string, Range>();
+    const widen = (roomId: string, lo: number, hi: number) => {
+        const cur = span.get(roomId);
+        span.set(roomId, [
+            Math.min(lo, cur?.[0] ?? lo),
+            Math.max(hi, cur?.[1] ?? hi),
+        ]);
+    };
+    for (const b of blocks) widen(b.roomId, b.minTs, b.maxTs);
+    for (const t of tails) for (const e of t.entries) widen(t.roomId, e.t, e.t);
+    const finished = new Set(crawls.filter((c) => c.done).map((c) => c.roomId));
+    for (const [roomId, r] of span) {
+        if (has.has(roomId)) continue;
+        await addCoverage(roomId, [finished.has(roomId) ? 0 : r[0], r[1]]);
+    }
+}
+
 // ── Crawler ────────────────────────────────────────────────────────────────
 
 function wait(ms: number): Promise<void> {
@@ -334,17 +432,18 @@ async function storageTight(): Promise<boolean> {
 
 // Zami: takes the crawl states, so rooms already done drop out first, and
 // reads each room's last activity once rather than in every comparison: a
-// bridged account has thousands of rooms, nearly all of them done.
+// bridged account has thousands of rooms, nearly all of them done. Without
+// them (the gap walk, the peer sync) done rooms stay in, as upstream has it.
 function crawlCandidates(
     client: MatrixClient,
-    states: ReadonlyMap<string, CrawlState>,
+    states?: ReadonlyMap<string, CrawlState>,
 ): Room[] {
     return client
         .getRooms()
         .filter(
             (r) =>
                 r.getMyMembership() === "join" &&
-                !states.get(r.roomId)?.done &&
+                !states?.get(r.roomId)?.done &&
                 isRoomEncrypted(r),
         )
         .map((room) => ({ room, active: room.getLastActiveTimestamp() }))
@@ -362,64 +461,197 @@ async function readCrawlStates(
     return new Map(rows.map((row) => [row.roomId, row]));
 }
 
-/** Index one page of some room's history. False when every room is done. */
-async function crawlStep(s: Session): Promise<boolean> {
-    const db = await s.db;
-    // Zami: the states are read once a session and kept up to date below,
-    // rather than in a transaction per room per page.
+/** Joined encrypted rooms, newest activity first, for the peer sync. */
+export function indexedRoomIds(): string[] {
+    const s = session;
+    return s ? crawlCandidates(s.client).map((r) => r.roomId) : [];
+}
+
+/**
+ * Whatever backfilling costs, other devices can supply it for free, so the
+ * crawler waits until this moment (the peer sync sets it while it asks).
+ */
+let backfillHeldUntil = 0;
+export function holdBackfill(untilMs: number): void {
+    backfillHeldUntil = Math.max(backfillHeldUntil, untilMs);
+}
+
+/** A gap shorter than this is the live feed catching up, not a hole. */
+const GAP_MIN_MS = 2 * 60_000;
+/** Rooms whose hole has been looked for this connection. */
+const gapChecked = new Set<string>();
+/** Where the live feed's coverage was last extended, per room. */
+const liveEdge = new Map<string, number>();
+let wasStale = false;
+
+/** Claim the time the live feed has been continuously connected for. After
+ *  a dropped connection the hole is looked for again. */
+function liveTick(): void {
+    if (isSyncStale()) {
+        if (!wasStale) {
+            wasStale = true;
+            liveEdge.clear();
+            gapChecked.clear();
+        }
+        return;
+    }
+    wasStale = false;
+    const now = Date.now();
+    for (const [roomId, from] of liveEdge) {
+        void addCoverage(roomId, [from, now]);
+        liveEdge.set(roomId, now);
+    }
+}
+
+/** Fetch, decrypt and queue one backwards page. `minTs` is the oldest event
+ *  on it (indexable or not), null when the page is empty. */
+async function fetchPage(
+    s: Session,
+    room: Room,
+    from: string | null,
+): Promise<{ end: string | null; minTs: number | null } | null> {
+    const filter = new Filter(s.client.getUserId());
+    filter.setDefinition(mediaFilterDefinition(true, CRAWL_PAGE_SIZE));
+    const res = await s.client.createMessagesRequest(
+        room.roomId,
+        from,
+        CRAWL_PAGE_SIZE,
+        Direction.Backward,
+        filter,
+    );
+    if (s.stopped) return null;
+    const events = (res.chunk ?? []).map((raw) => new MatrixEvent(raw));
+    // Zami: one at a time, with a turn of the event loop between once the
+    // slice is used up, rather than a page at once in one microtask chain;
+    // the index may have stopped meanwhile.
+    const slicer = createSlicer();
+    for (const e of events) {
+        if (e.getType() !== "m.room.encrypted") continue;
+        if (slicer.due) await slicer.pause();
+        await s.client.decryptEventIfNeeded(e).catch(() => {});
+    }
+    if (s.stopped) return null;
+    let minTs: number | null = null;
+    for (const e of events) {
+        minTs = Math.min(minTs ?? Infinity, e.getTs());
+        const eventId = e.getId();
+        const sender = e.getSender();
+        if (!eventId || !sender || e.isDecryptionFailure()) continue;
+        queueEvent(room.roomId, {
+            eventId,
+            sender,
+            ts: e.getTs(),
+            type: e.getType(),
+            content: e.getContent(),
+            redacted: e.isRedacted(),
+        });
+    }
+    await flush();
+    return { end: res.end ?? null, minTs };
+}
+
+async function crawlState(
+    db: IDBDatabase,
+    roomId: string,
+): Promise<CrawlState | undefined> {
+    // Zami: from the session's states, read once (readCrawlStates) and kept
+    // up to date by every write (rememberCrawlState), rather than in a
+    // transaction per room per page.
+    const s = session;
+    if (s) return (await sessionCrawlStates(s, db)).get(roomId);
+    return (await req(db.transaction(CRAWL).objectStore(CRAWL).get(roomId))) as
+        | CrawlState
+        | undefined;
+}
+
+/** Zami: the session's crawl states (see crawlState). */
+async function sessionCrawlStates(
+    s: Session,
+    db: IDBDatabase,
+): Promise<Map<string, CrawlState>> {
     s.crawlStates ??= await readCrawlStates(db);
-    const states = s.crawlStates;
-    for (const room of crawlCandidates(s.client, states)) {
-        const state = states.get(room.roomId);
-        if (state?.done) continue;
-        const from = state?.from ?? null;
-        const filter = new Filter(s.client.getUserId());
-        filter.setDefinition(mediaFilterDefinition(true, CRAWL_PAGE_SIZE));
-        const res = await s.client.createMessagesRequest(
-            room.roomId,
-            from,
-            CRAWL_PAGE_SIZE,
-            Direction.Backward,
-            filter,
-        );
-        if (s.stopped) return false;
-        const events = (res.chunk ?? []).map((raw) => new MatrixEvent(raw));
-        // Zami: one at a time, with a turn of the event loop between once the
-        // slice is used up, rather than a page at once in one microtask chain;
-        // the index may have stopped meanwhile.
-        const slicer = createSlicer();
-        for (const e of events) {
-            if (e.getType() !== "m.room.encrypted") continue;
-            if (slicer.due) await slicer.pause();
-            await s.client.decryptEventIfNeeded(e).catch(() => {});
+    return s.crawlStates;
+}
+
+/** Zami: after a crawl state is written (see crawlState). */
+function rememberCrawlState(state: CrawlState): void {
+    session?.crawlStates?.set(state.roomId, state);
+}
+
+/** One page of a gap walk, if some room has a hole up to the present. */
+async function gapStep(s: Session, db: IDBDatabase): Promise<boolean> {
+    for (const room of crawlCandidates(s.client)) {
+        const id = room.roomId;
+        const state = await crawlState(db, id);
+        let walk = state?.gap;
+        if (!walk) {
+            if (gapChecked.has(id)) continue;
+            gapChecked.add(id);
+            liveEdge.set(id, Date.now());
+            const ranges = await getCoverage(id);
+            const newest = ranges.length ? ranges[ranges.length - 1][1] : 0;
+            // No coverage at all is the history crawler's job, from the top.
+            if (!newest || Date.now() - newest < GAP_MIN_MS) continue;
+            walk = { from: null, up: Date.now(), stopAt: newest };
         }
-        if (s.stopped) return false;
-        for (const e of events) {
-            const eventId = e.getId();
-            const sender = e.getSender();
-            if (!eventId || !sender || e.isDecryptionFailure()) continue;
-            queueEvent(room.roomId, {
-                eventId,
-                sender,
-                ts: e.getTs(),
-                type: e.getType(),
-                content: e.getContent(),
-                redacted: e.isRedacted(),
-            });
-        }
-        await flush();
-        // Same end-of-history rule as fetchRoomMediaPage: tuwunel can hand
-        // back an empty chunk mid-history, so only the token decides.
-        const end = res.end ?? null;
+        const page = await fetchPage(s, room, walk.from);
+        if (!page) return false;
+        const finished =
+            page.end === null ||
+            page.end === walk.from ||
+            (page.minTs !== null && page.minTs <= walk.stopAt);
+        const low = finished
+            ? walk.stopAt
+            : Math.min(page.minTs ?? walk.up, walk.up);
+        await addCoverage(id, [low, walk.up]);
+        // Zami: named, to remember it (rememberCrawlState).
         const next: CrawlState = {
-            roomId: room.roomId,
-            from: end,
-            done: end === null || end === from,
+            roomId: id,
+            from: state?.from ?? null,
+            done: state?.done ?? false,
+            upTs: state?.upTs,
+            gap: finished
+                ? undefined
+                : { from: page.end, up: low, stopAt: walk.stopAt },
         };
         const tx = db.transaction(CRAWL, "readwrite");
         tx.objectStore(CRAWL).put(next);
         await done(tx);
-        states.set(room.roomId, next);
+        rememberCrawlState(next);
+        return true;
+    }
+    return false;
+}
+
+/** Index one page of some room's history. False when every room is done. */
+async function crawlStep(s: Session): Promise<boolean> {
+    const db = await s.db;
+    if (await gapStep(s, db)) return true;
+    // Zami: rooms already done drop out first (crawlCandidates).
+    const states = await sessionCrawlStates(s, db);
+    for (const room of crawlCandidates(s.client, states)) {
+        const state = states.get(room.roomId);
+        if (state?.done) continue;
+        const from = state?.from ?? null;
+        const up = state?.upTs ?? Date.now();
+        const page = await fetchPage(s, room, from);
+        if (!page) return false;
+        // Same end-of-history rule as fetchRoomMediaPage: tuwunel can hand
+        // back an empty chunk mid-history, so only the token decides.
+        const end = page.end;
+        const finished = end === null || end === from;
+        const low = finished ? 0 : Math.min(page.minTs ?? up, up);
+        await addCoverage(room.roomId, [low, up]);
+        const next: CrawlState = {
+            roomId: room.roomId,
+            from: end,
+            done: finished,
+            upTs: low,
+        };
+        const tx = db.transaction(CRAWL, "readwrite");
+        tx.objectStore(CRAWL).put(next);
+        await done(tx);
+        rememberCrawlState(next);
         return true;
     }
     return false;
@@ -432,10 +664,18 @@ export function crawlOnceForTests(): Promise<boolean> {
 }
 
 async function runCrawler(s: Session): Promise<void> {
+    await seedCoverage(s).catch((e) =>
+        console.warn("[eventIndex] coverage seed failed", e),
+    );
     while (!s.stopped) {
         let delay = CRAWL_PAGE_DELAY_MS;
         try {
-            if (document.hidden || isSyncStale() || (await storageTight())) {
+            if (
+                document.hidden ||
+                isSyncStale() ||
+                Date.now() < backfillHeldUntil ||
+                (await storageTight())
+            ) {
                 delay = CRAWL_PAUSED_MS;
             } else if (!(await crawlStep(s))) {
                 delay = CRAWL_IDLE_MS;
@@ -466,12 +706,14 @@ export function startEventIndex(): () => void {
     client.on(RoomEvent.Timeline, onTimeline as never);
     client.on(MatrixEventEvent.Decrypted, onDecrypted as never);
     client.on(RoomEvent.Redaction, onRedaction as never);
+    const detachSync = attachIndexSync(client);
     const s: Session = {
         client,
         dbName: eventIndexDbName(userId, deviceId),
         db: openDb(eventIndexDbName(userId, deviceId)),
         stopped: false,
         detach: () => {
+            detachSync();
             client.off(RoomEvent.Timeline, onTimeline as never);
             client.off(MatrixEventEvent.Decrypted, onDecrypted as never);
             client.off(RoomEvent.Redaction, onRedaction as never);
@@ -482,6 +724,7 @@ export function startEventIndex(): () => void {
         stopEventIndex();
     });
     session = s;
+    tickTimer = setInterval(liveTick, LIVE_TICK_MS);
     void runCrawler(s);
     return stopEventIndex;
 }
@@ -496,6 +739,11 @@ export function stopEventIndex(): void {
     seen.clear();
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = null;
+    if (tickTimer) clearInterval(tickTimer);
+    tickTimer = null;
+    gapChecked.clear();
+    liveEdge.clear();
+    wasStale = false;
     void s.db.then((db) => db.close()).catch(() => {});
 }
 
@@ -684,4 +932,111 @@ export async function getIndexedMedia(roomId: string): Promise<{
         complete: !!crawl?.done,
         resumeFrom: crawl?.done ? null : (crawl?.from ?? null),
     };
+}
+
+// ── Peer sync ──────────────────────────────────────────────────────────────
+
+/** Per joined encrypted room, the time ranges this device lacks. */
+export async function getMissingRanges(): Promise<
+    { roomId: string; missing: Range[] }[]
+> {
+    const out: { roomId: string; missing: Range[] }[] = [];
+    // The newest minutes are the live feed's, not a hole.
+    const now = Date.now() - GAP_MIN_MS;
+    for (const roomId of indexedRoomIds()) {
+        const missing = subtractRanges([0, now], await getCoverage(roomId));
+        if (missing.length) out.push({ roomId, missing });
+    }
+    return out;
+}
+
+/** Decoded entries of a room's blocks that overlap `ranges`, plus its tail. */
+async function roomEntriesIn(
+    db: IDBDatabase,
+    roomId: string,
+    ranges: Range[],
+): Promise<IndexEntry[]> {
+    const tx = db.transaction([BLOCKS, TAILS]);
+    const [blocks, tail] = await Promise.all([
+        req(tx.objectStore(BLOCKS).index("room").getAll(roomId)) as Promise<
+            StoredBlock[]
+        >,
+        req(tx.objectStore(TAILS).get(roomId)) as Promise<
+            StoredTail | undefined
+        >,
+    ]);
+    const all: IndexEntry[] = [...(tail?.entries ?? [])];
+    for (const b of blocks) {
+        if (ranges.some(([lo, hi]) => b.minTs <= hi && b.maxTs >= lo))
+            all.push(...(await decodeBlock(b)));
+    }
+    for (const e of pending.get(roomId)?.entries ?? []) all.push(e);
+    return entriesInRange(all, ranges);
+}
+
+/** What this device can give a peer for `ranges`: the entries it holds in the
+ *  parts of them it has covered, minus what it knows was redacted. */
+export async function readEntriesInRanges(
+    roomId: string,
+    ranges: Range[],
+): Promise<IndexEntry[]> {
+    const s = session;
+    if (!s) return [];
+    const db = await s.db;
+    await flush();
+    const [entries, redacted] = await Promise.all([
+        roomEntriesIn(db, roomId, ranges),
+        redactedIds(db, roomId),
+    ]);
+    return entries.filter(
+        (e) => !redacted.has(e.e) && !(e.o && redacted.has(e.o)),
+    );
+}
+
+/** Merge entries a peer sent for `range` (a full answer: the whole range is
+ *  now covered). Returns how many were new. */
+export async function importPeerEntries(
+    roomId: string,
+    range: Range,
+    entries: IndexEntry[],
+): Promise<number> {
+    const s = session;
+    if (!s) return 0;
+    const db = await s.db;
+    await flush();
+    const known = new Set(
+        (await roomEntriesIn(db, roomId, [range])).map((e) => e.e),
+    );
+    const fresh: IndexEntry[] = [];
+    for (const e of entries) {
+        if (known.has(e.e)) continue;
+        known.add(e.e);
+        fresh.push(e);
+    }
+    if (fresh.length) {
+        bucket(roomId).entries.push(...fresh);
+        await flush();
+    }
+    await addCoverage(roomId, range);
+    // A range from the start of the room settles the crawl, unless this
+    // device's own crawl is further up than the range reaches: marking it
+    // done would leave what lies between uncovered.
+    if (range[0] === 0) {
+        const state = await crawlState(db, roomId);
+        const reaches = state?.upTs === undefined || range[1] >= state.upTs - 1;
+        if (!state?.done && reaches) {
+            // Zami: named, to remember it (rememberCrawlState).
+            const next: CrawlState = {
+                ...state,
+                roomId,
+                from: state?.from ?? null,
+                done: true,
+            };
+            const tx = db.transaction(CRAWL, "readwrite");
+            tx.objectStore(CRAWL).put(next);
+            await done(tx);
+            rememberCrawlState(next);
+        }
+    }
+    return fresh.length;
 }

@@ -61,8 +61,8 @@ contextBridge.exposeInMainWorld("desktop", {
             return () => ipcRenderer.removeListener("sso:callback", h);
         },
     },
-    // Updates. A Flatpak build takes its shell from `flatpak update`; the
-    // main process then only offers it web bundles (see bundleUpdater.cjs).
+    // Updates: a web bundle where the shell allows it (bundleUpdater.cjs),
+    // else the installer, or in Flatpak the Flatpak portal.
     updates: {
         check: () => ipcRenderer.send("updates:check"),
         download: () => ipcRenderer.send("updates:download"),
@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld("desktop", {
                 scan: !!want?.scan,
                 fake: !!want?.fake,
                 media: !!want?.media,
+                steam: !!want?.steam,
                 autoRestartDiscord: !!want?.autoRestartDiscord,
                 userId: String(want?.userId ?? ""),
                 games: Array.isArray(want?.games)
@@ -152,6 +153,19 @@ contextBridge.exposeInMainWorld("desktop", {
         status: () => ipcRenderer.invoke("rich-presence:status"),
         restartDiscord: () =>
             ipcRenderer.invoke("rich-presence:restart-discord"),
+        setSteamDebugging: (enabled) =>
+            ipcRenderer.invoke("rich-presence:steam-debugging", !!enabled),
+        restartSteam: () => ipcRenderer.invoke("rich-presence:restart-steam"),
+        // Accept a Steam game invite (see richPresence.cjs joinGame). Only the
+        // known fields cross over; the main process validates the rest.
+        joinGame: (req) =>
+            ipcRenderer.invoke("rich-presence:join-game", {
+                kind: req?.kind === "steam" ? "steam" : "",
+                appId: String(req?.appId ?? ""),
+                connect: String(req?.connect ?? ""),
+                steamId: String(req?.steamId ?? ""),
+                lobbyId: String(req?.lobbyId ?? ""),
+            }),
         onEvent: (cb) => {
             const h = (_e, ev) => cb(ev);
             ipcRenderer.on("rich-presence:event", h);
@@ -206,6 +220,8 @@ contextBridge.exposeInMainWorld("desktop", {
             ipcRenderer.invoke("gpu:set-video-encode", !!enabled),
         setH264ProfileFix: (enabled) =>
             ipcRenderer.invoke("gpu:set-h264-profile-fix", !!enabled),
+        setGameAuto: (enabled) =>
+            ipcRenderer.invoke("gpu:set-game-auto", !!enabled),
         setSkiaGraphite: (enabled) =>
             ipcRenderer.invoke("gpu:set-skia-graphite", !!enabled),
         setNvidiaVideo: (mode) =>
@@ -263,6 +279,19 @@ contextBridge.exposeInMainWorld("desktop", {
             ipcRenderer.on("context-menu:save-image", h);
             return () =>
                 ipcRenderer.removeListener("context-menu:save-image", h);
+        },
+        // Message actions (React, Reply, Edit, ...) for the next right-click.
+        // sendSync so main has the items stored before Chromium's own
+        // context-menu event for the same click fires.
+        setMessageActions: (items) => {
+            ipcRenderer.sendSync("context-menu:message-actions", items);
+        },
+        // The key of the message action picked from the native menu.
+        onMessageAction: (cb) => {
+            const h = (_e, key) => cb(key);
+            ipcRenderer.on("context-menu:message-action", h);
+            return () =>
+                ipcRenderer.removeListener("context-menu:message-action", h);
         },
     },
 });

@@ -80,7 +80,7 @@
       "linkedom": "0.18.15",
       "livekit-client": "2.22.3",
       "lucide-react-native": "0.509.0",
-      "matrix-js-sdk": "45.0.0",
+      "matrix-js-sdk": "45.1.0",
       "mp4box": "2.4.1",
       "pixelmatch": "8.0.0",
       "pngjs": "7.0.0",
@@ -129,7 +129,7 @@
   "packageManager": "bun@1.4.4",
   "patchedDependencies": {
     "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
-    "matrix-js-sdk@45.0.0": "patches/matrix-js-sdk@45.0.0.patch",
+    "matrix-js-sdk@45.1.0": "patches/matrix-js-sdk@45.1.0.patch",
     "fake-indexeddb@6.2.7": "patches/fake-indexeddb@6.2.7.patch"
   }
 }

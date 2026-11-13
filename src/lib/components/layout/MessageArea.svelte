@@ -137,6 +137,7 @@
     import { pluginRegistry } from "$lib/stores/plugins.svelte";
     import {
         pluginPanel,
+        registeredPanelKey,
         openPluginPanel,
     } from "$lib/plugins/pluginPanel.svelte";
     import { pluginMount } from "$lib/plugins/pluginMount";
@@ -564,7 +565,11 @@
             if (
                 interfaceState.sidebar === "plugin" &&
                 cur &&
-                !pluginHeaderBtns.some((b) => b.key === cur.key)
+                !pluginHeaderBtns.some((b) => b.key === cur.key) &&
+                !pluginRegistry.panels.some(
+                    (e) =>
+                        registeredPanelKey(e.pluginId, e.value.id) === cur.key,
+                )
             ) {
                 closeSidebar();
             }
@@ -645,18 +650,44 @@
             el = await revealRow(eventId);
             if (!el) return;
         }
-        const target = el as HTMLElement;
+        let target = el as HTMLElement;
         // Cancel any previous scroll loop so we never leak an interval that
         // would keep yanking the scroll position and block the user.
         stopScrollIntoView();
-        intervalId = setInterval(
-            () =>
-                target.scrollIntoView({
-                    behavior: scrollBehavior(),
-                    block: "center",
-                }),
-            50,
-        );
+        // Smooth-scroll only to a message that is nearly on screen. Further
+        // away, the animation ran through spacer where no rows are mounted
+        // (window updates wait for the jump), so it showed blank space for
+        // most of the way. Land there at once with its neighbours mounted.
+        const far = isFarFromView(target);
+        if (far) {
+            const i = messages.findIndex((e) => e.getId() === eventId);
+            if (i >= 0) {
+                // Leaving the bottom: a window stuck to the end would
+                // stretch from the target all the way down.
+                isAtBottom = false;
+                setRowWindow(windowAround(i, messages.length));
+                await tick();
+                const again = scrollEl?.querySelector<HTMLElement>(
+                    `[data-event-id="${CSS.escape(eventId)}"]`,
+                );
+                if (again) target = again;
+            }
+        }
+        target.scrollIntoView({
+            behavior: far ? "instant" : scrollBehavior(),
+            block: "center",
+        });
+        // Keep it centred while things around it settle (images, previews,
+        // rows mounting), but only re-aim when it actually moved in the list:
+        // re-issuing a smooth scroll every 50ms restarted the animation each
+        // time, so the jump crawled and stuttered.
+        let lastTop = listTop(target);
+        intervalId = setInterval(() => {
+            const top = listTop(target);
+            if (Math.abs(top - lastTop) < 1) return;
+            lastTop = top;
+            target.scrollIntoView({ behavior: "instant", block: "center" });
+        }, 50);
         target.classList.remove("message-highlight");
         void target.offsetWidth;
         target.classList.add("message-highlight");
@@ -667,6 +698,27 @@
             // scrolling, so onScroll would never page it forward.
             catchUpContextView();
         }, 2000);
+    }
+
+    /** Where `el` sits in the scrolled content, independent of scrolling. */
+    function listTop(el: HTMLElement): number {
+        if (!scrollEl) return 0;
+        return (
+            el.getBoundingClientRect().top -
+            scrollEl.getBoundingClientRect().top +
+            scrollEl.scrollTop
+        );
+    }
+
+    /** More than a screen and a half between `el` and the viewport centre. */
+    function isFarFromView(el: HTMLElement): boolean {
+        if (!scrollEl) return false;
+        const view = scrollEl.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        const gap = Math.abs(
+            (r.top + r.bottom) / 2 - (view.top + view.bottom) / 2,
+        );
+        return gap > view.height * 1.5;
     }
 
     // Ensure the scroll loop never outlives the component (e.g. room switch).
@@ -1080,14 +1132,105 @@
         return w;
     });
 
+    // Native scroll anchoring (Chromium, Firefox) cancels shifts from rows
+    // mounting above the viewport by itself, adjusting a running wheel or
+    // fling animation rather than cutting it off. WebKit has none.
+    const nativeAnchoring =
+        typeof CSS !== "undefined" &&
+        !!CSS.supports?.("overflow-anchor", "auto");
+
+    // Pixels the top spacer is off from its estimate (WebKit only). Rows
+    // mounting above the viewport rarely measure what the spacer assumed (and
+    // the average the estimate uses drifts as rows get measured), so
+    // everything below them shifts. Without native anchoring that shift is
+    // cancelled by resizing this spacer, not by writing scrollTop: a scrollTop
+    // write in the middle of a touch fling stops iOS momentum scrolling dead,
+    // which made scrolling back through history on a phone laggy and jumpy.
+    // The slack is paid back with one scroll write once scrolling stops
+    // (settleTopSlack). It belongs to the list it was measured in: another
+    // room or context window starts at zero.
+    //
+    // Never with native anchoring: Chromium keeps its own anchor (the top
+    // row) still by re-scrolling whenever the spacer is resized, so a shift
+    // between its anchor and ours was never cancelled and every attempt
+    // re-ran the mutation observer — an endless loop that froze the page.
+    // Turning native anchoring off instead made every prepend correction a
+    // scrollTop write, which cancels Chromium's wheel animation and swallowed
+    // scroll input.
+    let topSlack = $state.raw<{ key: unknown; px: number }>({
+        key: null,
+        px: 0,
+    });
+    const slackKey = $derived(contextWindow ?? roomId);
+
     const spacerHeights = $derived.by(() => {
-        let top = 0;
+        let estTop = 0;
         let bottom = 0;
-        for (let i = 0; i < rowWindow.start; i++) top += rowHeight(messages[i]);
+        for (let i = 0; i < rowWindow.start; i++)
+            estTop += rowHeight(messages[i]);
         for (let i = rowWindow.end; i < messages.length; i++)
             bottom += rowHeight(messages[i]);
-        return { top, bottom };
+        // With the oldest loaded row mounted nothing is above it: any slack
+        // would show as a gap under the room's welcome header.
+        const slack =
+            topSlack.key === slackKey && rowWindow.start > 0 ? topSlack.px : 0;
+        return { top: Math.max(0, estTop + slack), estTop, bottom };
     });
+
+    /** Cancel a shift of `delta`px (positive = down) of everything below the
+     *  top spacer: on WebKit by resizing the spacer as far as it can, and
+     *  scrolling for the rest. Returns how far scrollTop had to move. */
+    function cancelShift(delta: number): number {
+        if (!scrollEl) return 0;
+        let rest = delta;
+        if (
+            topSpacerEl &&
+            canWindow &&
+            !nativeAnchoring &&
+            rowWindow.start > 0
+        ) {
+            const h = topSpacerEl.getBoundingClientRect().height;
+            const next = Math.max(0, h - delta);
+            if (next !== h) {
+                topSpacerEl.style.height = `${next}px`;
+                topSlack = { key: slackKey, px: next - spacerHeights.estTop };
+                rest = delta - (h - next);
+            }
+        }
+        if (rest > 0.5 || rest < -0.5) scrollEl.scrollTop += rest;
+        return rest;
+    }
+
+    // Once scrolling has stopped, give the top spacer back its estimated
+    // height and scroll by the difference, so slack never piles up into a
+    // gap above the oldest message or a spacer too short to scroll into.
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let touching = false;
+    const SETTLE_MS = 250;
+
+    function scheduleSettle() {
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(settleTopSlack, SETTLE_MS);
+    }
+
+    function settleTopSlack() {
+        if (!scrollEl || !topSpacerEl || touching) return;
+        if (topSlack.key !== slackKey || topSlack.px === 0) return;
+        // A load or jump in progress positions the view itself; try later.
+        if (loadingOlder || intervalId !== undefined) {
+            scheduleSettle();
+            return;
+        }
+        const h = topSpacerEl.getBoundingClientRect().height;
+        const next = Math.max(0, spacerHeights.estTop);
+        topSlack = { key: slackKey, px: 0 };
+        topSpacerEl.style.height = `${next}px`;
+        // At the bottom the stick-to-bottom observer keeps the view there.
+        if (!isAtBottom) scrollEl.scrollTop += next - h;
+        captureScrollAnchor();
+    }
+
+    $effect(() => () => clearTimeout(settleTimer));
 
     const rowKeyOf = new WeakMap<Element, string>();
     let rowObserver: ResizeObserver | null = null;
@@ -1180,12 +1323,22 @@
         }
         const height = scrollEl.clientHeight;
         if (height === 0) return; // hidden: nothing to fit
+        const current = rowWindow;
+        // Slack is ignored while the oldest row is mounted (spacerHeights);
+        // drop it so it can't reappear as a jump once that row unmounts.
+        if (current.start === 0 && topSlack.px !== 0)
+            topSlack = { key: slackKey, px: 0 };
+        const offsets = rowOffsets(messages.map(rowHeight));
+        // In list coordinates, measured from the first mounted row: the top
+        // spacer carries slack (see topSlack), so its height is not where
+        // the list puts that row.
+        const spacer = topSpacerEl.getBoundingClientRect();
         const viewTop =
             scrollEl.getBoundingClientRect().top -
-            topSpacerEl.getBoundingClientRect().top;
-        const current = rowWindow;
+            spacer.bottom +
+            offsets[Math.min(current.start, n)];
         const next = nextWindow({
-            offsets: rowOffsets(messages.map(rowHeight)),
+            offsets,
             viewTop,
             viewBottom: viewTop + height,
             margin: Math.max(
@@ -1196,8 +1349,13 @@
             pinned: pinnedRows(),
             stickToEnd: isAtBottom && !isContextView,
         });
-        if (next.start !== current.start || next.end !== current.end)
+        if (next.start !== current.start || next.end !== current.end) {
+            // The reading anchor from the last scroll event can predate a
+            // scroll whose event hasn't fired yet; measured against it, the
+            // user's own scroll looked like a shift and was undone.
+            captureScrollAnchor();
             setRowWindow(next);
+        }
     }
 
     let windowFrame = 0;
@@ -1817,10 +1975,38 @@
     // best; ~0.35 is the fallback candidate if it feels low (feel call — tune live).
     const READING_LINE_FRACTION = 0.5;
 
+    // Native anchoring holds the same row as the reading anchor. Every row
+    // opts out (the timeline's `*:[overflow-anchor:none]`) except this one,
+    // so Chromium anchors on it instead of the top visible row. Otherwise a
+    // shift between the two (an image or preview loading in the upper half)
+    // went uncorrected natively and restoreScrollAnchor had to write
+    // scrollTop, which cuts off a running wheel animation: scrolling jerked
+    // whenever content loaded. Kept through loads and jumps (backfill relies
+    // on it); dropped at the bottom, where the bottom anchor row must win.
+    let nativeAnchorRow: HTMLElement | null = null;
+
+    function setNativeAnchorRow(row: HTMLElement | null) {
+        if (row === nativeAnchorRow) return;
+        nativeAnchorRow?.style.removeProperty("overflow-anchor");
+        if (row) row.style.overflowAnchor = "auto";
+        nativeAnchorRow = row;
+    }
+
     // Record the message crossing the reading line and its offset from the
     // viewport top.
     function captureScrollAnchor() {
-        if (!anchoringActive()) {
+        if (!scrollEl) return;
+        // Only flush with the bottom does the bottom anchor row take over.
+        // In the slack above it (isAtBottom is true within 100px) that row
+        // is off screen, so Chromium had no anchor at all and rows mounting
+        // above shifted the view by hundreds of pixels.
+        const flushBottom =
+            isAtBottom &&
+            scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight <
+                2;
+        const nominate = nativeAnchoring && !flushBottom;
+        if (!nominate) setNativeAnchorRow(null);
+        if (!anchoringActive() && !nominate) {
             anchorEl = null;
             return;
         }
@@ -1828,42 +2014,79 @@
         const line = scrollEl!.clientHeight * READING_LINE_FRACTION;
         // Fallback for short/gappy content where nothing spans the line: the first
         // message reaching into the viewport, i.e. the old top-visible target.
-        let fallbackEl: HTMLElement | null = null;
-        let fallbackOffset = 0;
+        let found: HTMLElement | null = null;
+        let foundOffset = 0;
         for (const el of scrollEl!.querySelectorAll<HTMLElement>(
             "[data-event-id]",
         )) {
             const r = el.getBoundingClientRect();
             const top = r.top - cTop;
             const bottom = r.bottom - cTop;
-            if (fallbackEl === null && bottom > 8) {
-                fallbackEl = el;
-                fallbackOffset = top;
+            if (found === null && bottom > 8) {
+                found = el;
+                foundOffset = top;
             }
             if (top <= line && bottom >= line) {
-                anchorEl = el;
-                anchorOffset = top;
-                return;
+                found = el;
+                foundOffset = top;
+                break;
             }
         }
-        anchorEl = fallbackEl;
-        if (fallbackEl) anchorOffset = fallbackOffset;
+        if (nominate)
+            setNativeAnchorRow(
+                found?.closest<HTMLElement>("[data-row-index]") ?? null,
+            );
+        if (!anchoringActive()) {
+            anchorEl = null;
+            return;
+        }
+        anchorEl = found;
+        // Kept in content coordinates (offset + scrollTop), so a user scroll
+        // that lands before the next scroll event isn't mistaken for a shift.
+        anchorOffset = foundOffset + scrollEl.scrollTop;
     }
 
     // If the anchored message moved (content above/within it changed size),
     // cancel the move so the reading position stays put. Sub-pixel drift is left
     // to the browser; we only undo real jumps.
+    let correctionsThisFrame = 0;
+    const MAX_CORRECTIONS_PER_FRAME = 4;
+
     function restoreScrollAnchor() {
-        if (!anchoringActive() || !anchorEl || !anchorEl.isConnected) return;
+        if (!anchoringActive()) return;
+        // Native anchoring already holds this same row (setNativeAnchorRow)
+        // against every shift above it, smoothly and within the frame.
+        // Correcting as well only fought it: measured mid-drag, a row mounting
+        // before the next scroll event read the user's own scroll as a shift
+        // and undid it, so content stood still for a frame (8 in 300 in a
+        // mixed-media room). Just make sure a row is nominated.
+        if (nativeAnchoring) {
+            if (!nativeAnchorRow?.isConnected) captureScrollAnchor();
+            return;
+        }
+        if (!anchorEl || !anchorEl.isConnected) return;
         const cTop = scrollEl!.getBoundingClientRect().top;
         const delta =
-            anchorEl.getBoundingClientRect().top - cTop - anchorOffset;
+            anchorEl.getBoundingClientRect().top -
+            cTop +
+            scrollEl!.scrollTop -
+            anchorOffset;
         if (delta > 2 || delta < -2) {
-            scrollEl!.scrollTop += delta;
+            // A correction resizes the spacer, which re-runs this observer. If
+            // something keeps undoing it, give up until the next frame rather
+            // than loop forever in microtasks (that froze the page once).
+            if (++correctionsThisFrame > MAX_CORRECTIONS_PER_FRAME) return;
+            if (correctionsThisFrame === 1)
+                requestAnimationFrame(() => (correctionsThisFrame = 0));
+            // Usually absorbed by the top spacer without scrolling at all.
+            const scrolled = cancelShift(delta);
+            // What scrolling covered is still off in content coordinates:
+            // move the baseline so it isn't corrected again.
+            anchorOffset += scrolled;
             // Keep the selection baseline pinned to content, not raw scrollTop: a
             // reading-anchor correction (late image/preview load above) must not read
             // as a user scroll and dismiss the actions bar.
-            if (selectionScrollTop !== null) selectionScrollTop += delta;
+            if (selectionScrollTop !== null) selectionScrollTop += scrolled;
         }
     }
 
@@ -1875,6 +2098,7 @@
         // Track the reading position so a late content change can be undone.
         captureScrollAnchor();
         scheduleWindowUpdate();
+        scheduleSettle();
 
         // Touch: a meaningful scroll away from where a message was selected dismisses
         // its floating actions bar. Guarded so a bottom-sheet action in progress and
@@ -1955,6 +2179,31 @@
     // (low in rooms full of joins); sizes the next page (utils/backfillSizing).
     let visibleRatio = INITIAL_VISIBLE_RATIO;
 
+    // The row a history prepend is measured against: the one after the first
+    // row on screen. Measuring the oldest rendered row missed its own change:
+    // older messages from the same sender fold its name and avatar away, and
+    // that 32px shrink moved everything below it up mid-scroll. Any row that
+    // can fold is now above the reference.
+    function backfillReferenceRow(): HTMLElement | null {
+        if (!scrollEl) return null;
+        const top = scrollEl.getBoundingClientRect().top;
+        let first: HTMLElement | null = null;
+        for (const el of scrollEl.querySelectorAll<HTMLElement>(
+            "[data-event-id]",
+        )) {
+            first ??= el;
+            if (el.getBoundingClientRect().bottom > top) {
+                const next = el
+                    .closest("[data-row-index]")
+                    ?.nextElementSibling?.querySelector<HTMLElement>(
+                        "[data-event-id]",
+                    );
+                return next ?? el;
+            }
+        }
+        return first;
+    }
+
     async function loadOlderMessages() {
         if (loadingOlder) return;
         // Context view paginates the jumped-to window; the live view paginates
@@ -1974,8 +2223,8 @@
         // drop the result so room A's "no more history" verdict is never written
         // into room B (which would leave B un-paginatable) (F2).
         const rid = room.roomId;
-        // Scroll preservation across a history prepend. The reference is the
-        // oldest rendered message; after prepending we nudge it back to the
+        // Scroll preservation across a history prepend. The reference is a
+        // message on screen (backfillReferenceRow); after prepending we nudge it back to the
         // viewport offset it held just before — a self-correcting form that lands
         // it right whether or not the browser's native scroll anchoring also
         // compensated (Chromium/Firefox do, WebKit doesn't). Do NOT replace this
@@ -1996,7 +2245,7 @@
             if (isContextView && contextWindow) {
                 await paginateContextWindow(contextWindow, false);
                 if (room.roomId !== rid) return;
-                const refEl = scrollEl?.querySelector("[data-event-id]");
+                const refEl = backfillReferenceRow();
                 refId = (refEl as HTMLElement | null)?.dataset.eventId;
                 prevTop = refEl?.getBoundingClientRect().top;
                 contextMessages = getContextWindowEvents(contextWindow);
@@ -2022,7 +2271,7 @@
                     events[0] === current[0]
                 )
                     return;
-                const refEl = scrollEl?.querySelector("[data-event-id]");
+                const refEl = backfillReferenceRow();
                 refId = (refEl as HTMLElement | null)?.dataset.eventId;
                 prevTop = refEl?.getBoundingClientRect().top;
                 setMessages(rid, events);
@@ -2036,10 +2285,11 @@
                 prevTop !== undefined
             ) {
                 const el = scrollEl.querySelector(`[data-event-id="${refId}"]`);
-                if (el) {
-                    scrollEl.scrollTop +=
-                        el.getBoundingClientRect().top - prevTop;
-                }
+                // Native anchoring usually leaves nothing to fix; skip the
+                // no-op write, since any programmatic scroll can cut off a
+                // running wheel or fling animation.
+                const shift = el ? el.getBoundingClientRect().top - prevTop : 0;
+                if (shift >= 1 || shift <= -1) scrollEl.scrollTop += shift;
             }
         } finally {
             // Only release the lock for our own room. On a mid-load switch the
@@ -2277,8 +2527,11 @@
     // first, so the user still sees it flick). restoreScrollAnchor no-ops unless
     // we're calmly reading history and the anchor actually moved, so this is
     // inert at the bottom, during backfill, and during a jump.
+    // The top spacer also changes height without any row mounting (a new
+    // message re-deriving it with a drifted estimate), so it is watched too.
     $effect(() => {
         const root = scrollEl;
+        const spacer = topSpacerEl;
         roomId; // re-establish per room
         if (!root) return;
         const onMediaLoad = (e: Event) => {
@@ -2288,10 +2541,37 @@
         };
         const mo = new MutationObserver(restoreScrollAnchor);
         mo.observe(root, { childList: true, subtree: true });
+        if (spacer)
+            mo.observe(spacer, {
+                attributes: true,
+                attributeFilter: ["style"],
+            });
+        // A finger resting on the screen fires no scroll events but is still
+        // scrolling: settling then would yank the view under it.
+        const onTouchStart = () => {
+            touching = true;
+            clearTimeout(settleTimer);
+        };
+        const onTouchEnd = (e: TouchEvent) => {
+            if (e.touches.length > 0) return;
+            touching = false;
+            scheduleSettle();
+        };
         root.addEventListener("load", onMediaLoad, true);
+        // Passive, unlike Svelte's onwheel: a blocking wheel listener makes
+        // Chromium wait for the main thread before scrolling each notch, so
+        // scrolling stuttered whenever history or rows were loading.
+        root.addEventListener("wheel", stopScrollIntoView, { passive: true });
+        root.addEventListener("touchstart", onTouchStart, { passive: true });
+        root.addEventListener("touchend", onTouchEnd, { passive: true });
+        root.addEventListener("touchcancel", onTouchEnd, { passive: true });
         return () => {
             mo.disconnect();
             root.removeEventListener("load", onMediaLoad, true);
+            root.removeEventListener("wheel", stopScrollIntoView);
+            root.removeEventListener("touchstart", onTouchStart);
+            root.removeEventListener("touchend", onTouchEnd);
+            root.removeEventListener("touchcancel", onTouchEnd);
         };
     });
 
@@ -2395,6 +2675,7 @@
     >
         <!-- Room header -->
         <div
+            data-zam-region="room-header"
             class="h-12 px-4 flex items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0"
         >
             {#if isMobile}
@@ -2658,15 +2939,13 @@
              dedicated sr-only region after this container instead. -->
         <div
             bind:this={scrollEl}
+            data-zam-region="timeline"
             onscroll={onScroll}
-            onwheel={stopScrollIntoView}
             ontouchstart={stopScrollIntoView}
             role="log"
             aria-label={t("messageArea.messageTimeline")}
             aria-live="off"
-            class="overflow-y-auto overflow-x-hidden flex flex-1 flex-col{stickToBottom
-                ? ' *:[overflow-anchor:none]'
-                : ''}"
+            class="overflow-y-auto overflow-x-hidden flex flex-1 flex-col *:[overflow-anchor:none]"
         >
             <!-- Pushes a short timeline down so it hugs the composer, like
                  flex-col-reverse used to. -->

@@ -45,6 +45,8 @@ export type ModalId =
     | "report-message"
     | "redact-message"
     | "forward-message"
+    // The message "View source" dialog (ViewSourceDialog, MessageItem).
+    | "view-source"
     | "share-target"
     | "composer-picker"
     | "composer-actions"
@@ -59,6 +61,8 @@ export type ModalId =
     | "plugin-popover"
     | "create-poll"
     | "share-location"
+    // Pick a running game and send it as an invite (GameInviteDialog).
+    | "game-invite"
     // Fullscreen live-location map (LiveLocationMapView, mounted by
     // LiveLocationBanner). It is in the slot so Escape and mobile back
     // dismiss it through AppShell's central stack rather than a private

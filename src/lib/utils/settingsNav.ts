@@ -23,7 +23,9 @@ export type SettingsTab =
     | "plugins"
     | "server"
     | "about"
-    | "debug";
+    | "debug"
+    // A plugin's page (zam.ui.addSettingsPage), by registry entry id.
+    | `plugin:${number}`;
 
 export interface SettingsTabEntry {
     id: SettingsTab;
@@ -120,7 +122,8 @@ export interface SettingsPlatform {
     desktopTray: boolean;
     /** The Capacitor Android app. */
     nativeApp: boolean;
-    /** The desktop app's rich presence bridge exists (`richPresenceAvailable()`). */
+    /** The desktop app's rich presence bridge exists (`richPresenceAvailable()`),
+     *  or a plugin has published rich presence. */
     richPresence: boolean;
 }
 

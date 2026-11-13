@@ -551,13 +551,21 @@ export default function CallStatsPanel({ onClose }: Props) {
     // React Native's; the value sits at the end of the row.
     const rowIn =
         (size: string) =>
-        (label: string, value: string, tone: StatTone = "ok"): ReactNode => (
+        (
+            label: string,
+            value: string,
+            tone: StatTone = "ok",
+            secret = false,
+        ): ReactNode => (
             <View className="flex-row justify-between gap-3 py-0.5">
                 <Text className={`${size} text-discord-textMuted`}>
                     {label}
                 </Text>
+                {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                 <Text
-                    className={`flex-shrink ${size} font-mono ${TONE_CLASS[tone]}`}
+                    className={`flex-shrink ${size} font-mono ${TONE_CLASS[tone]} ${
+                        secret ? "streamer-hide" : ""
+                    }`}
                 >
                     {value}
                 </Text>
@@ -609,7 +617,12 @@ export default function CallStatsPanel({ onClose }: Props) {
                             lossTone(s.outgoingLoss),
                         )}
                     {!!s.remoteAddress &&
-                        row(t("callStats.remoteAddress"), s.remoteAddress)}
+                        row(
+                            t("callStats.remoteAddress"),
+                            s.remoteAddress,
+                            "ok",
+                            true,
+                        )}
                     {s.serverOfferedNoUdp &&
                         row(
                             t("callStats.serverCandidates"),

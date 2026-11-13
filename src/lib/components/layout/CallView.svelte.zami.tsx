@@ -1,5 +1,5 @@
 import { useStableCallback } from "@-/com.leonsilicon.zami.incremental/react";
-import { anchorElement, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { anchorElement, DomMount, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Haptics from "expo-haptics";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -41,6 +41,12 @@ import Avatar from "$lib/components/ui/Avatar.svelte";
 import CallParticipantMenu from "$lib/components/layout/CallParticipantMenu.svelte";
 import ScreenShareQualityPopover from "$lib/components/layout/ScreenShareQualityPopover.svelte";
 import SoundboardButton from "$lib/components/layout/SoundboardButton.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
+import {
+    callControlItems,
+    callPanelItems,
+    callTileDecorationItems,
+} from "$lib/plugins/pluginCall.svelte";
 import CallEncryptionBadge from "$lib/components/layout/CallEncryptionBadge.svelte";
 import UserProfileCard from "$lib/components/ui/UserProfileCard.svelte";
 import VideoTile from "$lib/components/layout/VideoTile.svelte";
@@ -280,6 +286,8 @@ export default function CallView({
     const mirrorCamera = useRune(() => settingsState.mirrorCamera);
     const cameraDisabled = useRune(() => settingsState.cameraDisabled);
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
+    const pluginPanels = useRune(() => callPanelItems(room.roomId), [room]);
+    const pluginControls = useRune(() => callControlItems(room.roomId), [room]);
     // Zami: participantAudioFor() is read per tile (ParticipantTile, below).
     // Names and avatars hang off roomsTick: the participants' are read per
     // tile; the screen shares' and spotlight's labels here re-render only
@@ -494,6 +502,8 @@ export default function CallView({
 
     return (
         <>
+            {/* Zami: not ported: `data-zam-region="call"` (plugins' DOM
+                region hook; there's no DOM here). */}
             <View className="flex-1 flex-col min-w-0 bg-discord-backgroundTertiary">
                 {/* Header */}
                 <View className="h-12 px-4 flex-row items-center gap-2 flex-shrink-0 border-b border-discord-divider bg-discord-background">
@@ -819,6 +829,26 @@ export default function CallView({
                     )}
                 </View>
 
+                {/* Plugin panels (open ones only; each scrolls within its own cap) */}
+                {/* Zami: the plugin builds DOM into the element (pluginMount),
+                    which DomView shows. */}
+                {pluginPanels.map((panel) => (
+                    <ScrollView
+                        key={panel.key}
+                        className="flex-shrink-0 grow-0 border-t border-discord-divider bg-discord-background max-h-[60%]"
+                        accessibilityLabel={panel.title}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        <DomMount
+                            document={document}
+                            className="w-full"
+                            mount={(el) =>
+                                pluginMount(el, panel.render).destroy
+                            }
+                        />
+                    </ScrollView>
+                ))}
+
                 {/* Controls */}
                 <View className="flex-shrink-0 p-4 flex-col items-center gap-2">
                     {playbackBlocked && inThisCall && (
@@ -985,6 +1015,51 @@ export default function CallView({
                                 buttonClass="p-3 rounded-full hover:bg-discord-messageHover"
                                 idleClass="text-discord-textPrimary"
                             />
+                            {pluginControls.map((c) => (
+                                // Zami: `e.currentTarget`, the anchor a plugin
+                                // places its popover by, as anchorElement
+                                // measures the button.
+                                <Pressable
+                                    key={c.key}
+                                    accessibilityRole="button"
+                                    onPress={(e) => {
+                                        const target = e.currentTarget;
+                                        void anchorElement(
+                                            typeof target === "number"
+                                                ? null
+                                                : target,
+                                        ).then((anchor) => c.click(anchor));
+                                    }}
+                                    className="p-3 rounded-full hover:bg-discord-messageHover"
+                                    accessibilityLabel={c.label}
+                                >
+                                    {c.icon ? (
+                                        <SvgIcon
+                                            className={`w-5 h-5 ${
+                                                c.active
+                                                    ? "text-discord-accent"
+                                                    : "text-discord-textPrimary"
+                                            }`}
+                                            d={c.icon}
+                                        />
+                                    ) : (
+                                        <View
+                                            accessible={false}
+                                            className="w-5 h-5 flex-row items-center justify-center"
+                                        >
+                                            <Text
+                                                className={`text-sm font-semibold leading-none ${
+                                                    c.active
+                                                        ? "text-discord-accent"
+                                                        : "text-discord-textPrimary"
+                                                }`}
+                                            >
+                                                {c.label.slice(0, 1)}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </Pressable>
+                            ))}
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={leaveCall}
@@ -1111,6 +1186,20 @@ const ParticipantTile = memo(function ParticipantTile({
         () => participantAudioFor(p.userId).muted,
         [userId],
     );
+    const tileDecorations = useRune(
+        () => callTileDecorationItems(room.roomId, p.userId),
+        [room, userId],
+    );
+    // Zami: the plugin builds DOM into the element (pluginMount), which
+    // DomView shows; `pointer-events-none` → pointerEvents="none".
+    const decorations = tileDecorations.map((d) => (
+        <View key={d.key} pointerEvents="none" className="absolute inset-0">
+            <DomMount
+                document={document}
+                mount={(el) => pluginMount(el, d.render).destroy}
+            />
+        </View>
+    ));
 
     function isLocalIdentity(identity: string): boolean {
         return identity.slice(0, identity.lastIndexOf(":")) === selfUserId;
@@ -1203,6 +1292,7 @@ const ParticipantTile = memo(function ParticipantTile({
                     >
                         <EllipsisVertical size={14} className="text-white" />
                     </Pressable>
+                    {decorations}
                 </Pressable>
             </Animated.View>
         );
@@ -1341,6 +1431,7 @@ const ParticipantTile = memo(function ParticipantTile({
                 >
                     <EllipsisVertical size={16} className="text-white" />
                 </Pressable>
+                {decorations}
             </Pressable>
         </Animated.View>
     );

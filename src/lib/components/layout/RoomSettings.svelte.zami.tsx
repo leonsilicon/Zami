@@ -1,6 +1,7 @@
 import {
     Checkbox,
     Details,
+    DomMount,
     Image,
     mediaSource,
     pickedFile,
@@ -46,6 +47,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { withUniwind } from "uniwind";
 import { t } from "$lib/i18n";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import InvitePanel from "./InvitePanel.svelte";
 import ImagePackEditor from "./ImagePackEditor.svelte";
@@ -111,6 +114,7 @@ import {
     isRoomStateHealed,
     getRoomNotificationSetting,
     setRoomNotificationSetting,
+    getParentSpaceIds,
     getRoomsInSpace,
     getSpaceChildIds,
     type RoomNotificationSetting,
@@ -168,7 +172,11 @@ import {
     closeSubPage,
 } from "$lib/stores/interface.svelte";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
-import { settingsState } from "$lib/stores/settings.svelte";
+import { settingsState, setReceiptOverride } from "$lib/stores/settings.svelte";
+import {
+    isRoomReceiptPrivate,
+    type ReceiptOverride,
+} from "$lib/utils/receiptPrivacy";
 import {
     blockUser,
     unblockUser,
@@ -214,11 +222,39 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
     const isSpace = room.isSpaceRoom();
 
+    // Plugin tabs (zam.room.addSettingsTab) this room gets, after Zam's own.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const pluginTabEntries = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.roomSettingsTabs.filter((e) => {
+                try {
+                    return (
+                        e.value.when?.({ roomId: room.roomId, isSpace }) ?? true
+                    );
+                } catch (err) {
+                    console.error("[zam] room settings tab when() threw", err);
+                    return false;
+                }
+            })
+        ),
+        [pluginTick, room.roomId, isSpace],
+    );
+    const pluginTabs = useMemo(
+        () =>
+            pluginTabEntries.map((e) => ({
+                id: `plugin:${e.entryId}` as RoomSettingsTab,
+                label: String(e.value.label),
+            })),
+        [pluginTabEntries],
+    );
+
     const isMobile = useRune(() => interfaceState.isMobile);
     const view = roomSettingsNavView({
         isMobile,
         isSpace,
         selectedTab,
+        pluginTabs,
     });
 
     // The tab whose panel is on screen, or null on the mobile category list
@@ -226,6 +262,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // sitting on the list must not kick off a fetch.
     const activeTab: RoomSettingsTab | null =
         view.mode === "list" ? null : view.tab;
+
+    // Zami: declared after activeTab, which it reads.
+    const activePluginTab =
+        pluginTabEntries.find((e) => activeTab === `plugin:${e.entryId}`) ??
+        null;
 
     // Stable identity: it is the ownership token for the sub-page slot, so it
     // must NOT be recreated on every render. It resets local state ONLY — it
@@ -243,6 +284,45 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         [room.roomId],
     );
     const [notifSaving, setNotifSaving] = useState(false);
+
+    // Read receipts: this room's (or space's) override of the account default.
+    const receiptChoice = useRune<ReceiptOverride | null>(
+        () => settingsState.receiptOverrides[room.roomId] ?? null,
+        [room.roomId],
+    );
+    // What "Default" resolves to here: the account setting, or a parent
+    // space's override. Ignores this room's own choice, so the label stays put
+    // while the user flips between options.
+    const inheritedReceiptsPrivate = useRune(() => {
+        const { [room.roomId]: _own, ...others } =
+            settingsState.receiptOverrides;
+        return isRoomReceiptPrivate(
+            room.roomId,
+            getParentSpaceIds(room.roomId),
+            others,
+            settingsState.privateReadReceipts,
+        );
+    }, [room.roomId]);
+    const RECEIPT_CHOICES: readonly [ReceiptOverride | null, string, string][] =
+        [
+            [
+                null,
+                t("common.default"),
+                inheritedReceiptsPrivate
+                    ? t("roomSettings.readReceiptsDefaultHide")
+                    : t("roomSettings.readReceiptsDefaultShare"),
+            ],
+            [
+                "public",
+                t("roomSettings.readReceiptsShare"),
+                t("roomSettings.readReceiptsShareDesc"),
+            ],
+            [
+                "private",
+                t("roomSettings.readReceiptsHide"),
+                t("roomSettings.readReceiptsHideDesc"),
+            ],
+        ];
 
     const NOTIF_LEVELS: readonly [RoomNotificationSetting, string, string][] = [
         [
@@ -1398,7 +1478,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         }
     }
 
-    const tabs = roomSettingsTabs({ isSpace });
+    const tabs = roomSettingsTabs({ isSpace, pluginTabs });
 
     // Zami: Zam's panel fills the viewport on mobile (`h-[100dvh]`); here it
     // keeps clear of the status bar, notch and home indicator.
@@ -1974,14 +2054,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                             role="heading"
                             accessibilityLabel={
                                 view.mode === "detail"
-                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab)}`
+                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab, pluginTabs)}`
                                     : undefined
                             }
                             numberOfLines={1}
                             className="text-lg font-bold text-discord-textPrimary min-w-0 truncate flex-1"
                         >
                             {view.mode === "detail"
-                                ? roomSettingsTabLabel(view.tab)
+                                ? roomSettingsTabLabel(view.tab, pluginTabs)
                                 : t("roomSettings.settings", {
                                       name: room.name,
                                   })}
@@ -2143,8 +2223,30 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 >
                                     {trustBanner}
 
-                                    {/* ── General ─────────────────────────────────────────── */}
-                                    {activeTab === "general" ? (
+                                    {/* ── Plugin tab ────────────────────────────────────── */}
+                                    {activePluginTab ? (
+                                        // Zami: the plugin builds DOM into the
+                                        // element (pluginMount), which DomView
+                                        // shows.
+                                        <DomMount
+                                            key={`${activePluginTab.entryId}:${room.roomId}`}
+                                            document={document}
+                                            mount={(el) => {
+                                                const tab = activePluginTab;
+                                                el.setAttribute(
+                                                    "data-zam-plugin",
+                                                    tab.pluginId,
+                                                );
+                                                return pluginMount(el, (el) =>
+                                                    tab.value.render(el, {
+                                                        roomId: room.roomId,
+                                                        isSpace,
+                                                    }),
+                                                ).destroy;
+                                            }}
+                                        />
+                                    ) : /* ── General ─────────────────────────────────────────── */
+                                    activeTab === "general" ? (
                                         <View className="gap-5">
                                             {/* Avatar */}
                                             <View>
@@ -2287,6 +2389,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         {/* Zami: `<code>`'s box as
                                                             a View, which clips its
                                                             rounded background. */}
+                                                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                                         <View className="flex-1 min-w-0 bg-discord-backgroundTertiary rounded px-3 py-2">
                                                             <Text
                                                                 selectable
@@ -3200,6 +3303,83 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             >
                                                                 <View className="mt-0.5 w-3 flex-row items-center justify-center flex-shrink-0">
                                                                     {notifSetting ===
+                                                                        val && (
+                                                                        <Circle
+                                                                            size={
+                                                                                8
+                                                                            }
+                                                                            fill="currentColor"
+                                                                            className="text-discord-accent"
+                                                                        />
+                                                                    )}
+                                                                </View>
+                                                                <View className="min-w-0 flex-1">
+                                                                    <Text className="text-sm font-medium text-discord-textPrimary">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <Text className="text-xs text-discord-textMuted">
+                                                                        {desc}
+                                                                    </Text>
+                                                                </View>
+                                                            </Pressable>
+                                                        ),
+                                                    )}
+                                                </View>
+                                            </View>
+                                            <View>
+                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    {t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                </Text>
+                                                <Text className="text-xs text-discord-textMuted mb-3">
+                                                    {isSpace
+                                                        ? t(
+                                                              "roomSettings.readReceiptsSpaceHelp",
+                                                          )
+                                                        : t(
+                                                              "roomSettings.readReceiptsRoomHelp",
+                                                          )}
+                                                </Text>
+                                                <View
+                                                    className="flex-col gap-1"
+                                                    accessibilityRole="radiogroup"
+                                                    accessibilityLabel={t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                >
+                                                    {RECEIPT_CHOICES.map(
+                                                        ([
+                                                            val,
+                                                            label,
+                                                            desc,
+                                                        ]) => (
+                                                            <Pressable
+                                                                key={
+                                                                    val ??
+                                                                    "default"
+                                                                }
+                                                                accessibilityRole="radio"
+                                                                accessibilityState={{
+                                                                    checked:
+                                                                        receiptChoice ===
+                                                                        val,
+                                                                }}
+                                                                onPress={() =>
+                                                                    setReceiptOverride(
+                                                                        room.roomId,
+                                                                        val,
+                                                                    )
+                                                                }
+                                                                className={`w-full px-3 py-2 rounded flex-row items-start gap-3 transition-colors hover:bg-discord-messageHover ${
+                                                                    receiptChoice ===
+                                                                    val
+                                                                        ? "bg-discord-messageHover"
+                                                                        : ""
+                                                                }`}
+                                                            >
+                                                                <View className="mt-0.5 w-3 flex-row items-center justify-center flex-shrink-0">
+                                                                    {receiptChoice ===
                                                                         val && (
                                                                         <Circle
                                                                             size={

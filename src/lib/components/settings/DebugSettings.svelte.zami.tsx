@@ -49,6 +49,7 @@ import {
     setSoundIntervalMs,
     setShowAllEvents,
     setOrderHints,
+    setStickyCallMembership,
     setUpdateNagDisabled,
     settingsState,
 } from "$lib/stores/settings.svelte";
@@ -68,6 +69,10 @@ import {
     getWebViewDebugging,
     setWebViewDebugging,
 } from "$lib/debugTools";
+import {
+    getIndexSyncStatus,
+    requestIndexSyncNow,
+} from "$lib/matrix/eventIndexSync";
 import { showToast } from "$lib/stores/toasts.svelte";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -89,6 +94,9 @@ export default function DebugSettings() {
     const userId = useRune(() => auth.userId);
     const showAllEvents = useRune(() => settingsState.showAllEvents);
     const orderHints = useRune(() => settingsState.orderHints);
+    const stickyCallMembership = useRune(
+        () => settingsState.stickyCallMembership,
+    );
     const ignoreCodecSupport = useRune(() => settingsState.ignoreCodecSupport);
     const h264ProfileFix = useRune(() => settingsState.h264ProfileFix);
     const micPauseGate = useRune(() => settingsState.micPauseGate);
@@ -149,6 +157,47 @@ export default function DebugSettings() {
             setLogsBusy(false);
         }
     }
+
+    // Search index sync with our other sessions: polled while the panel is open.
+    const [indexSync, setIndexSync] = useState(() => getIndexSyncStatus());
+    useEffect(() => {
+        const timer = setInterval(
+            () => setIndexSync(getIndexSyncStatus()),
+            1_000,
+        );
+        return () => clearInterval(timer);
+    }, []);
+    const ago = (at: number | null) => {
+        if (!at) return t("debugSettings.indexSyncNever");
+        const sec = Math.max(0, Math.round((Date.now() - at) / 1000));
+        return sec < 90 ? `${sec}s` : `${Math.round(sec / 60)}m`;
+    };
+    const indexSyncRows = [
+        [
+            t("debugSettings.indexSyncSessions"),
+            `${indexSync.eligibleSessions} / ${indexSync.verifiedSessions} / ${indexSync.otherSessions}`,
+        ],
+        [
+            t("debugSettings.indexSyncAsked"),
+            `${indexSync.asks} (${ago(indexSync.lastAskAt)})`,
+        ],
+        [
+            t("debugSettings.indexSyncRoomsMissing"),
+            String(indexSync.roomsMissing),
+        ],
+        [
+            t("debugSettings.indexSyncRequestsReceived"),
+            String(indexSync.requestsReceived),
+        ],
+        [
+            t("debugSettings.indexSyncChunks"),
+            `${indexSync.chunksSent} / ${indexSync.chunksReceived}`,
+        ],
+        [
+            t("debugSettings.indexSyncMerged"),
+            `${indexSync.entriesMerged} (${ago(indexSync.lastMergeAt)})`,
+        ],
+    ] as [string, string][];
 
     const webViewDebugAvailable = canToggleWebViewDebugging();
     const [webViewDebug, setWebViewDebug] = useState(false);
@@ -488,6 +537,21 @@ export default function DebugSettings() {
                 <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
                     <View className="flex-1 min-w-0">
                         <Text className="text-sm text-discord-textPrimary">
+                            {t("debugSettings.stickyCallMembership")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t("debugSettings.stickyCallMembershipHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={stickyCallMembership}
+                        onChange={setStickyCallMembership}
+                        label={t("debugSettings.stickyCallMembership")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-discord-textPrimary">
                             {t("debugSettings.ignoreCodecSupport")}
                         </Text>
                         <Text className="text-xs text-discord-textMuted">
@@ -681,6 +745,62 @@ export default function DebugSettings() {
                         </Text>
                     </ScrollView>
                 )}
+            </View>
+
+            <View>
+                <View className="mb-2 flex-row items-center gap-2">
+                    <Text className="flex-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                        {t("debugSettings.indexSync")}
+                    </Text>
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: !indexSync.attached }}
+                        onPress={() => {
+                            requestIndexSyncNow();
+                            setIndexSync(getIndexSyncStatus());
+                        }}
+                        disabled={!indexSync.attached}
+                        className={`px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover ${
+                            !indexSync.attached ? "opacity-50" : ""
+                        }`}
+                    >
+                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                            {t("debugSettings.indexSyncNow")}
+                        </Text>
+                    </Pressable>
+                </View>
+                <Text className="mb-2 text-xs text-discord-textMuted">
+                    {indexSync.attached
+                        ? t("debugSettings.indexSyncHint")
+                        : t("debugSettings.indexSyncOff")}
+                </Text>
+                {indexSyncRows.map(([label, value]) => (
+                    <View
+                        key={label}
+                        className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                    >
+                        <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                            {label}
+                        </Text>
+                        <Text className="flex-1 text-discord-textPrimary break-all font-mono text-xs">
+                            {value}
+                        </Text>
+                    </View>
+                ))}
+                {indexSync.log.length > 0 ? (
+                    <ScrollView
+                        nestedScrollEnabled
+                        className="mt-2 max-h-48 rounded bg-discord-backgroundTertiary grow-0"
+                        contentContainerClassName="p-2"
+                    >
+                        <Text
+                            selectable
+                            className="whitespace-pre-wrap break-all text-xs font-mono text-discord-textPrimary select-text"
+                        >
+                            {indexSync.log.join("\n")}
+                        </Text>
+                    </ScrollView>
+                ) : null}
             </View>
 
             <GpuDebug />

@@ -1,4 +1,5 @@
 import {
+    Checkbox,
     Image,
     mediaSource,
     openLink,
@@ -36,7 +37,10 @@ import {
 import { getBackupStatus } from "$lib/matrix/crypto";
 import { getClient } from "$lib/matrix/runtime";
 import { auth, isOAuthSession } from "$lib/stores/auth.svelte";
-import { changeOwnPresence } from "$lib/stores/presence.svelte";
+import {
+    changeOwnPresence,
+    changeDoNotDisturb,
+} from "$lib/stores/presence.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import {
     deactivationConfirmed,
@@ -48,6 +52,7 @@ import {
     type Capabilities,
 } from "$lib/utils/serverCapabilities";
 import { syncStateLabel } from "$lib/utils/syncStatus";
+import { shownHomeserver, shownUserId } from "$lib/utils/streamerAlias";
 
 interface Props {
     onLogout: () => void;
@@ -76,6 +81,8 @@ export default function AccountSettings({ onLogout }: Props) {
     const homeserverUrl = useRune(() => auth.homeserverUrl);
     const syncState = useRune(() => auth.syncState);
     const ownPresence = useRune(() => settingsState.ownPresence);
+    const doNotDisturb = useRune(() => settingsState.doNotDisturb);
+    const streamerMode = useRune(() => settingsState.streamerMode);
 
     const [displayName, setDisplayName] = useState(
         () => getOwnDisplayName() ?? "",
@@ -268,6 +275,18 @@ export default function AccountSettings({ onLogout }: Props) {
         setPresenceError("");
         try {
             await changeOwnPresence(value);
+        } catch (error) {
+            setPresenceError(
+                (error as Error)?.message ??
+                    t("accountSettings.couldNotSetPresence"),
+            );
+        }
+    }
+
+    async function toggleDoNotDisturb() {
+        setPresenceError("");
+        try {
+            await changeDoNotDisturb(!settingsState.doNotDisturb);
         } catch (error) {
             setPresenceError(
                 (error as Error)?.message ??
@@ -501,16 +520,20 @@ export default function AccountSettings({ onLogout }: Props) {
                         <Text className="text-sm text-discord-textMuted">
                             {t("accountSettings.userId")}
                         </Text>
+                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                         <Text className="flex-shrink text-right text-discord-textPrimary font-mono text-xs">
-                            {userId}
+                            {userId ? shownUserId(userId, streamerMode) : ""}
                         </Text>
                     </View>
                     <View className="flex-row justify-between gap-3 py-2 border-b border-discord-divider">
                         <Text className="text-sm text-discord-textMuted">
                             {t("accountSettings.homeserver")}
                         </Text>
+                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                         <Text className="flex-shrink text-right text-discord-textPrimary text-xs">
-                            {homeserverUrl}
+                            {homeserverUrl
+                                ? shownHomeserver(homeserverUrl, streamerMode)
+                                : ""}
                         </Text>
                     </View>
                     <View className="flex-row justify-between gap-3 py-2 border-b border-discord-divider">
@@ -538,6 +561,23 @@ export default function AccountSettings({ onLogout }: Props) {
                             {selectedPresence?.description}
                         </Text>
                     </View>
+                    <Checkbox
+                        checked={doNotDisturb}
+                        onChange={() => void toggleDoNotDisturb()}
+                        label={
+                            <View className="flex-1">
+                                <Text className="text-sm text-discord-textPrimary">
+                                    {t("presence.doNotDisturb")}
+                                </Text>
+                                <Text className="text-xs text-discord-textMuted">
+                                    {t("presence.doNotDisturbDescription")}
+                                </Text>
+                            </View>
+                        }
+                        accessibilityLabel={t("presence.doNotDisturb")}
+                        className="mt-3 items-start gap-3 cursor-pointer"
+                        inputClassName="mt-1 w-3.5 h-3.5 rounded-sm"
+                    />
                     {presenceError ? (
                         <Text className="mt-2 text-xs text-discord-danger">
                             {presenceError}
@@ -705,6 +745,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                         ? t("accountSettings.email")
                                         : t("accountSettings.phone")}
                                 </Text>
+                                {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                 <Text className="flex-shrink text-right text-discord-textPrimary font-mono text-xs">
                                     {identifier.address}
                                 </Text>

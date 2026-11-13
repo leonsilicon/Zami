@@ -8,6 +8,7 @@
         sendFormattedMessage,
         sendSticker,
         sendFile,
+        sendExistingMedia,
         getMediaUploadSizeLimit,
         getMemberName,
         getMemberAvatar,
@@ -34,7 +35,10 @@
         sendThreadReply,
         type CustomEmoji,
         type CustomSticker,
+        type MediaCaption,
+        type MediaRelation,
     } from "$lib/matrix/client";
+    import { reusableMediaOfFile } from "$lib/matrix/favouriteFile";
     import { sendEventContent } from "$lib/matrix/pluginHost";
     import { composerThreadKey } from "$lib/utils/threadContent";
     import {
@@ -100,6 +104,7 @@
     import OutboxStrip from "$lib/components/messages/OutboxStrip.svelte";
     import { pickAudioMimeType } from "$lib/utils/voiceMessage";
     import { openCreatePollDialog } from "$lib/stores/pollDialog.svelte";
+    import { openGameInviteDialog } from "$lib/stores/gameInviteDialog.svelte";
     import { openShareLocationDialog } from "$lib/stores/locationDialog.svelte";
     import {
         getDraft,
@@ -1271,6 +1276,44 @@
     let heldUnknown: { text: string; key: string; toastId: number } | null =
         null;
 
+    // Sends one queued file as media. A starred GIF re-uses its existing media
+    // instead of uploading the bytes again; when the room can't take that media
+    // (an encrypted one in a plaintext room) the bytes are uploaded as usual.
+    async function sendQueuedMedia(
+        item: QueuedFile,
+        roomId: string,
+        caption: MediaCaption | undefined,
+        relation: MediaRelation | undefined,
+        transform:
+            | ((c: Record<string, unknown>) => Record<string, unknown>)
+            | undefined,
+        onProgress: ((loaded: number, total: number) => void) | undefined,
+        ready: () => Promise<void>,
+    ): Promise<void> {
+        if (
+            item.reuse &&
+            (await sendExistingMedia(
+                roomId,
+                item.reuse,
+                item.name,
+                caption,
+                relation,
+                transform,
+                ready,
+            ))
+        )
+            return;
+        await sendFile(
+            roomId,
+            item.file,
+            caption,
+            relation,
+            transform,
+            onProgress,
+            ready,
+        );
+    }
+
     async function send() {
         // `s/old/new/` edits the last message instead of sending one. Not with
         // files queued: then the text is a caption.
@@ -1550,9 +1593,9 @@
                         );
                     if (useCaption && i === 0 && formatted) {
                         const { html } = formatted;
-                        return sendFile(
+                        return sendQueuedMedia(
+                            item,
                             targetRoomId,
-                            item.file,
                             {
                                 body: trimmed,
                                 formattedBody: html ?? undefined,
@@ -1564,9 +1607,9 @@
                             ready,
                         );
                     }
-                    return sendFile(
+                    return sendQueuedMedia(
+                        item,
                         targetRoomId,
-                        item.file,
                         undefined,
                         fileRelation(i),
                         undefined,
@@ -1622,6 +1665,7 @@
                     item.name,
                     previewUrlFor(item.file),
                     item.direct,
+                    item.reuse,
                 );
             }
         } finally {
@@ -1840,7 +1884,14 @@
 
     function enqueueFile(file: File, defaultName?: string, direct = false) {
         const name = file.name || defaultName || "file";
-        addQueuedFile(effComposerKey, file, name, previewUrlFor(file), direct);
+        addQueuedFile(
+            effComposerKey,
+            file,
+            name,
+            previewUrlFor(file),
+            direct,
+            reusableMediaOfFile(file),
+        );
         // Look up the upload size limit now, while the user is still writing,
         // so its round trip isn't added to the send (slow links: Tor).
         void getMediaUploadSizeLimit();
@@ -1962,6 +2013,34 @@
         syncFromEditor(!composing);
     }
 
+    /** Make the soft keyboard commit its pending word before a send. The send
+     *  button keeps focus (so the keyboard stays up), which leaves the IME
+     *  composition / iOS autocorrect candidate open: the send then read the
+     *  uncorrected word, and once the composer was cleared the keyboard
+     *  re-inserted the word (a second send posted it again on Android, and iOS
+     *  showed it still sitting in the composer). A synchronous blur()+focus()
+     *  inside the tap commits it without dismissing the keyboard. */
+    async function commitPendingComposition() {
+        if (
+            !textareaEl ||
+            !interfaceState.isMobile ||
+            document.activeElement !== textareaEl
+        )
+            return;
+        textareaEl.blur();
+        textareaEl.focus({ preventScroll: true });
+        // WebKit delivers the committed text (and compositionend) after the
+        // blur returns; wait a task so the model reads the final word.
+        await new Promise((r) => setTimeout(r, 0));
+        composing = false;
+        syncFromEditor();
+    }
+
+    async function sendFromButton() {
+        await commitPendingComposition();
+        await send();
+    }
+
     function onCompositionEnd() {
         composing = false;
         // WebKit (Safari, and the Android WebView Zam ships in) fires
@@ -2030,6 +2109,7 @@
 </script>
 
 <div
+    data-zam-region={isThread ? undefined : "composer"}
     class="px-4 pt-2 pb-[calc(1rem_+_env(safe-area-inset-bottom,0px))] md:pb-[calc(0.5rem_+_env(safe-area-inset-bottom,0px))] flex-shrink-0 relative"
 >
     <!-- Typing indicator: a reserved (fixed-height) row ABOVE the input, in
@@ -2056,11 +2136,11 @@
                     d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
                 />
             </svg>
-            <div class="flex-1 min-w-0 text-xs">
-                <span class="text-discord-accent font-semibold">
+            <div class="flex-1 min-w-0 text-xs flex items-baseline gap-2">
+                <span class="text-discord-accent font-semibold flex-shrink-0">
                     {t("messageInput.replyingTo", { replyTargetName })}
                 </span>
-                <span class="text-discord-textMuted ms-2 truncate"
+                <span class="text-discord-textMuted min-w-0 truncate"
                     >{getReplyPreview()}</span
                 >
             </div>
@@ -2435,6 +2515,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {:else}
@@ -2466,6 +2548,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {/if}
@@ -2699,7 +2783,7 @@
             {/each}
 
             <button
-                onclick={send}
+                onclick={sendFromButton}
                 onpointerdown={(e) => e.preventDefault()}
                 disabled={(!text.trim() && fileQueue.length === 0) ||
                     isSending ||

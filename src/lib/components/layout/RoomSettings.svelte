@@ -2,6 +2,8 @@
     import { t } from "$lib/i18n";
     import type { Room, RoomMember } from "matrix-js-sdk";
     import { tick, untrack } from "svelte";
+    import { pluginRegistry } from "$lib/stores/plugins.svelte";
+    import { pluginMount } from "$lib/plugins/pluginMount";
     import Avatar from "$lib/components/ui/Avatar.svelte";
     import InvitePanel from "./InvitePanel.svelte";
     import ImagePackEditor from "./ImagePackEditor.svelte";
@@ -67,6 +69,7 @@
         isRoomStateHealed,
         getRoomNotificationSetting,
         setRoomNotificationSetting,
+        getParentSpaceIds,
         getRoomsInSpace,
         getSpaceChildIds,
         type RoomNotificationSetting,
@@ -131,7 +134,14 @@
         clearSubPageIfOwner,
     } from "$lib/stores/interface.svelte";
     import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
-    import { settingsState } from "$lib/stores/settings.svelte";
+    import {
+        settingsState,
+        setReceiptOverride,
+    } from "$lib/stores/settings.svelte";
+    import {
+        isRoomReceiptPrivate,
+        type ReceiptOverride,
+    } from "$lib/utils/receiptPrivacy";
     import {
         blockUser,
         unblockUser,
@@ -157,12 +167,37 @@
 
     const isSpace = $derived(room.isSpaceRoom());
 
+    // Plugin tabs (zam.room.addSettingsTab) this room gets, after Zam's own.
+    const pluginTabEntries = $derived(
+        (void pluginRegistry.tick,
+        pluginRegistry.roomSettingsTabs.filter((e) => {
+            try {
+                return e.value.when?.({ roomId: room.roomId, isSpace }) ?? true;
+            } catch (err) {
+                console.error("[zam] room settings tab when() threw", err);
+                return false;
+            }
+        })),
+    );
+    const pluginTabs = $derived(
+        pluginTabEntries.map((e) => ({
+            id: `plugin:${e.entryId}` as RoomSettingsTab,
+            label: String(e.value.label),
+        })),
+    );
+
     const view = $derived(
         roomSettingsNavView({
             isMobile: interfaceState.isMobile,
             isSpace,
             selectedTab,
+            pluginTabs,
         }),
+    );
+
+    const activePluginTab = $derived(
+        pluginTabEntries.find((e) => activeTab === `plugin:${e.entryId}`) ??
+            null,
     );
 
     // The tab whose panel is on screen, or null on the mobile category list
@@ -187,6 +222,45 @@
         getRoomNotificationSetting(room.roomId),
     );
     let notifSaving = $state(false);
+
+    // Read receipts: this room's (or space's) override of the account default.
+    const receiptChoice = $derived<ReceiptOverride | null>(
+        settingsState.receiptOverrides[room.roomId] ?? null,
+    );
+    // What "Default" resolves to here: the account setting, or a parent
+    // space's override. Ignores this room's own choice, so the label stays put
+    // while the user flips between options.
+    const inheritedReceiptsPrivate = $derived.by(() => {
+        const { [room.roomId]: _own, ...others } =
+            settingsState.receiptOverrides;
+        return isRoomReceiptPrivate(
+            room.roomId,
+            getParentSpaceIds(room.roomId),
+            others,
+            settingsState.privateReadReceipts,
+        );
+    });
+    const RECEIPT_CHOICES = $derived<
+        readonly [ReceiptOverride | null, string, string][]
+    >([
+        [
+            null,
+            t("common.default"),
+            inheritedReceiptsPrivate
+                ? t("roomSettings.readReceiptsDefaultHide")
+                : t("roomSettings.readReceiptsDefaultShare"),
+        ],
+        [
+            "public",
+            t("roomSettings.readReceiptsShare"),
+            t("roomSettings.readReceiptsShareDesc"),
+        ],
+        [
+            "private",
+            t("roomSettings.readReceiptsHide"),
+            t("roomSettings.readReceiptsHideDesc"),
+        ],
+    ]);
 
     const NOTIF_LEVELS: readonly [RoomNotificationSetting, string, string][] = [
         [
@@ -1309,7 +1383,7 @@
         }
     }
 
-    const tabs = $derived(roomSettingsTabs({ isSpace }));
+    const tabs = $derived(roomSettingsTabs({ isSpace, pluginTabs }));
 </script>
 
 {#snippet stateLoading()}
@@ -1372,7 +1446,7 @@
                          only the category — so name the room for screen readers
                          without repeating it on screen. -->
                     <span class="sr-only">{`${room.name} - `}</span
-                    >{roomSettingsTabLabel(view.tab)}
+                    >{roomSettingsTabLabel(view.tab, pluginTabs)}
                 {:else}
                     {t("roomSettings.settings", { name: room.name })}
                 {/if}
@@ -1454,8 +1528,21 @@
                         </div>
                     {/if}
 
-                    <!-- ── General ─────────────────────────────────────────── -->
-                    {#if activeTab === "general"}
+                    <!-- ── Plugin tab ────────────────────────────────────── -->
+                    {#if activePluginTab}
+                        {@const tab = activePluginTab}
+                        {#key `${tab.entryId}:${room.roomId}`}
+                            <div
+                                data-zam-plugin={tab.pluginId}
+                                use:pluginMount={(el) =>
+                                    tab.value.render(el, {
+                                        roomId: room.roomId,
+                                        isSpace,
+                                    })}
+                            ></div>
+                        {/key}
+                        <!-- ── General ─────────────────────────────────────────── -->
+                    {:else if activeTab === "general"}
                         <div class="space-y-5">
                             <!-- Avatar -->
                             <div>
@@ -1574,7 +1661,7 @@
                                     </p>
                                     <div class="flex items-center gap-2">
                                         <code
-                                            class="flex-1 min-w-0 select-all truncate bg-discord-backgroundTertiary text-discord-textPrimary text-xs font-mono rounded px-3 py-2"
+                                            class="flex-1 min-w-0 select-all truncate bg-discord-backgroundTertiary text-discord-textPrimary text-xs font-mono rounded px-3 py-2 streamer-hide"
                                             title={room.roomId}
                                             >{room.roomId}</code
                                         >
@@ -2252,6 +2339,62 @@
                                                 class="mt-0.5 w-3 flex items-center justify-center flex-shrink-0 text-discord-accent"
                                             >
                                                 {#if notifSetting === val}<Circle
+                                                        size={8}
+                                                        fill="currentColor"
+                                                    />{/if}
+                                            </span>
+                                            <span class="min-w-0">
+                                                <span
+                                                    class="block text-sm font-medium text-discord-textPrimary"
+                                                    >{label}</span
+                                                >
+                                                <span
+                                                    class="block text-xs text-discord-textMuted"
+                                                    >{desc}</span
+                                                >
+                                            </span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            </div>
+                            <div>
+                                <p
+                                    class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                                >
+                                    {t("roomSettings.readReceipts")}
+                                </p>
+                                <p class="text-xs text-discord-textMuted mb-3">
+                                    {isSpace
+                                        ? t(
+                                              "roomSettings.readReceiptsSpaceHelp",
+                                          )
+                                        : t(
+                                              "roomSettings.readReceiptsRoomHelp",
+                                          )}
+                                </p>
+                                <div
+                                    class="flex flex-col gap-1"
+                                    role="radiogroup"
+                                    aria-label={t("roomSettings.readReceipts")}
+                                >
+                                    {#each RECEIPT_CHOICES as [val, label, desc] (val ?? "default")}
+                                        <button
+                                            type="button"
+                                            role="radio"
+                                            aria-checked={receiptChoice === val}
+                                            onclick={() =>
+                                                setReceiptOverride(
+                                                    room.roomId,
+                                                    val,
+                                                )}
+                                            class="w-full text-start px-3 py-2 rounded flex items-start gap-3 transition-colors hover:bg-discord-messageHover"
+                                            class:bg-discord-messageHover={receiptChoice ===
+                                                val}
+                                        >
+                                            <span
+                                                class="mt-0.5 w-3 flex items-center justify-center flex-shrink-0 text-discord-accent"
+                                            >
+                                                {#if receiptChoice === val}<Circle
                                                         size={8}
                                                         fill="currentColor"
                                                     />{/if}

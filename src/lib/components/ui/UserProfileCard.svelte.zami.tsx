@@ -1,4 +1,5 @@
 import {
+    DomMount,
     Image,
     mediaSource,
     openLink,
@@ -112,6 +113,10 @@ import {
 } from "$lib/utils/verification";
 import { createStaleGuard } from "$lib/utils/staleGuard";
 import { verificationState, verifyUser } from "$lib/stores/verification.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
+import { visibleUserActions } from "$lib/plugins/pluginMembers";
+import type { UserActionItem } from "$lib/plugins/types";
 
 interface Props {
     room: Room;
@@ -129,6 +134,30 @@ export default function UserProfileCard({ room }: Props) {
     );
     const userId = useRune(() => profileCardState.userId ?? "");
     const isSelf = useRune(() => userId === auth.userId, [userId]);
+    // Context handed to plugin profile sections and action buttons.
+    const pluginCtx = useMemo(
+        () => ({ userId, roomId: room.roomId, isSelf }),
+        [userId, room.roomId, isSelf],
+    );
+    // Plugin profile sections and action buttons. Re-derived on every registry
+    // mutation (tick) and when the card retargets. Actions are filtered by the
+    // same `when` rule the helper applies, mapped back to their entries for keys.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const profileSections = useMemo(() => {
+        void pluginTick;
+        return [...pluginRegistry.profileSections];
+    }, [pluginTick]);
+    const pluginActions = useMemo(() => {
+        void pluginTick;
+        const entries = [...pluginRegistry.userActions];
+        const visible = new Set<UserActionItem>(
+            visibleUserActions(
+                entries.map((e) => e.value),
+                pluginCtx,
+            ),
+        );
+        return entries.filter((e) => visible.has(e.value));
+    }, [pluginTick, pluginCtx]);
 
     // Live SDK objects mutate in place — depend on the ticks so kicks/bans,
     // membership and presence changes re-render the open card.
@@ -381,6 +410,18 @@ export default function UserProfileCard({ room }: Props) {
     function editOwnProfile() {
         // openAppSettingsTab claims the modal slot, closing this card.
         openAppSettingsTab("account");
+    }
+
+    // Plugin action buttons (zam.members.addAction). The helper's try/catch
+    // covers synchronous throws; a rejected promise is caught here.
+    function runPluginAction(action: UserActionItem) {
+        try {
+            Promise.resolve(action.onSelect(pluginCtx)).catch((e) =>
+                console.error("[zam] members.addAction onSelect threw", e),
+            );
+        } catch (e) {
+            console.error("[zam] members.addAction onSelect threw", e);
+        }
     }
 
     async function copyUserId() {
@@ -672,6 +713,22 @@ export default function UserProfileCard({ room }: Props) {
                         </Text>
                     </ScrollView>
                 ) : null}
+                {/* Plugin profile sections (zam.members.addProfileSection).
+                    Zami: the plugin builds DOM into the element (pluginMount),
+                    which DomView shows. */}
+                {profileSections.map((entry) => (
+                    <DomMount
+                        key={`${entry.entryId}:${userId}`}
+                        className="mt-2"
+                        document={document}
+                        mount={(el) => {
+                            el.setAttribute("data-zam-plugin", entry.pluginId);
+                            return pluginMount(el, (el) =>
+                                entry.value.render(el, pluginCtx),
+                            ).destroy;
+                        }}
+                    />
+                ))}
                 {localTime ? (
                     <Text className="mt-2 text-xs text-discord-textMuted">
                         {t("userProfileCard.localTime", {
@@ -1014,6 +1071,23 @@ export default function UserProfileCard({ room }: Props) {
                                 {t("userProfileCard.editProfile")}
                             </Text>
                         </Pressable>
+                    </View>
+                )}
+
+                {pluginActions.length > 0 && (
+                    <View className="mt-3 pt-3 border-t border-discord-divider gap-1.5">
+                        {pluginActions.map((entry) => (
+                            <Pressable
+                                key={entry.entryId}
+                                accessibilityRole="button"
+                                onPress={() => runPluginAction(entry.value)}
+                                className="w-full px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                            >
+                                <Text className="text-center text-discord-textPrimary text-sm font-semibold">
+                                    {String(entry.value.label)}
+                                </Text>
+                            </Pressable>
+                        ))}
                     </View>
                 )}
 

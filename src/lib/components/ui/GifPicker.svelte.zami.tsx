@@ -18,13 +18,17 @@ import { t } from "$lib/i18n";
 import FavouriteFileImg from "$lib/components/ui/FavouriteFileImg.svelte";
 import {
     eventFavouriteFile,
+    isMatrixMediaUrl,
+    mediaUrlFavouriteFile,
     parseEventFavouriteSource,
+    reusableMediaOfFile,
 } from "$lib/matrix/favouriteFile";
 import {
     favouritesState,
     addFavouriteGif,
     removeFavouriteGif,
     isFavouriteGif,
+    setFavouriteGifMxc,
     setFavouriteGifTags,
     upgradeFavouriteGifs,
     type FavouriteGif,
@@ -37,7 +41,10 @@ import {
     loadGifs,
     queueSearch,
     loadMore,
+    type GifSource,
 } from "$lib/stores/gifSearch.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { normalizeProviderPage } from "$lib/plugins/pluginGifs";
 import { Star } from "lucide-svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { safeAspectRatio } from "$lib/utils/mediaDimensions";
@@ -60,7 +67,8 @@ interface Props {
     onSwitchToSticker?: () => void;
 }
 
-type Tab = "gifs" | "favourites";
+// "gifs" is KLIPY; `plugin:<entryId>` is a plugin's GIF provider.
+type Tab = string;
 
 const STAR =
     "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
@@ -89,10 +97,32 @@ export default function GifPicker({
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
     const windowSize = useWindowDimensions();
 
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const providerTabs = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.gifProviders.map((e) => ({
+                value: `plugin:${e.entryId}`,
+                label: e.value.label,
+                source: {
+                    key: `plugin:${e.pluginId}:${e.value.id}`,
+                    fetch: async (query: string, page: number) =>
+                        normalizeProviderPage(
+                            await e.value.search(query.trim(), page),
+                        ),
+                } satisfies GifSource,
+            }))
+        ),
+        [pluginTick],
+    );
+
     // Land on the configured tab ("gifs" or "favourites").
     const [tab, setTab] = useState<Tab>(() =>
         settingsState.gifDefaultTab === "favourites" ? "favourites" : "gifs",
     );
+    // Zami: after `tab`, which upstream's `$derived` reads before declaring.
+    const providerTab = providerTabs.find((p) => p.value === tab);
+    const gifSource: GifSource | undefined = providerTab?.source;
 
     const [search, setSearch] = useState("");
     const searchEl = useRef<TextInputInstance>(null);
@@ -107,10 +137,15 @@ export default function GifPicker({
     useEffect(() => {
         const t = tab;
         if (t === "favourites") return;
+        // A provider whose plugin was disabled while its tab was open.
+        if (t !== "gifs" && !providerTab) {
+            setTab("gifs");
+            return;
+        }
         const kind: GifKind = "gifs";
-        loadGifs(kind, search);
+        loadGifs(kind, search, gifSource);
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- `search` is read untracked.
-    }, [tab]);
+    }, [tab, providerTab, gifSource]);
 
     function onSearchInput(value: string) {
         setSearch(value);
@@ -121,7 +156,7 @@ export default function GifPicker({
         moveCursor(-1);
         if (tab !== "favourites") {
             const kind: GifKind = "gifs";
-            queueSearch(kind, value);
+            queueSearch(kind, value, gifSource);
         }
     }
 
@@ -238,15 +273,38 @@ export default function GifPicker({
         onClose();
     }
 
-    // Zami: unused upstream too (a favourite's tile sends pickUrl(gif.url)).
-    // oxlint-disable-next-line no-unused-vars -- kept so upstream's diffs map.
     async function pickFavourite(gif: FavouriteGif) {
         const source = parseEventFavouriteSource(gif.source);
-        if (!source) return pickUrl(gif.url);
-        const file = await eventFavouriteFile(source).catch(() => null);
-        if (!file) return;
-        onSelectFile?.(file);
-        onClose();
+        if (source) {
+            const file = await eventFavouriteFile(source).catch(() => null);
+            if (!file) return;
+            // Favourites starred before the mxc was stored learn it now, so a
+            // message sent from this pick can be matched back to the star.
+            const mxc = reusableMediaOfFile(file)?.file?.url;
+            if (mxc && !gif.mxc) void setFavouriteGifMxc(gif.url, mxc);
+            onSelectFile?.(file);
+            onClose();
+            return;
+        }
+        // An upload starred from an unencrypted room is keyed by its Matrix
+        // media URL. That needs the access token, so it cannot be previewed
+        // from the URL; attach the bytes, as for an encrypted favourite, and it
+        // is sent as an image. A URL naming another homeserver is routed
+        // through ours.
+        if (onSelectFile && isMatrixMediaUrl(gif.url)) {
+            const file = await mediaUrlFavouriteFile(
+                gif.url,
+                gif.width,
+                gif.height,
+                gif.name,
+            ).catch(() => null);
+            if (file) {
+                onSelectFile(file);
+                onClose();
+                return;
+            }
+        }
+        pickUrl(gif.url);
     }
 
     // Favourites starred before the picker sent klipy.com page links are keyed
@@ -376,7 +434,12 @@ export default function GifPicker({
         // closes the picker.
         if (e.key === "Enter" && activeIndex >= 0) {
             e.preventDefault();
-            pickUrl(activeKeys[activeIndex]);
+            if (tab === "favourites") {
+                const gif = visibleFavourites[activeIndex];
+                if (gif) void pickFavourite(gif);
+            } else {
+                pickUrl(activeKeys[activeIndex]);
+            }
         }
     }
 
@@ -459,8 +522,9 @@ export default function GifPicker({
                 {(
                     [
                         ["gifs", "GIFs"],
+                        ...providerTabs.map((p) => [p.value, p.label]),
                         ["favourites", "Favourites"],
-                    ] as const
+                    ] as [string, string][]
                 ).map(([value, label]) => (
                     <Pressable
                         key={value}
@@ -583,7 +647,7 @@ export default function GifPicker({
                                     editing={editingUrl === gif.url}
                                     tagDraft={tagDraft}
                                     onTagDraftChange={setTagDraft}
-                                    onPick={() => pickUrl(gif.url)}
+                                    onPick={() => void pickFavourite(gif)}
                                     onStartEditing={() => startEditing(gif)}
                                     onSaveTags={() => void saveTags()}
                                 />
@@ -600,7 +664,7 @@ export default function GifPicker({
                 ) : // KLIPY GIFs
                 error && items.length === 0 ? (
                     <Pressable
-                        onPress={() => loadGifs("gifs", search)}
+                        onPress={() => loadGifs("gifs", search, gifSource)}
                         accessibilityRole="button"
                         className="w-full py-8 px-4"
                     >

@@ -16,6 +16,7 @@ import type {
     MessageDecorator,
     MessageAnnotator,
     MessageEmbed,
+    GifProvider,
     HeaderButton,
     ShortcutRegistration,
     PanelRegistration,
@@ -26,6 +27,17 @@ import type {
     SwipeHandler,
     EventSubscription,
     MicFilter,
+    MessageRenderer,
+    RoomSettingsTabRegistration,
+    SettingsPageRegistration,
+    MemberDecorator,
+    UserActionItem,
+    ProfileSectionRegistration,
+    RoomActionItem,
+    OverlayOptions,
+    CallControl,
+    CallPanelRegistration,
+    CallTileDecoration,
 } from "./types";
 
 export interface RegistryEntry<T> {
@@ -42,6 +54,7 @@ export interface PluginRegistryData {
     decorators: RegistryEntry<MessageDecorator>[];
     annotators: RegistryEntry<MessageAnnotator>[];
     embeds: RegistryEntry<MessageEmbed>[];
+    gifProviders: RegistryEntry<GifProvider>[];
     headerButtons: RegistryEntry<HeaderButton>[];
     shortcuts: RegistryEntry<ShortcutRegistration>[];
     panels: RegistryEntry<PanelRegistration>[];
@@ -52,6 +65,17 @@ export interface PluginRegistryData {
     swipeHandlers: RegistryEntry<SwipeHandler>[];
     eventSubs: RegistryEntry<EventSubscription>[];
     micFilters: RegistryEntry<MicFilter>[];
+    messageRenderers: RegistryEntry<MessageRenderer>[];
+    roomSettingsTabs: RegistryEntry<RoomSettingsTabRegistration>[];
+    settingsPages: RegistryEntry<SettingsPageRegistration>[];
+    memberDecorators: RegistryEntry<MemberDecorator>[];
+    userActions: RegistryEntry<UserActionItem>[];
+    profileSections: RegistryEntry<ProfileSectionRegistration>[];
+    roomActions: RegistryEntry<RoomActionItem>[];
+    overlays: RegistryEntry<OverlayOptions>[];
+    callControls: RegistryEntry<CallControl>[];
+    callPanels: RegistryEntry<CallPanelRegistration>[];
+    callTileDecorations: RegistryEntry<CallTileDecoration>[];
     tick: number;
     nextEntryId: number;
 }
@@ -69,6 +93,7 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "decorators",
     "annotators",
     "embeds",
+    "gifProviders",
     "headerButtons",
     "shortcuts",
     "panels",
@@ -79,6 +104,17 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "swipeHandlers",
     "eventSubs",
     "micFilters",
+    "messageRenderers",
+    "roomSettingsTabs",
+    "settingsPages",
+    "memberDecorators",
+    "userActions",
+    "profileSections",
+    "roomActions",
+    "overlays",
+    "callControls",
+    "callPanels",
+    "callTileDecorations",
 ];
 
 export function createRegistryData(): PluginRegistryData {
@@ -90,6 +126,7 @@ export function createRegistryData(): PluginRegistryData {
         decorators: [],
         annotators: [],
         embeds: [],
+        gifProviders: [],
         headerButtons: [],
         shortcuts: [],
         panels: [],
@@ -100,6 +137,17 @@ export function createRegistryData(): PluginRegistryData {
         swipeHandlers: [],
         eventSubs: [],
         micFilters: [],
+        messageRenderers: [],
+        roomSettingsTabs: [],
+        settingsPages: [],
+        memberDecorators: [],
+        userActions: [],
+        profileSections: [],
+        roomActions: [],
+        overlays: [],
+        callControls: [],
+        callPanels: [],
+        callTileDecorations: [],
         tick: 0,
         nextEntryId: 1,
     };

@@ -14,6 +14,7 @@ import {
     View,
     type ViewStyle,
 } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Path } from "react-native-svg";
 import { WebView } from "react-native-webview";
 import {
@@ -485,6 +486,12 @@ export default function LinkPreview({ url }: Props) {
 
     const [videoFrame, setVideoFrame] = useState<VideoThumbnail | null>(null);
     const [videoFrameDone, setVideoFrameDone] = useState(false);
+    // Size of the grabbed frame, for a video whose preview gave no dimensions
+    // (the poster would otherwise be cropped into a guessed 16/9 box).
+    const [frameSize, setFrameSize] = useState<{
+        width: number;
+        height: number;
+    } | null>(null);
     const frameSrc = preview?.videoUrl;
     const needsFrame =
         !!frameSrc &&
@@ -494,6 +501,7 @@ export default function LinkPreview({ url }: Props) {
     useLayoutEffect(() => {
         const src = frameSrc;
         setVideoFrame(null);
+        setFrameSize(learnedMediaSize(src) ?? null);
         setVideoFrameDone(!needsFrame);
         if (!needsFrame || !src) return;
         let live = true;
@@ -614,11 +622,12 @@ export default function LinkPreview({ url }: Props) {
         const posterUrl = canLoad(preview.videoThumbnailUrl)
             ? preview.videoThumbnailUrl
             : (videoFrame ?? undefined);
-        // Zami: `aspect-ratio` from the preview's video size, in a
-        // `max-w-lg w-full` box no taller than `max-height: 24rem`.
+        // Zami: `aspect-ratio` from the preview's video size (`videoAspect`:
+        // else the grabbed frame's), in a `max-w-lg w-full` box no taller
+        // than `max-height: 24rem`.
         // (A gif-style one is drawn at its own size, as the <video> is.)
-        const videoW = safeDimension(preview.videoWidth);
-        const videoH = safeDimension(preview.videoHeight);
+        const videoW = safeDimension(preview.videoWidth ?? frameSize?.width);
+        const videoH = safeDimension(preview.videoHeight ?? frameSize?.height);
         const videoSize =
             videoW && videoH ? { width: videoW, height: videoH } : null;
         return (
@@ -696,6 +705,18 @@ export default function LinkPreview({ url }: Props) {
                             accessible={false}
                             className="w-full h-full"
                             contentFit="cover"
+                            onLoad={(e) => {
+                                const { width, height } = e.source;
+                                if (!width || !height) return;
+                                if (preview?.videoThumbnailUrl === posterUrl)
+                                    return;
+                                setFrameSize({ width, height });
+                                learnMediaSize(
+                                    preview?.videoUrl,
+                                    width,
+                                    height,
+                                );
+                            }}
                             onError={() => setVideoThumbError(true)}
                         />
                         <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
@@ -1010,9 +1031,13 @@ export default function LinkPreview({ url }: Props) {
                 />
             );
         if (pending && !preview) {
+            // Zami: `skeleton-delay` (space reserved at once, the placeholder
+            // invisible for the first 500ms so a preview that resolves
+            // quickly never flashes it) is Reanimated's `SKELETON_DELAY`.
             if (likelyMedia)
                 return (
-                    <View
+                    <Animated.View
+                        entering={SKELETON_DELAY}
                         className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-discord-backgroundSecondary"
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
@@ -1022,7 +1047,8 @@ export default function LinkPreview({ url }: Props) {
             // the fixed image box.
             // Zami: each line's box is its text's line height.
             return (
-                <View
+                <Animated.View
+                    entering={SKELETON_DELAY}
                     className="mt-2"
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
@@ -1055,7 +1081,7 @@ export default function LinkPreview({ url }: Props) {
                             />
                         </View>
                     </View>
-                </View>
+                </Animated.View>
             );
         }
         if (!preview) return null;
@@ -1320,6 +1346,10 @@ export default function LinkPreview({ url }: Props) {
         </>
     );
 }
+
+/** Zami: `.skeleton-delay`'s `animation: skeleton-delay-in 150ms ease-out
+ *  500ms backwards`, a fade in from transparent. */
+const SKELETON_DELAY = FadeIn.duration(150).delay(500);
 
 /** Zami: a box `width`×`height` px, as the `<img>`'s width/height attributes
  *  with `max-w-full h-auto`: no wider than the column, keeping its shape. */
