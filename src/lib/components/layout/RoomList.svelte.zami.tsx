@@ -43,6 +43,7 @@ import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useCSSVariable, useResolveClassNames } from "uniwind";
+import { HIERARCHY_TTL_MS } from "$lib/utils/hierarchyRefresh";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
 import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -79,6 +80,7 @@ import {
     getSpaceChildIds,
     fetchSpaceHierarchy,
     getCachedHierarchy,
+    getCachedHierarchyAge,
     patchCachedHierarchyEntry,
     getDMPartnerId,
     getRoomCallMemberships,
@@ -103,8 +105,10 @@ import {
     Video,
     Hash,
     Circle,
+    Check,
 } from "lucide-svelte";
 import { presenceState, presenceFor } from "$lib/stores/presence.svelte";
+import { settingsState, setDmSortOrder } from "$lib/stores/settings.svelte";
 import {
     presenceDot,
     presenceDotClass,
@@ -113,6 +117,10 @@ import {
 import {
     groupRoomsByTag,
     sortRoomsByTag,
+    dmComparator,
+    DM_SORT_ORDERS,
+    type DmSortFacts,
+    type DmSortOrder,
     roomTagKind,
     TAG_FAVOURITE,
     TAG_LOWPRIORITY,
@@ -121,7 +129,7 @@ import {
 } from "$lib/utils/roomOrdering";
 import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
-import { latestMessagePreview } from "$lib/utils/roomPreview";
+import { latestMessage, latestMessagePreview } from "$lib/utils/roomPreview";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
 import { hasLoudInRoom } from "$lib/stores/notifications.svelte";
 import {
@@ -1526,23 +1534,15 @@ const DmRowView = memo(function DmRowView({
             >
                 <View className="relative flex-shrink-0">
                     <Avatar src={avatarSrc} name={dmName} size={32} />
-                    {unread && !isActive ? (
-                        <View
-                            className={`absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary ${
-                                loud || highlight
-                                    ? "bg-discord-danger"
-                                    : "bg-discord-textPrimary"
-                            }`}
-                        />
-                    ) : (
-                        // Zami: the dot's `title` is its accessibility label.
-                        <View
-                            accessibilityLabel={presenceLabel}
-                            className={`absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary ${
-                                presenceDotClass || "bg-discord-offline"
-                            }`}
-                        />
-                    )}
+                    {/* Presence only: a red unread dot here read as Do Not
+                        Disturb. Unread sits at the row's end instead.
+                        Zami: the dot's `title` is its accessibility label. */}
+                    <View
+                        accessibilityLabel={presenceLabel}
+                        className={`absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary ${
+                            presenceDotClass || "bg-discord-offline"
+                        }`}
+                    />
                 </View>
                 {/* Zami: two lines tall with or without the preview, so every
                     DM row has the same height (see rowMetrics). */}
@@ -1573,6 +1573,18 @@ const DmRowView = memo(function DmRowView({
                 </View>
                 {highlight && !isActive ? (
                     <CountBadge count={highlight > 99 ? "99+" : highlight} />
+                ) : unread && !isActive ? (
+                    <View
+                        accessible
+                        accessibilityLabel={t(
+                            "messageArea.unreadNotifications",
+                        )}
+                        className={`flex-shrink-0 w-2 h-2 me-1 rounded-full ${
+                            loud
+                                ? "bg-discord-danger"
+                                : "bg-discord-textPrimary"
+                        }`}
+                    />
                 ) : null}
             </Pressable>
         </View>
@@ -1791,6 +1803,13 @@ function PositionedMenu({
 // trigger becomes a layer at the app root, placed under the trigger's measured
 // box. It stays mounted while closed, as upstream's `hidden` keeps it, so a
 // QuickActions dialog outlives the dropdown that opened it.
+const DM_SORT_LABELS: Record<DmSortOrder, () => string> = {
+    recent: () => t("roomList.dmSortRecent"),
+    unread: () => t("roomList.dmSortUnread"),
+    online: () => t("roomList.dmSortOnline"),
+    name: () => t("roomList.dmSortName"),
+};
+
 const HeaderMenu = memo(function HeaderMenu({
     open,
     anchor,
@@ -1806,6 +1825,7 @@ const HeaderMenu = memo(function HeaderMenu({
 }) {
     const viewport = useWindowDimensions();
     const shown = open && anchor !== null;
+    const dmSortOrder = useRune(() => settingsState.dmSortOrder);
     return (
         <Portal>
             <View
@@ -1833,6 +1853,54 @@ const HeaderMenu = memo(function HeaderMenu({
                     }
                 >
                     <QuickActions spaceId={spaceId} />
+                    {!spaceId ? (
+                        <>
+                            <View className="w-full h-px bg-discord-divider my-1" />
+                            <Text className="px-2 pt-1 pb-0.5 text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                {t("roomList.sortDmsBy")}
+                            </Text>
+                            <View
+                                accessibilityRole="radiogroup"
+                                accessibilityLabel={t("roomList.sortDmsBy")}
+                            >
+                                {DM_SORT_ORDERS.map((order) => {
+                                    const selected = dmSortOrder === order;
+                                    return (
+                                        <Pressable
+                                            key={order}
+                                            accessibilityRole="radio"
+                                            accessibilityState={{
+                                                checked: selected,
+                                            }}
+                                            onPress={() =>
+                                                setDmSortOrder(order)
+                                            }
+                                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                        >
+                                            <View className="w-4 h-4 flex-shrink-0 flex-row items-center justify-center">
+                                                {selected && (
+                                                    <Check
+                                                        size={14}
+                                                        className="text-discord-textPrimary"
+                                                    />
+                                                )}
+                                            </View>
+                                            <Text
+                                                numberOfLines={1}
+                                                className={`flex-1 text-sm ${
+                                                    selected
+                                                        ? "text-discord-textPrimary"
+                                                        : "text-discord-textMuted"
+                                                }`}
+                                            >
+                                                {DM_SORT_LABELS[order]()}
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+                        </>
+                    ) : null}
                     {canAccessSpaceSettings ? (
                         <>
                             <View className="w-full h-px bg-discord-divider my-1" />
@@ -2114,15 +2182,51 @@ export default function RoomList({
         { isEqual: sameObject },
     );
 
+    // Zami: `DM_SORT_LABELS` is at module level, above `HeaderMenu`.
+
     const directRooms = useRune(() => roomsState.directRooms);
-    const [sortByTags] = useState(() => memoByTags(sortRoomsByTag));
+    // Untagged DMs sort by the order picked in the header menu (latest
+    // message by default; the SDK's room order is arbitrary). unreadTick: a
+    // new message or a read moves the row; presenceTick: "online first".
+    // Zami: a re-sort that keeps the same order returns the same array
+    // (`shallowEqual`), so it renders nothing.
     const sortedDirectRooms = useRune(
         () => {
             void roomsState.roomsTick;
-            return sortByTags(directRooms);
+            void roomsState.unreadTick;
+            const order = settingsState.dmSortOrder;
+            if (order === "online") void presenceState.presenceTick;
+            const facts = new Map<string, DmSortFacts>();
+            for (const room of directRooms) {
+                const found = latestMessage([
+                    // Zami: only the timeline's tail, as latestMessage looks
+                    // at most PREVIEW_SCAN events back.
+                    ...room.getLiveTimeline().getEvents().slice(-PREVIEW_SCAN),
+                    ...room.getPendingEvents(),
+                ]);
+                const fallback = room.getLastActiveTimestamp();
+                const { unread } = roomButton(room);
+                facts.set(room.roomId, {
+                    lastMessageTs:
+                        found?.event.getTs() ??
+                        (fallback > Number.MIN_SAFE_INTEGER ? fallback : null),
+                    unread,
+                    presence:
+                        order === "online"
+                            ? (presenceFor(getDMPartnerId(room))?.state ??
+                              "offline")
+                            : "offline",
+                    name: room.name,
+                });
+            }
+            return sortRoomsByTag(
+                directRooms,
+                (r) => getRoomTags(r.roomId),
+                dmComparator(order, (r) => facts.get(r.roomId)!),
+            );
         },
-        [directRooms, sortByTags],
-        { isEqual: sameObject },
+        [directRooms],
+        { isEqual: shallowEqual },
     );
 
     // `isJoined` is baked in when /hierarchy is fetched, so it goes stale after
@@ -2193,12 +2297,38 @@ export default function RoomList({
         new Set<string>(),
     );
     const subHierarchyRequested = useRef(new Set<string>());
+    const subHierarchyDepths = useRef(new Map<string, number>());
     useEffect(() => {
         void activeSpaceId;
         setSubHierarchies({});
         setSubHierarchyLoading(new Set());
         subHierarchyRequested.current.clear();
+        subHierarchyDepths.current.clear();
     }, [activeSpaceId]);
+
+    // Keep expanded sub-spaces current while the app is open: re-fetch each
+    // one that has been shown, quietly, now and then.
+    const SUB_HIERARCHY_REFRESH_MS = 5 * 60_000;
+    useEffect(() => {
+        const timer = setInterval(async () => {
+            if (document.visibilityState !== "visible") return;
+            const active = roomsState.activeSpaceId;
+            if (!active) return;
+            for (const id of [...subHierarchyRequested.current]) {
+                if (roomsState.activeSpaceId !== active) return;
+                const parent = roomsState.spaceDrillParentId ?? active;
+                const depth =
+                    (roomsState.spaceDrillDepth || 0) +
+                    (subHierarchyDepths.current.get(id) ?? 1);
+                const h = await fetchSpaceHierarchy(id, parent, depth).catch(
+                    () => null,
+                );
+                if (h && roomsState.activeSpaceId === active)
+                    setSubHierarchies((s) => ({ ...s, [id]: h }));
+            }
+        }, SUB_HIERARCHY_REFRESH_MS);
+        return () => clearInterval(timer);
+    }, []);
 
     // Zami: the `loadSubHierarchy` action's `run`, called for each category the
     // list shows (an effect below) where upstream's action runs on each
@@ -2212,6 +2342,17 @@ export default function RoomList({
         if (!p.expanded || !active || subHierarchyRequested.current.has(p.id))
             return;
         subHierarchyRequested.current.add(p.id);
+        subHierarchyDepths.current.set(p.id, p.depth);
+        // Show the last known listing at once (kept across launches), and
+        // only re-walk the nested hierarchy when it is not fresh. The
+        // fetch below then updates it silently: `loading` is only true
+        // while there is nothing to show.
+        const age = getCachedHierarchyAge(p.id);
+        const cached = getCachedHierarchy(p.id);
+        if (cached) {
+            setSubHierarchies((s) => ({ ...s, [p.id]: cached }));
+            if (age !== null && age < HIERARCHY_TTL_MS) return;
+        }
         // The fallback walks in through the nearest joined ancestor.
         const parent = roomsState.spaceDrillParentId ?? active;
         const depth = p.depth + (roomsState.spaceDrillDepth || 0);
@@ -3175,6 +3316,9 @@ export default function RoomList({
 
     return (
         <>
+            {/* Zami: not ported: `data-zam-region="room-list"`, the DOM hook
+                plugins find the list by (pluginDom.ts); there's no DOM to
+                query. */}
             <View className="flex-1 min-w-0 bg-discord-backgroundSecondary flex-col">
                 {/* Header */}
                 <View className="h-12 px-4 flex-row items-center border-b border-discord-divider shadow-sm flex-shrink-0 gap-2">

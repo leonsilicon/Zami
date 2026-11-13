@@ -120,6 +120,37 @@ export interface MessageEmbed {
     ): void | (() => void);
 }
 
+/** One GIF in a provider's results. `url` and `previewUrl` must be http(s). */
+export interface GifProviderItem {
+    id: string;
+    /** Full-size media: what gets sent when `pageUrl` is absent. */
+    url: string;
+    /** A page link sent in place of `url`, so the message carries a readable
+     *  link. */
+    pageUrl?: string;
+    /** Small still or animated image for the grid. */
+    previewUrl: string;
+    /** Small mp4 for the grid; tiles animate sooner than with an image. */
+    previewVideoUrl?: string;
+    width?: number;
+    height?: number;
+}
+
+/** A source of GIFs, shown as its own tab in the GIF picker. */
+export interface GifProvider {
+    /** Unique within the plugin. */
+    id: string;
+    /** The tab's name. */
+    label: string;
+    /** An empty `query` asks for trending/featured GIFs. `page` starts at 1
+     *  and grows as the user scrolls; the picker never skips one. A thrown
+     *  error shows a "try again" message. */
+    search(
+        query: string,
+        page: number,
+    ): Promise<{ items: GifProviderItem[]; hasNext: boolean }>;
+}
+
 export interface HeaderButton {
     id: string;
     label: string;
@@ -219,7 +250,8 @@ export type ZamRegion =
     | "room-header"
     | "timeline"
     | "composer"
-    | "member-list";
+    | "member-list"
+    | "call";
 
 export interface DomObserver {
     /** Runs for every element matching the selector, now and as they
@@ -516,6 +548,120 @@ export interface PluginPresenceMusic extends PluginPresenceBase {
 
 export type PluginPresence = PluginPresenceActivity | PluginPresenceMusic;
 
+/** A button in the call screen's control bar (zam.call.addControl). */
+export interface CallControl {
+    id: string;
+    label: string;
+    /** An SVG path (`d`) drawn in a 24x24 box. */
+    icon?: string;
+    /** Whether it shows as switched on (accent colour). Read on every
+     *  repaint of the bar, so keep it cheap; call `zam.call.refreshUi()`
+     *  after the answer changes. */
+    active?(): boolean;
+    onClick(ctx: { roomId: string; anchor: HTMLElement }): void | Promise<void>;
+}
+
+/** An area of the call screen between the tiles and the control bar, shown
+ *  while open (zam.call.openPanel). */
+export interface CallPanelRegistration {
+    id: string;
+    title: string;
+    /** Runs each time the call screen shows the panel; the cleanup when it
+     *  closes or the call screen goes away. The panel's width is the call
+     *  screen's, its height your content's (the host caps it at 60% of the
+     *  screen and scrolls past that). */
+    render(el: HTMLElement, ctx: { roomId: string }): void | (() => void);
+}
+
+/** Content laid over each participant's tile in the call screen. */
+export interface CallTileDecoration {
+    id: string;
+    /** `el` covers the tile and lets clicks through, except on children that
+     *  set `pointer-events: auto`. */
+    render(
+        el: HTMLElement,
+        ctx: { roomId: string; userId: string },
+    ): void | (() => void);
+}
+
+/** A data packet from someone in the call (zam.call.onData). */
+export interface PluginCallPacket {
+    payload: Uint8Array;
+    /** Matrix ID of the sender. */
+    userId: string;
+    /** The sender's device, when known. */
+    deviceId: string | null;
+    topic: string;
+}
+
+export interface PluginDataTrackFrame {
+    payload: Uint8Array;
+    /** The publisher's timestamp for the frame (ms), if it set one. */
+    timestamp: number | null;
+}
+
+/** A data track you publish into the call. */
+export interface PluginLocalDataTrack {
+    readonly name: string;
+    /** Send one frame to everyone subscribed. Resolves false when the frame
+     *  was dropped (the track is unpublished, or the connection can't keep
+     *  up). */
+    push(payload: Uint8Array, timestamp?: number): Promise<boolean>;
+    unpublish(): Promise<void>;
+}
+
+/** A data track someone else publishes in the call. */
+export interface PluginRemoteDataTrack {
+    readonly name: string;
+    readonly userId: string;
+    readonly deviceId: string | null;
+    /** Start receiving frames; only those sent after this call arrive.
+     *  Disposing stops them (the last one stops the subscription). */
+    subscribe(onFrame: (frame: PluginDataTrackFrame) => void): Disposable;
+    /** Runs when the publisher unpublishes or the call ends. */
+    onEnded(cb: () => void): Disposable;
+}
+
+/** The live synth (zam.midi.openSynth). Channels are 0-15, the rest 0-127
+ *  unless stated. */
+export interface PluginMidiSynth {
+    noteOn(channel: number, note: number, velocity: number): void;
+    noteOff(channel: number, note: number): void;
+    /** Pick the instrument (General MIDI program) for a channel. */
+    programChange(channel: number, program: number): void;
+    controlChange(channel: number, controller: number, value: number): void;
+    /** 0 to 16383; 8192 is centre. */
+    pitchBend(channel: number, value: number): void;
+    /** Silence every sounding note (all channels, or one). */
+    allNotesOff(channel?: number): void;
+    /** Another player (a MIDI message in the timeline, or another plugin's
+     *  synth) took the engine; the synth stops and ignores further notes.
+     *  Open it again to carry on. */
+    onPreempted(cb: () => void): Disposable;
+    /** Give the engine up. */
+    close(): void;
+}
+
+/** A song playing on the sound bank (zam.midi.play). */
+export interface PluginMidiPlayer {
+    /** Start or resume. Call it from a click: browsers only allow audio
+     *  then. */
+    play(): void;
+    pause(): void;
+    /** Seconds. */
+    seek(time: number): void;
+    /** The song's length in seconds. */
+    readonly duration: number;
+    onTime(cb: (currentTime: number, duration: number) => void): Disposable;
+    onEnded(cb: () => void): Disposable;
+    /** Another player took the engine; it stays where it was and play()
+     *  picks it up again. */
+    onPreempted(cb: () => void): Disposable;
+    /** Audio was blocked (not started from a click). */
+    onBlocked(cb: () => void): Disposable;
+    close(): void;
+}
+
 /** The `zam` object a plugin's `onload` receives (spec §6). */
 export interface ZamPluginApi {
     app: { version: string };
@@ -559,6 +705,13 @@ export interface ZamPluginApi {
         /** Show a custom event type or msgtype in the timeline (see
          *  MessageRenderer). Throws for types Zam renders itself. */
         registerRenderer(renderer: MessageRenderer): Disposable;
+    };
+
+    /** The GIF picker. */
+    gifs: {
+        /** Add a tab with GIFs from another source. Items with a non-http(s)
+         *  URL are dropped. */
+        registerProvider(provider: GifProvider): Disposable;
     };
 
     room: {
@@ -854,6 +1007,73 @@ export interface ZamPluginApi {
          *  omitted), from what Zam has loaded; asks the server for a fresh
          *  copy in the background when it is older than a minute. */
         get(userId?: string): PluginPresence[];
+    };
+
+    /** The voice call you are in, and the call screen. Needs the "call"
+     *  capability. Everything
+     *  here is private to your plugin: topics and track names are scoped to
+     *  its id, so only copies of the same plugin (on other users' devices)
+     *  see them, and core messages (soundboard and the like) can't be read or
+     *  forged. Nothing is stored; late joiners miss earlier packets. */
+    call: {
+        /** The room whose call you are in, or null. */
+        getRoomId(): string | null;
+        /** Runs when you join (the room id) or leave (null) a call. */
+        onChange(handler: (roomId: string | null) => void): Disposable;
+        /** Send a data packet to the call (or just `to`, Matrix IDs).
+         *  Reliable packets (the default) are ordered and at most 15000
+         *  bytes; lossy ones (`reliable: false`) at most 1300. Rejects when
+         *  you are not in a call. */
+        sendData(
+            topic: string,
+            payload: Uint8Array,
+            opts?: { reliable?: boolean; to?: string[] },
+        ): Promise<void>;
+        /** A button in the call screen's control bar. */
+        addControl(control: CallControl): Disposable;
+        /** Register an area of the call screen; it stays hidden until
+         *  `openPanel`. */
+        addPanel(panel: CallPanelRegistration): Disposable;
+        /** Show or hide a panel this plugin registered. Several can be open
+         *  at once. Panels only appear while the call screen is open. */
+        openPanel(id: string): void;
+        closePanel(id?: string): void;
+        /** Content over each participant's tile. */
+        addTileDecoration(decoration: CallTileDecoration): Disposable;
+        /** Re-read the `active` of controls after your state changed. */
+        refreshUi(): void;
+        /** Packets other copies of the plugin send to `topic`. */
+        onData(
+            topic: string,
+            handler: (packet: PluginCallPacket) => void,
+        ): Disposable;
+        /** Publish a data track: a stream of frames for steady or
+         *  high-rate data. Rejects when you are not in a call; unpublished
+         *  when the call ends. */
+        publishDataTrack(name: string): Promise<PluginLocalDataTrack>;
+        /** Data tracks other copies of the plugin publish, including those
+         *  already there. */
+        onDataTrack(
+            handler: (track: PluginRemoteDataTrack) => void,
+        ): Disposable;
+    };
+
+    /** Zam's MIDI synth: the sound bank behind MIDI messages in the
+     *  timeline. One thing plays at a time (a plugin's synth or player, or a
+     *  message), and a new one takes the engine from the last. Local audio
+     *  only: it is not sent into a call. Needs the "midi" capability. */
+    midi: {
+        /** Whether this device can play MIDI (an AudioWorklet and a sound
+         *  bank). */
+        available(): Promise<boolean>;
+        /** Open the live synth. Call it from a click (browsers only start
+         *  audio then); rejects if audio is blocked, resolves null when
+         *  MIDI can't play here. */
+        openSynth(): Promise<PluginMidiSynth | null>;
+        /** Load a standard MIDI file into a player; null when MIDI can't
+         *  play here. Playback starts with `play()`. Throws on a file that
+         *  is not MIDI. */
+        play(midi: ArrayBuffer | Uint8Array): Promise<PluginMidiPlayer | null>;
     };
 
     /** Full-power escape hatch (full-trust model). Returns the live matrix-js-sdk

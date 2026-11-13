@@ -5,6 +5,7 @@ import {
     getRoom,
     getRoomsInSpace,
     getRoomTags,
+    isAcceptingInvite,
     isRoomLandable,
     isRoomListFromCache,
     isVideoRoom,
@@ -315,6 +316,20 @@ export function showSpaceHome(): void {
         interfaceState.leftOpen = false;
 }
 
+/**
+ * Leave the space's home page for the room last open in this space. Falls back
+ * to the landing chain (first room) when that room is gone or was never set.
+ */
+export function restoreLastRoom(): void {
+    const last = getLastRoom(roomsState.activeSpaceId);
+    roomsState.showSpaceHome = false;
+    if (last && isRoomLandable(last)) setActiveRoom(last);
+    else {
+        roomsState.activeRoomId = null;
+        resolveLandingSurface();
+    }
+}
+
 /** Room ids of the current context, in the order the sidebar renders them. */
 function sidebarOrderedIds(rooms: readonly Room[]): string[] {
     return sortRoomsByTag(rooms, (r) => getRoomTags(r.roomId)).map(
@@ -463,7 +478,31 @@ export function setActiveRoom(roomId: string): void {
  * up and, via `scrollToMessage`, fetches a context window if the event is not in
  * the loaded timeline — so an old message still lands.
  */
+/** Whether `roomId` is an invite still waiting for an answer. */
+export function isPendingInvite(roomId: string): boolean {
+    return (
+        !isAcceptingInvite(roomId) &&
+        roomsState.invitedRooms.some((r) => r.roomId === roomId)
+    );
+}
+
+/** Show the invites inbox in the main pane. */
+export function showInviteInbox(): void {
+    roomsState.draftDm = null;
+    roomsState.activeRoomId = null;
+    roomsState.showSpaceHome = false;
+    roomsState.showInbox = true;
+    roomsState.pendingJump = null;
+    if (interfaceState.isMobile) interfaceState.leftOpen = false;
+}
+
 export function navigateToRoom(roomId: string, eventId?: string): void {
+    // A pending invite has no timeline to show: open the invites inbox, where
+    // it can be accepted or declined (an invite notification's tap).
+    if (isPendingInvite(roomId)) {
+        showInviteInbox();
+        return;
+    }
     const targetSpace = findSpaceForRoom(roomId);
     if (targetSpace !== roomsState.activeSpaceId) {
         roomsState.activeSpaceId = targetSpace;

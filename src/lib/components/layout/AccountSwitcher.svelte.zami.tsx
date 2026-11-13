@@ -39,7 +39,10 @@ import {
 } from "$lib/matrix/client";
 import { deleteCryptoStore } from "$lib/matrix/crypto";
 import { deleteEventIndex } from "$lib/matrix/eventIndex";
-import { changeOwnPresence } from "$lib/stores/presence.svelte";
+import {
+    changeOwnPresence,
+    changeDoNotDisturb,
+} from "$lib/stores/presence.svelte";
 import {
     getCachedProfile,
     nameColourFor,
@@ -47,6 +50,7 @@ import {
 } from "$lib/stores/profileFields.svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
+import { aliasUserLocalpart, shownHomeserver } from "$lib/utils/streamerAlias";
 import {
     PROFILE_FIELDS,
     formatStatusMessage,
@@ -115,6 +119,8 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
     );
     // Zami: the registry is replaced on every change, so reading it is enough.
     const accounts = useRune(() => accountsState.registry.accounts);
+    const doNotDisturb = useRune(() => settingsState.doNotDisturb);
+    const streamerMode = useRune(() => settingsState.streamerMode);
     const activeUserId = useRune(() => auth.userId);
 
     function serverHost(url: string): string {
@@ -142,6 +148,19 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
         setPresenceError("");
         try {
             await changeOwnPresence(value);
+            setView("main");
+        } catch (e) {
+            setPresenceError(
+                (e as Error)?.message ??
+                    t("accountSwitcher.couldNotSetPresence"),
+            );
+        }
+    }
+
+    async function toggleDoNotDisturb(): Promise<void> {
+        setPresenceError("");
+        try {
+            await changeDoNotDisturb(!settingsState.doNotDisturb);
             setView("main");
         } catch (e) {
             setPresenceError(
@@ -232,6 +251,27 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                     )}
                 </Pressable>
             ))}
+            <Pressable
+                accessibilityRole="button"
+                onPress={() => void toggleDoNotDisturb()}
+                className="w-full flex-row items-center gap-3 p-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+            >
+                <View className="w-3 h-3 rounded-full flex-shrink-0 bg-discord-dnd" />
+                <View className="flex-1 min-w-0">
+                    <Text className="text-sm text-discord-textPrimary">
+                        {t("presence.doNotDisturb")}
+                    </Text>
+                    <Text className="text-xs text-discord-textMuted">
+                        {t("presence.doNotDisturbDescription")}
+                    </Text>
+                </View>
+                {doNotDisturb && (
+                    <Check
+                        size={16}
+                        className="text-discord-accent flex-shrink-0"
+                    />
+                )}
+            </Pressable>
             {presenceError ? (
                 <Text className="px-2 py-1 text-xs text-discord-danger">
                     {presenceError}
@@ -257,17 +297,24 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                         >
                             <AccountAvatar account={account} size={32} />
                             <View className="flex-1 min-w-0">
+                                {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                 <Text
                                     numberOfLines={1}
                                     className="text-sm text-discord-textPrimary"
                                 >
-                                    {account.displayName ?? account.userId}
+                                    {streamerMode
+                                        ? aliasUserLocalpart(account.userId)
+                                        : (account.displayName ??
+                                          account.userId)}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
                                     className="text-xs text-discord-textMuted"
                                 >
-                                    {serverHost(account.homeserverUrl)}
+                                    {shownHomeserver(
+                                        serverHost(account.homeserverUrl),
+                                        streamerMode,
+                                    )}
                                 </Text>
                             </View>
                             {isActive && (

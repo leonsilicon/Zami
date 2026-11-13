@@ -154,6 +154,7 @@ import RenameAttachmentDialog from "$lib/components/messages/RenameAttachmentDia
 import VoiceRecorder from "$lib/components/messages/VoiceRecorder.svelte";
 import OutboxStrip from "$lib/components/messages/OutboxStrip.svelte";
 import { openCreatePollDialog } from "$lib/stores/pollDialog.svelte";
+import { openGameInviteDialog } from "$lib/stores/gameInviteDialog.svelte";
 import { openShareLocationDialog } from "$lib/stores/locationDialog.svelte";
 import {
     getDraft,
@@ -2557,6 +2558,13 @@ export default function MessageInput({
     // deferral and onCompositionEnd). The TextInput owns its marked text and
     // leaves it alone when the model's text is drawn over it; onChangeText
     // reports the text with it.
+    // Zami: not ported: commitPendingComposition (the blur()+focus() that makes
+    // a mobile WebView's keyboard commit its pending word before a send): the
+    // TextInput reports the text with its marked text, and blurring it would
+    // dismiss the keyboard.
+    async function sendFromButton() {
+        await send();
+    }
 
     /** Read the editor into the model.
      *  Zami: `next` is what the TextInput now holds (onChangeText). */
@@ -2743,6 +2751,7 @@ export default function MessageInput({
                         ? () => setCreateThreadArmed(true)
                         : undefined
                 }
+                onInviteToGame={() => openGameInviteDialog(roomId)}
             />
         );
     }
@@ -2778,17 +2787,17 @@ export default function MessageInput({
                         d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
                         className="w-4 h-4 text-discord-accent flex-shrink-0"
                     />
-                    {/* Zami: the two spans as one line that ellipsizes, the
-                        preview's `ms-2` as spaces. */}
-                    <Text numberOfLines={1} className="flex-1 min-w-0 text-xs">
-                        <Text className="text-xs text-discord-accent font-semibold">
+                    <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
+                        <Text className="text-xs text-discord-accent font-semibold flex-shrink-0">
                             {t("messageInput.replyingTo", { replyTargetName })}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
-                            {"  "}
+                        <Text
+                            numberOfLines={1}
+                            className="text-xs text-discord-textMuted min-w-0 flex-shrink"
+                        >
                             {getReplyPreview()}
                         </Text>
-                    </Text>
+                    </View>
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("messageInput.cancelReplyEsc")}
@@ -3449,7 +3458,7 @@ export default function MessageInput({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("messageInput.sendMessage")}
-                        onPress={() => void send()}
+                        onPress={() => void sendFromButton()}
                         disabled={
                             (textBlank && fileQueue.length === 0) ||
                             isSending ||

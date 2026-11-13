@@ -525,6 +525,21 @@ describe("buildHostApi — UI and message extension points", () => {
             (h: ReturnType<typeof buildHostApi>) =>
                 h.zam.ui.addOverlay({ render() {} }),
         ],
+        [
+            "callControls",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addControl({ id: "c", label: "C", onClick() {} }),
+        ],
+        [
+            "callPanels",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addPanel({ id: "p", title: "P", render() {} }),
+        ],
+        [
+            "callTileDecorations",
+            (h: ReturnType<typeof buildHostApi>) =>
+                h.zam.call.addTileDecoration({ id: "d", render() {} }),
+        ],
     ] as const;
 
     for (const [kind, add] of kinds) {
@@ -532,7 +547,7 @@ describe("buildHostApi — UI and message extension points", () => {
             const registry = createRegistryData();
             const host = buildHostApi({
                 pluginId: "a",
-                manifest: manifest("a"),
+                manifest: { ...manifest("a"), capabilities: ["call"] },
                 registry,
                 appVersion: "1",
             });
@@ -577,5 +592,35 @@ describe("buildHostApi — UI and message extension points", () => {
             appVersion: "1",
         });
         expect(() => host.zam.ui.openPanel("missing")).toThrow(/missing/);
+    });
+});
+
+describe("buildHostApi — call and midi capabilities", () => {
+    const build = (capabilities?: string[]) =>
+        buildHostApi({
+            pluginId: "p",
+            manifest: { ...manifest("p"), name: "Plug", capabilities },
+            registry: createRegistryData(),
+            appVersion: "1",
+        });
+
+    it("call needs the call capability", async () => {
+        const { zam } = build();
+        await expect(zam.call.sendData("t", new Uint8Array(1))).rejects.toThrow(
+            /"call" capability/,
+        );
+        await expect(zam.call.publishDataTrack("t")).rejects.toThrow(
+            /"call" capability/,
+        );
+        expect(() => zam.call.onData("t", () => {})).toThrow(/capability/);
+        expect(() => zam.call.onDataTrack(() => {})).toThrow(/capability/);
+    });
+
+    it("midi needs the midi capability", async () => {
+        const { zam } = build();
+        await expect(zam.midi.openSynth()).rejects.toThrow(/"midi" capability/);
+        await expect(zam.midi.play(new ArrayBuffer(1))).rejects.toThrow(
+            /"midi" capability/,
+        );
     });
 });

@@ -75,7 +75,12 @@ import {
     type KeywordRuleView,
 } from "$lib/utils/keywordRules";
 import { pickViaServers } from "$lib/utils/roomVia";
-import type { PresenceState } from "$lib/utils/presence";
+import {
+    BUSY_PRESENCE_FEATURE,
+    BUSY_PRESENCE_VALUES,
+    type PresenceState,
+    type SeenPresence,
+} from "$lib/utils/presence";
 import { sendPresenceWithSlidingSync } from "$lib/matrix/slidingSyncPresence";
 import {
     installMediaHealer,
@@ -146,6 +151,9 @@ import { resolveDisplayName } from "$lib/utils/displayName";
 import { nestedSpaceIds, topLevelSpaceOf } from "$lib/utils/spaceTree";
 import {
     deleteSnapshot,
+    deleteHierarchies,
+    loadHierarchies,
+    saveHierarchies,
     loadSnapshot,
     loadSnapshotRest,
     splitForFirstScreen,
@@ -165,7 +173,10 @@ import {
     resetSyncStoreFallback,
     setSyncHeldForCrypto,
 } from "$lib/stores/sessionHealth.svelte";
-import { settingsState } from "$lib/stores/settings.svelte";
+import {
+    settingsState,
+    notificationBodyHidden,
+} from "$lib/stores/settings.svelte";
 import { classifyWellKnown } from "$lib/utils/wellKnown";
 import { hasUnstableFeature } from "$lib/utils/serverCapabilities";
 import {
@@ -173,6 +184,10 @@ import {
     type DeviceInfo,
 } from "$lib/utils/deviceSessions";
 import { readPositions, receiptTypeForSetting } from "$lib/utils/readReceipts";
+import {
+    isRoomReceiptPrivate,
+    receiptPrivacyExceptions,
+} from "$lib/utils/receiptPrivacy";
 import { computeEditMentions, type Mentions } from "$lib/utils/editMentions";
 import { buildReplyContent } from "$lib/utils/replyContent";
 import {
@@ -224,6 +239,13 @@ import {
 } from "$lib/utils/threadName";
 import type { ThreadInfo } from "$lib/utils/threadList";
 import { addOrderHints, placeAfterHints } from "./orderHint";
+import {
+    COMMET_ORDER_KEY,
+    ELEMENT_SPACE_ORDER_KEY,
+    commetToLayout,
+    elementToLayout,
+    layoutToCommet,
+} from "./spaceLayoutKeys";
 import { historyTrimCut, mayCutHistory } from "$lib/utils/historyTrim";
 import { rebuildLiveTimeline } from "./timelineRebuild";
 import {
@@ -662,6 +684,7 @@ async function createAuthenticatedClient(opts: {
     // space-child lists must not be carried into the incoming account's session.
     spaceChildCache.clear();
     resetRoomListCache();
+    resetHierarchyCache();
     // Drop the previous server's cached media-config upload limit — this funnel
     // runs on every login, session restore, and account switch, so a switch to
     // a different homeserver must not keep the old server's `m.upload.size`.
@@ -2062,10 +2085,12 @@ export async function logout(): Promise<void> {
         // The cached room list is account data too: wipe it with the rest.
         if (userId && deviceId) {
             void deleteSnapshot(snapshotKey(userId, deviceId));
+            void deleteHierarchies(snapshotKey(userId, deviceId));
             // Decrypted message text: must not outlive the session.
             void deleteEventIndex(userId, deviceId);
         }
         resetRoomListCache();
+        resetHierarchyCache();
         if (userId && deviceId) {
             forgetOwnDeviceKey(userId, deviceId);
             rememberPendingWipe({
@@ -2149,6 +2174,7 @@ export function stopClient(): void {
     // but it must not outlive the session it was built for.
     spaceChildCache.clear();
     resetRoomListCache();
+    resetHierarchyCache();
     slidingPresenceFetchedAt.clear();
 }
 
@@ -2275,7 +2301,6 @@ function resetRoomListCache(): void {
     roomListCache = null;
     roomListComplete = false;
     lastSnapshotSaveAt = 0;
-    hierarchyCache.clear();
 }
 
 function lookupRoom(roomId: string): Room | null {
@@ -2327,6 +2352,14 @@ async function hydrateRoomListCache(
     const userId = client.getUserId();
     const deviceId = client.getDeviceId();
     if (!userId || !deviceId) return;
+    // Independent of the snapshot and of the room list completing: sync
+    // finishing first must not leave a big space to be walked from scratch.
+    resetHierarchyCache();
+    hierarchyPersistKey = snapshotKey(userId, deviceId);
+    const savedHierarchies = await loadHierarchies(hierarchyPersistKey);
+    if (matrixClient === client && savedHierarchies)
+        for (const [spaceId, list] of Object.entries(savedHierarchies))
+            if (!hierarchyCache.has(spaceId)) hierarchyCache.set(spaceId, list);
     const key = snapshotKey(userId, deviceId);
     const snapshot = await loadSnapshot(key);
     if (!snapshot || matrixClient !== client || roomListComplete) return;
@@ -4459,7 +4492,7 @@ export async function markThreadRead(
     )
         return clearReadThreadCounts(room);
     const receiptType = receiptTypeForSetting(
-        settingsState.privateReadReceipts,
+        receiptsPrivateFor(room.roomId),
     ) as ReceiptType;
     if (eventId) inFlightReceipts.set(key, eventId);
     try {
@@ -5013,7 +5046,7 @@ export async function initServiceWorker(): Promise<void> {
     };
     const notifMsg = {
         type: "SET_NOTIF_PRIVACY",
-        hideBody: settingsState.hideNotificationBody,
+        hideBody: notificationBodyHidden(),
     };
     // The per-account private-read-receipts mirror is NOT posted here: this
     // runs before AppShell's reloadAccountSettings(), so the value would be the
@@ -5136,6 +5169,7 @@ export function updateServiceWorkerRingEnabled(enabled: boolean): void {
 export function updateServiceWorkerReceiptPrivacy(
     userId: string,
     isPrivate: boolean,
+    rooms: Record<string, boolean> = {},
 ): void {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.ready
@@ -5144,6 +5178,7 @@ export function updateServiceWorkerReceiptPrivacy(
                 type: "SET_RECEIPT_PRIVACY",
                 userId,
                 private: isPrivate,
+                rooms,
             }),
         )
         .catch(() => {});
@@ -6456,7 +6491,16 @@ export function isAccountNotificationsDisabled(): boolean | null {
 }
 
 /** Turn notifications for this account back on (disable `.m.rule.master`). */
-export async function enableAccountNotifications(): Promise<void> {
+export function enableAccountNotifications(): Promise<void> {
+    return setAccountNotificationsDisabled(false);
+}
+
+/** Switch every notification for this account off (`disabled`) or on, by
+ *  toggling the `.m.rule.master` override — what Element's "Enable
+ *  notifications for this account" does. */
+export async function setAccountNotificationsDisabled(
+    disabled: boolean,
+): Promise<void> {
     if (!matrixClient) return;
     const client = matrixClient;
     return pushRuleWriteQueue.run(async () => {
@@ -6465,7 +6509,7 @@ export async function enableAccountNotifications(): Promise<void> {
                 "global",
                 PushRuleKind.Override,
                 ".m.rule.master",
-                false,
+                disabled,
             );
             await refreshCachedPushRules(client);
         } finally {
@@ -7005,6 +7049,36 @@ export async function searchRoomMessagesMore(
     return matrixClient.backPaginateRoomEventsSearch(results);
 }
 
+/**
+ * Whether read receipts for this room are private: the room's own override,
+ * else its spaces', else the account default (see utils/receiptPrivacy.ts).
+ */
+export function receiptsPrivateFor(roomId: string): boolean {
+    const overrides = settingsState.receiptOverrides;
+    return isRoomReceiptPrivate(
+        roomId,
+        Object.keys(overrides).length ? getParentSpaceIds(roomId) : [],
+        overrides,
+        settingsState.privateReadReceipts,
+    );
+}
+
+/** The rooms whose receipts differ from the account default, for the
+ *  service-worker and Android mirrors that cannot resolve spaces themselves. */
+export function receiptPrivacyRoomExceptions(): Record<string, boolean> {
+    if (!matrixClient) return {};
+    const overrides = settingsState.receiptOverrides;
+    if (Object.keys(overrides).length === 0) return {};
+    return receiptPrivacyExceptions(
+        matrixClient.getRooms().map((r) => ({
+            roomId: r.roomId,
+            parentSpaceIds: getParentSpaceIds(r.roomId),
+        })),
+        overrides,
+        settingsState.privateReadReceipts,
+    );
+}
+
 export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
     if (!matrixClient) return;
     const roomId = event.getRoomId();
@@ -7036,7 +7110,7 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
     }
 
     const receiptType = receiptTypeForSetting(
-        settingsState.privateReadReceipts,
+        receiptsPrivateFor(roomId),
     ) as ReceiptType;
     inFlightReceipts.set(roomId, eventId);
     try {
@@ -7439,6 +7513,8 @@ export async function fetchSpaceHierarchy(
         };
     });
     hierarchyCache.set(spaceId, result);
+    hierarchyFetchedAt.set(spaceId, Date.now());
+    persistHierarchiesSoon();
     return result;
 }
 
@@ -7456,6 +7532,38 @@ export function isJoinedNow(child: SpaceChildInfo): boolean {
 // opened again (and on boot, via the room-list snapshot) while a fresh fetch
 // runs, so unjoined rooms and sub-space contents don't blink out on a switch.
 const hierarchyCache = new Map<string, SpaceChildInfo[]>();
+// When each space's entry was fetched from the server THIS session. Entries
+// restored from the room-list snapshot have none, so they count as stale.
+const hierarchyFetchedAt = new Map<string, number>();
+
+// Written to IndexedDB shortly after a fetch lands (one write per burst of
+// sub-space fetches), so the next launch starts from it.
+let hierarchyPersistKey: string | null = null;
+let hierarchyPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function persistHierarchiesSoon(): void {
+    if (!hierarchyPersistKey || hierarchyPersistTimer) return;
+    const key = hierarchyPersistKey;
+    hierarchyPersistTimer = setTimeout(() => {
+        hierarchyPersistTimer = null;
+        if (key !== hierarchyPersistKey) return;
+        void saveHierarchies(key, Object.fromEntries(hierarchyCache));
+    }, 3000);
+}
+
+function resetHierarchyCache(): void {
+    hierarchyCache.clear();
+    hierarchyFetchedAt.clear();
+    hierarchyPersistKey = null;
+    if (hierarchyPersistTimer) clearTimeout(hierarchyPersistTimer);
+    hierarchyPersistTimer = null;
+}
+
+/** Milliseconds since `spaceId`'s hierarchy was last fetched this session,
+ *  or null when it has not been (a snapshot-restored entry is not fresh). */
+export function getCachedHierarchyAge(spaceId: string): number | null {
+    const at = hierarchyFetchedAt.get(spaceId);
+    return at === undefined ? null : Date.now() - at;
+}
 
 export function getCachedHierarchy(
     spaceId: string,
@@ -7501,12 +7609,44 @@ export function getSpaceLayout(): SpaceLayout {
     const oldOrder =
         (lookupAccountData(SPACE_ORDER_KEY)?.getContent()?.order as string[]) ??
         [];
-    return { order: oldOrder, folders: {} };
+    if (oldOrder.length) return { order: oldOrder, folders: {} };
+    // Nothing of ours: fall back to Commet's folders, then Element's order.
+    const commet = commetToLayout(
+        lookupAccountData(COMMET_ORDER_KEY)?.getContent(),
+    );
+    if (commet) return commet;
+    const orders = new Map<string, unknown>();
+    for (const room of listRooms()) {
+        if (!room.isSpaceRoom()) continue;
+        orders.set(
+            room.roomId,
+            (
+                room.getAccountData?.(ELEMENT_SPACE_ORDER_KEY as never) as
+                    | MatrixEvent
+                    | undefined
+            )?.getContent()?.order,
+        );
+    }
+    return elementToLayout(orders) ?? { order: [], folders: {} };
 }
 
 export async function setSpaceLayout(layout: SpaceLayout): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     await matrixClient.setAccountData(SPACE_LAYOUT_KEY, layout);
+    // Commet reads its own key; mirror what it can represent. A failure here
+    // must not fail the save of ours.
+    if (!layout.order.length) return;
+    try {
+        const existing = lookupAccountData(COMMET_ORDER_KEY)?.getContent();
+        const next = layoutToCommet(layout, existing);
+        if (JSON.stringify(next) === JSON.stringify(existing)) return;
+        await matrixClient.setAccountData(
+            COMMET_ORDER_KEY as never,
+            next as never,
+        );
+    } catch (err) {
+        console.warn("[setSpaceLayout] Commet ordering not written:", err);
+    }
 }
 
 export function getSpaceOrder(): string[] {
@@ -8287,6 +8427,18 @@ export function getInvitedRooms(): Room[] {
         );
 }
 
+/**
+ * Invites being accepted whose join `/sync` has not confirmed yet: the room
+ * still reads as an invite meanwhile, and the shell must not take the user
+ * from it to the invites inbox (see `isAcceptingInvite`).
+ */
+const acceptingInvites = new Set<string>();
+
+/** Whether `roomId` is an invite this client is accepting right now. */
+export function isAcceptingInvite(roomId: string): boolean {
+    return acceptingInvites.has(roomId);
+}
+
 export async function acceptInvite(roomId: string): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     // Read whether this invite is a direct (1:1) chat and who sent it BEFORE
@@ -8298,12 +8450,19 @@ export async function acceptInvite(roomId: string): Promise<void> {
     // Membership keeps reading "invite" until the join comes back over /sync;
     // claim the room as landable meanwhile so no refresh moves the user off it.
     markRoomPendingArrival(roomId);
+    acceptingInvites.add(roomId);
     try {
         await matrixClient.joinRoom(roomId);
     } catch (e) {
         pendingJoins.delete(roomId);
+        acceptingInvites.delete(roomId);
         throw e;
     }
+    clearPendingWhenSynced(
+        acceptingInvites,
+        roomId,
+        (room) => room?.getMyMembership() !== "invite",
+    );
     // Record peer-initiated DMs in m.direct so they surface in the DM section,
     // mirroring what createDirectMessage does for self-initiated DMs. Best-effort:
     // a failed account-data write must not strand the user after a joined room.
@@ -8388,6 +8547,34 @@ function dismissInvite(roomId: string): void {
         // Private-mode localStorage can throw; the in-memory hide still holds.
     }
     for (const cb of roomUpdateSubscribers) cb();
+}
+
+/**
+ * A room's membership as the store holds it, with when the pending invite was
+ * sent; null when the store has no such room (see declinedInvites.ts).
+ */
+export function lookupInvite(
+    roomId: string,
+): { membership: string; inviteTs?: number } | null {
+    const room = matrixClient?.getRoom(roomId);
+    const me = matrixClient?.getUserId();
+    if (!room || !me) return null;
+    const membership = room.getMyMembership();
+    const ts = room.getMember(me)?.events.member?.getTs();
+    return membership === "invite" && ts
+        ? { membership, inviteTs: ts }
+        : { membership };
+}
+
+/**
+ * An invite already declined on the server (from a notification): settle it
+ * locally as rejectInvite does, without asking the server again.
+ */
+export function settleDeclinedInvite(roomId: string): void {
+    // dismissInvite keys by the invite event, so before the membership moves.
+    dismissInvite(roomId);
+    const room = matrixClient?.getRoom(roomId);
+    if (room?.getMyMembership() === "invite") room.updateMyMembership("leave");
 }
 
 /** A pending invite the user already rejected (see dismissInvite). */
@@ -11432,21 +11619,88 @@ const SYNC_PRESENCE: Record<PresenceState, SetPresence> = {
     offline: SetPresence.Offline,
 };
 
+// How this server spells MSC3026 busy, once known: undefined = not asked yet,
+// null = the server has no busy (then Do Not Disturb shows as away). Keyed by
+// client so switching accounts asks the other server afresh.
+const busySpelling = new WeakMap<MatrixClient, string | null>();
+
+/**
+ * Whether the homeserver takes MSC3026 busy presence. Answers from
+ * /versions; the spelling itself is settled by the first PUT (see
+ * setOwnPresence).
+ */
+export async function supportsBusyPresence(): Promise<boolean> {
+    if (!matrixClient) return false;
+    const known = busySpelling.get(matrixClient);
+    if (known !== undefined) return known !== null;
+    try {
+        const { unstableFeatures } = await getServerVersions();
+        const ok = hasUnstableFeature(unstableFeatures, BUSY_PRESENCE_FEATURE);
+        if (!ok) busySpelling.set(matrixClient, null);
+        return ok;
+    } catch {
+        return false;
+    }
+}
+
+/** PUT busy, trying each spelling until the server takes one. Returns the
+ *  accepted spelling, or null when it took none. */
+async function putBusyPresence(
+    client: MatrixClient,
+    statusMsg: string | undefined,
+): Promise<string | null> {
+    const known = busySpelling.get(client);
+    if (known === null) return null;
+    const candidates = known ? [known] : [...BUSY_PRESENCE_VALUES];
+    // Raw PUT: client.setPresence throws on anything but the spec states.
+    const path = `/presence/${encodeURIComponent(client.getSafeUserId())}/status`;
+    for (const value of candidates) {
+        try {
+            await client.http.authedRequest(Method.Put, path, undefined, {
+                presence: value,
+                ...(statusMsg !== undefined ? { status_msg: statusMsg } : {}),
+            });
+            busySpelling.set(client, value);
+            return value;
+        } catch (err) {
+            // Only a refused value means "try the other spelling"; anything
+            // else (offline, auth) is the caller's problem.
+            if ((err as { httpStatus?: number }).httpStatus !== 400) throw err;
+        }
+    }
+    busySpelling.set(client, null);
+    return null;
+}
+
 /**
  * Advertise our own presence. Sets both the immediate state (PUT /presence)
  * and the set_presence param of subsequent /sync long-polls — without the
  * latter the very next sync would flip us straight back to online.
+ *
+ * "busy" falls back to "unavailable" on a server that refuses it.
  */
 export async function setOwnPresence(
-    presence: PresenceState,
+    presence: SeenPresence,
     statusMsg?: string,
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
-    await matrixClient.setSyncPresence(SYNC_PRESENCE[presence]);
-    sendPresenceWithSlidingSync(matrixClient)(presence);
+    const client = matrixClient;
+    if (presence === "busy") {
+        const busy = await putBusyPresence(client, statusMsg);
+        if (busy) {
+            // tuwunel applies set_presence to this device on every poll, so
+            // the polls must say busy too or the next one undoes the PUT.
+            await client.setSyncPresence(busy as SetPresence);
+            sendPresenceWithSlidingSync(client)(busy);
+            return;
+        }
+        presence = "unavailable";
+    }
+    await client.setSyncPresence(SYNC_PRESENCE[presence]);
+    sendPresenceWithSlidingSync(client)(presence);
     // `undefined` omits status_msg; "" sends it explicitly, which is how a
     // cleared message is told apart from one we have no opinion about.
-    await matrixClient.setPresence({
+    await client.setPresence({
         presence,
         ...(statusMsg !== undefined ? { status_msg: statusMsg } : {}),
     });

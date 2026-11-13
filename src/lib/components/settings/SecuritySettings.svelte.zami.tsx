@@ -1008,6 +1008,7 @@ export default function SecuritySettings() {
                                 {t("securitySettings.storeItNowWithoutItYou")}
                             </Text>
                             <View className="bg-discord-backgroundDark rounded px-3 py-2">
+                                {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                 <Text
                                     selectable
                                     className="font-mono text-sm text-discord-textPrimary"

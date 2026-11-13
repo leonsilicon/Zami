@@ -573,7 +573,9 @@ export default function Lightbox({
     });
 
     // Zami: the gestures take the whole viewer, so a pinch can start beside a
-    // small image; a tap off the image is then the backdrop's click.
+    // small image; a tap off the image is then the backdrop's click. A tap
+    // fails once it moves, so a drag or pinch that ends off the image never
+    // closes the viewer (upstream's `gestureEndedAt` / `onBackdropClick`).
     // Zami: not ported: a tap on an empty (transparent) part of a vector's
     // box also closing the viewer. Upstream reads the pixel back through a
     // canvas, which React Native lacks; here the whole box counts as image.

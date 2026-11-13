@@ -29,6 +29,7 @@ import {
     styleElement,
 } from "./pluginDom";
 import { rendererProblem } from "./pluginRenderers";
+import { gifProviderProblem } from "./pluginGifs";
 import { closePluginPanelOf, openRegisteredPanel } from "./pluginPanel.svelte";
 import { navigateToRoom } from "../stores/rooms.svelte";
 import { viewedRoomId } from "./pluginNav.svelte";
@@ -66,6 +67,21 @@ import {
 import { PROFILE_FIELDS, readFieldWithLegacy } from "../utils/extendedProfile";
 import { parseRpcField } from "../utils/richPresence";
 import { entryToPluginPresence, pluginPresenceToEntry } from "./pluginPresence";
+import {
+    clearPluginCallData,
+    getPluginCallRoomId,
+    onPluginCallChange,
+    onPluginCallData,
+    onPluginDataTrack,
+    publishPluginDataTrack,
+    sendPluginCallData,
+} from "../matrix/callPluginData";
+import {
+    closeCallPanel,
+    openCallPanel,
+    refreshCallUi,
+} from "./pluginCall.svelte";
+import { midiAvailable, openSynth, playSong } from "./pluginMidiApi";
 
 export interface BuildHostApiOptions {
     pluginId: string;
@@ -99,6 +115,22 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
     // removal.
     const disposables = new Set<Disposable>();
     let styleCount = 0;
+    const needCapability = (cap: string, what: string): void => {
+        if (!manifest.capabilities?.includes(cap))
+            throw new Error(
+                `[plugin ${pluginId}] ${what} needs the "${cap}" capability`,
+            );
+    };
+    /** A handler that cannot take the host's own code down with it. */
+    const guarded =
+        <A extends unknown[]>(id: string, fn: (...args: A) => void) =>
+        (...args: A): void => {
+            try {
+                fn(...args);
+            } catch (e) {
+                console.error(`[plugin ${id}] handler threw`, e);
+            }
+        };
     const track = (inner: Disposable): Disposable => {
         let done = false;
         const wrapped: Disposable = {
@@ -294,6 +326,17 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
             },
         },
 
+        gifs: {
+            registerProvider: (p) => {
+                const problem = gifProviderProblem(p);
+                if (problem)
+                    throw new Error(
+                        `[plugin ${pluginId}] gifs.registerProvider: ${problem}`,
+                    );
+                return track(addEntry(registry, "gifProviders", pluginId, p));
+            },
+        },
+
         room: {
             addHeaderButton: (btn) =>
                 track(addEntry(registry, "headerButtons", pluginId, btn)),
@@ -480,6 +523,91 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
             },
         },
 
+        call: {
+            getRoomId: () => getPluginCallRoomId(),
+            onChange: (handler) =>
+                track({
+                    dispose: onPluginCallChange(
+                        pluginId,
+                        guarded(pluginId, handler),
+                    ),
+                }),
+            sendData: async (topic, payload, opts) => {
+                needCapability("call", "call.sendData");
+                return sendPluginCallData(pluginId, topic, payload, opts);
+            },
+            onData: (topic, handler) => {
+                needCapability("call", "call.onData");
+                return track({
+                    dispose: onPluginCallData(
+                        pluginId,
+                        topic,
+                        guarded(pluginId, handler),
+                    ),
+                });
+            },
+            addControl: (control) => {
+                needCapability("call", "call.addControl");
+                return track(
+                    addEntry(registry, "callControls", pluginId, control),
+                );
+            },
+            addPanel: (panel) => {
+                needCapability("call", "call.addPanel");
+                const entry = track(
+                    addEntry(registry, "callPanels", pluginId, panel),
+                );
+                return track({
+                    dispose: () => {
+                        entry.dispose();
+                        closeCallPanel(pluginId, panel.id);
+                    },
+                });
+            },
+            openPanel: (id) => {
+                needCapability("call", "call.openPanel");
+                openCallPanel(pluginId, id);
+            },
+            closePanel: (id) => closeCallPanel(pluginId, id),
+            addTileDecoration: (decoration) => {
+                needCapability("call", "call.addTileDecoration");
+                return track(
+                    addEntry(
+                        registry,
+                        "callTileDecorations",
+                        pluginId,
+                        decoration,
+                    ),
+                );
+            },
+            refreshUi: () => refreshCallUi(),
+            publishDataTrack: async (name) => {
+                needCapability("call", "call.publishDataTrack");
+                return publishPluginDataTrack(pluginId, name);
+            },
+            onDataTrack: (handler) => {
+                needCapability("call", "call.onDataTrack");
+                return track({
+                    dispose: onPluginDataTrack(
+                        pluginId,
+                        guarded(pluginId, handler),
+                    ),
+                });
+            },
+        },
+
+        midi: {
+            available: () => midiAvailable(),
+            openSynth: async () => {
+                needCapability("midi", "midi.openSynth");
+                return openSynth(track);
+            },
+            play: async (midi) => {
+                needCapability("midi", "midi.play");
+                return playSong(midi, track);
+            },
+        },
+
         unsafe: {
             getClient: () => getClient(),
         },
@@ -518,6 +646,8 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
         changeListeners.clear();
         // Entries set without keeping the handle go too.
         clearPluginPresence(pluginId);
+        clearPluginCallData(pluginId);
+        closeCallPanel(pluginId);
         closePluginPanelOf(pluginId);
     };
 

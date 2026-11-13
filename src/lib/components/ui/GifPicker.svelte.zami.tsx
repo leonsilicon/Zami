@@ -41,7 +41,10 @@ import {
     loadGifs,
     queueSearch,
     loadMore,
+    type GifSource,
 } from "$lib/stores/gifSearch.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { normalizeProviderPage } from "$lib/plugins/pluginGifs";
 import { Star } from "lucide-svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { safeAspectRatio } from "$lib/utils/mediaDimensions";
@@ -64,7 +67,8 @@ interface Props {
     onSwitchToSticker?: () => void;
 }
 
-type Tab = "gifs" | "favourites";
+// "gifs" is KLIPY; `plugin:<entryId>` is a plugin's GIF provider.
+type Tab = string;
 
 const STAR =
     "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
@@ -93,10 +97,32 @@ export default function GifPicker({
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
     const windowSize = useWindowDimensions();
 
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const providerTabs = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.gifProviders.map((e) => ({
+                value: `plugin:${e.entryId}`,
+                label: e.value.label,
+                source: {
+                    key: `plugin:${e.pluginId}:${e.value.id}`,
+                    fetch: async (query: string, page: number) =>
+                        normalizeProviderPage(
+                            await e.value.search(query.trim(), page),
+                        ),
+                } satisfies GifSource,
+            }))
+        ),
+        [pluginTick],
+    );
+
     // Land on the configured tab ("gifs" or "favourites").
     const [tab, setTab] = useState<Tab>(() =>
         settingsState.gifDefaultTab === "favourites" ? "favourites" : "gifs",
     );
+    // Zami: after `tab`, which upstream's `$derived` reads before declaring.
+    const providerTab = providerTabs.find((p) => p.value === tab);
+    const gifSource: GifSource | undefined = providerTab?.source;
 
     const [search, setSearch] = useState("");
     const searchEl = useRef<TextInputInstance>(null);
@@ -111,10 +137,15 @@ export default function GifPicker({
     useEffect(() => {
         const t = tab;
         if (t === "favourites") return;
+        // A provider whose plugin was disabled while its tab was open.
+        if (t !== "gifs" && !providerTab) {
+            setTab("gifs");
+            return;
+        }
         const kind: GifKind = "gifs";
-        loadGifs(kind, search);
+        loadGifs(kind, search, gifSource);
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- `search` is read untracked.
-    }, [tab]);
+    }, [tab, providerTab, gifSource]);
 
     function onSearchInput(value: string) {
         setSearch(value);
@@ -125,7 +156,7 @@ export default function GifPicker({
         moveCursor(-1);
         if (tab !== "favourites") {
             const kind: GifKind = "gifs";
-            queueSearch(kind, value);
+            queueSearch(kind, value, gifSource);
         }
     }
 
@@ -491,8 +522,9 @@ export default function GifPicker({
                 {(
                     [
                         ["gifs", "GIFs"],
+                        ...providerTabs.map((p) => [p.value, p.label]),
                         ["favourites", "Favourites"],
-                    ] as const
+                    ] as [string, string][]
                 ).map(([value, label]) => (
                     <Pressable
                         key={value}
@@ -632,7 +664,7 @@ export default function GifPicker({
                 ) : // KLIPY GIFs
                 error && items.length === 0 ? (
                     <Pressable
-                        onPress={() => loadGifs("gifs", search)}
+                        onPress={() => loadGifs("gifs", search, gifSource)}
                         accessibilityRole="button"
                         className="w-full py-8 px-4"
                     >

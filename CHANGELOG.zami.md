@@ -4,6 +4,271 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.60.11
+
+✨ **New**
+
+- **Accept and Decline on invite notifications:** an invite notification now has Accept and Decline buttons. Accept opens the app, joins and takes you into the room; Decline turns the invite down without opening anything.
+
+🐛 **Fixed**
+
+- **Invite notifications made sense of:** an invite used to arrive as "New message: You have a new message" with Reply and Mark as read buttons that couldn't work. It now names who invited you and to what: the person's name and picture for a direct message, or the room's or space's name and picture with who invited you. Tapping it opens your pending invites.
+- **Declined invites stay gone:** an invite you declined from an Android notification no longer lingers in your pending invites.
+- **Smoother scrolling back through history:** scrolling up through older messages no longer jumps, stutters or undoes your own scrolling as images, videos and link previews load, and touch scrolling on phones keeps its momentum. A history page loading mid-scroll no longer nudges the view.
+- **Page no longer freezes scrolling history in Chrome and the desktop app.**
+- **No gap above a room's first message,** and mouse-wheel scrolling is no longer swallowed while older messages load.
+- **Jumping to a replied-to message is instant** when it's far away, instead of a long scroll animation that kept restarting.
+
+## v1.60.10
+
+✨ **New**
+
+- **Choose how direct messages are sorted:** the menu on the Home header (with New DM and Join room by address) now has a "Sort DMs by" section: latest message (the default), unread first, online first, or name (A–Z). Favourite and Low priority direct messages keep the order you gave them.
+
+## v1.60.9
+
+✨ **New**
+
+- **Do Not Disturb shows as busy:** on homeservers that support it, turning on Do Not Disturb now shows you as busy (a red dot) instead of away. Other people who are busy now show the red Do Not Disturb dot too, where they used to look offline.
+- **Push notification log on Android:** the client log export (Settings > Debug Info) now ends with what the Android app did with each recent push: whether it showed a notification and, if not, why. It contains no message text. If notifications stop arriving, export your logs and send them along.
+
+⚡ **Improved**
+
+- **Direct messages sorted by latest message:** direct messages without a Favourite or Low priority tag are now listed newest first, by their latest message. Reactions, edits and other changes don't move them.
+- **Clearer unread direct messages:** the dot in the corner of a direct message's avatar always shows the person's status now. Unread messages show at the end of the row instead, as the mention count or a small dot (red when it notifies you).
+
+## v1.60.8
+
+✨ **New**
+
+- **Message preview in the long-press menu:** on mobile, the box at the top of the long-press menu now shows the message as it looks in the chat, with the sender's avatar, name, time and formatting, instead of plain text.
+
+⚡ **Improved**
+
+- **Direct-connection calls and file transfers use your homeserver's relay:** when your homeserver has a relay (TURN) server, peer-to-peer calls and file transfers now go through it by default, so the people you connect to don't see your IP address. If the relay can't reach someone, Zam connects to them directly instead, and the dialog that asks first tells you so.
+- **"Relay peer-to-peer calls" is now "Require a relay server for peer-to-peer calls":** with it on, Zam never connects directly and so never shows your IP address. If your homeserver has a relay server, you're no longer asked before connecting, since your address can't be seen.
+
+## v1.60.7
+
+🐛 **Fixed**
+
+- **Direct-connection calls after a reload:** reloading Zam during a call could leave a direct connection to someone, an Element Call user in particular, stuck for minutes, with neither of you hearing the other. It now reconnects right away. Rejoining a call with someone who uses Element Call no longer adds a 10-second delay either.
+
+## v1.60.6
+
+🐛 **Fixed**
+
+- **Screen share not shown on direct-connection calls:** a screen share started while a peer-to-peer connection was still being set up, after a mute in that time, could stay hidden from the other person until the next mute or unmute.
+- **Direct-connection calls follow the call spec more closely:** Zam now tells other apps that it can receive calls over direct connections, and in encrypted rooms it only connects directly to a device that really sent that person's call membership.
+
+## v1.60.5
+
+✨ **New**
+
+- **File transfers without a call server:** if your homeserver has no call server, sending a file directly now connects your device to the receiver's instead of failing. Both people are asked first, and are told their IP address is visible to the other (unless "Relay peer-to-peer calls" is on).
+
+## v1.60.4
+
+🐛 **Fixed**
+
+- **Notification replies sent twice on Android:** reopening the app could send the last reply you made from a notification again. Each reply is now sent once.
+- **Calls fell back to direct connections although the server has one:** if your homeserver's call server couldn't be looked up from its `.well-known`, Zam used peer-to-peer connections instead. It now asks the homeserver directly, so calls on matrix.org use its call server.
+- **People shown as muted on direct-connection calls:** a mute or unmute arriving just after a connection update could be overwritten by older information, leaving someone shown as muted (or unmuted) until they toggled their mic again.
+- **Opening a space:** clicking the space you're already in while on its home page now takes you back to the room you were last in.
+
+## v1.60.3
+
+🐛 **Fixed**
+
+- **Stretched pictures in Android notifications:** avatars are now cropped to a circle instead of being squashed into a square.
+
+## v1.60.2
+
+✨ **New**
+
+- **Do Not Disturb:** a new status in the account menu and Settings → Account. It silences notifications and calls on all your devices and shows you as idle to others.
+- **Pictures in Android notifications:** images and stickers show up in the notification itself, encrypted ones too (a GIF shows its first frame).
+- **Per-person notification settings on Android:** every person and room gets its own notification channel and share-sheet shortcut, so you can set sound, priority and bubbles for one conversation in the system settings.
+
+🔧 **Improved**
+
+- **Android notifications read like a chat:** a DM is titled with the other person instead of "New message" and no longer repeats their name in the text. Unread messages from a room stay in one notification, each with its author and avatar, instead of replacing each other.
+- **Image viewer on phones:** pinch, pan and double-tap work from the backdrop as well as the image, and a drag that ends on the backdrop no longer closes the viewer. Holding an image in a message opens the actions sheet.
+- **Smaller Flatpak updates:** Flatpak users now get updates as deltas against the last 12 releases.
+
+🐛 **Fixed**
+
+- **Notification Reply on Android:** replying (and Mark as read) from a notification now works when the app was closed, instead of being dropped while it started.
+- **Notifications that wouldn't go away:** an Android notification is now removed when you read the room, here or on another device.
+
+## v1.60.1
+
+✨ **New**
+
+- **Public STUN server, if you want it:** when your homeserver offers no relay or STUN server, direct calls usually can't get through home routers. Zam can now ask Cloudflare's STUN server for your public address instead, but only after you say yes (in the call prompt, or "Use a public STUN server" in Voice & Video). It learns your IP address, never the call.
+
+🔧 **Improved**
+
+- **Failed direct connections are explained:** if a direct connection to someone never comes up, you're told who and why, instead of them just staying silent.
+
+## v1.60.0
+
+✨ **New**
+
+- **Calls without a call server:** when your homeserver has no LiveKit server, calls now connect people directly (MSC4575 full mesh) instead of failing to send your audio and video. Everyone can still share one call: people with a call server keep using it, and connect directly only to whoever can't be reached any other way.
+- **Your IP address stays your choice:** a direct connection shows your IP address to the person at the other end, so Zam asks first, both when you join such a call and when someone who can only be reached directly joins yours.
+- **Relay peer-to-peer calls:** a new setting in Voice & Video sends direct connections through your homeserver's relay (TURN) server, so the others see the relay instead of your address.
+
+## v1.59.7
+
+🐛 **Fixed**
+
+- **F-Droid repository build:** the repository now builds on release (1.59.6 shipped without it). The Flatpak repository also no longer waits on it, so a failed F-Droid build can no longer hold back a Flatpak update.
+
+## v1.59.6
+
+✨ **New**
+
+- **F-Droid repository:** Zam now has its own F-Droid repo, published with each release. Add it in F-Droid, Droid-ify or Neo Store and updates come through the app, not from Zam itself.
+
+🔧 **Improved**
+
+- **No double updating on Android:** a copy installed from F-Droid, Droid-ify, Neo Store, Obtainium or Google Play no longer downloads its own APK; About tells you to update with that app.
+- **Package-managed desktop installs:** a Zam installed by a package manager that marks it leaves updates to the manager and just tells you a new version is out.
+
+## v1.59.5
+
+🐛 **Fixed**
+
+- **Download links in What's New:** the download table that release pages now show is hidden inside the app, where it only got in the way.
+
+## v1.59.4
+
+🔧 **Improved**
+
+- **Steps aside for games that fill your video memory:** a new switch in Settings > Debug > GPU ("Pause the GPU while a game runs", off by default) restarts Zam without hardware acceleration when the GPU keeps crashing while a game is running, then restarts it again with acceleration once the game has closed. It needs game detection turned on in Settings > General, and waits for the end of a call before restarting.
+- **Index sync diagnostics:** Settings > Debug has a new "Message index sync" section showing how many of your other sessions can trade search entries, what was asked and received, and a short log, with a "Sync now" button, so you can tell why a device's search isn't filling in.
+
+## v1.59.3
+
+🔧 **Improved**
+
+- **Easier downloads:** the release page now opens with a table of downloads per platform (Linux, Windows, macOS, Android, iOS), so you no longer have to pick the right file out of the update manifests and bundles.
+- **Sticky call membership (debug):** a new switch in Settings > Debug makes Zam join calls with the newer sticky membership event instead of a state event. It is off by default, and clients that only read state events will not see you in the call while it is on.
+
+🐛 **Fixed**
+
+- **Double or stale word on mobile send:** tapping send while the keyboard still held a word being typed or autocorrected could send it twice (Android) or send the uncorrected word (iOS). The keyboard's pending word is now committed before sending.
+
+## v1.59.2
+
+✨ **Added**
+
+- **Search stays complete on every device:** your Zam sessions now share their message search index with each other (encrypted, and only between your own verified sessions). A phone that was offline for days asks your other sessions for the messages it missed instead of re-downloading them from the server, and only fetches what none of them have. It follows the existing "index encrypted rooms" setting.
+- **Space order from Commet and Element:** the order and folders of your spaces are read from Commet's sidebar ordering (falling back to Element's), and saving mirrors the layout to Commet.
+- **Streamer mode hides your ID and server:** your Matrix ID and homeserver are swapped for random made-up ones, blurred, in the profile footer, account page and account switcher, so the blur can't be undone to reveal them.
+
+🐛 **Fixed**
+
+- **Search missed messages after being offline:** the index now notices the stretch it missed while the app was closed and fills it in, instead of marking a room as finished for good.
+
+## v1.59.1
+
+✨ **Added**
+
+- **Turn notifications off:** Settings > Notifications has a new "Notifications for this account" switch that silences every notification for the account on all your devices, and a "Notifications on this device" switch that stops pop-ups, sounds and push on just this device.
+
+🔧 **Improved**
+
+- **Big spaces open instantly:** the room list of a space, and of its nested sub-spaces, is now remembered between launches. It shows straight away and is refreshed quietly in the background (expanded sub-spaces every few minutes) instead of being fetched again, with a spinner, every time you open the space.
+
+🐛 **Fixed**
+
+- **Long replies overflowed the reply bar:** the quoted text no longer runs under the cancel button.
+
+## v1.59.0
+
+✨ **Added**
+
+- **Streamer mode:** a new switch in Settings > Privacy & Safety for when you are on a live stream. It blurs your account ID, email and phone numbers and the recovery key shown when you set up backup, and keeps message text out of notifications. It applies to this device only.
+- **GIF sources for plugins:** plugins can add their own tab to the GIF picker (`zam.gifs.registerProvider`) with search, trending and endless scrolling, instead of rewriting the built-in KLIPY requests.
+
+## v1.58.3
+
+🐛 **Fixed**
+
+- **Team Fortress 2 party invites now join:** the game publishes its party join command without an argument its own join handler requires, so the game rejected it with "Invalid rich presence join string". Zam adds the missing argument when you join a TF2 party from an invite, including invites sent earlier. The change is in the desktop app.
+
+## v1.58.2
+
+🐛 **Fixed**
+
+- **Joining a Steam game invite did nothing in a running game:** Join now opens the same link Steam's own Join Game button does, so it can join a party or lobby in a game that is already open (such as Team Fortress 2). New invites carry the sender's Steam ID, and a lobby when they are in one. Invites sent before this still use the old link.
+
+## v1.58.1
+
+🔧 **Improved**
+
+- **Game invites show the game's icon:** the card for a Steam game invite now shows the game's own icon instead of a controller. Invites without an icon, or whose icon cannot load, still show the controller.
+
+## v1.58.0
+
+✨ **New**
+
+- **Steam game invites:** while you are playing a Steam game that can be joined, "Invite to game" in the composer menu sends an invite to the room. Other clients see a `steam://` link; in Zam it shows as a card with a Join button that asks before launching the game with the invite's arguments. Joining needs the desktop app.
+
+## v1.57.6
+
+🔧 **Improved**
+
+- **Steam rich presence shows the game icon:** the picture on your profile is now the game's own icon instead of its wide store banner. If the large icon is unavailable it uses the small one, then the banner.
+
+## v1.57.5
+
+🐛 **Fixed**
+
+- **Steam rich presence showed nothing:** the game you were playing was looked up in the wrong place in Steam, so it never appeared. Games such as 64-bit Team Fortress 2, which game detection by executable name does not recognise, now show with their Steam status.
+
+## v1.57.4
+
+✨ **New**
+
+- **Plugins can add to the call screen:** `zam.call` gains `addControl` (a button in the call control bar), `addPanel` with `openPanel` and `closePanel` (an area between the tiles and the controls), and `addTileDecoration` (content over each participant's tile). The call screen is also a `call` region for `zam.dom`.
+
+## v1.57.3
+
+✨ **New**
+
+- **Steam rich presence:** your in-game status from Steam can now show on your profile (desktop app). A setting turns Steam's local debugging port on or off by adding or removing a flag file in the Steam folder, and offers to restart Steam when the port is closed. It also cleans up any leftover registry entry from earlier versions.
+- **Plugins can use the call and the MIDI synth:** new `zam.call` lets a plugin send and receive data packets and data tracks in the voice call you are in (private to copies of the same plugin), and `zam.midi` gives it Zam's MIDI sound bank for playing songs or live notes. Plugins ask for the `call` and `midi` capabilities.
+
+## v1.57.2
+
+🔧 **Improved**
+
+- **Link preview skeleton waits half a second:** the loading placeholder only appears if a preview takes longer than 500ms, so fast previews no longer flash it.
+- **Video previews with no size:** a video preview whose site gives no dimensions now sizes its thumbnail from the video's first frame instead of cropping it into 16:9.
+
+## v1.57.1
+
+🔧 **Improved**
+
+- **Compact message action bar on mobile:** the action bar buttons are back to their original size (the 44px touch targets were too big).
+- **Long-press preview text size:** the message text shown in the long-press menu now matches the size used in the chat log.
+
+## v1.57.0
+
+✨ **New**
+
+- **Long-press opens the full message menu:** holding a message on touch now opens a sheet with every action by its full name (react, reply, thread, forward, edit, copy, pin, copy link, view source, report, delete). The message text is shown large at the top so you can select part of it.
+- **Copy message text:** a new action that copies a message's text.
+- **Read receipts per room and space:** your read receipt setting is now a default that any room or space can override from its Notifications settings, so you can hide receipts in big rooms and keep them in small ones. A space's choice covers its rooms. Hidden receipts are still private receipts, so your unread state keeps syncing. Notification Mark as read actions follow it too.
+- **Message actions in the desktop right-click menu:** right-clicking a message now offers the same actions.
+
+🔧 **Improved**
+
+- **Bigger touch targets:** the message action bar buttons and the sheet's confirm buttons are now 44px tall on touch.
+
 ## v1.56.2
 
 ✨ **New**
@@ -771,7 +1036,7 @@ commit list is appended below it.
 
 ## v1.37.5
 
-🔒 **Privacy**
+⚡ **Improved**
 
 - **Location and metadata stripped from uploads:** photos and videos you send (and avatars, banners and emote images) no longer carry GPS location, camera details, XMP/IPTC data or comments. Works for JPEG, PNG, WebP, GIF, TIFF/DNG, HEIC/AVIF and MP4/MOV/M4A files, without re-encoding, and photos stay upright. On by default; turn it off in Settings > Messages & media (not recommended, as files you send could reveal where they were taken).
 

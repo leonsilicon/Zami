@@ -826,9 +826,18 @@ export default function MessageArea({
         // Cancel any previous scroll loop so we never leak an interval that
         // would keep yanking the scroll position and block the user.
         stopScrollIntoView();
+        // Smooth-scroll only to a message that is nearly on screen. Further
+        // away, the animation ran through spacer where no rows are mounted
+        // (window updates wait for the jump), so it showed blank space for
+        // most of the way. Land there at once with its neighbours mounted.
+        // Zami: the list mounts the row and its neighbours as it scrolls to
+        // it (scrollRowIntoView), so no window to move first.
+        const far = isFarFromView(el);
         // Zami: the loop re-aims at the row by id (new messages shift its
-        // index), and only once a smooth scroll has had time to land.
-        const smooth = scrollBehavior() === "smooth";
+        // index), and only once a smooth scroll has had time to land. A
+        // non-animated re-aim at a row already in place doesn't move the
+        // list, so it needs no check that the row moved (upstream's listTop).
+        const smooth = !far && scrollBehavior() === "smooth";
         const started = Date.now();
         const aim = (animated: boolean) => {
             const index = indexOfEvent(eventId);
@@ -850,6 +859,22 @@ export default function MessageArea({
             // scrolling, so onScroll would never page it forward.
             catchUpContextView();
         }, 2000);
+    }
+
+    /** More than a screen and a half between `el` and the viewport centre. */
+    // Zami: counted in rows, from the rows on screen (viewableKeys); `index`
+    // is the row's index in the list.
+    function isFarFromView(index: number): boolean {
+        const list = rows.current;
+        const on: number[] = [];
+        for (const key of viewableKeys.current) {
+            const i = list.findIndex((e) => rowKey(e) === key);
+            if (i >= 0) on.push(i);
+        }
+        if (on.length === 0) return false;
+        const lo = Math.min(...on);
+        const hi = Math.max(...on);
+        return Math.abs(index - (lo + hi) / 2) > (hi - lo + 1) * 1.5;
     }
 
     // Ensure the scroll loop never outlives the component (e.g. room switch).
@@ -1266,7 +1291,10 @@ export default function MessageArea({
     const stickToBottom = isAtBottom && !isContextView;
 
     // ── Row windowing (utils/timelineWindow) ──
-    // Zami: the FlatList's (see the top of the file).
+    // Zami: the FlatList's (see the top of the file), and with it the top
+    // spacer's slack (topSlack, cancelShift, settleTopSlack) and the native
+    // anchor row (setNativeAnchorRow): maintainVisibleContentPosition holds
+    // the reader's row without writing the scroll offset mid-fling.
 
     // timelineKey is only undefined for an event with neither id, which the
     // list never holds; "" keeps the types honest.
@@ -2161,8 +2189,8 @@ export default function MessageArea({
         // Scroll preservation across a history prepend.
         // Zami: none needed: older rows land past the inverted list's top, and
         // its offset from the bottom, which holds the reader's place, doesn't
-        // change (upstream nudges the oldest rendered message back to where it
-        // was).
+        // change (upstream nudges a message on screen, backfillReferenceRow,
+        // back to where it was).
         try {
             if (contextMessagesRef.current !== null && contextWin) {
                 await paginateContextWindow(contextWin, false);
@@ -2723,6 +2751,9 @@ export default function MessageArea({
                             className="flex-1 flex-col min-w-0 overflow-hidden"
                         >
                             {/* Room header */}
+                            {/* Zami: not ported: `data-zam-region="room-header"`,
+                                the DOM hook plugins find it by (pluginDom.ts);
+                                there's no DOM for them to query. */}
                             <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
                                 {isMobile ? (
                                     <Pressable
@@ -3066,7 +3097,9 @@ export default function MessageArea({
                             {/* Zami: inverted (see the top of the file): its header is
                                 the bottom (the tombstone banner, below the newest
                                 message) and its footer the top (the history edge).
-                                Keyed by room, so a room opens at its own bottom. */}
+                                Keyed by room, so a room opens at its own bottom.
+                                Zami: not ported: `data-zam-region="timeline"`
+                                (see the room header's). */}
                             <FlatList
                                 key={roomId}
                                 ref={scrollEl}

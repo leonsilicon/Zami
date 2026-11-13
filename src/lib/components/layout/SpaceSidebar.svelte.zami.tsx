@@ -85,6 +85,7 @@ import {
     setActiveSpace,
     setActiveRoom,
     showSpaceHome,
+    restoreLastRoom,
 } from "$lib/stores/rooms.svelte";
 import { openInviteDialog } from "$lib/stores/inviteDialog.svelte";
 import {
@@ -1685,7 +1686,9 @@ export default function SpaceSidebar({
                     onPress={() =>
                         roomsState.activeSpaceId === item.space.roomId &&
                         roomsState.spaceDrillParentId === null
-                            ? showSpaceHome()
+                            ? roomsState.showSpaceHome
+                                ? restoreLastRoom()
+                                : showSpaceHome()
                             : setActiveSpace(item.space.roomId)
                     }
                     className={`group relative w-12 h-12 flex-row items-center justify-center transition-all duration-200 flex-shrink-0 ${
@@ -1980,7 +1983,9 @@ export default function SpaceSidebar({
             {/* Zami: the AMOLED theme's hairline between the rail and the room
                 list (app.css `:root[data-theme="amoled"] .space-rail`).
                 `grow-0`: a ScrollView grows by default (a `<nav>` doesn't), which
-                split the drawer's spare width between the rail and the room list. */}
+                split the drawer's spare width between the rail and the room list.
+                Zami: not ported: `data-zam-region="space-sidebar"`, the DOM hook
+                plugins find the rail by (pluginDom.ts); there's no DOM to query. */}
             <ScrollView
                 ref={navEl}
                 scrollEnabled={!touchDragActive}

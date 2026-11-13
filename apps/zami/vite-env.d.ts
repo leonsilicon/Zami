@@ -35,6 +35,11 @@ declare module "*?url&no-inline" {
   const url: string;
   export default url;
 }
+/** A Vite worker's URL (`midiStream.zami.ts`'s worklet): a `zami-unavailable:` URL too. */
+declare module "*?worker&url" {
+  const url: string;
+  export default url;
+}
 /** A Vite worker import; in Zami a dynamic one rejects (there are no Web Workers). */
 declare module "*?worker" {
   const WorkerConstructor: new () => Worker;

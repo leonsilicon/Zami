@@ -537,9 +537,9 @@
     },
   },
   "patchedDependencies": {
+    "matrix-js-sdk@45.1.0": "patches/matrix-js-sdk@45.1.0.patch",
     "fake-indexeddb@6.2.7": "patches/fake-indexeddb@6.2.7.patch",
     "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
-    "matrix-js-sdk@45.0.0": "patches/matrix-js-sdk@45.0.0.patch",
   },
   "catalog": {
     "@capacitor/app": "8.1.1",
@@ -607,7 +607,7 @@
     "linkedom": "0.18.15",
     "livekit-client": "2.22.3",
     "lucide-react-native": "0.509.0",
-    "matrix-js-sdk": "45.0.0",
+    "matrix-js-sdk": "45.1.0",
     "mp4box": "2.4.1",
     "pixelmatch": "8.0.0",
     "pngjs": "7.0.0",
@@ -1070,7 +1070,7 @@
 
     "@lofcz/deepfilternet-web": ["@lofcz/deepfilternet-web@0.1.0", "", {}, "sha512-uKf9IsCd5HUkwLRqZTDmA8gPCsDZTAKUa+9u9GWrtJWRGxVIVj43neNcpGzPkK3DEle1L1tZ+df8GXNJJxEfGA=="],
 
-    "@matrix-org/matrix-sdk-crypto-wasm": ["@matrix-org/matrix-sdk-crypto-wasm@18.9.0", "", {}, "sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ=="],
+    "@matrix-org/matrix-sdk-crypto-wasm": ["@matrix-org/matrix-sdk-crypto-wasm@18.9.2", "", {}, "sha512-GHeuSeb5Fj6Wg2+NE/WoLJJs9U3nOzttO+2sj7lOaS5gNBpGIksc48N/Q/kK/Z+Lxh7YMhopB7M8b6HyASXnGQ=="],
 
     "@noble/ciphers": ["@noble/ciphers@2.4.0", "", {}, "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw=="],
 
@@ -2050,7 +2050,7 @@
 
     "matrix-events-sdk": ["matrix-events-sdk@0.0.1", "", {}, "sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA=="],
 
-    "matrix-js-sdk": ["matrix-js-sdk@45.0.0", "", { "dependencies": { "@babel/runtime": "^8.0.0", "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0", "another-json": "^0.2.0", "bs58": "^6.0.0", "content-type": "^3.0.0", "loglevel": "^1.9.2", "matrix-events-sdk": "0.0.1", "matrix-widget-api": "^1.20.0", "p-retry": "8", "sdp-transform": "^3.0.0", "unhomoglyph": "^1.0.6" } }, "sha512-vpc3o48R/OYZ+WxIx/nHvw5Ho7K1zD4XWepzUFbo/MLXXLkCTcOVzKvkRyRz+KPkzshci2RuwYkJgynNsXg8ug=="],
+    "matrix-js-sdk": ["matrix-js-sdk@45.1.0", "", { "dependencies": { "@babel/runtime": "^8.0.7", "@matrix-org/matrix-sdk-crypto-wasm": "18.9.2", "another-json": "^0.2.0", "bs58": "^6.0.0", "content-type": "^3.1.1", "loglevel": "^1.9.2", "matrix-events-sdk": "0.0.1", "matrix-widget-api": "^1.20.0", "p-retry": "^8.0.1", "re2js": "^2.8.6", "sdp-transform": "^3.0.0", "unhomoglyph": "^1.0.6" } }, "sha512-uv/vwk/cutrhVSnYZ9pNCxwfcME/+eDfDmWE5VqrzGLMAdw4j7aeBXBXBzRA9pzHheU8DSTUrNTFqvL1OmkktA=="],
 
     "matrix-widget-api": ["matrix-widget-api@1.20.0", "", { "dependencies": { "@types/events": "^3.0.0", "events": "^3.2.0" } }, "sha512-qwFP37rgns7mPesM5/vvZgknzb+kvyRB5BISv5sCuBxsGMceMr+Kogf7OkjRxBXdMCPBFuf6gIuYRe5S+lpzQw=="],
 
@@ -2211,6 +2211,8 @@
     "qrcode": ["qrcode@1.5.4", "", { "dependencies": { "dijkstrajs": "^1.0.1", "pngjs": "^5.0.0", "yargs": "^15.3.1" }, "bin": { "qrcode": "bin/qrcode" } }, "sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg=="],
 
     "range-parser": ["range-parser@1.2.1", "", {}, "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg=="],
+
+    "re2js": ["re2js@2.10.0", "", {}, "sha512-/P6FNnLbHjXJMRF1dPoZoVTyHvFcuVhbDpzml9DPMlbeErYlZ18GueAaG9GhYhAm/9AN7i7Y6crmDrLX0DeJ4Q=="],
 
     "react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
 

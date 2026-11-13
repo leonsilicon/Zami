@@ -449,6 +449,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "Hardwarebeschleunigung",
     "gpuDebug.hardwareAccelerationHint":
         "Deaktiviere das, wenn Videos schwarz bleiben oder das Fenster falsch gezeichnet wird. Wirkt nach einem Neustart.",
+    "gpuDebug.gameAuto": "GPU pausieren, solange ein Spiel läuft",
+    "gpuDebug.gameAutoHint":
+        "Stürzt die GPU ab, während ein Spiel läuft (das Spiel belegt ihren Speicher), startet Zam ohne Hardwarebeschleunigung neu und nach dem Ende des Spiels wieder mit. Benötigt die Spielerkennung unter Einstellungen > Allgemein. Wartet das Ende eines Anrufs ab.",
+    "gpuDebug.gameAutoActive": "Läuft ohne GPU, bis das Spiel beendet ist.",
     "gpuDebug.restartToApply": "Starte Zam neu, um diese Änderung anzuwenden.",
     "gpuDebug.restart": "Neu starten",
     "gpuDebug.videoDecoding": "Videodekodierung",
@@ -594,6 +598,22 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "Hinweise zur Nachrichtenreihenfolge",
     "debugSettings.orderHintsHint":
         "Zam fügt deinen Nachrichten einen Hinweis hinzu, was am Ende deines Chatverlaufs stand, und setzt Nachrichten anderer Zam-Nutzer unter die Nachricht, die sie nennen. Wenn aus, werden Nachrichten in der Reihenfolge des Servers angezeigt, wie in Element.",
+    "debugSettings.stickyCallMembership": "Sticky-Anrufmitgliedschaft",
+    "debugSettings.stickyCallMembershipHint":
+        "Anrufen mit einem Sticky-Event m.rtc.member (MSC4354) statt eines m.call.member-Statusevents beitreten. Clients, die nur Statusevents lesen, darunter Zam vor 1.51, sehen dich nicht im Anruf. Gilt ab deinem nächsten Anruf.",
+    "debugSettings.indexSync": "Nachrichtenindex-Sync",
+    "debugSettings.indexSyncHint":
+        "Suchindex-Einträge werden mit deinen anderen verifizierten Sitzungen ausgetauscht. Beide Sitzungen müssen diese Version nutzen. Sitzungen: berechtigt / verifiziert / alle. Chunks: gesendet / empfangen.",
+    "debugSettings.indexSyncOff":
+        "Index-Sync läuft nicht: Die Indizierung verschlüsselter Räume muss aktiviert sein.",
+    "debugSettings.indexSyncNow": "Jetzt synchronisieren",
+    "debugSettings.indexSyncNever": "nie",
+    "debugSettings.indexSyncSessions": "Sitzungen",
+    "debugSettings.indexSyncAsked": "Angefragt",
+    "debugSettings.indexSyncRoomsMissing": "Räume mit Lücken",
+    "debugSettings.indexSyncRequestsReceived": "Empfangene Anfragen",
+    "debugSettings.indexSyncChunks": "Chunks",
+    "debugSettings.indexSyncMerged": "Zusammengeführte Einträge",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "Jedes Matrix-Ereignis des Verlaufs im Chat anzeigen.",
     "debugSettings.ignoreCodecSupport":
@@ -1511,6 +1531,16 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Benachrichtigungen sind für dieses Konto ausgeschaltet",
     "notificationSettings.accountNotificationsOffDetail":
         "Alle Benachrichtigungen für dieses Konto sind auf dem Server ausgeschaltet, vermutlich über eine andere App. Unabhängig von den Einstellungen unten benachrichtigt kein Gerät.",
+    "notificationSettings.accountNotifications":
+        "Benachrichtigungen für dieses Konto",
+    "notificationSettings.accountNotificationsDetail":
+        "Schaltet Benachrichtigungen für dieses Konto auf allen deinen Geräten ein oder aus.",
+    "notificationSettings.thisDeviceNotifications":
+        "Benachrichtigungen auf diesem Gerät",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "Schaltet Pop-ups, Töne und Push nur auf diesem Gerät aus. Deine anderen Geräte benachrichtigen weiter.",
+    "notificationSettings.couldNotUpdateNotifications":
+        "Benachrichtigungseinstellungen konnten nicht aktualisiert werden",
     "notificationSettings.turnOn": "Einschalten",
     "notificationSettings.couldNotTurnOnNotifications":
         "Benachrichtigungen konnten nicht eingeschaltet werden",
@@ -1666,6 +1696,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "privacySafetySettings.privateReadReceipts": "Private Lesebestätigungen",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "Deine Lesebestätigungen vor anderen Benutzern verbergen. Deine Ungelesen-Zähler funktionieren weiterhin; andere sehen nur nicht, wie weit du gelesen hast.",
+    "privacySafetySettings.streamerMode": "Streamer-Modus",
+    "privacySafetySettings.streamerModeHint":
+        "Verwischt deine Konto-ID, E-Mail-Adressen und den Wiederherstellungsschlüssel und blendet Nachrichtentext in Benachrichtigungen aus, damit nichts Privates im Stream erscheint. Gilt nur für dieses Gerät.",
     "privacySafetySettings.hideMessageTextInNotifications":
         "Nachrichtentext in Benachrichtigungen ausblenden",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1858,6 +1891,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "Sortieren beenden",
     "roomList.reorderRooms": "Räume sortieren",
     "roomList.spaceSettings": "Space-Einstellungen",
+    "roomList.sortDmsBy": "DMs sortieren nach",
+    "roomList.dmSortRecent": "Neueste Nachricht",
+    "roomList.dmSortUnread": "Ungelesene zuerst",
+    "roomList.dmSortOnline": "Online zuerst",
+    "roomList.dmSortName": "Name (A–Z)",
     "roomList.pendingInvites": "Ausstehende Einladungen",
     "roomList.inVoice": "{name} - im Sprachkanal",
     "roomList.orderValue": "Sortierwert",
@@ -3012,8 +3050,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Der Absender ist nicht erreichbar. Zam muss bei ihm geöffnet sein.",
     "fileOffer.failedRefused":
         "Die Sitzung des Absenders hat diese Übertragung abgelehnt.",
-    "fileOffer.failedNoSfu":
-        "Der Server des Absenders hat keinen Anrufdienst, der die Datei übertragen kann.",
+    "fileOffer.failedNoRelay":
+        "Für Peer-to-Peer-Verbindungen wird ein Relay-Server verlangt, aber es gibt keinen Relay-Server (TURN), daher kann die Datei nicht gesendet werden, ohne eine IP-Adresse zu zeigen.",
     "fileOffer.failedConnection": "Die Verbindung wurde unterbrochen.",
     "fileOffer.failedStalled": "Die Übertragung kommt nicht mehr voran.",
     "fileOffer.failedCorrupt":
@@ -3030,6 +3068,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Sprachnachricht aufnehmen",
     "composerActionsMenu.shareLocation": "Standort teilen",
     "composerActionsMenu.createThread": "Thread erstellen",
+    "composerActionsMenu.inviteToGame": "Zum Spiel einladen",
+    "gameInvite.title": "Zum Spiel einladen",
+    "gameInvite.game": "Spiel",
+    "gameInvite.note": "Notiz (optional)",
+    "gameInvite.notePlaceholder": "Schreib etwas…",
+    "gameInvite.send": "Einladung senden",
+    "gameInvite.noGames":
+        "Gerade kann kein laufendes Steam-Spiel eingeladen werden.",
+    "gameInvite.failedToSend": "Die Einladung konnte nicht gesendet werden.",
+    "gameInvite.cardTitle": "Spieleinladung",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "{current} von {max} in der Gruppe",
+    "gameInvite.confirmSteam":
+        "{game} mit diesen Argumenten starten: {connect}",
+    "gameInvite.confirmLobby": "Der Lobby von {game} beitreten",
+    "gameInvite.joinGame": "Spiel beitreten",
+    "gameInvite.joinSent": "Beitritt an das Spiel gesendet.",
+    "gameInvite.openInDesktop": "Zum Beitreten in der Zam-Desktop-App öffnen.",
+    "gameInvite.joinUnsupported":
+        "Dem Spiel beizutreten wird auf diesem Computer nicht unterstützt.",
+    "gameInvite.joinInvalid": "Diese Einladung ist ungültig.",
+    "gameInvite.joinFailed": "Dem Spiel konnte nicht beigetreten werden.",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "Reaktion konnte nicht hinzugefügt werden",
@@ -3324,6 +3384,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "repoList.thatRepoIsAlreadyAdded": "Dieses Repo ist bereits hinzugefügt.",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain":
+        "GIFs konnten nicht geladen werden – versuche es erneut.",
     "gifSearch.couldnTReachKlipyTryAgain":
         "KLIPY nicht erreichbar - versuche es erneut.",
 
@@ -3723,6 +3785,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Als online angezeigt, solange die App synchronisiert",
     "presence.shownAsIdleToOtherUsers":
         "Anderen Benutzern als abwesend angezeigt",
+    "presence.doNotDisturb": "Nicht stören",
+    "presence.doNotDisturbDescription":
+        "Schaltet Benachrichtigungen und Anrufe auf allen deinen Geräten stumm",
     "presence.invisible": "Unsichtbar",
     "presence.appearOfflineToOtherUsers":
         "Für andere Benutzer offline erscheinen",
@@ -3955,6 +4020,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "Cache leeren",
     "settingsSearch.showAllEvents": "Alle Ereignisse anzeigen",
     "settingsSearch.orderHints": "Hinweise zur Nachrichtenreihenfolge",
+    "settingsSearch.stickyCallMembership": "Sticky-Anrufmitgliedschaft",
     "settingsSearch.pushDiagnostics": "Push-Diagnose",
     "settingsSearch.pushService": "Push-Dienst (UnifiedPush / Firebase)",
     "settingsSearch.language": "Sprache",
@@ -4064,6 +4130,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Versionsseite öffnen",
     "updateStatus.flatpakManualUpdate":
         "Update verfügbar{versionSuffix}. Installiere es über deine Softwareverwaltung oder mit flatpak update",
+    "updateStatus.packageManagerUpdate":
+        "Update verfügbar{versionSuffix}. Aktualisiere es mit {manager}",
     "updateStatus.updateCheckFailed": "Updateprüfung fehlgeschlagen",
     "updateStatus.checkForUpdatesToInstallThe":
         "Suche nach Updates, um die neueste Version zu installieren.",
@@ -4317,6 +4385,95 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.photosAndVideos": "Fotos & Videos",
     "composerActionsMenu.files": "Dateien",
     "settingsSearch.richPresence": "Rich Presence",
+    "messageActionsMenu.copyText": "Nachrichtentext kopieren",
+    "messageActionsMenu.textCopied": "Nachrichtentext kopiert",
+    "messageActionsMenu.couldnTCopyText":
+        "Nachrichtentext konnte nicht kopiert werden",
+    "messageActionsMenu.selectHint":
+        "Halte den Text gedrückt, um einen Teil davon auszuwählen",
+    "roomSettings.readReceipts": "Lesebestätigungen",
+    "roomSettings.readReceiptsRoomHelp":
+        "Lege fest, ob andere Mitglieder sehen können, welche Nachrichten du in diesem Raum gelesen hast.",
+    "roomSettings.readReceiptsSpaceHelp":
+        "Lege fest, ob andere Mitglieder sehen können, welche Nachrichten du in diesem Space und seinen Räumen gelesen hast. Die Einstellung eines Raums hat Vorrang.",
+    "roomSettings.readReceiptsDefaultShare":
+        "Richtet sich nach deinen Datenschutzeinstellungen, derzeit für andere sichtbar",
+    "roomSettings.readReceiptsDefaultHide":
+        "Richtet sich nach deinen Datenschutzeinstellungen, derzeit für andere verborgen",
+    "roomSettings.readReceiptsShare": "Meine Lesebestätigungen teilen",
+    "roomSettings.readReceiptsShareDesc":
+        "Andere können sehen, welche Nachrichten du gelesen hast.",
+    "roomSettings.readReceiptsHide": "Meine Lesebestätigungen verbergen",
+    "roomSettings.readReceiptsHideDesc":
+        "Dein Ungelesen-Status wird weiterhin synchronisiert, aber andere können nicht sehen, was du gelesen hast.",
+    "privacySafetySettings.receiptsOverrideHint":
+        "Räume und Spaces können dies in ihren Benachrichtigungseinstellungen überschreiben.",
+    "richPresence.steam": "Steam Rich Presence",
+    "richPresence.steamHint":
+        "Zeige das Steam-Spiel, das du spielst, zusammen mit seinem Rich-Presence-Status, etwa Karte oder Modus. Dafür wird Steams lokaler Debugging-Port aktiviert, der nur auf diesem Computer lauscht. Steam muss einmal neu gestartet werden, damit es wirksam wird.",
+    "richPresence.steamConnected": "Mit Steam verbunden.",
+    "richPresence.steamNeedsRestart":
+        "Steams Debugging-Port ist noch nicht geöffnet. Starte Steam neu, um ihn zu öffnen.",
+    "richPresence.steamNotRunning":
+        "Steam läuft nicht. Starte es, dann verbindet sich Zam automatisch.",
+    "richPresence.restartSteam": "Steam neu starten",
+    "richPresence.restartSteamTitle": "Steam neu starten?",
+    "richPresence.restartSteamBody":
+        "Steam wird geschlossen und wieder gestartet. Spiele, die über Steam gestartet wurden, können dabei ebenfalls beendet werden.",
+    "richPresence.restartSteamFailed":
+        "Steam konnte nicht neu gestartet werden: {error}",
+    "richPresence.steamEnableFailed":
+        "Steams Debugging-Port konnte nicht aktiviert werden: {error}",
+    "richPresence.steamDisableFailed":
+        "Steams Debugging-Port konnte nicht deaktiviert werden: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows hat nach Administratorrechten gefragt, und sie wurden nicht erteilt, daher wurde nichts geändert.",
+    "richPresence.steamFailed": "Steam Rich Presence fehlgeschlagen: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining":
+        "Dieser Anruf verbindet dich direkt mit anderen",
+    "meshConsent.titleNewcomer":
+        "Jemand in diesem Anruf ist nur direkt erreichbar",
+    "meshConsent.noCallServer":
+        "Dein Homeserver hat keinen Anrufserver, daher gehen Audio, Video und Bildschirmfreigabe direkt von deinem Gerät zu jeder Person im Anruf.",
+    "meshConsent.someoneWithoutCallServer":
+        "Jemand in diesem Anruf ist auf einem Homeserver ohne Anrufserver. Um diese Person zu hören und zu sehen, verbindet sich dein Gerät direkt mit ihrem.",
+    "meshConsent.ipVisible":
+        "Dein Homeserver hat keinen Relay-Server (TURN), daher können alle, mit denen du direkt verbunden wirst, deine IP-Adresse sehen, die ungefähr deinen Standort verraten kann.",
+    "meshConsent.relayed":
+        "Die Verbindung läuft über den Relay-Server deines Homeservers: Die anderen sehen dessen Adresse, nicht deine IP-Adresse. Kann das Relay jemanden nicht erreichen, verbindest du dich direkt mit dieser Person, die dann deine IP-Adresse sieht. Um das zu verhindern, aktiviere „Relay-Server für Peer-to-Peer-Anrufe verlangen“ in den Einstellungen unter Sprache und Video.",
+    "meshConsent.relayRequired":
+        "„Relay-Server für Peer-to-Peer-Anrufe verlangen“ ist aktiviert, aber dein Homeserver hat keinen Relay-Server (TURN), daher kann keine Verbindung hergestellt werden. Schalte es in den Einstellungen unter Sprache und Video aus, um dich direkt zu verbinden.",
+    "meshConsent.titleFileTransfer":
+        "Diese Dateiübertragung verbindet dich direkt mit der anderen Person",
+    "meshConsent.fileTransferDirect":
+        "Dein Homeserver oder der der anderen Person hat keinen Anrufserver, daher geht die Datei direkt von einem Gerät zum anderen.",
+    "meshConsent.join": "Beitreten",
+    "meshConsent.connectDirectly": "Direkt verbinden",
+    "meshConsent.joinWithoutThem": "Ohne sie beitreten",
+    "meshConsent.notNow": "Nicht jetzt",
+    "voiceCall.meshNeedsTurn":
+        "„Relay-Server für Peer-to-Peer-Anrufe verlangen“ ist aktiviert, aber dein Homeserver hat keinen Relay-Server (TURN). Schalte es in den Einstellungen unter Sprache und Video aus, um beizutreten.",
+    "voiceAudioSettings.meshRelayOnly":
+        "Relay-Server für Peer-to-Peer-Anrufe verlangen",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "Peer-to-Peer-Anrufe und Dateiübertragungen laufen über den Relay-Server (TURN) deines Homeservers, wenn er einen hat, sodass niemand deine IP-Adresse sieht. Ohne ihn, oder wenn das Relay jemanden nicht erreicht, verbinden sie sich direkt, wodurch sie sichtbar wird. Mit dieser Option verbinden sie sich nie direkt: Ohne funktionierendes Relay kommt gar keine Verbindung zustande.",
+    "voiceCall.meshPeerUnreachable":
+        "Jemand in diesem Anruf ist nur direkt erreichbar, aber ein Relay-Server wird verlangt und dein Homeserver hat keinen (TURN). Du wirst diese Person daher nicht hören.",
+    "meshConsent.usePublicStun": "Einen öffentlichen STUN-Server verwenden.",
+    "meshConsent.usePublicStunHint":
+        "Dein Homeserver hat keinen Server, der Verbindungen durch Heimrouter unterstützt, daher scheitern die meisten direkten Verbindungen ohne einen solchen. Cloudflares STUN-Server würde deine IP-Adresse erfahren, aber nichts über den Anruf.",
+    "voiceAudioSettings.meshPublicStun":
+        "Einen öffentlichen STUN-Server verwenden",
+    "voiceAudioSettings.meshPublicStunHint":
+        "Nur wenn dein Homeserver keinen Relay- oder STUN-Server anbietet: Peer-to-Peer-Anrufe fragen den STUN-Server von Cloudflare nach deiner öffentlichen Adresse, die die meisten Heimrouter benötigen. Er sieht deine IP-Adresse, nie den Anruf.",
+    "settingsSearch.meshPublicStun": "Einen öffentlichen STUN-Server verwenden",
+    "voiceCall.meshFailed":
+        "Direkte Verbindung zu {name} nicht möglich. Das Netzwerk der Gegenseite blockiert sie möglicherweise, oder der Homeserver der Gegenseite bietet keinen Weg durch Heimrouter.",
+    "voiceCall.meshFailedNoServers":
+        "Direkte Verbindung zu {name} nicht möglich. Dein Homeserver bietet keinen Relay- oder STUN-Server, daher scheitern Verbindungen durch Heimrouter meist. Das Aktivieren von „Einen öffentlichen STUN-Server verwenden“ in den Einstellungen unter Sprache und Video kann helfen.",
+    "settingsSearch.meshRelayOnly":
+        "Relay-Server für Peer-to-Peer-Anrufe verlangen",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: de };

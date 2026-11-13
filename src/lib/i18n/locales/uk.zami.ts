@@ -443,6 +443,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "Апаратне прискорення",
     "gpuDebug.hardwareAccelerationHint":
         "Вимкніть, якщо відео чорне або вікно малюється неправильно. Застосовується після перезапуску.",
+    "gpuDebug.gameAuto": "Вимикати GPU на час гри",
+    "gpuDebug.gameAutoHint":
+        "Якщо GPU постійно падає, поки йде гра (гра займає його пам'ять), Zam перезапускається без апаратного прискорення і знову з ним після закриття гри. Потрібне визначення ігор у Налаштування > Загальні. Чекає завершення дзвінка.",
+    "gpuDebug.gameAutoActive": "Робота без GPU до закриття гри.",
     "gpuDebug.nvidiaVideo": "Декодування відео NVIDIA",
     "gpuDebug.nvidiaVideoHint":
         "Декодує відео на GPU NVIDIA через рендерер Vulkan у Chromium. Режим «Автоматично» вмикає його, коли ваші екрани керуються GPU NVIDIA. У Wayland Vulkan не використовується, і «Автоматично» залишає його вимкненим; вибір Vulkan там спробує натомість апаратне декодування через OpenGL (експериментально).",
@@ -606,6 +610,22 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "Підказки порядку повідомлень",
     "debugSettings.orderHintsHint":
         "Zam додає до ваших повідомлень підказку про те, що було внизу вашого журналу чату, і розміщує повідомлення інших користувачів Zam під тим, яке вони вказують. Коли вимкнено, повідомлення показуються в порядку сервера, як в Element.",
+    "debugSettings.stickyCallMembership": "Sticky-участь у дзвінках",
+    "debugSettings.stickyCallMembershipHint":
+        "Приєднуватися до дзвінків за допомогою sticky-події m.rtc.member (MSC4354) замість події стану m.call.member. Клієнти, які читають лише події стану, зокрема Zam до 1.51, не побачать вас у дзвінку. Діє з наступного дзвінка.",
+    "debugSettings.indexSync": "Синхронізація індексу повідомлень",
+    "debugSettings.indexSyncHint":
+        "Записи пошукового індексу обмінюються з вашими іншими підтвердженими сеансами. На обох сеансах має бути ця версія. Сеанси: придатні / підтверджені / усі. Фрагменти: надіслано / отримано.",
+    "debugSettings.indexSyncOff":
+        "Синхронізація індексу не працює: потрібно ввімкнути індексацію зашифрованих кімнат.",
+    "debugSettings.indexSyncNow": "Синхронізувати зараз",
+    "debugSettings.indexSyncNever": "ніколи",
+    "debugSettings.indexSyncSessions": "Сеанси",
+    "debugSettings.indexSyncAsked": "Запитано",
+    "debugSettings.indexSyncRoomsMissing": "Кімнати з прогалинами",
+    "debugSettings.indexSyncRequestsReceived": "Отримано запитів",
+    "debugSettings.indexSyncChunks": "Фрагменти",
+    "debugSettings.indexSyncMerged": "Об'єднано записів",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "Показувати в журналі чату кожну подію стрічки Matrix.",
     "debugSettings.ignoreCodecSupport":
@@ -1642,6 +1662,16 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Сповіщення для цього облікового запису вимкнено",
     "notificationSettings.accountNotificationsOffDetail":
         "Усі сповіщення для цього облікового запису вимкнено на сервері, імовірно з іншого застосунку, тож жодне сповіщення не надходить на жодному пристрої, що б не казали налаштування нижче.",
+    "notificationSettings.accountNotifications":
+        "Сповіщення для цього облікового запису",
+    "notificationSettings.accountNotificationsDetail":
+        "Вмикає або вимикає сповіщення для цього облікового запису на всіх ваших пристроях.",
+    "notificationSettings.thisDeviceNotifications":
+        "Сповіщення на цьому пристрої",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "Вимикає спливні вікна, звуки та push лише на цьому пристрої. Інші пристрої й надалі сповіщатимуть.",
+    "notificationSettings.couldNotUpdateNotifications":
+        "Не вдалося оновити налаштування сповіщень",
     "notificationSettings.turnOn": "Увімкнути",
     "notificationSettings.couldNotTurnOnNotifications":
         "Не вдалося ввімкнути сповіщення",
@@ -1800,6 +1830,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Дозволити іншим людям у кімнаті бачити, коли ви друкуєте. Вимкніть, щоб друкувати, нікого про це не сповіщаючи.",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "Приховувати ваші підтвердження прочитання від інших користувачів. Лічильники непрочитаного й далі працюють; інші просто не бачать, до якого місця ви прочитали.",
+    "privacySafetySettings.streamerMode": "Режим стрімера",
+    "privacySafetySettings.streamerModeHint":
+        "Розмиває ID облікового запису, адреси електронної пошти та ключ відновлення і приховує текст повідомлень у сповіщеннях, щоб у трансляції не з'являлося нічого приватного. Діє лише на цьому пристрої.",
     "privacySafetySettings.hideMessageTextInNotifications":
         "Приховувати текст повідомлень у сповіщеннях",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1993,6 +2026,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "Завершити впорядкування",
     "roomList.reorderRooms": "Впорядкувати кімнати",
     "roomList.spaceSettings": "Налаштування простору",
+    "roomList.sortDmsBy": "Сортувати ОП",
+    "roomList.dmSortRecent": "За останнім повідомленням",
+    "roomList.dmSortUnread": "Спершу непрочитані",
+    "roomList.dmSortOnline": "Спершу в мережі",
+    "roomList.dmSortName": "За ім'ям (А–Я)",
     "roomList.pendingInvites": "Запрошення в очікуванні",
     "roomList.inVoice": "{name} - у голосовому",
     "roomList.orderValue": "Значення порядку",
@@ -3028,6 +3066,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Записати голосове повідомлення",
     "composerActionsMenu.shareLocation": "Поділитися місцезнаходженням",
     "composerActionsMenu.createThread": "Створити гілку",
+    "composerActionsMenu.inviteToGame": "Запросити до гри",
+    "gameInvite.title": "Запросити до гри",
+    "gameInvite.game": "Гра",
+    "gameInvite.note": "Примітка (необов'язково)",
+    "gameInvite.notePlaceholder": "Напишіть щось…",
+    "gameInvite.send": "Надіслати запрошення",
+    "gameInvite.noGames":
+        "Зараз немає запущеної гри Steam, до якої можна запросити.",
+    "gameInvite.failedToSend": "Не вдалося надіслати запрошення.",
+    "gameInvite.cardTitle": "Запрошення до гри",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "{current} з {max} у групі",
+    "gameInvite.confirmSteam": "Запустити {game} з аргументами: {connect}",
+    "gameInvite.confirmLobby": "Приєднатися до лобі {game}",
+    "gameInvite.joinGame": "Приєднатися до гри",
+    "gameInvite.joinSent": "Запит на приєднання надіслано в гру.",
+    "gameInvite.openInDesktop":
+        "Відкрийте в настільному застосунку Zam, щоб приєднатися.",
+    "gameInvite.joinUnsupported":
+        "Приєднання до цієї гри на цьому комп'ютері не підтримується.",
+    "gameInvite.joinInvalid": "Це запрошення недійсне.",
+    "gameInvite.joinFailed": "Не вдалося приєднатися до гри.",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "Не вдалося додати реакцію",
@@ -3313,6 +3373,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "repoList.thatRepoIsAlreadyAdded": "Цей репозиторій уже додано.",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain":
+        "Не вдалося завантажити GIF, спробуйте ще раз.",
     "gifSearch.couldnTReachKlipyTryAgain":
         "Не вдалося зв’язатися з KLIPY - спробуйте ще раз.",
 
@@ -3701,6 +3763,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Показується як «у мережі», поки застосунок синхронізується",
     "presence.shownAsIdleToOtherUsers":
         "Показується іншим користувачам як неактивний",
+    "presence.doNotDisturb": "Не турбувати",
+    "presence.doNotDisturbDescription":
+        "Вимикає сповіщення та дзвінки на всіх ваших пристроях",
     "presence.invisible": "Невидимий",
     "presence.appearOfflineToOtherUsers":
         "Показуватися іншим користувачам поза мережею",
@@ -3927,6 +3992,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "Очистити кеш",
     "settingsSearch.showAllEvents": "Показувати всі події",
     "settingsSearch.orderHints": "Підказки порядку повідомлень",
+    "settingsSearch.stickyCallMembership": "Sticky-участь у дзвінках",
     "settingsSearch.pushDiagnostics": "Діагностика push",
     "settingsSearch.pushService": "Служба push (UnifiedPush / Firebase)",
     "settingsSearch.language": "Мова",
@@ -4035,6 +4101,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Відкрити сторінку випуску",
     "updateStatus.flatpakManualUpdate":
         "Доступне оновлення{versionSuffix}. Встановіть його з центру програм або командою flatpak update",
+    "updateStatus.packageManagerUpdate":
+        "Доступне оновлення{versionSuffix}. Оновіть через {manager}",
     "updateStatus.updateCheckFailed": "Не вдалося перевірити оновлення",
     "updateStatus.checkForUpdatesToInstallThe":
         "Перевірте оновлення, щоб встановити останню версію.",
@@ -4120,8 +4188,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.failedOffline":
         "Відправник недоступний. Йому потрібно відкрити Zam.",
     "fileOffer.failedRefused": "Сеанс відправника відхилив цю передачу.",
-    "fileOffer.failedNoSfu":
-        "Сервер відправника не має служби викликів, яка б передала файл.",
+    "fileOffer.failedNoRelay":
+        "Для однорангових з'єднань потрібен ретранслятор, але його немає (TURN), тож файл не можна надіслати, не показавши IP-адресу.",
     "fileOffer.failedConnection": "З’єднання втрачено.",
     "fileOffer.failedStalled": "Передача перестала просуватися.",
     "fileOffer.failedCorrupt":
@@ -4224,6 +4292,95 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageEmbed.inRoom": "у {room}",
     "messageEmbed.jumpToMessage":
         "Перейти до повідомлення, на яке є посилання:",
+    "messageActionsMenu.copyText": "Копіювати текст повідомлення",
+    "messageActionsMenu.textCopied": "Текст повідомлення скопійовано",
+    "messageActionsMenu.couldnTCopyText":
+        "Не вдалося скопіювати текст повідомлення",
+    "messageActionsMenu.selectHint":
+        "Натисніть і утримуйте текст, щоб виділити його частину",
+    "roomSettings.readReceipts": "Позначки про прочитання",
+    "roomSettings.readReceiptsRoomHelp":
+        "Виберіть, чи можуть інші учасники бачити, які повідомлення ви прочитали в цій кімнаті.",
+    "roomSettings.readReceiptsSpaceHelp":
+        "Виберіть, чи можуть інші учасники бачити, які повідомлення ви прочитали в цьому просторі та його кімнатах. Власний вибір кімнати має пріоритет.",
+    "roomSettings.readReceiptsDefaultShare":
+        "Залежить від ваших налаштувань приватності, зараз показується іншим",
+    "roomSettings.readReceiptsDefaultHide":
+        "Залежить від ваших налаштувань приватності, зараз приховано від інших",
+    "roomSettings.readReceiptsShare": "Показувати мої позначки про прочитання",
+    "roomSettings.readReceiptsShareDesc":
+        "Інші можуть бачити, які повідомлення ви прочитали.",
+    "roomSettings.readReceiptsHide": "Приховувати мої позначки про прочитання",
+    "roomSettings.readReceiptsHideDesc":
+        "Стан непрочитаного і далі синхронізується, але інші не бачать, що ви прочитали.",
+    "privacySafetySettings.receiptsOverrideHint":
+        "Кімнати та простори можуть перевизначити це в своїх налаштуваннях сповіщень.",
+    "richPresence.steam": "Розширена присутність Steam",
+    "richPresence.steamHint":
+        "Показувати гру Steam, у яку ви граєте, разом із її станом розширеної присутності, наприклад картою чи режимом. Це вмикає локальний порт налагодження Steam, який слухає лише цей комп’ютер. Щоб зміни набули чинності, Steam потрібно перезапустити один раз.",
+    "richPresence.steamConnected": "Підключено до Steam.",
+    "richPresence.steamNeedsRestart":
+        "Порт налагодження Steam ще не відкрито. Перезапустіть Steam, щоб відкрити його.",
+    "richPresence.steamNotRunning":
+        "Steam не запущено. Запустіть його, і Zam підключиться автоматично.",
+    "richPresence.restartSteam": "Перезапустити Steam",
+    "richPresence.restartSteamTitle": "Перезапустити Steam?",
+    "richPresence.restartSteamBody":
+        "Steam закриється і відкриється знову. Ігри, запущені зі Steam, можуть закритися разом із ним.",
+    "richPresence.restartSteamFailed":
+        "Не вдалося перезапустити Steam: {error}",
+    "richPresence.steamEnableFailed":
+        "Не вдалося увімкнути порт налагодження Steam: {error}",
+    "richPresence.steamDisableFailed":
+        "Не вдалося вимкнути порт налагодження Steam: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows запросила права адміністратора, але їх не надали, тому нічого не змінено.",
+    "richPresence.steamFailed":
+        "Розширена присутність Steam не працює: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "Цей дзвінок з’єднує вас напряму з іншими",
+    "meshConsent.titleNewcomer":
+        "Із кимось у цьому дзвінку можна зв’язатися лише напряму",
+    "meshConsent.noCallServer":
+        "На вашому домашньому сервері немає сервера дзвінків, тому аудіо, відео та показ екрана передаються напряму з вашого пристрою кожному учаснику дзвінка.",
+    "meshConsent.someoneWithoutCallServer":
+        "Хтось у цьому дзвінку перебуває на домашньому сервері без сервера дзвінків. Щоб чути й бачити цю людину, ваш пристрій підключається до її пристрою напряму.",
+    "meshConsent.ipVisible":
+        "Ваш домашній сервер не має ретранслятора (TURN), тож усі, з ким ви з'єднуєтеся напряму, бачать вашу IP-адресу, яка може приблизно видати ваше місцеперебування.",
+    "meshConsent.relayed":
+        "З'єднання йде через ретранслятор вашого домашнього сервера: інші бачать його адресу, а не вашу IP-адресу. Якщо через ретранслятор когось не вдається досягти, ви з'єднуєтеся з ним напряму, і він бачить вашу IP-адресу. Щоб цього не було, увімкніть «Вимагати ретранслятор для однорангових дзвінків» у налаштуваннях голосу й відео.",
+    "meshConsent.relayRequired":
+        "«Вимагати ретранслятор для однорангових дзвінків» увімкнено, але ваш домашній сервер не має ретранслятора (TURN), тож з'єднатися не вийде. Вимкніть це в налаштуваннях голосу й відео, щоб з'єднатися напряму.",
+    "meshConsent.titleFileTransfer":
+        "Ця передача файлу з'єднує вас напряму з іншою людиною",
+    "meshConsent.fileTransferDirect":
+        "У вашого сервера або в сервера співрозмовника немає сервера дзвінків, тому файл передається напряму з одного пристрою на інший.",
+    "meshConsent.join": "Приєднатися",
+    "meshConsent.connectDirectly": "Підключитися напряму",
+    "meshConsent.joinWithoutThem": "Приєднатися без них",
+    "meshConsent.notNow": "Не зараз",
+    "voiceCall.meshNeedsTurn":
+        "«Вимагати ретранслятор для однорангових дзвінків» увімкнено, але ваш домашній сервер не має ретранслятора (TURN). Вимкніть це в налаштуваннях голосу й відео, щоб приєднатися.",
+    "voiceAudioSettings.meshRelayOnly":
+        "Вимагати ретранслятор для однорангових дзвінків",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "Однорангові дзвінки й передавання файлів ідуть через сервер-ретранслятор (TURN) вашого домашнього сервера, якщо він є, тож ніхто не бачить вашу IP-адресу. Без нього, або якщо через ретранслятор когось не вдається досягти, з'єднання пряме, і адресу видно. Якщо увімкнено, прямих з'єднань не буде ніколи: без робочого ретранслятора з'єднання не встановлюється.",
+    "voiceCall.meshPeerUnreachable":
+        "Когось у цьому дзвінку можна досягти лише напряму, але ретранслятор обов'язковий, а ваш домашній сервер його не має (TURN), тож ви його не почуєте.",
+    "meshConsent.usePublicStun": "Використовувати публічний STUN-сервер.",
+    "meshConsent.usePublicStunHint":
+        "На вашому домашньому сервері немає сервера, який допомагає з’єднанням проходити через домашні маршрутизатори, тому без нього більшість прямих з’єднань не працює. STUN-сервер Cloudflare дізнається вашу IP-адресу, але нічого про дзвінок.",
+    "voiceAudioSettings.meshPublicStun":
+        "Використовувати публічний STUN-сервер",
+    "voiceAudioSettings.meshPublicStunHint":
+        "Лише якщо домашній сервер не пропонує ні ретранслятора, ні STUN-сервера: однорангові дзвінки запитують у STUN-сервера Cloudflare вашу публічну адресу, яка потрібна більшості домашніх маршрутизаторів. Він бачить вашу IP-адресу, але не сам дзвінок.",
+    "settingsSearch.meshPublicStun": "Використовувати публічний STUN-сервер",
+    "voiceCall.meshFailed":
+        "Не вдалося з’єднатися напряму з {name}. Мережа співрозмовника може це блокувати, або домашній сервер співрозмовника не пропонує способу пройти через домашні маршрутизатори.",
+    "voiceCall.meshFailedNoServers":
+        "Не вдалося з’єднатися напряму з {name}. Ваш домашній сервер не пропонує ні ретранслятора, ні STUN-сервера, тож з’єднання через домашні маршрутизатори зазвичай не працюють. Може допомогти увімкнення опції «Використовувати публічний STUN-сервер» у налаштуваннях розділу «Голос і відео».",
+    "settingsSearch.meshRelayOnly":
+        "Вимагати ретранслятор для однорангових дзвінків",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: uk };

@@ -424,6 +424,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "硬件加速",
     "gpuDebug.hardwareAccelerationHint":
         "如果视频显示为黑屏或窗口绘制异常，请关闭此项。重启后生效。",
+    "gpuDebug.gameAuto": "游戏运行时暂停GPU",
+    "gpuDebug.gameAutoHint":
+        "如果游戏运行期间GPU不断崩溃（游戏占满了显存），Zam会在关闭硬件加速的状态下重启，并在游戏关闭后重新开启并再次重启。需要在设置 > 常规中开启游戏检测。会等待通话结束。",
+    "gpuDebug.gameAutoActive": "在游戏关闭前不使用GPU运行。",
     "gpuDebug.nvidiaVideo": "NVIDIA 视频解码",
     "gpuDebug.nvidiaVideoHint":
         "通过 Chromium 的 Vulkan 渲染器在 NVIDIA GPU 上解码视频。选择“自动”时，若由 NVIDIA GPU 驱动你的屏幕则会开启。在 Wayland 上不使用 Vulkan，“自动”会保持关闭；在那里选择 Vulkan 则会尝试通过 OpenGL 进行硬件解码（实验性）。",
@@ -582,6 +586,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "消息顺序提示",
     "debugSettings.orderHintsHint":
         "Zam 会在你的消息中加入一条提示，说明你聊天记录底部是什么内容，并将其他 Zam 用户的消息放在其所指向的那条消息下方。关闭后，消息按服务器的顺序显示，与 Element 一样。",
+    "debugSettings.stickyCallMembership": "粘性通话成员身份",
+    "debugSettings.stickyCallMembershipHint":
+        "使用粘性 m.rtc.member 事件 (MSC4354) 而不是 m.call.member 状态事件加入通话。只读取状态事件的客户端（包括 1.51 之前的 Zam）看不到你在通话中。从下一次通话起生效。",
+    "debugSettings.indexSync": "消息索引同步",
+    "debugSettings.indexSyncHint":
+        "搜索索引条目会与你其他已验证的会话互相交换。两个会话都需要运行此版本。会话：符合条件 / 已验证 / 全部。数据块：已发送 / 已接收。",
+    "debugSettings.indexSyncOff": "索引同步未运行：需要开启加密房间索引。",
+    "debugSettings.indexSyncNow": "立即同步",
+    "debugSettings.indexSyncNever": "从未",
+    "debugSettings.indexSyncSessions": "会话",
+    "debugSettings.indexSyncAsked": "已询问",
+    "debugSettings.indexSyncRoomsMissing": "有缺口的房间",
+    "debugSettings.indexSyncRequestsReceived": "收到的请求",
+    "debugSettings.indexSyncChunks": "数据块",
+    "debugSettings.indexSyncMerged": "已合并条目",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "在聊天记录中显示每一个 Matrix 时间线事件。",
     "debugSettings.ignoreCodecSupport": "忽略报告的编解码器支持情况",
@@ -1520,6 +1539,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "notificationSettings.accountNotificationsOff": "此账户的通知已关闭",
     "notificationSettings.accountNotificationsOffDetail":
         "此账户的所有通知已在服务器上被关闭（可能是通过另一个应用），因此无论下方如何设置，任何设备都不会收到通知。",
+    "notificationSettings.accountNotifications": "此账户的通知",
+    "notificationSettings.accountNotificationsDetail":
+        "在你的所有设备上开启或关闭此账户的通知。",
+    "notificationSettings.thisDeviceNotifications": "此设备上的通知",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "仅在此设备上关闭弹窗、提示音和推送。你的其他设备仍会通知。",
+    "notificationSettings.couldNotUpdateNotifications": "无法更新通知设置",
     "notificationSettings.turnOn": "开启",
     "notificationSettings.couldNotTurnOnNotifications": "无法开启通知",
 
@@ -1664,6 +1690,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "让房间中的其他人看到你正在输入。关闭后，输入时不会通知任何人。",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "对其他用户隐藏你的已读回执。你的未读计数仍然有效；别人只是看不到你读到了哪里。",
+    "privacySafetySettings.streamerMode": "主播模式",
+    "privacySafetySettings.streamerModeHint":
+        "模糊账号 ID、电子邮件地址和恢复密钥，并在通知中隐藏消息文本，避免私人信息出现在直播中。仅适用于此设备。",
     "privacySafetySettings.hideMessageTextInNotifications":
         "在通知中隐藏消息文本",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1848,6 +1877,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "完成排序",
     "roomList.reorderRooms": "调整房间顺序",
     "roomList.spaceSettings": "空间设置",
+    "roomList.sortDmsBy": "私信排序方式",
+    "roomList.dmSortRecent": "最新消息",
+    "roomList.dmSortUnread": "未读优先",
+    "roomList.dmSortOnline": "在线优先",
+    "roomList.dmSortName": "名称（A–Z）",
     "roomList.pendingInvites": "待处理的邀请",
     "roomList.inVoice": "{name} - 语音中",
     "roomList.orderValue": "排序值",
@@ -2810,6 +2844,25 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "录制语音消息",
     "composerActionsMenu.shareLocation": "共享位置",
     "composerActionsMenu.createThread": "创建消息列",
+    "composerActionsMenu.inviteToGame": "邀请加入游戏",
+    "gameInvite.title": "邀请加入游戏",
+    "gameInvite.game": "游戏",
+    "gameInvite.note": "备注（可选）",
+    "gameInvite.notePlaceholder": "说点什么…",
+    "gameInvite.send": "发送邀请",
+    "gameInvite.noGames": "现在没有可邀请的正在运行的 Steam 游戏。",
+    "gameInvite.failedToSend": "无法发送邀请。",
+    "gameInvite.cardTitle": "游戏邀请",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "队伍 {current}/{max}",
+    "gameInvite.confirmSteam": "用参数 {connect} 启动 {game}",
+    "gameInvite.confirmLobby": "加入 {game} 的大厅",
+    "gameInvite.joinGame": "加入游戏",
+    "gameInvite.joinSent": "已将加入请求发送给游戏。",
+    "gameInvite.openInDesktop": "请在 Zam 桌面应用中打开以加入。",
+    "gameInvite.joinUnsupported": "此电脑不支持加入此游戏。",
+    "gameInvite.joinInvalid": "此邀请无效。",
+    "gameInvite.joinFailed": "无法加入游戏。",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "无法添加回应",
@@ -3053,6 +3106,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "repoList.thatRepoIsAlreadyAdded": "该仓库已添加。",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain": "无法加载 GIF，请重试。",
     "gifSearch.couldnTReachKlipyTryAgain": "无法连接 KLIPY，请重试。",
 
     // src/lib/stores/liveLocation.svelte.ts
@@ -3393,6 +3447,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.offline": "离线",
     "presence.seenAsOnlineWhileTheApp": "应用同步期间显示为在线",
     "presence.shownAsIdleToOtherUsers": "向其他用户显示为空闲",
+    "presence.doNotDisturb": "请勿打扰",
+    "presence.doNotDisturbDescription": "在你的所有设备上静音通知和来电",
     "presence.invisible": "隐身",
     "presence.appearOfflineToOtherUsers": "向其他用户显示为离线",
 
@@ -3606,6 +3662,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "清除缓存",
     "settingsSearch.showAllEvents": "显示所有事件",
     "settingsSearch.orderHints": "消息顺序提示",
+    "settingsSearch.stickyCallMembership": "粘性通话成员身份",
     "settingsSearch.pushDiagnostics": "推送诊断",
     "settingsSearch.pushService": "推送服务（UnifiedPush / Firebase）",
     "settingsSearch.language": "语言",
@@ -3704,6 +3761,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "打开发行页面",
     "updateStatus.flatpakManualUpdate":
         "有可用更新{versionSuffix}。请通过你的软件中心或使用 flatpak update 安装",
+    "updateStatus.packageManagerUpdate":
+        "有可用更新{versionSuffix}。请使用 {manager} 更新",
     "updateStatus.updateCheckFailed": "检查更新失败",
     "updateStatus.checkForUpdatesToInstallThe": "检查更新以安装最新版本。",
 
@@ -3777,7 +3836,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancelled": "传输已取消。",
     "fileOffer.failedOffline": "发送者不可用。他们需要打开 Zam。",
     "fileOffer.failedRefused": "发送者的会话拒绝了此次传输。",
-    "fileOffer.failedNoSfu": "发送者的服务器没有可用于传输文件的通话服务。",
+    "fileOffer.failedNoRelay":
+        "点对点连接要求使用中继服务器，但没有中继（TURN）服务器，因此无法在不显示 IP 地址的情况下发送文件。",
     "fileOffer.failedConnection": "连接已断开。",
     "fileOffer.failedStalled": "传输已停滞。",
     "fileOffer.failedCorrupt": "文件在传输途中被改动，因此已被丢弃。",
@@ -3869,6 +3929,83 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageEmbed.deleted": "消息已删除",
     "messageEmbed.inRoom": "在 {room}",
     "messageEmbed.jumpToMessage": "跳转到链接的消息：",
+    "messageActionsMenu.copyText": "复制消息文本",
+    "messageActionsMenu.textCopied": "消息文本已复制",
+    "messageActionsMenu.couldnTCopyText": "无法复制消息文本",
+    "messageActionsMenu.selectHint": "按住文本可选择部分内容",
+    "roomSettings.readReceipts": "已读回执",
+    "roomSettings.readReceiptsRoomHelp":
+        "选择其他成员能否看到你在此房间中已读的消息。",
+    "roomSettings.readReceiptsSpaceHelp":
+        "选择其他成员能否看到你在此空间及其房间中已读的消息。房间自身的设置优先。",
+    "roomSettings.readReceiptsDefaultShare":
+        "跟随你的隐私设置，当前对其他人可见",
+    "roomSettings.readReceiptsDefaultHide":
+        "跟随你的隐私设置，当前对其他人隐藏",
+    "roomSettings.readReceiptsShare": "共享我的已读回执",
+    "roomSettings.readReceiptsShareDesc": "其他人可以看到你已读的消息。",
+    "roomSettings.readReceiptsHide": "隐藏我的已读回执",
+    "roomSettings.readReceiptsHideDesc":
+        "你的未读状态仍会同步，但其他人无法看到你已读到哪里。",
+    "privacySafetySettings.receiptsOverrideHint":
+        "房间和空间可以在其通知设置中覆盖此设置。",
+    "richPresence.steam": "Steam Rich Presence",
+    "richPresence.steamHint":
+        "显示你正在玩的 Steam 游戏及其 Rich Presence 状态，例如地图或模式。这会开启 Steam 的本地调试端口，该端口只在这台电脑上监听。需要重启 Steam 一次才会生效。",
+    "richPresence.steamConnected": "已连接到 Steam。",
+    "richPresence.steamNeedsRestart":
+        "Steam 的调试端口尚未开启。请重启 Steam 以开启。",
+    "richPresence.steamNotRunning":
+        "Steam 未在运行。启动 Steam 后，Zam 会自动连接。",
+    "richPresence.restartSteam": "重启 Steam",
+    "richPresence.restartSteamTitle": "重启 Steam？",
+    "richPresence.restartSteamBody":
+        "Steam 将关闭并重新启动。从 Steam 启动的游戏可能会随之关闭。",
+    "richPresence.restartSteamFailed": "无法重启 Steam：{error}",
+    "richPresence.steamEnableFailed": "无法开启 Steam 的调试端口：{error}",
+    "richPresence.steamDisableFailed": "无法关闭 Steam 的调试端口：{error}",
+    "richPresence.steamUacCancelled":
+        "Windows 请求管理员权限但未获授予，因此未做任何更改。",
+    "richPresence.steamFailed": "Steam Rich Presence 失败：{error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "此通话会直接连接您与其他人",
+    "meshConsent.titleNewcomer": "通话中有人只能直接连接",
+    "meshConsent.noCallServer":
+        "您的主服务器没有通话服务器，因此您的音频、视频和屏幕共享将从您的设备直接发送给通话中的每个人。",
+    "meshConsent.someoneWithoutCallServer":
+        "通话中有人所在的主服务器没有通话服务器。为了听到和看到对方，您的设备将直接连接到对方的设备。",
+    "meshConsent.ipVisible":
+        "您的主服务器没有中继（TURN）服务器，因此与您直接连接的每个人都能看到您的 IP 地址，这可能暴露您的大致位置。",
+    "meshConsent.relayed":
+        "此连接经由您主服务器的中继服务器：其他人看到的是它的地址，而不是您的 IP 地址。如果中继无法连到某人，您会与对方直接连接，对方将看到您的 IP 地址。若要避免这种情况，请在语音和视频设置中开启“点对点通话必须使用中继服务器”。",
+    "meshConsent.relayRequired":
+        "“点对点通话必须使用中继服务器”已开启，但您的主服务器没有中继（TURN）服务器，因此无法连接。在语音和视频设置中关闭它即可直接连接。",
+    "meshConsent.titleFileTransfer": "此文件传输将直接连接到对方",
+    "meshConsent.fileTransferDirect":
+        "你或对方的主服务器没有通话服务器，因此文件会直接从一台设备传到另一台设备。",
+    "meshConsent.join": "加入",
+    "meshConsent.connectDirectly": "直接连接",
+    "meshConsent.joinWithoutThem": "不与其连接并加入",
+    "meshConsent.notNow": "暂不",
+    "voiceCall.meshNeedsTurn":
+        "“点对点通话必须使用中继服务器”已开启，但您的主服务器没有中继（TURN）服务器。在语音和视频设置中关闭它即可加入。",
+    "voiceAudioSettings.meshRelayOnly": "点对点通话必须使用中继服务器",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "如果您的主服务器有中继（TURN）服务器，点对点通话和文件传输会经由它进行，任何人都看不到您的 IP 地址。没有中继服务器，或中继无法连到某人时，则直接连接，会显示您的地址。开启后，永远不会直接连接：没有可用的中继就不连接。",
+    "voiceCall.meshPeerUnreachable":
+        "此通话中有人只能直接连接，但已要求使用中继服务器，而您的主服务器没有中继（TURN）服务器，因此您将听不到对方。",
+    "meshConsent.usePublicStun": "使用公共 STUN 服务器。",
+    "meshConsent.usePublicStunHint":
+        "您的主服务器没有帮助连接穿透家用路由器的服务器，因此没有它，大多数直接连接都会失败。Cloudflare 的 STUN 服务器会知道您的 IP 地址，但不会知道通话的任何内容。",
+    "voiceAudioSettings.meshPublicStun": "使用公共 STUN 服务器",
+    "voiceAudioSettings.meshPublicStunHint":
+        "仅当您的主服务器既不提供中继服务器也不提供 STUN 服务器时：点对点通话会向 Cloudflare 的 STUN 服务器请求您的公网地址，大多数家用路由器都需要它。它只会看到您的 IP 地址，不会看到通话内容。",
+    "settingsSearch.meshPublicStun": "使用公共 STUN 服务器",
+    "voiceCall.meshFailed":
+        "无法直接连接到 {name}。其网络可能阻止了连接，或其主服务器没有提供穿透家用路由器的方式。",
+    "voiceCall.meshFailedNoServers":
+        "无法直接连接到 {name}。您的主服务器未提供中继服务器或 STUN 服务器，因此通过家用路由器的连接通常会失败。在“语音和视频”设置中开启“使用公共 STUN 服务器”可能会有所帮助。",
+    "settingsSearch.meshRelayOnly": "点对点通话必须使用中继服务器",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: zhCN };

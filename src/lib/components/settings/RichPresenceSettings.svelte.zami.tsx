@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -15,13 +15,17 @@ import {
 } from "$lib/stores/settings.svelte";
 import {
     addCustomGame,
+    disableSteam,
+    enableSteam,
     forgetApp,
     listRunningPrograms,
+    refreshRichPresenceStatus,
     removeCustomGame,
     richPresenceAvailable,
     richPresenceState,
     setAppAllowed,
     syncRichPresence,
+    type SteamDebugOutcome,
 } from "$lib/stores/richPresence.svelte";
 
 // Zami: Text classes sit on each Text; `title` tooltips are dropped. `<code>` is a
@@ -56,6 +60,7 @@ export default function RichPresenceSettings() {
     const richPresenceFakeDiscord = useRune(
         () => settingsState.richPresenceFakeDiscord,
     );
+    const richPresenceSteam = useRune(() => settingsState.richPresenceSteam);
 
     function onToggleShare(next: boolean): void {
         setRichPresenceEnabled(next);
@@ -85,6 +90,96 @@ export default function RichPresenceSettings() {
     function onToggleFake(next: boolean): void {
         setRichPresenceFakeDiscord(next);
         void syncRichPresence();
+    }
+
+    // Steam: the debug flag is written first (Windows asks for permission), so
+    // the source only turns on once that worked. Turning it off always tries to
+    // remove the flag; the outcome is shown rather than swallowed.
+    const [steamBusy, setSteamBusy] = useState(false);
+    const [steamEnableError, setSteamEnableError] = useState<string | null>(
+        null,
+    );
+    const [steamDisable, setSteamDisable] = useState<SteamDebugOutcome | null>(
+        null,
+    );
+    const [confirmingSteamRestart, setConfirmingSteamRestart] = useState(false);
+    const [steamRestarting, setSteamRestarting] = useState(false);
+    const [steamRestartError, setSteamRestartError] = useState<string | null>(
+        null,
+    );
+    const steamPoll = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const steamVisible =
+        status?.steam?.supported !== false ||
+        status?.steam?.needsPermission === true;
+    // The flag is still set after a failed removal, per the last status read.
+    const steamFlagLeft =
+        !richPresenceSteam &&
+        steamDisable !== null &&
+        !steamDisable.ok &&
+        status?.steam?.enabled !== false;
+
+    function stopSteamPoll(): void {
+        if (steamPoll.current) clearInterval(steamPoll.current);
+        steamPoll.current = null;
+    }
+
+    useEffect(() => stopSteamPoll, []);
+
+    /** After a restart Steam's port takes a moment: look every 2s, for 30s. */
+    function pollSteamPort(): void {
+        stopSteamPoll();
+        let tries = 0;
+        steamPoll.current = setInterval(async () => {
+            tries++;
+            await refreshRichPresenceStatus();
+            if (richPresenceState.status?.steam?.portOpen || tries >= 15)
+                stopSteamPoll();
+        }, 2000);
+    }
+
+    // Zami: a ref beside `steamBusy`, so a second tap before the first
+    // settles sees it busy, as the `$state` read does.
+    const steamBusyRef = useRef(false);
+    async function onToggleSteam(next: boolean): Promise<void> {
+        if (steamBusyRef.current) return;
+        setSteamEnableError(null);
+        setSteamDisable(null);
+        steamBusyRef.current = true;
+        setSteamBusy(true);
+        if (next) {
+            const res = await enableSteam();
+            if (!res.ok)
+                setSteamEnableError(
+                    res.cancelled
+                        ? t("richPresence.steamUacCancelled")
+                        : t("richPresence.steamEnableFailed", {
+                              error: res.error ?? "",
+                          }),
+                );
+        } else {
+            stopSteamPoll();
+            setSteamDisable(await disableSteam());
+        }
+        steamBusyRef.current = false;
+        setSteamBusy(false);
+    }
+
+    async function restartSteam(): Promise<void> {
+        setConfirmingSteamRestart(false);
+        setSteamRestarting(true);
+        setSteamRestartError(null);
+        let restartError: string | null = null;
+        try {
+            const res = await window.desktop?.richPresence?.restartSteam();
+            if (res && !res.ok) restartError = res.error ?? "";
+        } catch (e) {
+            restartError = String((e as Error)?.message ?? e);
+        }
+        setSteamRestartError(restartError);
+        await refreshRichPresenceStatus();
+        setSteamRestarting(false);
+        if (restartError === null) pollSteamPort();
     }
 
     // Discord holds the first slot when it started before Zam.
@@ -483,6 +578,150 @@ export default function RichPresenceSettings() {
                                 />
                             </View>
 
+                            {steamVisible && (
+                                <View
+                                    className={`flex-row items-center gap-3 py-2 border-b border-discord-divider ${
+                                        steamBusy
+                                            ? "opacity-50 pointer-events-none"
+                                            : ""
+                                    }`}
+                                    accessibilityState={{ busy: steamBusy }}
+                                >
+                                    <View className="flex-1 min-w-0">
+                                        <Text className="text-sm text-discord-textPrimary">
+                                            {t("richPresence.steam")}
+                                        </Text>
+                                        <Text className="text-xs text-discord-textMuted">
+                                            {t("richPresence.steamHint")}
+                                        </Text>
+                                        {!richPresenceEnabled && (
+                                            <Text className="text-xs text-discord-textMuted">
+                                                {t(
+                                                    "richPresence.arrpcNeedsShare",
+                                                )}
+                                            </Text>
+                                        )}
+                                        {status?.steam?.needsPermission && (
+                                            <>
+                                                <Text className="text-xs text-discord-textMuted">
+                                                    {t(
+                                                        "richPresence.hostNeedsPermission",
+                                                    )}
+                                                </Text>
+                                                <Text
+                                                    selectable
+                                                    className="mt-1 break-all rounded bg-discord-backgroundTertiary p-2 font-mono text-xs text-discord-textPrimary"
+                                                >
+                                                    {t(
+                                                        "richPresence.scanGrantCommand",
+                                                    )}
+                                                </Text>
+                                            </>
+                                        )}
+                                        {steamEnableError !== null && (
+                                            <Text className="text-xs text-discord-danger">
+                                                {steamEnableError}
+                                            </Text>
+                                        )}
+                                        {steamFlagLeft && steamDisable && (
+                                            <Text className="text-xs text-discord-danger">
+                                                {steamDisable.cancelled
+                                                    ? t(
+                                                          "richPresence.steamUacCancelled",
+                                                      )
+                                                    : t(
+                                                          "richPresence.steamDisableFailed",
+                                                          {
+                                                              error:
+                                                                  steamDisable.error ??
+                                                                  "",
+                                                          },
+                                                      )}
+                                            </Text>
+                                        )}
+                                        {richPresenceEnabled &&
+                                        richPresenceSteam &&
+                                        status?.steam?.error ? (
+                                            <Text className="text-xs text-discord-danger">
+                                                {t("richPresence.steamFailed", {
+                                                    error: status.steam.error,
+                                                })}
+                                            </Text>
+                                        ) : null}
+                                        {richPresenceEnabled &&
+                                            richPresenceSteam &&
+                                            status?.steam?.connected && (
+                                                <Text className="text-xs text-discord-textMuted">
+                                                    {t(
+                                                        "richPresence.steamConnected",
+                                                    )}
+                                                </Text>
+                                            )}
+                                        {richPresenceSteam &&
+                                            status?.steam &&
+                                            !status.steam.portOpen &&
+                                            (status.steam.steamRunning ? (
+                                                <>
+                                                    <Text className="text-xs text-discord-textMuted">
+                                                        {t(
+                                                            "richPresence.steamNeedsRestart",
+                                                        )}
+                                                    </Text>
+                                                    <Pressable
+                                                        accessibilityRole="button"
+                                                        accessibilityState={{
+                                                            disabled:
+                                                                steamRestarting,
+                                                        }}
+                                                        className={`mt-1 self-start rounded bg-discord-backgroundSecondary px-2 py-1 hover:bg-discord-backgroundSecondaryAlt ${
+                                                            steamRestarting
+                                                                ? "opacity-50"
+                                                                : ""
+                                                        }`}
+                                                        disabled={
+                                                            steamRestarting
+                                                        }
+                                                        onPress={() =>
+                                                            setConfirmingSteamRestart(
+                                                                true,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Text className="text-xs text-discord-textPrimary">
+                                                            {t(
+                                                                "richPresence.restartSteam",
+                                                            )}
+                                                        </Text>
+                                                    </Pressable>
+                                                </>
+                                            ) : (
+                                                <Text className="text-xs text-discord-textMuted">
+                                                    {t(
+                                                        "richPresence.steamNotRunning",
+                                                    )}
+                                                </Text>
+                                            ))}
+                                        {steamRestartError !== null && (
+                                            <Text className="text-xs text-discord-danger">
+                                                {t(
+                                                    "richPresence.restartSteamFailed",
+                                                    {
+                                                        error: steamRestartError,
+                                                    },
+                                                )}
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <ToggleSwitch
+                                        checked={richPresenceSteam}
+                                        onChange={(next) =>
+                                            void onToggleSteam(next)
+                                        }
+                                        label={t("richPresence.steam")}
+                                    />
+                                </View>
+                            )}
+
                             <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
                                 <View className="flex-1 min-w-0">
                                     <Text className="text-sm text-discord-textPrimary">
@@ -568,7 +807,8 @@ export default function RichPresenceSettings() {
                                                                   "richPresence.viaMedia",
                                                               )
                                                             : app.viaScan ||
-                                                                app.viaRpc
+                                                                app.viaRpc ||
+                                                                app.viaSteam
                                                               ? [
                                                                     app.viaRpc &&
                                                                         t(
@@ -577,6 +817,10 @@ export default function RichPresenceSettings() {
                                                                     app.viaScan &&
                                                                         t(
                                                                             "richPresence.viaScan",
+                                                                        ),
+                                                                    app.viaSteam &&
+                                                                        t(
+                                                                            "richPresence.viaSteam",
                                                                         ),
                                                                 ]
                                                                     .filter(
@@ -791,6 +1035,45 @@ export default function RichPresenceSettings() {
                         >
                             <Text className="text-sm text-white">
                                 {t("richPresence.restartDiscord")}
+                            </Text>
+                        </Pressable>
+                    </View>
+                </ModalDialog>
+            )}
+
+            {confirmingSteamRestart && (
+                <ModalDialog
+                    onClose={() => setConfirmingSteamRestart(false)}
+                    labelledBy="restart-steam-title"
+                    panelClass="relative w-full max-w-sm rounded-lg bg-discord-backgroundSecondary p-4 shadow-xl"
+                >
+                    <Text
+                        nativeID="restart-steam-title"
+                        accessibilityRole="header"
+                        className="mb-2 text-base font-semibold text-discord-textPrimary"
+                    >
+                        {t("richPresence.restartSteamTitle")}
+                    </Text>
+                    <Text className="mb-3 text-sm text-discord-textSecondary">
+                        {t("richPresence.restartSteamBody")}
+                    </Text>
+                    <View className="flex-row justify-end gap-2">
+                        <Pressable
+                            accessibilityRole="button"
+                            className="px-3 py-1"
+                            onPress={() => setConfirmingSteamRestart(false)}
+                        >
+                            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                                {t("common.cancel")}
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            accessibilityRole="button"
+                            className="rounded bg-discord-accent px-3 py-1"
+                            onPress={restartSteam}
+                        >
+                            <Text className="text-sm text-white">
+                                {t("richPresence.restartSteam")}
                             </Text>
                         </Pressable>
                     </View>

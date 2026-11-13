@@ -39,6 +39,8 @@ import {
     presenceDotClass,
     presenceLabel,
 } from "$lib/utils/presence";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { collectMemberDecorations } from "$lib/plugins/pluginMembers";
 
 interface Props {
     room: Room;
@@ -309,6 +311,8 @@ export default function MemberList({ room }: Props) {
         );
     }, []);
 
+    // Zami: not ported: `data-zam-region="member-list"` (plugins' DOM region
+    // hook; there's no DOM here).
     return (
         <View
             className={`${
@@ -367,6 +371,23 @@ function memberPresenceFor(userId: string): {
     };
 }
 
+// Plugin badges / second lines (zam.members.decorate). Re-run on every
+// registry tick (members.refresh() bumps it) and member change.
+// Zami: upstream's `memberDecorations` map, one member at a time, as
+// memberPresenceFor: each mounted row reads its own. `member.roomId` is the
+// list's room.
+function memberDecorationsFor(
+    member: RoomMember,
+): ReturnType<typeof collectMemberDecorations> {
+    void pluginRegistry.tick;
+    const decorators = pluginRegistry.memberDecorators.map((e) => e.value);
+    if (decorators.length === 0) return null;
+    return collectMemberDecorations(decorators, {
+        roomId: member.roomId,
+        userId: member.userId,
+    });
+}
+
 // Zami: openProfileCard() anchors the card to the element's
 // getBoundingClientRect(); the pressed row's window rect stands in.
 function openCard(userId: string, e: GestureResponderEvent) {
@@ -406,8 +427,10 @@ const MemberRow = memo(function MemberRow({
     });
     // Follows the Show Matrix IDs setting too.
     const name = useRune(() => memberDisplayName(member), [member, rev]);
+    const deco = useRune(() => memberDecorationsFor(member), [member, rev]);
     // Zami: `w-[calc(100%-1rem)]` is the stretched row's
-    // width less its `mx-2`, which a column gives it.
+    // width less its `mx-2`, which a column gives it. The row's `title`
+    // (the decorations' tooltip) has no React Native equivalent.
     return (
         <Pressable
             accessibilityRole="button"
@@ -434,22 +457,42 @@ const MemberRow = memo(function MemberRow({
                 />
             </View>
             <View className="min-w-0 flex-1">
-                <Text
-                    numberOfLines={1}
-                    className={`text-sm font-medium ${
-                        muted
-                            ? "text-discord-textMuted"
-                            : "text-discord-textPrimary"
-                    } transition-colors`}
-                >
-                    {name}
-                </Text>
+                <View className="flex-row items-center gap-1 min-w-0">
+                    <Text
+                        numberOfLines={1}
+                        className={`flex-shrink text-sm font-medium ${
+                            muted
+                                ? "text-discord-textMuted"
+                                : "text-discord-textPrimary"
+                        } transition-colors`}
+                    >
+                        {name}
+                    </Text>
+                    {(deco?.badges ?? []).map((badge, i) => (
+                        <View
+                            key={i}
+                            className="flex-shrink-0 px-1 rounded bg-discord-backgroundTertiary"
+                        >
+                            <Text className="text-[10px] font-semibold uppercase text-discord-textMuted">
+                                {badge}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
                 {role !== null ? (
                     <Text
                         numberOfLines={1}
                         className="text-xs text-discord-textMuted"
                     >
                         {role}
+                    </Text>
+                ) : null}
+                {deco?.subtitle ? (
+                    <Text
+                        numberOfLines={1}
+                        className="text-xs text-discord-textMuted"
+                    >
+                        {deco.subtitle}
                     </Text>
                 ) : null}
             </View>

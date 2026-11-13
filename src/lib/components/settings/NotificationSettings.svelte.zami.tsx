@@ -1,6 +1,6 @@
 import { notificationPermission, Select } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     AppState,
     Pressable,
@@ -14,7 +14,7 @@ import OptionSelector from "$lib/components/ui/OptionSelector.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import {
     DEFAULT_PUSH_RULES,
-    enableAccountNotifications,
+    setAccountNotificationsDisabled,
     getClient,
     isAccountNotificationsDisabled,
     getDefaultPushRuleLevel,
@@ -42,6 +42,7 @@ import { showErrorToast } from "$lib/stores/toasts.svelte";
 import {
     setActiveSessionGraceMs,
     setDesktopAlertMode,
+    setDeviceNotifications,
     settingsState,
 } from "$lib/stores/settings.svelte";
 import {
@@ -50,13 +51,14 @@ import {
 } from "$lib/utils/desktopAlert";
 // Zami: requestWebPushPermission is the Notification API's prompt here; see
 // requestPermission.
-import { initWebPush } from "$lib/webPush";
+import { initWebPush, teardownWebPush } from "$lib/webPush";
 import {
     checkNativeNotificationPermission,
     initPush,
     pushDebug,
     requestNativeNotificationPermission,
     switchPushProvider,
+    unregisterPush,
 } from "$lib/push";
 import {
     getPushProviderPref,
@@ -81,18 +83,44 @@ export default function NotificationSettings() {
     const accountNotificationsOff = useRune(
         () => isAccountNotificationsDisabled() === true,
     );
-    const [enablingAccountNotifications, setEnablingAccountNotifications] =
-        useState(false);
-    async function turnOnAccountNotifications() {
-        setEnablingAccountNotifications(true);
+    const deviceNotifications = useRune(
+        () => settingsState.deviceNotifications,
+    );
+    // Zami: a ref, since nothing renders it and a second toggle before the
+    // first settles must see it pending.
+    const accountNotificationsPending = useRef(false);
+    async function setAccountNotifications(enabled: boolean) {
+        if (accountNotificationsPending.current) return;
+        accountNotificationsPending.current = true;
         try {
-            await enableAccountNotifications();
+            await setAccountNotificationsDisabled(!enabled);
         } catch {
             showErrorToast(
-                t("notificationSettings.couldNotTurnOnNotifications"),
+                t("notificationSettings.couldNotUpdateNotifications"),
             );
         } finally {
-            setEnablingAccountNotifications(false);
+            accountNotificationsPending.current = false;
+        }
+    }
+
+    // This device only: stop its popups and sound, and drop its pusher so the
+    // server stops pushing here. Other devices are untouched.
+    async function setDeviceNotificationsEnabled(enabled: boolean) {
+        setDeviceNotifications(enabled);
+        const client = getClient();
+        if (!client) return;
+        try {
+            if (enabled) {
+                await initPush(client);
+                await initWebPush(client);
+            } else {
+                await unregisterPush(client);
+                await teardownWebPush(client);
+            }
+        } catch {
+            showErrorToast(
+                t("notificationSettings.couldNotUpdateNotifications"),
+            );
         }
     }
     const taskbarFlash = canFlashTaskbar();
@@ -497,30 +525,61 @@ export default function NotificationSettings() {
 
     return (
         <View className="gap-6">
-            {accountNotificationsOff ? (
-                <View className="flex-row items-center gap-3 rounded-md p-3 bg-discord-warning/20">
+            <View>
+                <View
+                    className={`flex-row items-center gap-3 py-2 border-b border-discord-divider ${
+                        accountNotificationsOff
+                            ? "rounded-md p-3 bg-discord-warning/20"
+                            : ""
+                    }`}
+                >
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm font-semibold text-discord-warning">
-                            {t("notificationSettings.accountNotificationsOff")}
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("notificationSettings.accountNotifications")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {accountNotificationsOff
+                                ? t(
+                                      "notificationSettings.accountNotificationsOffDetail",
+                                  )
+                                : t(
+                                      "notificationSettings.accountNotificationsDetail",
+                                  )}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={!accountNotificationsOff}
+                        onChange={(enabled) =>
+                            void setAccountNotifications(enabled)
+                        }
+                        label={t("notificationSettings.accountNotifications")}
+                    />
+                </View>
+            </View>
+
+            <View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("notificationSettings.thisDeviceNotifications")}
                         </Text>
                         <Text className="text-xs text-discord-textMuted">
                             {t(
-                                "notificationSettings.accountNotificationsOffDetail",
+                                "notificationSettings.thisDeviceNotificationsDetail",
                             )}
                         </Text>
                     </View>
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={() => void turnOnAccountNotifications()}
-                        disabled={enablingAccountNotifications}
-                        className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                    >
-                        <Text className="text-sm font-semibold text-white">
-                            {t("notificationSettings.turnOn")}
-                        </Text>
-                    </Pressable>
+                    <ToggleSwitch
+                        checked={deviceNotifications}
+                        onChange={(enabled) =>
+                            void setDeviceNotificationsEnabled(enabled)
+                        }
+                        label={t(
+                            "notificationSettings.thisDeviceNotifications",
+                        )}
+                    />
                 </View>
-            ) : null}
+            </View>
 
             <Text
                 accessibilityRole="header"

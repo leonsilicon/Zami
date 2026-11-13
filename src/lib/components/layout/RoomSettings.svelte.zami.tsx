@@ -114,6 +114,7 @@ import {
     isRoomStateHealed,
     getRoomNotificationSetting,
     setRoomNotificationSetting,
+    getParentSpaceIds,
     getRoomsInSpace,
     getSpaceChildIds,
     type RoomNotificationSetting,
@@ -171,7 +172,11 @@ import {
     closeSubPage,
 } from "$lib/stores/interface.svelte";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
-import { settingsState } from "$lib/stores/settings.svelte";
+import { settingsState, setReceiptOverride } from "$lib/stores/settings.svelte";
+import {
+    isRoomReceiptPrivate,
+    type ReceiptOverride,
+} from "$lib/utils/receiptPrivacy";
 import {
     blockUser,
     unblockUser,
@@ -279,6 +284,45 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         [room.roomId],
     );
     const [notifSaving, setNotifSaving] = useState(false);
+
+    // Read receipts: this room's (or space's) override of the account default.
+    const receiptChoice = useRune<ReceiptOverride | null>(
+        () => settingsState.receiptOverrides[room.roomId] ?? null,
+        [room.roomId],
+    );
+    // What "Default" resolves to here: the account setting, or a parent
+    // space's override. Ignores this room's own choice, so the label stays put
+    // while the user flips between options.
+    const inheritedReceiptsPrivate = useRune(() => {
+        const { [room.roomId]: _own, ...others } =
+            settingsState.receiptOverrides;
+        return isRoomReceiptPrivate(
+            room.roomId,
+            getParentSpaceIds(room.roomId),
+            others,
+            settingsState.privateReadReceipts,
+        );
+    }, [room.roomId]);
+    const RECEIPT_CHOICES: readonly [ReceiptOverride | null, string, string][] =
+        [
+            [
+                null,
+                t("common.default"),
+                inheritedReceiptsPrivate
+                    ? t("roomSettings.readReceiptsDefaultHide")
+                    : t("roomSettings.readReceiptsDefaultShare"),
+            ],
+            [
+                "public",
+                t("roomSettings.readReceiptsShare"),
+                t("roomSettings.readReceiptsShareDesc"),
+            ],
+            [
+                "private",
+                t("roomSettings.readReceiptsHide"),
+                t("roomSettings.readReceiptsHideDesc"),
+            ],
+        ];
 
     const NOTIF_LEVELS: readonly [RoomNotificationSetting, string, string][] = [
         [
@@ -2345,6 +2389,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         {/* Zami: `<code>`'s box as
                                                             a View, which clips its
                                                             rounded background. */}
+                                                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                                         <View className="flex-1 min-w-0 bg-discord-backgroundTertiary rounded px-3 py-2">
                                                             <Text
                                                                 selectable
@@ -3258,6 +3303,83 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             >
                                                                 <View className="mt-0.5 w-3 flex-row items-center justify-center flex-shrink-0">
                                                                     {notifSetting ===
+                                                                        val && (
+                                                                        <Circle
+                                                                            size={
+                                                                                8
+                                                                            }
+                                                                            fill="currentColor"
+                                                                            className="text-discord-accent"
+                                                                        />
+                                                                    )}
+                                                                </View>
+                                                                <View className="min-w-0 flex-1">
+                                                                    <Text className="text-sm font-medium text-discord-textPrimary">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <Text className="text-xs text-discord-textMuted">
+                                                                        {desc}
+                                                                    </Text>
+                                                                </View>
+                                                            </Pressable>
+                                                        ),
+                                                    )}
+                                                </View>
+                                            </View>
+                                            <View>
+                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    {t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                </Text>
+                                                <Text className="text-xs text-discord-textMuted mb-3">
+                                                    {isSpace
+                                                        ? t(
+                                                              "roomSettings.readReceiptsSpaceHelp",
+                                                          )
+                                                        : t(
+                                                              "roomSettings.readReceiptsRoomHelp",
+                                                          )}
+                                                </Text>
+                                                <View
+                                                    className="flex-col gap-1"
+                                                    accessibilityRole="radiogroup"
+                                                    accessibilityLabel={t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                >
+                                                    {RECEIPT_CHOICES.map(
+                                                        ([
+                                                            val,
+                                                            label,
+                                                            desc,
+                                                        ]) => (
+                                                            <Pressable
+                                                                key={
+                                                                    val ??
+                                                                    "default"
+                                                                }
+                                                                accessibilityRole="radio"
+                                                                accessibilityState={{
+                                                                    checked:
+                                                                        receiptChoice ===
+                                                                        val,
+                                                                }}
+                                                                onPress={() =>
+                                                                    setReceiptOverride(
+                                                                        room.roomId,
+                                                                        val,
+                                                                    )
+                                                                }
+                                                                className={`w-full px-3 py-2 rounded flex-row items-start gap-3 transition-colors hover:bg-discord-messageHover ${
+                                                                    receiptChoice ===
+                                                                    val
+                                                                        ? "bg-discord-messageHover"
+                                                                        : ""
+                                                                }`}
+                                                            >
+                                                                <View className="mt-0.5 w-3 flex-row items-center justify-center flex-shrink-0">
+                                                                    {receiptChoice ===
                                                                         val && (
                                                                         <Circle
                                                                             size={

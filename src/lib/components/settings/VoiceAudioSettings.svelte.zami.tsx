@@ -30,6 +30,8 @@ import {
     setCallOutputVolume,
     setNoiseSuppressionMode,
     setEchoCancellation,
+    setMeshRelayOnly,
+    setMeshPublicStun,
     setMicGainMode,
     setNormalizeCallAudio,
     setCallSoundsEnabled,
@@ -201,6 +203,8 @@ export default function VoiceAudioSettings() {
         () => settingsState.noiseSuppressionGpu,
     );
     const echoCancellation = useRune(() => settingsState.echoCancellation);
+    const meshRelayOnly = useRune(() => settingsState.meshRelayOnly);
+    const meshPublicStun = useRune(() => settingsState.meshPublicStun);
     const micGainMode = useRune(() => settingsState.micGainMode);
     const normalizeCallAudio = useRune(() => settingsState.normalizeCallAudio);
     const pushToTalk = useRune(() => settingsState.pushToTalk);
@@ -924,6 +928,36 @@ export default function VoiceAudioSettings() {
                             void applyConstraints();
                         }}
                         label={t("voiceAudioSettings.echoCancellation")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("voiceAudioSettings.meshRelayOnly")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t("voiceAudioSettings.meshRelayOnlyHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={meshRelayOnly}
+                        onChange={setMeshRelayOnly}
+                        label={t("voiceAudioSettings.meshRelayOnly")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("voiceAudioSettings.meshPublicStun")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t("voiceAudioSettings.meshPublicStunHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={meshPublicStun}
+                        onChange={setMeshPublicStun}
+                        label={t("voiceAudioSettings.meshPublicStun")}
                     />
                 </View>
                 <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">

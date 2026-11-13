@@ -39,6 +39,7 @@ import {
 import Svg, { Circle, G, Line, Path } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 import {
+    DomMount,
     Html,
     Image,
     Portal,
@@ -68,6 +69,7 @@ import Avatar from "$lib/components/ui/Avatar.svelte";
 import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
 import PollBody from "$lib/components/messages/PollBody.svelte";
 import FileOfferCard from "$lib/components/messages/FileOfferCard.svelte";
+import GameInviteCard from "$lib/components/messages/GameInviteCard.svelte";
 import MessageVideo from "$lib/components/messages/MessageVideo.svelte";
 import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
@@ -164,6 +166,7 @@ import { describeJoinTarget, needsJoinConsent } from "$lib/utils/joinConsent";
 import { requestJoinConsent } from "$lib/stores/joinConsent.svelte";
 import { isPollStartEventType } from "$lib/utils/pollContent";
 import { isFileOfferEventType } from "$lib/utils/fileTransfer";
+import { gameInviteOf } from "$lib/utils/gameInvite";
 import { isCallEventType, type CallSummary } from "$lib/utils/callSummary";
 import { mayRedactEvent } from "$lib/utils/redaction";
 import { isVerificationRequestMessage } from "$lib/utils/verificationMessage";
@@ -202,6 +205,8 @@ import {
     type PluginMessageActionView,
 } from "$lib/utils/pluginMessageActions";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { findRenderer } from "$lib/plugins/pluginRenderers";
+import { pluginMount } from "$lib/plugins/pluginMount";
 
 import { messagesState } from "$lib/stores/messages.svelte";
 import {
@@ -211,7 +216,11 @@ import {
 } from "$lib/stores/rooms.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { securityState } from "$lib/stores/security.svelte";
-import { messageTimestamp, timeOnly } from "$lib/utils/timeFormat";
+import {
+    fullTimestamp,
+    messageTimestamp,
+    timeOnly,
+} from "$lib/utils/timeFormat";
 import { renderHtml } from "$lib/utils/twemoji";
 import { sanitizeMatrixHtml } from "$lib/utils/sanitizeHtml";
 import { renderMessageTimestamps } from "$lib/utils/timestampMarkup";
@@ -233,7 +242,7 @@ import {
 } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
 import { nameColourFor } from "$lib/stores/profileFields.svelte";
-import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { isDoubleTap, type TapPoint } from "$lib/utils/doubleTap";
 import {
@@ -607,6 +616,9 @@ function MessageItem({
         interfaceState.selectedMessageId = null;
     }
 
+    // A long-press always opens the full actions sheet (see the longPress
+    // action on the row), so the tap/hold setting only decides whether a tap
+    // brings up the quick action bar.
     function handleRowGesture(kind: "tap" | "hold") {
         if (!interfaceState.isTouchscreen) return;
         if (!shouldOpenMessageMenu(menuMode, kind)) return;
@@ -727,12 +739,15 @@ function MessageItem({
         handleRowGesture("tap");
     }
 
-    // Zami: `use:longPress` (500 ms, 50 ms vibrate), offered only in hold mode,
-    // as its `shouldStart` gate. Pressable's own hold timer cancels on a move.
+    // Zami: `use:longPress` (500 ms, 50 ms vibrate), offered on a
+    // touchscreen while not editing, as its `shouldStart` gate. Pressable's own
+    // hold timer cancels on a move. An image embed is its own Pressable, which
+    // takes the same hold (onLongPress below), as upstream's gate lets a hold
+    // on an <img> through.
     function onRowLongPress() {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         previousTap.current = null;
-        handleRowGesture("hold");
+        openActionsSheet();
     }
 
     const [showReportDialog, setShowReportDialog] = useState(false);
@@ -864,6 +879,10 @@ function MessageItem({
     const [emojiPickerBelow, setEmojiPickerBelow] = useState(false);
     const reactionBtnEl = useRef<HostInstance>(null);
     const [isEditing, setIsEditing] = useState(false);
+    // Zami: the row's (and an image embed's) hold, `use:longPress`'s
+    // `shouldStart` gate.
+    const rowLongPress =
+        isTouchscreen && !isEditing ? onRowLongPress : undefined;
     const editFromKeyboard = useRef(false);
     const [editText, setEditText] = useState("");
     const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -1239,10 +1258,47 @@ function MessageItem({
         setShowViewSourceDialog(true);
     }
 
+    async function copyMessageText() {
+        try {
+            // Zami: expo-clipboard for navigator.clipboard.
+            await Clipboard.setStringAsync(copyableText);
+            showToast(t("messageActionsMenu.textCopied"), { tone: "accent" });
+        } catch {
+            showErrorToast(t("messageActionsMenu.couldnTCopyText"));
+        }
+    }
+
+    // Report/redact/delete live in the hover action bar on desktop, which is
+    // only mounted while the row is hovered, focused or pinned. A native menu
+    // pick can land after the pointer has left, so mount it before driving it.
+    // Zami: React applies both state updates in the same render.
+    function mountBarThen(run: () => void) {
+        setRowHovered(true);
+        run();
+    }
+
     function handleActionChoose(key: MessageActionKey) {
         // The sheet has already released the modal slot (it closes before
         // choosing), so report/redact are free to claim it via show().
         switch (key) {
+            case "react":
+                // Zami: the row's top in the window, measured after the
+                // picker opens.
+                setEmojiPickerBelow(false);
+                rootEl.current?.measureInWindow((_x, top) =>
+                    setEmojiPickerBelow((top ?? 400) < 400),
+                );
+                openReactionPicker();
+                break;
+            case "reply":
+                onReply(event);
+                break;
+            case "forward":
+                openForwardDialog();
+                break;
+            case "copy-text":
+                void copyMessageText();
+                break;
             case "view-source":
                 openViewSourceDialog();
                 break;
@@ -1258,6 +1314,8 @@ function MessageItem({
             case "copy-link":
                 void copyMessageLink();
                 break;
+            // Zami: only the touch sheet chooses here (the desktop right-click
+            // menu isn't ported), so report/redact drive the touch instances.
             case "report":
                 showTouchDialog("report");
                 break;
@@ -1265,6 +1323,12 @@ function MessageItem({
                 showTouchDialog("redact");
                 break;
             case "delete":
+                // The touch sheet has already confirmed; desktop confirms in
+                // the action bar, like its own delete button.
+                if (!interfaceState.isTouchscreen) {
+                    mountBarThen(() => setConfirmingDelete(true));
+                    break;
+                }
                 deleteMessage(room.roomId, eventId).catch((err) => {
                     console.error("[MessageItem] delete failed", err);
                     showErrorToast(t("messageItem.couldnTDeleteTheMessage"));
@@ -1272,6 +1336,11 @@ function MessageItem({
                 break;
         }
     }
+
+    // Desktop right-click: hand the native menu this row's actions (plugin
+    // actions before the destructive rows) and run whichever one is picked.
+    // Zami: not ported: onRowContextMenu (publishMessageMenu), the Electron
+    // context menu. A touchscreen's long-press opens the actions sheet.
 
     function handlePluginAction(key: string) {
         const view = pluginActionViews.find((v) => v.key === key);
@@ -1289,9 +1358,21 @@ function MessageItem({
 
     const isPoll = isPollStartEventType(eventType);
     const isFileOffer = isFileOfferEventType(eventType);
-    // Zami: not ported: plugin message renderers (`pluginRenderer`, from
-    // findRenderer over pluginRegistry.messageRenderers). A renderer draws
-    // into a DOM element it's handed, and React Native has none to give it.
+    // A text message that carries a game invite under Zam's key. Read from the
+    // original content, and never from an edit: an edit cannot add or change it.
+    const gameInvite =
+        eventType === "m.room.message" &&
+        event.getRelation()?.rel_type !== "m.replace"
+            ? gameInviteOf(event.getOriginalContent())
+            : null;
+    // A plugin's message renderer for this event (first registered wins).
+    // Zami: read in `rowState` (readPluginHooks).
+    const pluginRenderer = rowState.pluginRenderer;
+    // Remount a plugin's view only when the event's content really changes
+    // (an edit), not on every reaction or receipt that re-runs `content`.
+    const pluginRenderKey = pluginRenderer
+        ? `${eventId}:${JSON.stringify(content ?? {})}`
+        : "";
     const isCallEvent = isCallEventType(eventType);
     // In-room verification requests ride in as m.room.message; their plain-text
     // body claims this client can't do in-chat verification (it can), so they
@@ -2168,12 +2249,30 @@ function MessageItem({
                 ? "open"
                 : "reply"
             : null;
-    // The overflow rows for THIS message, gated exactly like the desktop
-    // buttons. Drives the mobile ⋯ sheet only; desktop keeps every button
-    // inline.
+    // Plain text a "Copy message text" action and the sheet's preview use:
+    // the message's text (or a media caption), never a bare file name.
+    const copyableText = (() => {
+        if (eventType !== "m.room.message" || isFailed) return "";
+        const textual =
+            msgtype === "m.text" ||
+            msgtype === "m.notice" ||
+            msgtype === "m.emote" ||
+            hasCaption();
+        return textual ? body().trim() : "";
+    })();
+    // Every action this message offers, with full names. Drives the mobile ⋯
+    // / long-press sheet and the desktop right-click menu; the hover bar keeps
+    // its icon buttons for the everyday ones.
     const overflowRows = useMemo(
         () =>
             messageActionsMenu({
+                canReact: eventId.startsWith("$") && !isFailed,
+                canReply: true,
+                canForward:
+                    (eventType === "m.room.message" ||
+                        eventType === "m.sticker") &&
+                    !isFailed,
+                canCopyText: copyableText.length > 0,
                 canEdit: canEditMessage,
                 thread: threadAction,
                 canPin,
@@ -2185,6 +2284,8 @@ function MessageItem({
                 canDelete: isOwnMessage,
             }),
         [
+            eventType,
+            copyableText,
             canEditMessage,
             threadAction,
             canPin,
@@ -2721,7 +2822,33 @@ function MessageItem({
         }
         if (isPoll) return <PollBody event={event} room={room} />;
         if (isFileOffer) return <FileOfferCard event={event} />;
-        // Zami: not ported: the plugin renderer branch (see `isFileOffer`).
+        if (gameInvite) return <GameInviteCard invite={gameInvite} />;
+        if (pluginRenderer && !decryptionPending && !isUtd) {
+            const r = pluginRenderer;
+            const ctx = {
+                roomId: room.roomId,
+                eventId,
+                sender: senderId,
+                type: eventType,
+                content: { ...(content ?? {}) },
+                timestamp,
+                isOwn: isOwnMessage,
+            };
+            // Zami: the plugin builds DOM into the element (pluginMount), which
+            // DomMount shows, as LinkPreview does for a plugin embed; Html's
+            // `.message-body` text classes are the view's.
+            return (
+                <DomMount
+                    key={pluginRenderKey}
+                    textClassName={bodyTextClass}
+                    resolveMxc={mxcToHttp}
+                    document={document}
+                    mount={(el) =>
+                        pluginMount(el, (e) => r.render(e, ctx)).destroy
+                    }
+                />
+            );
+        }
         if (decryptionPending) {
             // Encrypted, not attempted/failed yet. Neutral copy: the
             // missing-keys line would be a claim we cannot make until the
@@ -2826,6 +2953,8 @@ function MessageItem({
                                         mediaFilename || undefined
                                     }
                                     onPress={openImageUpload}
+                                    onLongPress={rowLongPress}
+                                    delayLongPress={500}
                                     style={
                                         imageBox
                                             ? boxStyle(imageBox)
@@ -2933,6 +3062,8 @@ function MessageItem({
                                 accessibilityRole="imagebutton"
                                 accessibilityLabel={mediaFilename || undefined}
                                 onPress={openImageUpload}
+                                onLongPress={rowLongPress}
+                                delayLongPress={500}
                                 className="w-full h-full"
                             >
                                 <Image
@@ -3010,11 +3141,14 @@ function MessageItem({
                                                 encryptedFavouriteSource,
                                             ),
                                             source: encryptedFavouriteSource,
+                                            mxc: encryptedMxc,
                                         }
                                       : full
                                         ? {
                                               url: full,
                                               previewUrl: thumb ?? full,
+                                              mxc: imageMediaMxc,
+                                              name: mediaFilename || undefined,
                                           }
                                         : undefined
                             }
@@ -3209,6 +3343,39 @@ function MessageItem({
         );
     }
 
+    // The long-press sheet's preview: the same body markup the chat log
+    // renders (formatting, emoji, emote prefix, edited mark), so the sheet shows
+    // the message as it looks in the timeline.
+    // Zami: `{#snippet sheetPreviewBody()}`; the emote's name goes into Html's
+    // markup as in messageBody. Not ported: `use:spoilers`, as in the body,
+    // and selecting part of it (Html's text isn't selectable; the sheet's
+    // "Copy message text" copies all of it).
+    function sheetPreviewBody(): ReactNode {
+        const html =
+            msgtype === "m.emote"
+                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                : bodyHtml;
+        return (
+            <View className="flex-row flex-wrap items-end">
+                <Html
+                    html={html}
+                    className={`text-sm text-discord-textPrimary leading-relaxed${
+                        emojiOnly ? " emoji-only" : ""
+                    }${msgtype === "m.emote" ? " italic" : ""}${
+                        msgtype === "m.notice" ? " opacity-70" : ""
+                    }`}
+                    resolveMxc={mxcToHttp}
+                    onLinkPress={matrixLinks}
+                />
+                {isEdited ? (
+                    <Text className="text-xs text-discord-textMuted ms-1 leading-relaxed">
+                        {t("messageItem.edited")}
+                    </Text>
+                ) : null}
+            </View>
+        );
+    }
+
     // Zami: the receipt cluster's padding gutter on touch and the right-aligned
     // layout, as upstream's class toggles.
     const reactionsClass = `${
@@ -3250,7 +3417,7 @@ function MessageItem({
                 setRowHovered(false);
             }}
             onPress={onRowPress}
-            onLongPress={menuMode === "hold" ? onRowLongPress : undefined}
+            onLongPress={rowLongPress}
             delayLongPress={500}
         >
             <SwipeShift store={swipe}>
@@ -3807,6 +3974,17 @@ function MessageItem({
                             )}
                         </ActionButton>
                     ) : null}
+                    {!isTouchscreen ? (
+                        <ActionButton
+                            label={t("messageItem.viewSource")}
+                            onPress={openViewSourceDialog}
+                        >
+                            <Code
+                                size={16}
+                                className="text-discord-textMuted"
+                            />
+                        </ActionButton>
+                    ) : null}
                     {!isTouchscreen && !isOwnMessage && !isFailed ? (
                         <MessageReportAction
                             roomId={room.roomId}
@@ -3919,8 +4097,8 @@ function MessageItem({
                     </View>
                 </Portal>
             ) : null}
-            {/* Zami: `data-event-id` is how MessageArea finds a row in the DOM;
-                its list finds rows by index instead. */}
+            {/* Zami: `data-event-id` and `data-sender` are how MessageArea finds
+                a row in the DOM; its list finds rows by index instead. */}
             {swipeOffered ? (
                 <SwipePan handlers={swipeHandlers}>{row}</SwipePan>
             ) : (
@@ -3966,6 +4144,16 @@ function MessageItem({
             {showActionsSheet ? (
                 <MessageActionsSheet
                     rows={overflowRows}
+                    preview={copyableText}
+                    previewBody={sheetPreviewBody()}
+                    sender={{
+                        id: senderId,
+                        name: displayName,
+                        avatarSrc,
+                        colour: nameColour,
+                        time: messageTimestamp(timestamp),
+                        fullTime: fullTimestamp(timestamp),
+                    }}
                     pluginRows={pluginActionViews}
                     onChoose={handleActionChoose}
                     onChoosePlugin={handlePluginAction}
@@ -3974,6 +4162,8 @@ function MessageItem({
             ) : null}
 
             {showForwardDialog ? <ForwardMessageDialog event={event} /> : null}
+
+            {showViewSourceDialog ? <ViewSourceDialog event={event} /> : null}
         </>
     );
 }
@@ -4131,9 +4321,18 @@ function readPluginHooks(
             : next;
     }
     lastDecorations.current = decorations;
+    const pluginRenderer =
+        pluginRegistry.messageRenderers.length > 0
+            ? findRenderer(
+                  pluginRegistry.messageRenderers.map((e) => e.value),
+                  event.getType(),
+                  msgtype,
+              )
+            : null;
     return {
         swipeOffered: touch && pluginRegistry.swipeHandlers.length > 0,
         pluginActionViews,
+        pluginRenderer,
         pluginAnnotationKey,
         decorations,
     };

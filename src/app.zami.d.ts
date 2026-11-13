@@ -78,6 +78,23 @@ declare global {
             running: boolean;
             error: string | null;
         };
+        /** The game Steam reports as running (electron/steamPresence.cjs), and
+         *  Steam's debug setting (electron/steamDebug.cjs). */
+        steam: {
+            running: boolean;
+            /** Steam's local rich presence is being read. */
+            connected: boolean;
+            /** Steam's local rich presence port answers. */
+            portOpen: boolean;
+            error: string | null;
+            /** Steam's debug setting can be changed on this computer. */
+            supported: boolean;
+            /** The debug setting is on. */
+            enabled: boolean;
+            steamRunning: boolean;
+            /** In a Flatpak: changing Steam needs org.freedesktop.Flatpak. */
+            needsPermission: boolean;
+        };
         /** The stand-in Discord process (electron/fakeDiscord.cjs). */
         fake: {
             supported: boolean;
@@ -103,6 +120,19 @@ declare global {
         presenceId: string;
         presence: unknown;
     }
+
+    /** A Steam game invite the user accepted: the game, its connect string and
+     *  the friend's Steam id and lobby (electron/richPresence.cjs joinGame).
+     *  The connect string is needed unless a lobby and a Steam id are given. */
+    type DesktopGameJoinRequest = {
+        kind: "steam";
+        appId: string;
+        connect?: string;
+        /** The friend's SteamID64 (digits); without it the run link is used. */
+        steamId?: string;
+        /** The lobby the friend is in (digits), when Steam says it is valid. */
+        lobbyId?: string;
+    };
 
     /** App version, injected from package.json at build time (see vite.config.ts). */
     const __APP_VERSION__: string;
@@ -161,6 +191,13 @@ declare global {
                         /** Whether this run has the flag on. */
                         activeAtLaunch: boolean;
                     } | null;
+                    /** Go without the GPU while a game holds its memory. */
+                    gameAuto: {
+                        /** The saved choice. */
+                        enabled: boolean;
+                        /** This run started without the GPU for a game. */
+                        pausedAtLaunch: boolean;
+                    };
                     /** Skia Graphite renderer (SkiaGraphite feature). */
                     skiaGraphite: {
                         /** The saved choice (applies on the next launch). */
@@ -202,6 +239,7 @@ declare global {
                 setVideoEncode: (enabled: boolean) => Promise<void>;
                 /** Windows: the PlatformH264CbpEncoding flag, on the next launch. */
                 setH264ProfileFix: (enabled: boolean) => Promise<void>;
+                setGameAuto: (enabled: boolean) => Promise<void>;
                 setSkiaGraphite: (enabled: boolean) => Promise<void>;
                 setNvidiaEncode: (enabled: boolean) => Promise<void>;
                 setNvidiaVideo: (
@@ -294,6 +332,9 @@ declare global {
                     /** Report what media players are playing (the system's
                      *  now-playing info), as Discord "listening" entries. */
                     media: boolean;
+                    /** Report the game Steam says is running, as a "Playing"
+                     *  entry (electron/steamPresence.cjs). */
+                    steam: boolean;
                     /** Run a stand-in process named Discord, for apps that
                      *  look for one. */
                     fake: boolean;
@@ -317,6 +358,23 @@ declare global {
                 /** Close Discord, let Zam take the first slot, start Discord
                  *  again. Only after the user confirmed. */
                 restartDiscord: () => Promise<{ ok: boolean; error?: string }>;
+                /** Turn Steam's debug setting on or off (it asks the user
+                 *  first, so `cancelled` is set when they say no). */
+                setSteamDebugging: (enabled: boolean) => Promise<{
+                    ok: boolean;
+                    cancelled?: boolean;
+                    error?: string;
+                }>;
+                /** Restart Steam. Only after the user confirmed. */
+                restartSteam: () => Promise<{ ok: boolean; error?: string }>;
+                /** Accept a Steam game invite: open Steam's link to the game. */
+                joinGame: (req: DesktopGameJoinRequest) => Promise<
+                    | { ok: true }
+                    | {
+                          ok: false;
+                          error: "unsupported" | "invalid";
+                      }
+                >;
                 onEvent: (
                     cb: (event: DesktopRichPresenceEvent) => void,
                 ) => () => void;
@@ -337,6 +395,13 @@ declare global {
             ) => Promise<string>;
             contextMenu?: {
                 onSaveImage: (cb: (url: string) => void) => () => void;
+                /** Actions for the message under the next right-click; null clears. */
+                setMessageActions: (
+                    items:
+                        | { key: string; label: string; danger?: boolean }[]
+                        | null,
+                ) => void;
+                onMessageAction: (cb: (key: string) => void) => () => void;
             };
             /** Voice keybinds while the window isn't focused
              *  (electron/globalHotkeys.cjs, $lib/keybinds/globalHotkeys). */
