@@ -196,6 +196,7 @@ same order, same names, same branches.
 
 ```sh
 git fetch upstream && git merge upstream/master   # never conflicts: Zami never edits upstream files
+vpx _zami remap                                    # only after upstream rewrote its history (below)
 vpx _zami sync --since <previous upstream commit> # copies and merges; lists the rest
 vpx _zami diff <zami file>                         # what upstream changed since the file was last synced
 vpx _zami done <zami file>...                      # after migrating by hand
@@ -213,6 +214,19 @@ push code, and a file with no Zami version can still change something Zami does 
 way. So Claude runs whenever upstream moves, even when `sync` flagged nothing. A run that
 stops partway pushes what it did and the next one continues; to review a range that's
 already merged, run the workflow with `since` set to the commit to start from.
+
+The workflow keeps one sync branch, `zami/upstream-sync`, and merges trunk into it before
+merging upstream. When trunk changed the same Zami code the branch migrated, Claude resolves
+those conflicts first (`ports/@prompts/resolve-trunk.md`), keeping both sides.
+
+Upstream has rewritten history it had already published (in November 2026, to scrub a name
+from a test). The upstream merge then conflicts in upstream's own files, where upstream's
+version wins, and the commits `zami-ports.lock.json` records are upstream's old copies.
+`vpx _zami remap` points them at the rewritten ones: the commit with the same author date and
+subject, or else the newest one with the same file content. The workflow does both. Trunk's
+`_zami check` fails from the moment upstream rewrites until a sync reaches trunk; to fix that
+sooner, merge upstream's rewritten copy of the last upstream commit trunk has, take upstream's
+version of any file that conflicts, and run `vpx _zami remap`.
 
 The components that were never ported are a separate backlog. `vpx _zami backlog` lists
 the ones ready to port (their child components are done), and
