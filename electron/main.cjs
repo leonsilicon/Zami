@@ -27,6 +27,7 @@ const {
     dialog,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { detectInstallSource } = require("./installSource.cjs");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -40,6 +41,7 @@ const { registerPluginFrames } = require("./pluginFrames.cjs");
 const { registerGlobalHotkeys } = require("./globalHotkeys.cjs");
 const { createUpdateSchedule } = require("./updateSchedule.cjs");
 const { createCallPriority } = require("./callPriority.cjs");
+const { createGameGpuPause } = require("./gameGpuPause.cjs");
 const { createProxyManager } = require("./proxy.cjs");
 const { recordMemoryReport } = require("./memoryReport.cjs");
 const { createAutostart } = require("./autostart.cjs");
@@ -320,6 +322,14 @@ const IN_FLATPAK = !!process.env.FLATPAK_ID;
 // release page instead of installing one.
 const IS_PORTABLE = !!process.env.PORTABLE_EXECUTABLE_FILE;
 
+// Installed by a package manager (winget, Scoop, …; installSource.cjs): it owns
+// upgrades, so the installer path stays off like it does for a portable build.
+const INSTALL_SOURCE = detectInstallSource({
+    exeDir: path.dirname(app.getPath("exe")),
+});
+const IS_MANAGED = INSTALL_SOURCE.managed;
+const NO_SHELL_INSTALL = IS_PORTABLE || IS_MANAGED;
+
 // Logs for the installer path (userData/updater.log) and the failed-install
 // record that keeps a broken installer from looping (updateGuard.cjs).
 const updaterLog = createFileLog(
@@ -521,16 +531,23 @@ async function checkBundleThenInstaller(manual) {
         flatpakShell.offer(shellVersion, { manual, auto: autoUpdatePref });
         return;
     }
-    if (IN_FLATPAK || IS_PORTABLE) {
+    if (IN_FLATPAK || NO_SHELL_INSTALL) {
         // A Flatpak without the portal's update monitor needs `flatpak update`,
-        // and a portable build cannot install a shell (see IS_PORTABLE): either
-        // way a newer release is only pointed at.
+        // a portable build cannot install a shell (see IS_PORTABLE) and a
+        // package manager upgrades its own: either way a newer release is only
+        // pointed at.
         sendUpdateStatus(
             shellVersion
                 ? {
                       phase: "unsupported",
                       version: shellVersion,
                       ...(IN_FLATPAK ? { manual: "flatpak" } : {}),
+                      ...(IS_MANAGED
+                          ? {
+                                manual: "package-manager",
+                                manager: INSTALL_SOURCE.manager,
+                            }
+                          : {}),
                   }
                 : {
                       phase: "up-to-date",
@@ -651,7 +668,7 @@ async function restartIntoFlatpakUpdate() {
 }
 
 function runInstallerCheck(manual) {
-    if (IN_FLATPAK || IS_PORTABLE) return;
+    if (IN_FLATPAK || NO_SHELL_INSTALL) return;
     autoUpdater.autoDownload = manual ? false : autoUpdatePref;
     try {
         const p = autoUpdater.checkForUpdates();
@@ -764,7 +781,7 @@ function setupAutoUpdater() {
     // Flatpak builds take their shell through the Flatpak portal, and portable
     // ones cannot install one (IS_PORTABLE); both still check for web bundles
     // below.
-    if (!IN_FLATPAK && !IS_PORTABLE) setupInstallerUpdater();
+    if (!IN_FLATPAK && !NO_SHELL_INSTALL) setupInstallerUpdater();
     if (IN_FLATPAK) setupFlatpakUpdater();
 
     // Background checks: ~10s after launch (so it never blocks or races
@@ -791,7 +808,7 @@ ipcMain.on("updates:download", () => {
         return;
     }
     if (IN_FLATPAK) void flatpakShell?.install();
-    if (IN_FLATPAK || IS_PORTABLE) return;
+    if (IN_FLATPAK || NO_SHELL_INSTALL) return;
     try {
         const p = autoUpdater.downloadUpdate();
         if (p && typeof p.catch === "function") {
@@ -1054,7 +1071,10 @@ const richPresence = createRichPresence({
     mediaDir: app.isPackaged
         ? path.join(process.resourcesPath, "mediaremote")
         : path.join(app.getAppPath(), "native", "mediaremote-adapter"),
+    // Steam game invites open their steam:// link (richPresence joinGame).
+    openExternal: (url) => shell.openExternal(url),
     send: (event) => {
+        gameGpuPause.onPresence(event);
         if (mainWindow && !mainWindow.isDestroyed())
             mainWindow.webContents.send("rich-presence:event", event);
     },
@@ -1067,6 +1087,7 @@ ipcMain.handle("rich-presence:configure", (_e, want) =>
         scan: want?.scan === true,
         fake: want?.fake === true,
         media: want?.media === true,
+        steam: want?.steam === true,
         autoRestartDiscord: want?.autoRestartDiscord === true,
         userId: typeof want?.userId === "string" ? want.userId : "",
         games: want?.games,
@@ -1140,9 +1161,18 @@ const presenceImages = createPresenceImages({
 ipcMain.handle("rich-presence:image", (_e, appId, ref) =>
     presenceImages.fetchImage(appId, ref),
 );
-ipcMain.handle("rich-presence:status", () => richPresence.getStatus());
+ipcMain.handle("rich-presence:status", () => richPresence.refreshStatus());
 ipcMain.handle("rich-presence:restart-discord", () =>
     richPresence.restartDiscord(),
+);
+ipcMain.handle("rich-presence:steam-debugging", (_e, enabled) =>
+    richPresence.setSteamDebugging(enabled === true),
+);
+ipcMain.handle("rich-presence:restart-steam", () =>
+    richPresence.restartSteam(),
+);
+ipcMain.handle("rich-presence:join-game", (_e, req) =>
+    richPresence.joinGame(req),
 );
 app.on("will-quit", () => richPresence.stop());
 
@@ -1153,6 +1183,7 @@ const callPriority = createCallPriority(app);
 let callActive = false;
 ipcMain.on("call:set-active", (e, active) => {
     callActive = !!active;
+    gameGpuPause.onCallChange();
     callPriority.set(callActive, e.sender);
     // Hidden to the tray, a call with nobody talking isn't "audible" to
     // Chromium, so its timers would drop to once a second, and with them the
@@ -1160,6 +1191,40 @@ ipcMain.on("call:set-active", (e, active) => {
     e.sender.setBackgroundThrottling(!callActive);
 });
 app.on("will-quit", () => callPriority.restore());
+
+// Message actions the renderer offers for the next right-click (see the
+// context-menu handler in createWindow). Set by a sendSync from the page, so it
+// is stored before Chromium's context-menu event for the same click.
+let pendingMessageActions = null;
+ipcMain.on("context-menu:message-actions", (e, items) => {
+    e.returnValue = null;
+    if (!mainWindow || e.sender !== mainWindow.webContents) return;
+    const valid = Array.isArray(items)
+        ? items
+              .slice(0, 20)
+              .filter(
+                  (it) =>
+                      it &&
+                      typeof it === "object" &&
+                      typeof it.key === "string" &&
+                      it.key.length > 0 &&
+                      it.key.length <= 40 &&
+                      typeof it.label === "string" &&
+                      it.label.length > 0 &&
+                      it.label.length <= 120 &&
+                      (it.danger === undefined ||
+                          typeof it.danger === "boolean"),
+              )
+              .map((it) => ({
+                  key: it.key,
+                  label: it.label,
+                  danger: it.danger === true,
+              }))
+        : [];
+    pendingMessageActions = valid.length
+        ? { items: valid, at: Date.now() }
+        : null;
+});
 
 // --- GPU (Settings > Debug) ------------------------------------------------
 //
@@ -1183,7 +1248,16 @@ const hardwareAccelerationAtLaunch =
 // Set by the crash-loop guard below: this one run goes without the GPU.
 const gpuCrashLoopAtLaunch =
     hardwareAccelerationAtLaunch && !!readGpuPrefs().gpuCrashLoopAt;
-if (!hardwareAccelerationAtLaunch || gpuCrashLoopAtLaunch) {
+// Set by gameGpuPause.cjs: a game is running and held the GPU's memory.
+const gamePausedAtLaunch =
+    hardwareAccelerationAtLaunch &&
+    readGpuPrefs().gameGpuAuto === true &&
+    !!readGpuPrefs().gamePausedAt;
+if (
+    !hardwareAccelerationAtLaunch ||
+    gpuCrashLoopAtLaunch ||
+    gamePausedAtLaunch
+) {
     app.disableHardwareAcceleration();
 } else {
     // Chromium gives up on the GPU after its third crash in a run, falling
@@ -1265,6 +1339,10 @@ ipcMain.handle("gpu:info", async () => {
                       activeAtLaunch: hardwareVideoEncode,
                   }
                 : null,
+        gameAuto: {
+            enabled: prefs.gameGpuAuto === true,
+            pausedAtLaunch: gamePausedAtLaunch,
+        },
         skiaGraphite: {
             enabled: prefs.skiaGraphite === true,
             activeAtLaunch: skiaGraphiteAtLaunch,
@@ -1286,6 +1364,23 @@ function writeGpuPrefs(patch) {
     }
     fs.writeFileSync(gpuPrefsPath(), JSON.stringify(prefs));
 }
+
+const gameGpuPause = createGameGpuPause({
+    enabled: () => readGpuPrefs().gameGpuAuto === true,
+    pausedAtLaunch: () => gamePausedAtLaunch,
+    hardwareAccelerationOn: () => hardwareAccelerationAtLaunch,
+    callActive: () => callActive,
+    writePrefs: writeGpuPrefs,
+    relaunch: () => relaunchApp(),
+    log: (msg) => mainLog.info("gameGpuPause", msg),
+});
+gameGpuPause.start();
+app.on("will-quit", () => gameGpuPause.stop());
+
+ipcMain.handle("gpu:set-game-auto", (_e, enabled) => {
+    // Turning it off while paused ends the pause on the next launch.
+    writeGpuPrefs({ gameGpuAuto: enabled ? true : undefined });
+});
 
 // Settings > Debug: Chromium's memory by process and allocator, plus each
 // process's resident memory as Task Manager counts it. One trace at a time:
@@ -1604,6 +1699,15 @@ app.on("child-process-gone", (_e, details) => {
     if (!videoPlaying && Date.now() - videoStoppedAt > 5000) return;
     if (++gpuCrashes < 2 || readGpuPrefs().nvidiaVideo === "vulkan") return;
     writeGpuPrefs({ nvidiaVulkanFailed: Date.now() });
+});
+
+// A game holding the video memory: restart without the GPU while it runs
+// (opt-in, Settings > Debug). The game state is fed from rich presence.
+app.on("child-process-gone", (_e, details) => {
+    if (details.type !== "GPU") return;
+    if (details.reason === "clean-exit" || details.reason === "killed") return;
+    if (isRepaintExit()) return;
+    gameGpuPause.onGpuExit();
 });
 
 // Any GPU-process exit, crash or not, leaves the page's WebRTC video stuck in
@@ -2132,6 +2236,30 @@ async function createWindow() {
         };
         const { editFlags } = params;
 
+        // Message actions the page offered for this click, if it offered any
+        // just now. Always cleared so they never leak into a later right-click.
+        const msgActions = pendingMessageActions;
+        pendingMessageActions = null;
+        const useMessageActions =
+            !!msgActions &&
+            Date.now() - msgActions.at < 1500 &&
+            !params.isEditable;
+        if (useMessageActions) {
+            const group = [];
+            let dangerSeparated = false;
+            for (const it of msgActions.items) {
+                if (it.danger && !dangerSeparated && group.length) {
+                    group.push({ type: "separator" });
+                    dangerSeparated = true;
+                }
+                group.push({
+                    label: it.label,
+                    click: () => wc.send("context-menu:message-action", it.key),
+                });
+            }
+            section(group);
+        }
+
         if (params.misspelledWord) {
             section([
                 ...params.dictionarySuggestions.slice(0, 5).map((word) => ({
@@ -2203,7 +2331,11 @@ async function createWindow() {
         } else if (params.selectionText.trim()) {
             section([{ role: "copy" }, { role: "selectAll" }]);
         } else {
-            if (!params.linkURL && params.mediaType !== "image") {
+            if (
+                !params.linkURL &&
+                params.mediaType !== "image" &&
+                !useMessageActions
+            ) {
                 section([{ label: "Reload", click: () => wc.reload() }]);
             }
             section([{ role: "selectAll" }]);

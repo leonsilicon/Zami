@@ -441,6 +441,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "Aceleración por hardware",
     "gpuDebug.hardwareAccelerationHint":
         "Desactívala si los vídeos se ven en negro o la ventana se dibuja mal. Se aplica tras reiniciar.",
+    "gpuDebug.gameAuto": "Pausar la GPU mientras hay un juego",
+    "gpuDebug.gameAutoHint":
+        "Si la GPU se bloquea mientras se ejecuta un juego (el juego ocupa su memoria), Zam se reinicia sin aceleración por hardware y vuelve a reiniciarse con ella cuando el juego se cierra. Requiere la detección de juegos en Ajustes > General. Espera a que termine una llamada.",
+    "gpuDebug.gameAutoActive":
+        "Funcionando sin GPU hasta que se cierre el juego.",
     "gpuDebug.restartToApply": "Reinicia Zam para aplicar este cambio.",
     "gpuDebug.restart": "Reiniciar",
     "gpuDebug.videoDecoding": "Decodificación de vídeo",
@@ -584,6 +589,22 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "Pistas de orden de mensajes",
     "debugSettings.orderHintsHint":
         "Zam añade a tus mensajes una pista de lo que había al final de tu chat y coloca los mensajes de otros usuarios de Zam debajo del que nombran. Si está desactivado, los mensajes se muestran en el orden del servidor, como en Element.",
+    "debugSettings.stickyCallMembership": "Membresía de llamada sticky",
+    "debugSettings.stickyCallMembershipHint":
+        "Unirse a las llamadas con un evento sticky m.rtc.member (MSC4354) en lugar de un evento de estado m.call.member. Los clientes que solo leen eventos de estado, incluido Zam anterior a 1.51, no te verán en la llamada. Se aplica desde tu próxima llamada.",
+    "debugSettings.indexSync": "Sincronización del índice de mensajes",
+    "debugSettings.indexSyncHint":
+        "Las entradas del índice de búsqueda se intercambian con tus otras sesiones verificadas. Ambas sesiones deben usar esta versión. Sesiones: elegibles / verificadas / todas. Fragmentos: enviados / recibidos.",
+    "debugSettings.indexSyncOff":
+        "La sincronización del índice no está activa: requiere activar la indexación de salas cifradas.",
+    "debugSettings.indexSyncNow": "Sincronizar ahora",
+    "debugSettings.indexSyncNever": "nunca",
+    "debugSettings.indexSyncSessions": "Sesiones",
+    "debugSettings.indexSyncAsked": "Consultado",
+    "debugSettings.indexSyncRoomsMissing": "Salas con huecos",
+    "debugSettings.indexSyncRequestsReceived": "Solicitudes recibidas",
+    "debugSettings.indexSyncChunks": "Fragmentos",
+    "debugSettings.indexSyncMerged": "Entradas combinadas",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "Muestra cada evento de la cronología de Matrix en el historial del chat.",
     "debugSettings.ignoreCodecSupport":
@@ -1526,6 +1547,16 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Las notificaciones están desactivadas para esta cuenta",
     "notificationSettings.accountNotificationsOffDetail":
         "Todas las notificaciones de esta cuenta están desactivadas en el servidor, probablemente desde otra aplicación, así que nada notifica en ningún dispositivo, digan lo que digan los ajustes de abajo.",
+    "notificationSettings.accountNotifications":
+        "Notificaciones de esta cuenta",
+    "notificationSettings.accountNotificationsDetail":
+        "Activa o desactiva las notificaciones de esta cuenta en todos tus dispositivos.",
+    "notificationSettings.thisDeviceNotifications":
+        "Notificaciones en este dispositivo",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "Desactiva ventanas emergentes, sonidos y push solo en este dispositivo. Tus otros dispositivos seguirán notificando.",
+    "notificationSettings.couldNotUpdateNotifications":
+        "No se pudo actualizar la configuración de notificaciones",
     "notificationSettings.turnOn": "Activar",
     "notificationSettings.couldNotTurnOnNotifications":
         "No se pudieron activar las notificaciones",
@@ -1687,6 +1718,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Permite que las demás personas de una sala vean cuándo estás escribiendo. Desactívalo para escribir sin que se avise a nadie.",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "Oculta tus confirmaciones de lectura a otros usuarios. Tus contadores de no leídos siguen funcionando; los demás simplemente no pueden ver hasta dónde has leído.",
+    "privacySafetySettings.streamerMode": "Modo streamer",
+    "privacySafetySettings.streamerModeHint":
+        "Difumina tu ID de cuenta, correos electrónicos y clave de recuperación, y oculta el texto de los mensajes en las notificaciones, para que nada privado aparezca en un directo. Solo se aplica a este dispositivo.",
     "privacySafetySettings.hideMessageTextInNotifications":
         "Ocultar el texto de los mensajes en las notificaciones",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1878,6 +1912,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "Terminar de reordenar",
     "roomList.reorderRooms": "Reordenar salas",
     "roomList.spaceSettings": "Ajustes del espacio",
+    "roomList.sortDmsBy": "Ordenar MD por",
+    "roomList.dmSortRecent": "Último mensaje",
+    "roomList.dmSortUnread": "No leídos primero",
+    "roomList.dmSortOnline": "En línea primero",
+    "roomList.dmSortName": "Nombre (A–Z)",
     "roomList.pendingInvites": "Invitaciones pendientes",
     "roomList.inVoice": "{name} - en voz",
     "roomList.orderValue": "Valor de orden",
@@ -3031,8 +3070,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "El remitente no está disponible. Necesita tener Zam abierto.",
     "fileOffer.failedRefused":
         "La sesión del remitente ha rechazado esta transferencia.",
-    "fileOffer.failedNoSfu":
-        "El servidor del remitente no tiene un servicio de llamadas que transporte el archivo.",
+    "fileOffer.failedNoRelay":
+        "Se exige un servidor de retransmisión para las conexiones entre pares, pero no hay ninguno (TURN), así que el archivo no se puede enviar sin mostrar una dirección IP.",
     "fileOffer.failedConnection": "Se ha perdido la conexión.",
     "fileOffer.failedStalled": "La transferencia ha dejado de avanzar.",
     "fileOffer.failedCorrupt":
@@ -3049,6 +3088,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Grabar un mensaje de voz",
     "composerActionsMenu.shareLocation": "Compartir ubicación",
     "composerActionsMenu.createThread": "Crear hilo",
+    "composerActionsMenu.inviteToGame": "Invitar a jugar",
+    "gameInvite.title": "Invitar a jugar",
+    "gameInvite.game": "Juego",
+    "gameInvite.note": "Nota (opcional)",
+    "gameInvite.notePlaceholder": "Escribe algo…",
+    "gameInvite.send": "Enviar invitación",
+    "gameInvite.noGames":
+        "Ahora mismo no hay ningún juego de Steam en marcha que se pueda invitar.",
+    "gameInvite.failedToSend": "No se pudo enviar la invitación.",
+    "gameInvite.cardTitle": "Invitación a jugar",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "{current} de {max} en la party",
+    "gameInvite.confirmSteam": "Iniciar {game} con los argumentos: {connect}",
+    "gameInvite.confirmLobby": "Unirse al lobby de {game}",
+    "gameInvite.joinGame": "Unirse al juego",
+    "gameInvite.joinSent": "Unirse enviado al juego.",
+    "gameInvite.openInDesktop":
+        "Ábrelo en la app de escritorio de Zam para unirte.",
+    "gameInvite.joinUnsupported":
+        "No se admite unirse a este juego en este equipo.",
+    "gameInvite.joinInvalid": "Esta invitación no es válida.",
+    "gameInvite.joinFailed": "No se pudo unir al juego.",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "No se pudo añadir la reacción",
@@ -3337,6 +3398,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "repoList.thatRepoIsAlreadyAdded": "Ese repositorio ya está añadido.",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain":
+        "No se pudieron cargar los GIF; inténtalo de nuevo.",
     "gifSearch.couldnTReachKlipyTryAgain":
         "No se pudo conectar con KLIPY; inténtalo de nuevo.",
 
@@ -3729,6 +3792,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Apareces en línea mientras la aplicación se sincroniza",
     "presence.shownAsIdleToOtherUsers":
         "Apareces como ausente para otros usuarios",
+    "presence.doNotDisturb": "No molestar",
+    "presence.doNotDisturbDescription":
+        "Silencia las notificaciones y las llamadas en todos tus dispositivos",
     "presence.invisible": "Invisible",
     "presence.appearOfflineToOtherUsers":
         "Aparecer desconectado para otros usuarios",
@@ -3962,6 +4028,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "Borrar la caché",
     "settingsSearch.showAllEvents": "Mostrar todos los eventos",
     "settingsSearch.orderHints": "Pistas de orden de mensajes",
+    "settingsSearch.stickyCallMembership": "Membresía de llamada sticky",
     "settingsSearch.pushDiagnostics": "Diagnóstico de notificaciones push",
     "settingsSearch.pushService": "Servicio push (UnifiedPush / Firebase)",
     "settingsSearch.language": "Idioma",
@@ -4071,6 +4138,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Abrir la página de la versión",
     "updateStatus.flatpakManualUpdate":
         "Actualización disponible{versionSuffix}. Instálala desde tu centro de software o con flatpak update",
+    "updateStatus.packageManagerUpdate":
+        "Actualización disponible{versionSuffix}. Actualízala con {manager}",
     "updateStatus.updateCheckFailed": "No se pudieron buscar actualizaciones",
     "updateStatus.checkForUpdatesToInstallThe":
         "Busca actualizaciones para instalar la última versión.",
@@ -4272,6 +4341,93 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.photosAndVideos": "Fotos y vídeos",
     "composerActionsMenu.files": "Archivos",
     "settingsSearch.richPresence": "Rich Presence",
+    "messageActionsMenu.copyText": "Copiar texto del mensaje",
+    "messageActionsMenu.textCopied": "Texto del mensaje copiado",
+    "messageActionsMenu.couldnTCopyText":
+        "No se pudo copiar el texto del mensaje",
+    "messageActionsMenu.selectHint":
+        "Mantén pulsado el texto para seleccionar una parte",
+    "roomSettings.readReceipts": "Confirmaciones de lectura",
+    "roomSettings.readReceiptsRoomHelp":
+        "Elige si otros miembros pueden ver qué mensajes has leído en esta sala.",
+    "roomSettings.readReceiptsSpaceHelp":
+        "Elige si otros miembros pueden ver qué mensajes has leído en este espacio y sus salas. La elección propia de una sala tiene prioridad.",
+    "roomSettings.readReceiptsDefaultShare":
+        "Según tus ajustes de privacidad, actualmente compartidas con otros",
+    "roomSettings.readReceiptsDefaultHide":
+        "Según tus ajustes de privacidad, actualmente ocultas a otros",
+    "roomSettings.readReceiptsShare": "Compartir mis confirmaciones de lectura",
+    "roomSettings.readReceiptsShareDesc":
+        "Otros pueden ver qué mensajes has leído.",
+    "roomSettings.readReceiptsHide": "Ocultar mis confirmaciones de lectura",
+    "roomSettings.readReceiptsHideDesc":
+        "Tu estado de no leídos sigue sincronizándose, pero otros no pueden ver lo que has leído.",
+    "privacySafetySettings.receiptsOverrideHint":
+        "Las salas y los espacios pueden anular esto en sus ajustes de notificaciones.",
+    "richPresence.steam": "Rich Presence de Steam",
+    "richPresence.steamHint":
+        "Muestra el juego de Steam que estás jugando junto con su estado de Rich Presence, como el mapa o el modo. Esto activa el puerto de depuración local de Steam, que solo escucha en este equipo. Steam debe reiniciarse una vez para que surta efecto.",
+    "richPresence.steamConnected": "Conectado a Steam.",
+    "richPresence.steamNeedsRestart":
+        "El puerto de depuración de Steam aún no está abierto. Reinicia Steam para abrirlo.",
+    "richPresence.steamNotRunning":
+        "Steam no se está ejecutando. Inícialo y Zam se conectará automáticamente.",
+    "richPresence.restartSteam": "Reiniciar Steam",
+    "richPresence.restartSteamTitle": "¿Reiniciar Steam?",
+    "richPresence.restartSteamBody":
+        "Steam se cerrará y volverá a abrirse. Los juegos iniciados desde Steam también pueden cerrarse con él.",
+    "richPresence.restartSteamFailed": "No se pudo reiniciar Steam: {error}",
+    "richPresence.steamEnableFailed":
+        "No se pudo activar el puerto de depuración de Steam: {error}",
+    "richPresence.steamDisableFailed":
+        "No se pudo desactivar el puerto de depuración de Steam: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows pidió permiso de administrador y no se concedió, así que no se cambió nada.",
+    "richPresence.steamFailed": "Error en Rich Presence de Steam: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining":
+        "Esta llamada te conecta directamente con otras personas",
+    "meshConsent.titleNewcomer":
+        "Alguien en esta llamada solo puede ser alcanzado directamente",
+    "meshConsent.noCallServer":
+        "Tu servidor doméstico no tiene servidor de llamadas, así que tu audio, vídeo y uso compartido de pantalla van directamente desde tu dispositivo a cada persona de la llamada.",
+    "meshConsent.someoneWithoutCallServer":
+        "Alguien en esta llamada está en un servidor doméstico sin servidor de llamadas. Para oírle y verle, tu dispositivo se conecta directamente al suyo.",
+    "meshConsent.ipVisible":
+        "Tu servidor doméstico no tiene servidor de retransmisión (TURN), así que todas las personas con las que te conectes directamente pueden ver tu dirección IP, que puede revelar aproximadamente dónde estás.",
+    "meshConsent.relayed":
+        "La conexión pasa por el servidor de retransmisión de tu servidor doméstico: los demás ven su dirección, no tu dirección IP. Si la retransmisión no llega a alguien, te conectas directamente con esa persona, que verá tu dirección IP. Para evitarlo, activa «Exigir un servidor de retransmisión para llamadas entre pares» en los ajustes de Voz y vídeo.",
+    "meshConsent.relayRequired":
+        "«Exigir un servidor de retransmisión para llamadas entre pares» está activado, pero tu servidor doméstico no tiene servidor de retransmisión (TURN), así que no se puede conectar. Desactívalo en los ajustes de Voz y vídeo para conectarte directamente.",
+    "meshConsent.titleFileTransfer":
+        "Esta transferencia de archivos te conecta directamente con la otra persona",
+    "meshConsent.fileTransferDirect":
+        "Tu servidor doméstico o el de la otra persona no tiene servidor de llamadas, así que el archivo va directamente de un dispositivo al otro.",
+    "meshConsent.join": "Unirse",
+    "meshConsent.connectDirectly": "Conectar directamente",
+    "meshConsent.joinWithoutThem": "Unirse sin ellos",
+    "meshConsent.notNow": "Ahora no",
+    "voiceCall.meshNeedsTurn":
+        "«Exigir un servidor de retransmisión para llamadas entre pares» está activado, pero tu servidor doméstico no tiene servidor de retransmisión (TURN). Desactívalo en los ajustes de Voz y vídeo para unirte.",
+    "voiceAudioSettings.meshRelayOnly":
+        "Exigir un servidor de retransmisión para llamadas entre pares",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "Las llamadas entre pares y las transferencias de archivos pasan por el servidor de retransmisión (TURN) de tu servidor doméstico cuando tiene uno, así nadie ve tu dirección IP. Sin él, o cuando la retransmisión no llega a alguien, se conectan directamente, lo que la muestra. Con esta opción activada, nunca se conectan directamente: sin una retransmisión que funcione no se conectan.",
+    "voiceCall.meshPeerUnreachable":
+        "Alguien en esta llamada solo es accesible directamente, pero se exige un servidor de retransmisión y tu servidor doméstico no tiene ninguno (TURN), así que no lo oirás.",
+    "meshConsent.usePublicStun": "Usar un servidor STUN público.",
+    "meshConsent.usePublicStunHint":
+        "Tu servidor doméstico no tiene ningún servidor que ayude a las conexiones a través de los routers domésticos, así que la mayoría de las conexiones directas fallan sin uno. El servidor STUN de Cloudflare conocería tu dirección IP, pero nada sobre la llamada.",
+    "voiceAudioSettings.meshPublicStun": "Usar un servidor STUN público",
+    "voiceAudioSettings.meshPublicStunHint":
+        "Solo cuando tu servidor doméstico no ofrece ningún servidor de retransmisión ni STUN: las llamadas entre pares piden al servidor STUN de Cloudflare tu dirección pública, que necesitan la mayoría de los routers domésticos. Ve tu dirección IP, nunca la llamada.",
+    "settingsSearch.meshPublicStun": "Usar un servidor STUN público",
+    "voiceCall.meshFailed":
+        "No se pudo conectar directamente con {name}. Su red podría bloquearlo, o su servidor doméstico no ofrece ninguna forma de atravesar los routers domésticos.",
+    "voiceCall.meshFailedNoServers":
+        "No se pudo conectar directamente con {name}. Tu servidor doméstico no ofrece ningún servidor de retransmisión ni STUN, así que las conexiones a través de routers domésticos suelen fallar. Activar «Usar un servidor STUN público» en los ajustes de Voz y vídeo puede ayudar.",
+    "settingsSearch.meshRelayOnly":
+        "Exigir un servidor de retransmisión para llamadas entre pares",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: es };

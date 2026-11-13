@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { HIERARCHY_TTL_MS } from "$lib/utils/hierarchyRefresh";
     import { t } from "$lib/i18n";
     import type { Room } from "matrix-js-sdk";
     import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -39,6 +40,7 @@
         getSpaceChildIds,
         fetchSpaceHierarchy,
         getCachedHierarchy,
+        getCachedHierarchyAge,
         patchCachedHierarchyEntry,
         getDMPartnerId,
         getRoomCallMemberships,
@@ -59,9 +61,10 @@
         Video,
         Hash,
         Circle,
+        Check,
     } from "lucide-svelte";
     import { presenceState, presenceFor } from "$lib/stores/presence.svelte";
-    import { settingsState } from "$lib/stores/settings.svelte";
+    import { settingsState, setDmSortOrder } from "$lib/stores/settings.svelte";
     import {
         presenceDot,
         presenceDotClass,
@@ -70,6 +73,10 @@
     import {
         groupRoomsByTag,
         sortRoomsByTag,
+        dmComparator,
+        DM_SORT_ORDERS,
+        type DmSortFacts,
+        type DmSortOrder,
         roomTagKind,
         TAG_FAVOURITE,
         TAG_LOWPRIORITY,
@@ -77,7 +84,10 @@
     import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
     import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
     import { renderPlainTextWithTwemoji } from "$lib/utils/twemojiText";
-    import { latestMessagePreview } from "$lib/utils/roomPreview";
+    import {
+        latestMessage,
+        latestMessagePreview,
+    } from "$lib/utils/roomPreview";
     import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
     import { hasLoudInRoom } from "$lib/stores/notifications.svelte";
     import {
@@ -407,10 +417,46 @@
         return groupRoomsByTag(visibleRooms, (r) => getRoomTags(r.roomId));
     });
 
+    const DM_SORT_LABELS: Record<DmSortOrder, () => string> = {
+        recent: () => t("roomList.dmSortRecent"),
+        unread: () => t("roomList.dmSortUnread"),
+        online: () => t("roomList.dmSortOnline"),
+        name: () => t("roomList.dmSortName"),
+    };
+
+    // Untagged DMs sort by the order picked in the header menu (latest
+    // message by default; the SDK's room order is arbitrary). unreadTick: a
+    // new message or a read moves the row; presenceTick: "online first".
     const sortedDirectRooms = $derived.by(() => {
         void roomsState.roomsTick;
-        return sortRoomsByTag(roomsState.directRooms, (r) =>
-            getRoomTags(r.roomId),
+        void roomsState.unreadTick;
+        const order = settingsState.dmSortOrder;
+        if (order === "online") void presenceState.presenceTick;
+        const facts = new Map<string, DmSortFacts>();
+        for (const room of roomsState.directRooms) {
+            const found = latestMessage([
+                ...room.getLiveTimeline().getEvents(),
+                ...room.getPendingEvents(),
+            ]);
+            const fallback = room.getLastActiveTimestamp();
+            const { unread } = roomButton(room);
+            facts.set(room.roomId, {
+                lastMessageTs:
+                    found?.event.getTs() ??
+                    (fallback > Number.MIN_SAFE_INTEGER ? fallback : null),
+                unread,
+                presence:
+                    order === "online"
+                        ? (presenceFor(getDMPartnerId(room))?.state ??
+                          "offline")
+                        : "offline",
+                name: room.name,
+            });
+        }
+        return sortRoomsByTag(
+            roomsState.directRooms,
+            (r) => getRoomTags(r.roomId),
+            dmComparator(order, (r) => facts.get(r.roomId)!),
         );
     });
 
@@ -500,11 +546,37 @@
     let subHierarchies = $state<Record<string, SpaceChildInfo[]>>({});
     let subHierarchyLoading = $state(new Set<string>());
     const subHierarchyRequested = new Set<string>();
+    const subHierarchyDepths = new Map<string, number>();
     $effect(() => {
         void roomsState.activeSpaceId;
         subHierarchies = {};
         subHierarchyLoading = new Set();
         subHierarchyRequested.clear();
+        subHierarchyDepths.clear();
+    });
+
+    // Keep expanded sub-spaces current while the app is open: re-fetch each
+    // one that has been shown, quietly, now and then.
+    const SUB_HIERARCHY_REFRESH_MS = 5 * 60_000;
+    $effect(() => {
+        const timer = setInterval(async () => {
+            if (document.visibilityState !== "visible") return;
+            const active = roomsState.activeSpaceId;
+            if (!active) return;
+            for (const id of [...subHierarchyRequested]) {
+                if (roomsState.activeSpaceId !== active) return;
+                const parent = roomsState.spaceDrillParentId ?? active;
+                const depth =
+                    (roomsState.spaceDrillDepth || 0) +
+                    (subHierarchyDepths.get(id) ?? 1);
+                const h = await fetchSpaceHierarchy(id, parent, depth).catch(
+                    () => null,
+                );
+                if (h && roomsState.activeSpaceId === active)
+                    subHierarchies = { ...subHierarchies, [id]: h };
+            }
+        }, SUB_HIERARCHY_REFRESH_MS);
+        return () => clearInterval(timer);
     });
 
     function loadSubHierarchy(
@@ -516,6 +588,17 @@
             if (!p.expanded || !active || subHierarchyRequested.has(p.id))
                 return;
             subHierarchyRequested.add(p.id);
+            subHierarchyDepths.set(p.id, p.depth);
+            // Show the last known listing at once (kept across launches), and
+            // only re-walk the nested hierarchy when it is not fresh. The
+            // fetch below then updates it silently: `loading` is only true
+            // while there is nothing to show.
+            const age = getCachedHierarchyAge(p.id);
+            const cached = getCachedHierarchy(p.id);
+            if (cached) {
+                subHierarchies = { ...subHierarchies, [p.id]: cached };
+                if (age !== null && age < HIERARCHY_TTL_MS) return;
+            }
             // The fallback walks in through the nearest joined ancestor.
             const parent = roomsState.spaceDrillParentId ?? active;
             const depth = p.depth + (roomsState.spaceDrillDepth || 0);
@@ -1021,6 +1104,41 @@
                     <QuickActions
                         spaceId={roomsState.activeSpaceId ?? undefined}
                     />
+                    {#if !roomsState.activeSpaceId}
+                        <div class="w-full h-px bg-discord-divider my-1"></div>
+                        <p
+                            class="px-2 pt-1 pb-0.5 text-xs font-semibold uppercase tracking-wide text-discord-textMuted"
+                        >
+                            {t("roomList.sortDmsBy")}
+                        </p>
+                        <div
+                            role="radiogroup"
+                            aria-label={t("roomList.sortDmsBy")}
+                        >
+                            {#each DM_SORT_ORDERS as order (order)}
+                                {@const selected =
+                                    settingsState.dmSortOrder === order}
+                                <button
+                                    role="radio"
+                                    aria-checked={selected}
+                                    onclick={() => setDmSortOrder(order)}
+                                    class="w-full flex items-center gap-2 pe-2 py-1.5 text-start text-sm hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors {selected
+                                        ? 'text-discord-textPrimary'
+                                        : 'text-discord-textMuted'}"
+                                    style="padding-inline-start: 0.5rem;"
+                                >
+                                    <span
+                                        class="w-4 h-4 flex-shrink-0 flex items-center justify-center"
+                                    >
+                                        {#if selected}<Check size={14} />{/if}
+                                    </span>
+                                    <span class="flex-1 truncate"
+                                        >{DM_SORT_LABELS[order]()}</span
+                                    >
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
                     {#if canAccessSpaceSettings}
                         <div class="w-full h-px bg-discord-divider my-1"></div>
                         <button
@@ -1615,6 +1733,7 @@
                     {@const dmName =
                         (void roomsState.roomsTick, getRoomDisplayName(room))}
                     {@const preview = dmPreview.get(room.roomId)}
+                    {@const dmPresenceView = dmPresence.get(room.roomId)}
                     {@const dmKind =
                         (void roomsState.roomsTick,
                         roomTagKind(getRoomTags(room.roomId)))}
@@ -1705,23 +1824,14 @@
                                         name={dmName}
                                         size={32}
                                     />
-                                    {#if unread && !isActive}
-                                        <span
-                                            class="absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary {loud ||
-                                            highlight
-                                                ? 'bg-discord-danger'
-                                                : 'bg-discord-textPrimary'}"
-                                        ></span>
-                                    {:else}
-                                        {@const presence = dmPresence.get(
-                                            room.roomId,
-                                        )}
-                                        <span
-                                            title={presence?.label}
-                                            class="absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary {presence?.dotClass ??
-                                                'bg-discord-offline'}"
-                                        ></span>
-                                    {/if}
+                                    <!-- Presence only: a red unread dot here
+                                         read as Do Not Disturb. Unread sits at
+                                         the row's end instead. -->
+                                    <span
+                                        title={dmPresenceView?.label}
+                                        class="absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary {dmPresenceView?.dotClass ??
+                                            'bg-discord-offline'}"
+                                    ></span>
                                 </div>
                                 <span class="flex-1 min-w-0 flex flex-col">
                                     <span class="text-sm truncate"
@@ -1747,6 +1857,15 @@
                                     >
                                         {highlight > 99 ? "99+" : highlight}
                                     </span>
+                                {:else if unread && !isActive}
+                                    <span
+                                        class="flex-shrink-0 w-2 h-2 me-1 rounded-full {loud
+                                            ? 'bg-discord-danger'
+                                            : 'bg-discord-textPrimary'}"
+                                        aria-label={t(
+                                            "messageArea.unreadNotifications",
+                                        )}
+                                    ></span>
                                 {/if}
                             </button>
                             {#if dmDraggable}

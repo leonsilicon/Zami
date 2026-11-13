@@ -104,6 +104,7 @@
     import OutboxStrip from "$lib/components/messages/OutboxStrip.svelte";
     import { pickAudioMimeType } from "$lib/utils/voiceMessage";
     import { openCreatePollDialog } from "$lib/stores/pollDialog.svelte";
+    import { openGameInviteDialog } from "$lib/stores/gameInviteDialog.svelte";
     import { openShareLocationDialog } from "$lib/stores/locationDialog.svelte";
     import {
         getDraft,
@@ -2012,6 +2013,34 @@
         syncFromEditor(!composing);
     }
 
+    /** Make the soft keyboard commit its pending word before a send. The send
+     *  button keeps focus (so the keyboard stays up), which leaves the IME
+     *  composition / iOS autocorrect candidate open: the send then read the
+     *  uncorrected word, and once the composer was cleared the keyboard
+     *  re-inserted the word (a second send posted it again on Android, and iOS
+     *  showed it still sitting in the composer). A synchronous blur()+focus()
+     *  inside the tap commits it without dismissing the keyboard. */
+    async function commitPendingComposition() {
+        if (
+            !textareaEl ||
+            !interfaceState.isMobile ||
+            document.activeElement !== textareaEl
+        )
+            return;
+        textareaEl.blur();
+        textareaEl.focus({ preventScroll: true });
+        // WebKit delivers the committed text (and compositionend) after the
+        // blur returns; wait a task so the model reads the final word.
+        await new Promise((r) => setTimeout(r, 0));
+        composing = false;
+        syncFromEditor();
+    }
+
+    async function sendFromButton() {
+        await commitPendingComposition();
+        await send();
+    }
+
     function onCompositionEnd() {
         composing = false;
         // WebKit (Safari, and the Android WebView Zam ships in) fires
@@ -2107,11 +2136,11 @@
                     d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
                 />
             </svg>
-            <div class="flex-1 min-w-0 text-xs">
-                <span class="text-discord-accent font-semibold">
+            <div class="flex-1 min-w-0 text-xs flex items-baseline gap-2">
+                <span class="text-discord-accent font-semibold flex-shrink-0">
                     {t("messageInput.replyingTo", { replyTargetName })}
                 </span>
-                <span class="text-discord-textMuted ms-2 truncate"
+                <span class="text-discord-textMuted min-w-0 truncate"
                     >{getReplyPreview()}</span
                 >
             </div>
@@ -2486,6 +2515,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {:else}
@@ -2517,6 +2548,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {/if}
@@ -2750,7 +2783,7 @@
             {/each}
 
             <button
-                onclick={send}
+                onclick={sendFromButton}
                 onpointerdown={(e) => e.preventDefault()}
                 disabled={(!text.trim() && fileQueue.length === 0) ||
                     isSending ||

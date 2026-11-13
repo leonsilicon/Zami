@@ -4,7 +4,9 @@ import {
     isUsingSlidingSync,
     onPresenceEvent,
     onSlidingSyncActiveChange,
+    setAccountNotificationsDisabled,
     setOwnPresence,
+    supportsBusyPresence,
 } from "$lib/matrix/client";
 import {
     PROFILE_FIELDS,
@@ -16,15 +18,17 @@ import {
     advertisedPresence,
     normalizePresence,
     type PresenceState,
+    type SeenPresence,
 } from "$lib/utils/presence";
 import {
     settingsState,
+    setDoNotDisturbSetting,
     setOwnPresenceSetting,
     setOwnStatusMessageSetting,
 } from "$lib/stores/settings.svelte";
 
 export interface UserPresenceView {
-    state: PresenceState;
+    state: SeenPresence;
     currentlyActive: boolean;
     statusMsg?: string;
 }
@@ -51,12 +55,40 @@ export function presenceFor(userId: string): UserPresenceView | null {
     };
 }
 
+/** The state the user picked, as the server should see it: Do Not Disturb
+ *  is MSC3026 busy (red for others), or idle on a server without busy.
+ *  Invisible stays invisible. */
+function chosenPresence(): SeenPresence {
+    if (!settingsState.doNotDisturb || settingsState.ownPresence !== "online")
+        return settingsState.ownPresence;
+    return busySupported ? "busy" : "unavailable";
+}
+
+// Whether the homeserver takes busy; read from /versions in initPresence.
+// Until then Do Not Disturb advertises away, as it did before busy.
+let busySupported = false;
+
+/** Turn Do Not Disturb on or off: the account's master push rule (so the
+ *  server stops pushing to every device), local alerts (see
+ *  emitNotificationNow) and idle presence. Rethrows a server failure and
+ *  leaves the setting as it was. */
+export async function changeDoNotDisturb(on: boolean): Promise<void> {
+    await setAccountNotificationsDisabled(on);
+    setDoNotDisturbSetting(on);
+    if (on) busySupported = await supportsBusyPresence();
+    advertised = advertisedPresence(chosenPresence(), 0);
+    await setOwnPresence(
+        advertised,
+        settingsState.ownStatusMessage || undefined,
+    );
+}
+
 /** Change own advertised presence: persist the choice locally and push it to
  *  the homeserver. Rethrows so settings UI can surface the server error. */
 export async function changeOwnPresence(value: PresenceState): Promise<void> {
     setOwnPresenceSetting(value);
     // Picking a presence is itself input, so the device is in use.
-    advertised = advertisedPresence(value, 0);
+    advertised = advertisedPresence(chosenPresence(), 0);
     await setOwnPresence(
         advertised,
         settingsState.ownStatusMessage || undefined,
@@ -74,7 +106,7 @@ export async function changeOwnStatusMessage(message: string): Promise<void> {
 // Without that, every sync long-poll re-marks the account online, and tuwunel
 // shows the highest state across devices, so a desktop left open kept the
 // user online forever. Plain module state: it only feeds SDK calls.
-let advertised: PresenceState = settingsState.ownPresence;
+let advertised: SeenPresence = settingsState.ownPresence;
 let lastInputTs = Date.now();
 
 const IDLE_CHECK_MS = 15_000;
@@ -91,7 +123,7 @@ export async function readIdleMs(): Promise<number> {
 
 async function updateAdvertisedPresence(): Promise<void> {
     const idleMs = await readIdleMs();
-    const next = advertisedPresence(settingsState.ownPresence, idleMs);
+    const next = advertisedPresence(chosenPresence(), idleMs);
     if (next === advertised) return;
     advertised = next;
     await setOwnPresence(next, settingsState.ownStatusMessage || undefined);
@@ -120,7 +152,8 @@ const SLIDING_PRESENCE_HEARTBEAT_MS = 25_000;
 export function initPresence(): () => void {
     // Re-apply the persisted choice — the sync loop advertises "online" by
     // default, so away/invisible must be pushed again each session.
-    advertised = settingsState.ownPresence;
+    busySupported = false;
+    advertised = chosenPresence();
     lastInputTs = Date.now();
     if (advertised !== "online") {
         setOwnPresence(
@@ -130,6 +163,21 @@ export function initPresence(): () => void {
             console.warn("[presence] could not apply own presence", err);
         });
     }
+    // Do Not Disturb went out as away above; upgrade it to busy once the
+    // server says it has busy.
+    let disposed = false;
+    supportsBusyPresence().then((ok) => {
+        if (disposed || !ok) return;
+        busySupported = true;
+        const next = chosenPresence();
+        if (next === advertised) return;
+        advertised = next;
+        setOwnPresence(next, settingsState.ownStatusMessage || undefined).catch(
+            (err) => {
+                console.warn("[presence] could not apply busy presence", err);
+            },
+        );
+    });
 
     reconcileStatusMessage().catch((err) => {
         console.warn("[presence] could not reconcile status message", err);
@@ -163,10 +211,7 @@ export function initPresence(): () => void {
     // wait for the next check, so input while away re-checks at once.
     const onUserInput = () => {
         lastInputTs = Date.now();
-        if (
-            advertised === "unavailable" &&
-            settingsState.ownPresence === "online"
-        )
+        if (advertised === "unavailable" && chosenPresence() === "online")
             updateAdvertisedPresence().catch(() => {});
     };
     const inputEvents = ["pointerdown", "keydown", "wheel", "touchstart"];
@@ -177,6 +222,7 @@ export function initPresence(): () => void {
         presenceState.presenceTick++;
     });
     return () => {
+        disposed = true;
         unsubSliding();
         clearInterval(heartbeat);
         clearInterval(idleCheck);

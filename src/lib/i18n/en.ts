@@ -434,6 +434,10 @@ export const en = {
     "gpuDebug.hardwareAcceleration": "Hardware acceleration",
     "gpuDebug.hardwareAccelerationHint":
         "Turn this off if videos show up black or the window draws wrongly. Applies after a restart.",
+    "gpuDebug.gameAuto": "Pause the GPU while a game runs",
+    "gpuDebug.gameAutoHint":
+        "If the GPU keeps crashing while a game is running (the game holds its memory), Zam restarts without hardware acceleration and restarts again with it once the game closes. Needs game detection in Settings > General. Waits for the end of a call.",
+    "gpuDebug.gameAutoActive": "Running without the GPU until the game closes.",
     "gpuDebug.nvidiaVideo": "NVIDIA video decoding",
     "gpuDebug.nvidiaVideoHint":
         "Decodes video on NVIDIA GPUs through Chromium's Vulkan renderer. Automatic turns it on when an NVIDIA GPU drives your screens. On Wayland, Vulkan is not used and Automatic leaves it off; choosing Vulkan there tries hardware decoding through OpenGL instead (experimental).",
@@ -592,6 +596,22 @@ export const en = {
     "debugSettings.orderHints": "Message order hints",
     "debugSettings.orderHintsHint":
         "Zam adds a hint to your messages saying what was at the bottom of your chat log, and puts other Zam users' messages below the one they name. Off, messages show in the server's order, as in Element.",
+    "debugSettings.stickyCallMembership": "Sticky call membership",
+    "debugSettings.stickyCallMembershipHint":
+        "Join calls with a sticky m.rtc.member event (MSC4354) instead of an m.call.member state event. Clients that only read state events, including Zam before 1.51, won't see you in the call. Applies from your next call.",
+    "debugSettings.indexSync": "Message index sync",
+    "debugSettings.indexSyncHint":
+        "Search-index entries are traded with your other verified sessions. Both sessions need to be running this version. Sessions: eligible / verified / all. Chunks: sent / received.",
+    "debugSettings.indexSyncOff":
+        "Index sync isn't running: it needs encrypted-room indexing turned on.",
+    "debugSettings.indexSyncNow": "Sync now",
+    "debugSettings.indexSyncNever": "never",
+    "debugSettings.indexSyncSessions": "Sessions",
+    "debugSettings.indexSyncAsked": "Asked",
+    "debugSettings.indexSyncRoomsMissing": "Rooms with holes",
+    "debugSettings.indexSyncRequestsReceived": "Requests received",
+    "debugSettings.indexSyncChunks": "Chunks",
+    "debugSettings.indexSyncMerged": "Entries merged",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "Display every Matrix timeline event in the chat log.",
     "debugSettings.ignoreCodecSupport": "Ignore reported codec support",
@@ -1580,6 +1600,16 @@ export const en = {
         "Notifications are turned off for this account",
     "notificationSettings.accountNotificationsOffDetail":
         "Every notification for this account is switched off on the server, probably from another app, so nothing notifies on any device whatever the settings below say.",
+    "notificationSettings.accountNotifications":
+        "Notifications for this account",
+    "notificationSettings.accountNotificationsDetail":
+        "Turns notifications on or off for this account on all your devices.",
+    "notificationSettings.thisDeviceNotifications":
+        "Notifications on this device",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "Turns off pop-ups, sounds and push on this device only. Your other devices keep notifying.",
+    "notificationSettings.couldNotUpdateNotifications":
+        "Couldn't update notification settings",
     "notificationSettings.turnOn": "Turn on",
     "notificationSettings.couldNotTurnOnNotifications":
         "Couldn't turn notifications on",
@@ -1733,6 +1763,9 @@ export const en = {
         "Let other people in a room see when you are typing. Turn off to type without anyone being told.",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "Hide your read receipts from other users. Your unread counts still work; others just can't see how far you've read.",
+    "privacySafetySettings.streamerMode": "Streamer mode",
+    "privacySafetySettings.streamerModeHint":
+        "Blurs your account ID, email addresses and recovery key, and hides message text in notifications, so nothing private shows up on a stream. Applies to this device only.",
     "privacySafetySettings.hideMessageTextInNotifications":
         "Hide message text in notifications",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1925,6 +1958,11 @@ export const en = {
     "roomList.doneReordering": "Done reordering",
     "roomList.reorderRooms": "Reorder rooms",
     "roomList.spaceSettings": "Space Settings",
+    "roomList.sortDmsBy": "Sort DMs by",
+    "roomList.dmSortRecent": "Latest message",
+    "roomList.dmSortUnread": "Unread first",
+    "roomList.dmSortOnline": "Online first",
+    "roomList.dmSortName": "Name (A–Z)",
     "roomList.pendingInvites": "Pending Invites",
     "roomList.inVoice": "{name} - in voice",
     "roomList.orderValue": "Order value",
@@ -2930,6 +2968,26 @@ export const en = {
     "composerActionsMenu.recordVoiceMessage": "Record voice message",
     "composerActionsMenu.shareLocation": "Share location",
     "composerActionsMenu.createThread": "Create thread",
+    "composerActionsMenu.inviteToGame": "Invite to game",
+    "gameInvite.title": "Invite to game",
+    "gameInvite.game": "Game",
+    "gameInvite.note": "Note (optional)",
+    "gameInvite.notePlaceholder": "Say something…",
+    "gameInvite.send": "Send invite",
+    "gameInvite.noGames": "No running Steam game can be invited right now.",
+    "gameInvite.failedToSend": "Couldn't send the invite.",
+    "gameInvite.cardTitle": "Game invite",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "{current} of {max} in party",
+    "gameInvite.confirmSteam": "Launch {game} with arguments: {connect}",
+    "gameInvite.confirmLobby": "Join {game}'s lobby",
+    "gameInvite.joinGame": "Join game",
+    "gameInvite.joinSent": "Join sent to the game.",
+    "gameInvite.openInDesktop": "Open in the Zam desktop app to join.",
+    "gameInvite.joinUnsupported":
+        "Joining this game is not supported on this computer.",
+    "gameInvite.joinInvalid": "This invite is not valid.",
+    "gameInvite.joinFailed": "Couldn't join the game.",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "Could not add reaction",
@@ -3206,6 +3264,7 @@ export const en = {
     "repoList.thatRepoIsAlreadyAdded": "That repo is already added.",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain": "Couldn't load GIFs - try again.",
     "gifSearch.couldnTReachKlipyTryAgain": "Couldn't reach KLIPY - try again.",
 
     // src/lib/stores/liveLocation.svelte.ts
@@ -3524,6 +3583,28 @@ export const en = {
     "messageActionsMenu.pin": "Pin",
     "messageActionsMenu.copyLink": "Copy link",
     "messageActionsMenu.report": "Report",
+    "roomSettings.readReceipts": "Read receipts",
+    "roomSettings.readReceiptsRoomHelp":
+        "Choose whether other members can see which messages you've read in this room.",
+    "roomSettings.readReceiptsSpaceHelp":
+        "Choose whether other members can see which messages you've read in this space and its rooms. A room's own choice takes priority.",
+    "roomSettings.readReceiptsDefaultShare":
+        "Follows your privacy settings, currently shared with others",
+    "roomSettings.readReceiptsDefaultHide":
+        "Follows your privacy settings, currently hidden from others",
+    "roomSettings.readReceiptsShare": "Share my read receipts",
+    "roomSettings.readReceiptsShareDesc":
+        "Others can see which messages you've read.",
+    "roomSettings.readReceiptsHide": "Hide my read receipts",
+    "roomSettings.readReceiptsHideDesc":
+        "Your unread state still syncs, but others can't see what you've read.",
+    "privacySafetySettings.receiptsOverrideHint":
+        "Rooms and spaces can override this in their Notifications settings.",
+    "messageActionsMenu.copyText": "Copy message text",
+    "messageActionsMenu.textCopied": "Message text copied",
+    "messageActionsMenu.couldnTCopyText": "Couldn't copy the message text",
+    "messageActionsMenu.selectHint":
+        "Press and hold the text to select part of it",
 
     // src/lib/utils/messageDisplay.ts
     "messageDisplay.systemDefault": "System default",
@@ -3579,6 +3660,9 @@ export const en = {
     "presence.seenAsOnlineWhileTheApp":
         "Seen as online while the app is syncing",
     "presence.shownAsIdleToOtherUsers": "Shown as idle to other users",
+    "presence.doNotDisturb": "Do Not Disturb",
+    "presence.doNotDisturbDescription":
+        "Silences notifications and calls on all your devices",
     "presence.invisible": "Invisible",
     "presence.appearOfflineToOtherUsers": "Appear offline to other users",
 
@@ -3800,6 +3884,7 @@ export const en = {
     "settingsSearch.clearCache": "Clear cache",
     "settingsSearch.showAllEvents": "Show all events",
     "settingsSearch.orderHints": "Message order hints",
+    "settingsSearch.stickyCallMembership": "Sticky call membership",
     "settingsSearch.pushDiagnostics": "Push diagnostics",
     "settingsSearch.pushService": "Push service (UnifiedPush / Firebase)",
     "settingsSearch.language": "Language",
@@ -3904,6 +3989,8 @@ export const en = {
     "updateStatus.openReleasePage": "Open release page",
     "updateStatus.flatpakManualUpdate":
         "Update available{versionSuffix}. Install it from your software center or with flatpak update",
+    "updateStatus.packageManagerUpdate":
+        "Update available{versionSuffix}. Update it with {manager}",
     "updateStatus.updateCheckFailed": "Update check failed",
     "updateStatus.checkForUpdatesToInstallThe":
         "Check for updates to install the latest version.",
@@ -3986,8 +4073,8 @@ export const en = {
     "fileOffer.failedOffline":
         "The sender isn't available. They need Zam open.",
     "fileOffer.failedRefused": "The sender's session refused this transfer.",
-    "fileOffer.failedNoSfu":
-        "The sender's server has no call service to carry the file.",
+    "fileOffer.failedNoRelay":
+        "A relay server is required for peer-to-peer connections, but there is no relay (TURN) server, so the file can't be sent without showing an IP address.",
     "fileOffer.failedConnection": "The connection was lost.",
     "fileOffer.failedStalled": "The transfer stopped making progress.",
     "fileOffer.failedCorrupt":
@@ -4088,6 +4175,70 @@ export const en = {
     "messageEmbed.deleted": "Message deleted",
     "messageEmbed.inRoom": "in {room}",
     "messageEmbed.jumpToMessage": "Jump to the linked message:",
+    // src/lib/components/settings/RichPresenceSettings.svelte (Steam)
+    "richPresence.steam": "Steam rich presence",
+    "richPresence.steamHint":
+        "Show the Steam game you are playing along with its rich presence status, such as the map or mode. This turns on Steam's local debugging port, which only listens on this computer. Steam has to be restarted once for it to take effect.",
+    "richPresence.steamConnected": "Connected to Steam.",
+    "richPresence.steamNeedsRestart":
+        "Steam's debugging port isn't open yet. Restart Steam to open it.",
+    "richPresence.steamNotRunning":
+        "Steam isn't running. Start it and Zam will connect automatically.",
+    "richPresence.restartSteam": "Restart Steam",
+    "richPresence.restartSteamTitle": "Restart Steam?",
+    "richPresence.restartSteamBody":
+        "Steam will close and start again. Games launched from Steam may be closed along with it.",
+    "richPresence.restartSteamFailed": "Couldn't restart Steam: {error}",
+    "richPresence.steamEnableFailed":
+        "Couldn't turn on Steam's debugging port: {error}",
+    "richPresence.steamDisableFailed":
+        "Couldn't turn off Steam's debugging port: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows asked for administrator permission and it wasn't granted, so nothing was changed.",
+    "richPresence.steamFailed": "Steam rich presence failed: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "This call connects you directly to others",
+    "meshConsent.titleNewcomer":
+        "Someone in this call can only be reached directly",
+    "meshConsent.noCallServer":
+        "Your homeserver has no call server, so your audio, video and screen share go straight from your device to each person in the call.",
+    "meshConsent.someoneWithoutCallServer":
+        "Someone in this call is on a homeserver without a call server. To hear and see them, your device connects to theirs directly.",
+    "meshConsent.ipVisible":
+        "Your homeserver has no relay (TURN) server, so everyone you connect to directly can see your IP address, which can reveal roughly where you are.",
+    "meshConsent.relayed":
+        "This goes through your homeserver's relay server, so the others see its address, not your IP address. If the relay can't reach someone, you connect to them directly, which shows them your IP address. To prevent that, turn on \"Require a relay server for peer-to-peer calls\" in Voice & Video settings.",
+    "meshConsent.relayRequired":
+        '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server, so this can\'t connect. Turn it off in Voice & Video settings to connect directly.',
+    "meshConsent.titleFileTransfer":
+        "This file transfer connects you directly to the other person",
+    "meshConsent.fileTransferDirect":
+        "Your homeserver or theirs has no call server, so the file goes straight from one device to the other.",
+    "meshConsent.join": "Join",
+    "meshConsent.connectDirectly": "Connect directly",
+    "meshConsent.joinWithoutThem": "Join without them",
+    "meshConsent.notNow": "Not now",
+    "voiceCall.meshNeedsTurn":
+        '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server. Turn it off in Voice & Video settings to join.',
+    "voiceAudioSettings.meshRelayOnly":
+        "Require a relay server for peer-to-peer calls",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "Peer-to-peer calls and file transfers go through your homeserver's relay (TURN) server when it has one, so nobody sees your IP address. Without one, or when the relay can't reach someone, they connect directly, which shows it. With this on, they never connect directly: without a working relay they don't connect at all.",
+    "voiceCall.meshPeerUnreachable":
+        "Someone in this call can only be reached directly, but a relay server is required and your homeserver has no relay (TURN) server, so you won't hear them.",
+    "meshConsent.usePublicStun": "Use a public STUN server.",
+    "meshConsent.usePublicStunHint":
+        "Your homeserver has no server that helps connections through home routers, so most direct connections fail without one. Cloudflare's STUN server would learn your IP address, but nothing about the call.",
+    "voiceAudioSettings.meshPublicStun": "Use a public STUN server",
+    "voiceAudioSettings.meshPublicStunHint":
+        "Only when your homeserver offers no relay or STUN server: peer-to-peer calls ask Cloudflare's STUN server for your public address, which most home routers need. It sees your IP address, never the call.",
+    "settingsSearch.meshPublicStun": "Use a public STUN server",
+    "voiceCall.meshFailed":
+        "Couldn't connect directly to {name}. Their network may block it, or their homeserver offers no way through home routers.",
+    "voiceCall.meshFailedNoServers":
+        'Couldn\'t connect directly to {name}. Your homeserver offers no relay or STUN server, so connections through home routers usually fail. Turning on "Use a public STUN server" in Voice & Video settings may help.',
+    "settingsSearch.meshRelayOnly":
+        "Require a relay server for peer-to-peer calls",
 };
 
 export type MessageKey = keyof typeof en;

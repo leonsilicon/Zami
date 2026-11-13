@@ -267,6 +267,7 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
             "msc4544",
             "media",
             "now playing",
+            "steam",
         ],
         anchor: "cust-rich-presence",
         available: (p) => p.richPresence,
@@ -384,6 +385,12 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "privacy",
+        label: t("privacySafetySettings.streamerMode"),
+        keywords: ["streaming", "obs", "twitch", "hide", "blur", "privacy"],
+        anchor: "notif-privacy",
+    },
+    {
+        tab: "privacy",
         label: t("settingsSearch.hideMessageTextInNotifications"),
         keywords: ["notification content", "preview", "privacy"],
         anchor: "notif-privacy",
@@ -439,6 +446,33 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "voice",
         label: t("settingsSearch.echoCancellation"),
         keywords: ["echo", "feedback"],
+    },
+    {
+        tab: "voice",
+        label: t("settingsSearch.meshRelayOnly"),
+        keywords: [
+            "ip",
+            "address",
+            "privacy",
+            "turn",
+            "relay",
+            "peer",
+            "p2p",
+            "mesh",
+        ],
+    },
+    {
+        tab: "voice",
+        label: t("settingsSearch.meshPublicStun"),
+        keywords: [
+            "stun",
+            "nat",
+            "router",
+            "peer",
+            "p2p",
+            "mesh",
+            "cloudflare",
+        ],
     },
     {
         tab: "voice",
@@ -541,6 +575,11 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "debug",
         label: t("settingsSearch.orderHints"),
         keywords: ["message order", "ordering", "element", "timeline"],
+    },
+    {
+        tab: "debug",
+        label: t("settingsSearch.stickyCallMembership"),
+        keywords: ["msc4354", "m.rtc.member", "call", "matrixrtc"],
     },
     {
         tab: "debug",

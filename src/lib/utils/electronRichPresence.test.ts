@@ -34,7 +34,82 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true });
 });
 
-function setup() {
+/** A Steam debug helper that does nothing; its state can be set by a test. */
+function stubSteamDebug(
+    initial: Partial<{
+        supported: boolean;
+        enabled: boolean;
+        portOpen: boolean;
+        steamRunning: boolean;
+    }> = {},
+) {
+    const state = {
+        supported: false,
+        enabled: false,
+        portOpen: false,
+        steamRunning: false,
+        ...initial,
+    };
+    const calls: string[] = [];
+    const create = () => ({
+        status: async () => {
+            calls.push("status");
+            return { ...state };
+        },
+        enable: async () => {
+            calls.push("enable");
+            state.enabled = true;
+            return { ok: true };
+        },
+        disable: async () => {
+            calls.push("disable");
+            state.enabled = false;
+            return { ok: true };
+        },
+        restartSteam: async () => {
+            calls.push("restart");
+            return { ok: true };
+        },
+    });
+    return { state, calls, create };
+}
+
+/** A Steam source whose reports a test can drive. */
+function stubSteamPresence() {
+    const instances: Array<{
+        onSteam: (s: unknown) => void;
+        started: number;
+        stopped: number;
+        error: string | null;
+    }> = [];
+    const create = (opts: { onSteam: (s: unknown) => void }) => {
+        const inst = {
+            onSteam: opts.onSteam,
+            started: 0,
+            stopped: 0,
+            error: null as string | null,
+            start() {
+                this.started++;
+            },
+            stop() {
+                this.stopped++;
+            },
+            status() {
+                return {
+                    running: this.started > this.stopped,
+                    portOpen: true,
+                    connected: true,
+                    error: this.error,
+                };
+            },
+        };
+        instances.push(inst);
+        return inst;
+    };
+    return { instances, create };
+}
+
+function setup(extra: Record<string, unknown> = {}) {
     const dir = mkdtempSync(join(tmpdir(), "zam-rp-"));
     dirs.push(dir);
     const events: Event[] = [];
@@ -43,6 +118,8 @@ function setup() {
         userDataDir: dir,
         // Discord's game list, from a stand-in answer.
         fetch: okFetch(),
+        createSteamDebug: stubSteamDebug().create,
+        ...extra,
     });
     stops.push(() => rp.stop());
     return { rp, events };
@@ -735,6 +812,7 @@ describe("Flatpak paths", () => {
             userDataDir: dir,
             inFlatpak: true,
             hostAccess,
+            createSteamDebug: stubSteamDebug().create,
         });
         stops.push(() => rp.stop());
         return rp;
@@ -784,5 +862,477 @@ describe("Flatpak paths", () => {
         const tails = [...candidates(rows[1].paths[1])];
         expect(tails).toContain("some game/game.exe");
         expect(tails).toContain("game.exe");
+    });
+});
+
+describe("Steam presence", () => {
+    it("runs the Steam source only while it is wanted, locally", async () => {
+        const sp = stubSteamPresence();
+        const { rp } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: false });
+        expect(sp.instances).toHaveLength(0);
+
+        await rp.configure({ local: true, steam: true });
+        expect(sp.instances).toHaveLength(1);
+        expect(sp.instances[0].started).toBe(1);
+        // Asking again does not start a second one.
+        await rp.configure({ local: true, steam: true });
+        expect(sp.instances).toHaveLength(1);
+
+        await rp.configure({ local: true, steam: false });
+        expect(sp.instances[0].stopped).toBe(1);
+
+        await rp.configure({ local: true, steam: true });
+        expect(sp.instances).toHaveLength(2);
+        await rp.configure({ local: false, steam: true });
+        expect(sp.instances[1].stopped).toBe(1);
+    });
+
+    it("forwards a game as a Playing activity with Steam's header picture", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const onSteam = sp.instances[0].onSteam;
+
+        onSteam({
+            appId: "570",
+            name: "Dota 2",
+            status: "In Lobby",
+            richPresence: {},
+            startedAt: 1000,
+        });
+        expect(events).toEqual([
+            {
+                source: "arrpc",
+                app: { id: "steam-570", name: "Dota 2" },
+                presenceId: "steam-570",
+                presence: {
+                    application_id: "steam-570",
+                    name: "Dota 2",
+                    type: 0,
+                    details: "In Lobby",
+                    assets: { large_image: "steam:570" },
+                    timestamps: { start: 1000 },
+                },
+            },
+        ]);
+    });
+
+    it("uses the game's Steam icon when Steam gives its hash", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const icon = "d".repeat(40);
+        sp.instances[0].onSteam({
+            appId: "570",
+            name: "Dota 2",
+            status: "",
+            icon,
+            startedAt: 1,
+        });
+        expect(events[0].presence!.assets).toEqual({
+            large_image: `steam:570:${icon}`,
+        });
+    });
+
+    it("removes the previous game when the app changes or Steam reports none", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const onSteam = sp.instances[0].onSteam;
+
+        onSteam({ appId: "570", name: "Dota 2", status: "", startedAt: 1 });
+        events.length = 0;
+
+        // Another game: the old one goes, then the new one comes.
+        onSteam({ appId: "730", name: "CS2", status: "", startedAt: 2 });
+        expect(events.map((e) => [e.app.id, e.presence === null])).toEqual([
+            ["steam-570", true],
+            ["steam-730", false],
+        ]);
+        events.length = 0;
+
+        // Same game again: an update, no removal.
+        onSteam({ appId: "730", name: "CS2", status: "Menu", startedAt: 2 });
+        expect(events.map((e) => e.presence === null)).toEqual([false]);
+        events.length = 0;
+
+        // Steam reports nothing: the game goes, and nothing more is sent.
+        onSteam(null);
+        expect(events).toEqual([
+            {
+                source: "arrpc",
+                app: { id: "steam-730", name: "CS2" },
+                presenceId: "steam-730",
+                presence: null,
+            },
+        ]);
+        events.length = 0;
+        onSteam(null);
+        expect(events).toEqual([]);
+    });
+
+    it("removes the reported game when the source is switched off", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        sp.instances[0].onSteam({ appId: "570", name: "Dota 2", status: "" });
+        events.length = 0;
+
+        await rp.configure({ local: true, steam: false });
+        expect(events).toEqual([
+            {
+                source: "arrpc",
+                app: { id: "steam-570", name: "Dota 2" },
+                presenceId: "steam-570",
+                presence: null,
+            },
+        ]);
+    });
+
+    it("ignores a report from a source that has been stopped", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const old = sp.instances[0];
+        await rp.configure({ local: true, steam: false });
+        events.length = 0;
+        old.onSteam({ appId: "570", name: "Dota 2", status: "" });
+        expect(events).toEqual([]);
+    });
+
+    it("reports the Steam source and its debug setting in the status", async () => {
+        const sp = stubSteamPresence();
+        const dbg = stubSteamDebug({
+            supported: true,
+            enabled: true,
+            steamRunning: true,
+            portOpen: true,
+        });
+        const { rp } = setup({
+            createSteamPresence: sp.create,
+            createSteamDebug: dbg.create,
+        });
+        const st = await rp.configure({ local: true, steam: true });
+        expect(st.steam).toEqual({
+            running: true,
+            connected: true,
+            portOpen: true,
+            error: null,
+            supported: true,
+            enabled: true,
+            steamRunning: true,
+            needsPermission: false,
+        });
+
+        // A failure of the source shows up without another configure.
+        sp.instances[0].error = "boom";
+        expect(rp.getStatus().steam.error).toBe("boom");
+
+        // Off: not running, but the debug setting is still known.
+        await rp.configure({ local: true, steam: false });
+        expect(rp.getStatus().steam).toMatchObject({
+            running: false,
+            connected: false,
+            supported: true,
+            enabled: true,
+        });
+    });
+
+    it("says when a Flatpak needs permission to change Steam", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "zam-rp-"));
+        dirs.push(dir);
+        const rp = createRichPresence({
+            send: () => {},
+            userDataDir: dir,
+            inFlatpak: true,
+            hostAccess: async () => false,
+            createSteamPresence: stubSteamPresence().create,
+            createSteamDebug: stubSteamDebug().create,
+        });
+        stops.push(() => rp.stop());
+        const st = await rp.configure({ local: true, steam: true });
+        expect(st.steam.needsPermission).toBe(true);
+        const off = await rp.configure({ local: true, steam: false });
+        expect(off.steam.needsPermission).toBe(false);
+    });
+
+    it("turns Steam's debug setting on and off, and restarts Steam, then refreshes the status", async () => {
+        const dbg = stubSteamDebug({ supported: true });
+        const { rp } = setup({ createSteamDebug: dbg.create });
+        expect(rp.getStatus().steam.enabled).toBe(false);
+
+        expect(await rp.setSteamDebugging(true)).toEqual({ ok: true });
+        expect(rp.getStatus().steam.enabled).toBe(true);
+        expect(await rp.setSteamDebugging(false)).toEqual({ ok: true });
+        expect(rp.getStatus().steam.enabled).toBe(false);
+        expect(dbg.calls).toEqual(["enable", "status", "disable", "status"]);
+
+        expect(await rp.restartSteam()).toEqual({ ok: true });
+        expect(dbg.calls.slice(-2)).toEqual(["restart", "status"]);
+    });
+});
+
+describe("Steam connect strings", () => {
+    const report = (
+        richPresence: Record<string, string>,
+        ids: { steamId?: string; lobbyId?: string } = {},
+    ) => ({
+        appId: "570",
+        name: "Dota 2",
+        status: "",
+        steamId: "",
+        lobbyId: "",
+        ...ids,
+        richPresence,
+        startedAt: 1,
+    });
+
+    it("forwards the Steam id and lobby as steam_id and steam_lobby, digits only", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const onSteam = sp.instances[0].onSteam;
+        onSteam(
+            report(
+                {},
+                { steamId: "76561198000000001", lobbyId: "109775240000000000" },
+            ),
+        );
+        expect(events[0].presence).toMatchObject({
+            steam_id: "76561198000000001",
+            steam_lobby: "109775240000000000",
+        });
+        events.length = 0;
+        onSteam(report({}, { steamId: "7656 ; x", lobbyId: "" }));
+        expect(events[0].presence).not.toHaveProperty("steam_id");
+        expect(events[0].presence).not.toHaveProperty("steam_lobby");
+    });
+
+    it("forwards a valid connect string as steam_connect", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        sp.instances[0].onSteam(
+            report({
+                connect: "+connect 10.0.0.5:27015",
+                steam_player_group: "x",
+            }),
+        );
+        expect(events[0].presence!.steam_connect).toBe(
+            "+connect 10.0.0.5:27015",
+        );
+        expect(events[0].presence).not.toHaveProperty("steam_player_group");
+    });
+
+    it("omits steam_connect when it has control characters or is too long", async () => {
+        const sp = stubSteamPresence();
+        const { rp, events } = setup({ createSteamPresence: sp.create });
+        await rp.configure({ local: true, steam: true });
+        const onSteam = sp.instances[0].onSteam;
+        for (const connect of [
+            "a\u0000b",
+            "a\nb",
+            "a\u007fb",
+            "x".repeat(513),
+            "",
+        ]) {
+            events.length = 0;
+            onSteam(report({ connect }));
+            expect(events[0].presence).not.toHaveProperty("steam_connect");
+        }
+    });
+});
+
+describe("Game invites (joinGame)", () => {
+    it("reports invalid for bad input", async () => {
+        const opened: string[] = [];
+        const { rp } = setup({ openExternal: (u: string) => opened.push(u) });
+        for (const req of [
+            null,
+            { kind: "other" },
+            { kind: "discord", applicationId: "1", secret: "s" },
+            { kind: "steam", appId: "570", connect: "a\u0001" },
+            { kind: "steam", appId: "5x", connect: "+connect a" },
+            { kind: "steam", appId: "570", connect: "" },
+            { kind: "steam", appId: "570", steamId: "7656/x", connect: "c" },
+            { kind: "steam", appId: "570", steamId: "76561198000000001" },
+            {
+                kind: "steam",
+                appId: "570",
+                steamId: "76561198000000001",
+                lobbyId: "1 x",
+            },
+            { kind: "steam", appId: "570", lobbyId: "109775240000000000" },
+        ]) {
+            expect(await rp.joinGame(req as never)).toEqual({
+                ok: false,
+                error: "invalid",
+            });
+        }
+        expect(opened).toEqual([]);
+    });
+
+    it("opens exactly the Steam run link for a valid Steam invite without a Steam id", async () => {
+        const opened: string[] = [];
+        const { rp } = setup({ openExternal: (u: string) => opened.push(u) });
+        expect(
+            await rp.joinGame({
+                kind: "steam",
+                appId: "570",
+                connect: "+connect 10.0.0.5:27015 & x",
+            }),
+        ).toEqual({ ok: true });
+        expect(opened).toEqual([
+            "steam://run/570//%2Bconnect%2010.0.0.5%3A27015%20%26%20x/",
+        ]);
+    });
+
+    it("opens Steam's join link for the friend's game, or the friend's lobby", async () => {
+        const opened: string[] = [];
+        const { rp } = setup({ openExternal: (u: string) => opened.push(u) });
+        const steamId = "76561198000000001";
+        expect(
+            await rp.joinGame({
+                kind: "steam",
+                appId: "570",
+                steamId,
+                connect: "+connect 10.0.0.5:27015",
+            }),
+        ).toEqual({ ok: true });
+        expect(
+            await rp.joinGame({
+                kind: "steam",
+                appId: "570",
+                steamId,
+                lobbyId: "109775240000000000",
+                connect: "+connect 10.0.0.5:27015",
+            }),
+        ).toEqual({ ok: true });
+        expect(
+            await rp.joinGame({
+                kind: "steam",
+                appId: "570",
+                steamId,
+                lobbyId: "109775240000000000",
+            }),
+        ).toEqual({ ok: true });
+        expect(opened).toEqual([
+            `steam://rungame/570/${steamId}/%2Bconnect%2010.0.0.5%3A27015`,
+            `steam://joinlobby/570/109775240000000000/${steamId}`,
+            `steam://joinlobby/570/109775240000000000/${steamId}`,
+        ]);
+    });
+
+    it("reports unsupported when the link cannot be opened", async () => {
+        const { rp } = setup({
+            openExternal: async () => {
+                throw new Error("no handler");
+            },
+        });
+        expect(
+            await rp.joinGame({ kind: "steam", appId: "570", connect: "c" }),
+        ).toEqual({ ok: false, error: "unsupported" });
+        const none = setup();
+        expect(
+            await none.rp.joinGame({
+                kind: "steam",
+                appId: "570",
+                connect: "c",
+            }),
+        ).toEqual({ ok: false, error: "unsupported" });
+    });
+});
+
+describe("Steam pictures", () => {
+    it("resolves a Steam header only under the game's own steam app id", async () => {
+        const img = createPresenceImages({
+            fetch: async () => {
+                throw new Error("not called");
+            },
+        });
+        expect(await img.resolve("steam-570", "steam:570")).toBe(
+            "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/570/header.jpg",
+        );
+        const hash = "c".repeat(40);
+        expect(await img.resolve("steam-570", `steam:570:${hash}`)).toBe(
+            `https://shared.fastly.steamstatic.com/community_assets/images/apps/570/${hash}_full.jpg`,
+        );
+        expect(await img.resolve("steam-730", `steam:570:${hash}`)).toBeNull();
+        expect(await img.resolve("steam-570", "steam:570:zz")).toBeNull();
+        expect(await img.resolve("steam-730", "steam:570")).toBeNull();
+        expect(await img.resolve("570", "steam:570")).toBeNull();
+        expect(await img.resolve("steam-abc", "steam:abc")).toBeNull();
+        expect(await img.resolve("steam-570", "steam:570/../x")).toBeNull();
+    });
+
+    it("falls back from the full Steam icon to the small one, then the header", async () => {
+        const hash = "e".repeat(40);
+        const base = "https://shared.fastly.steamstatic.com";
+        const full = `${base}/community_assets/images/apps/570/${hash}_full.jpg`;
+        const small = `${base}/community_assets/images/apps/570/${hash}.jpg`;
+        const header = `${base}/store_item_assets/steam/apps/570/header.jpg`;
+        const run = async (available: string[]) => {
+            const urls: string[] = [];
+            const img = createPresenceImages({
+                fetch: async (url: string) => {
+                    urls.push(url);
+                    return {
+                        ok: available.includes(url),
+                        url,
+                        headers: new Map([["content-type", "image/jpeg"]]),
+                        arrayBuffer: async () =>
+                            new Uint8Array([urls.length]).buffer,
+                    };
+                },
+            });
+            const got = await img.fetchImage("steam-570", `steam:570:${hash}`);
+            return { urls, got };
+        };
+        expect(await run([full, small, header])).toMatchObject({
+            urls: [full],
+            got: { data: new Uint8Array([1]) },
+        });
+        expect(await run([small, header])).toMatchObject({
+            urls: [full, small],
+            got: { data: new Uint8Array([2]) },
+        });
+        expect(await run([header])).toMatchObject({
+            urls: [full, small, header],
+            got: { data: new Uint8Array([3]) },
+        });
+        expect((await run([])).got).toBeNull();
+    });
+
+    it("fetches the header picture, and refuses it if it redirects elsewhere", async () => {
+        const urls: string[] = [];
+        const img = createPresenceImages({
+            fetch: async (url: string) => {
+                urls.push(url);
+                return {
+                    ok: true,
+                    url,
+                    headers: new Map([["content-type", "image/jpeg"]]),
+                    arrayBuffer: async () => new Uint8Array([1, 2]).buffer,
+                };
+            },
+        });
+        expect(await img.fetchImage("steam-570", "steam:570")).toEqual({
+            type: "image/jpeg",
+            data: new Uint8Array([1, 2]),
+        });
+        expect(urls).toEqual([
+            "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/570/header.jpg",
+        ]);
+
+        const moved = createPresenceImages({
+            fetch: async () => ({
+                ok: true,
+                url: "https://evil.example/x.jpg",
+                headers: new Map([["content-type", "image/jpeg"]]),
+                arrayBuffer: async () => new Uint8Array([1]).buffer,
+            }),
+        });
+        expect(await moved.fetchImage("steam-570", "steam:570")).toBeNull();
     });
 });

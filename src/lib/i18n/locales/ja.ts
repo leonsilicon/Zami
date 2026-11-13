@@ -397,6 +397,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "ハードウェアアクセラレーション",
     "gpuDebug.hardwareAccelerationHint":
         "動画が黒く表示されたり、ウィンドウの描画が崩れたりする場合はオフにしてください。再起動後に適用されます。",
+    "gpuDebug.gameAuto": "ゲーム中はGPUを一時停止",
+    "gpuDebug.gameAutoHint":
+        "ゲームの実行中にGPUがクラッシュし続ける場合（ゲームがGPUメモリを占有）、Zamはハードウェアアクセラレーションなしで再起動し、ゲーム終了後に再び有効にして再起動します。設定 > 一般のゲーム検出が必要です。通話の終了を待ちます。",
+    "gpuDebug.gameAutoActive": "ゲームが終了するまでGPUなしで動作中です。",
     "gpuDebug.nvidiaVideo": "NVIDIA ビデオデコード",
     "gpuDebug.nvidiaVideoHint":
         "Chromium の Vulkan レンダラー経由で NVIDIA GPU 上の動画をデコードします。「自動」は NVIDIA GPU が画面を駆動している場合に有効になります。Wayland では Vulkan が使われないため「自動」ではオフのままです。そこで Vulkan を選ぶと、代わりに OpenGL 経由でハードウェアデコードを試みます（実験的）。",
@@ -538,6 +542,22 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "メッセージ順序のヒント",
     "debugSettings.orderHintsHint":
         "送信するメッセージに、チャットログの一番下に何があったかを示すヒントを付けます。また、他の Zam ユーザーのメッセージは、ヒントが示すメッセージの下に表示します。オフにすると、Element と同じようにサーバーの順序で表示します。",
+    "debugSettings.stickyCallMembership": "スティッキー通話メンバーシップ",
+    "debugSettings.stickyCallMembershipHint":
+        "通話に m.call.member ステートイベントの代わりに、スティッキーな m.rtc.member イベント (MSC4354) で参加します。ステートイベントしか読まないクライアント (1.51 より前の Zam を含む) には、通話中のあなたが見えません。次の通話から適用されます。",
+    "debugSettings.indexSync": "メッセージインデックスの同期",
+    "debugSettings.indexSyncHint":
+        "検索インデックスのエントリを、確認済みの他のセッションと交換します。両方のセッションがこのバージョンである必要があります。セッション：対象 / 確認済み / すべて。チャンク：送信 / 受信。",
+    "debugSettings.indexSyncOff":
+        "インデックス同期は動作していません。暗号化ルームのインデックス作成を有効にしてください。",
+    "debugSettings.indexSyncNow": "今すぐ同期",
+    "debugSettings.indexSyncNever": "なし",
+    "debugSettings.indexSyncSessions": "セッション",
+    "debugSettings.indexSyncAsked": "問い合わせ",
+    "debugSettings.indexSyncRoomsMissing": "欠けがあるルーム",
+    "debugSettings.indexSyncRequestsReceived": "受信したリクエスト",
+    "debugSettings.indexSyncChunks": "チャンク",
+    "debugSettings.indexSyncMerged": "統合したエントリ",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "チャットログにすべての Matrix タイムラインイベントを表示します。",
     "debugSettings.ignoreCodecSupport": "報告されたコーデック対応を無視",
@@ -1394,6 +1414,14 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このアカウントの通知はオフです",
     "notificationSettings.accountNotificationsOffDetail":
         "このアカウントの通知はサーバー側ですべてオフになっています（おそらく別のアプリから）。そのため下の設定に関わらず、どの端末でも通知されません。",
+    "notificationSettings.accountNotifications": "このアカウントの通知",
+    "notificationSettings.accountNotificationsDetail":
+        "このアカウントの通知をすべてのデバイスでオン／オフします。",
+    "notificationSettings.thisDeviceNotifications": "このデバイスの通知",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "このデバイスのポップアップ、音、プッシュだけをオフにします。他のデバイスは通知を続けます。",
+    "notificationSettings.couldNotUpdateNotifications":
+        "通知設定を更新できませんでした",
     "notificationSettings.turnOn": "オンにする",
     "notificationSettings.couldNotTurnOnNotifications":
         "通知をオンにできませんでした",
@@ -1532,6 +1560,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ルームの他の人に、入力中であることを表示します。オフにすると誰にも知られずに入力できます。",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "他のユーザーに既読を表示しません。未読数は引き続き機能し、他の人にはどこまで読んだかが見えなくなります。",
+    "privacySafetySettings.streamerMode": "配信者モード",
+    "privacySafetySettings.streamerModeHint":
+        "アカウントID、メールアドレス、リカバリーキーにぼかしをかけ、通知のメッセージ本文を非表示にして、配信に個人情報が映らないようにします。このデバイスにのみ適用されます。",
     "privacySafetySettings.hideMessageTextInNotifications":
         "通知でメッセージ本文を隠す",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1699,6 +1730,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "並べ替えを完了",
     "roomList.reorderRooms": "ルームを並べ替え",
     "roomList.spaceSettings": "スペース設定",
+    "roomList.sortDmsBy": "DMの並び順",
+    "roomList.dmSortRecent": "最新のメッセージ",
+    "roomList.dmSortUnread": "未読を先に",
+    "roomList.dmSortOnline": "オンラインを先に",
+    "roomList.dmSortName": "名前順（A–Z）",
     "roomList.pendingInvites": "保留中の招待",
     "roomList.inVoice": "{name} - 通話中",
     "roomList.orderValue": "並び順の値",
@@ -2645,6 +2681,27 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "ボイスメッセージを録音",
     "composerActionsMenu.shareLocation": "位置情報を共有",
     "composerActionsMenu.createThread": "スレッドを作成",
+    "composerActionsMenu.inviteToGame": "ゲームに招待",
+    "gameInvite.title": "ゲームに招待",
+    "gameInvite.game": "ゲーム",
+    "gameInvite.note": "メモ（任意）",
+    "gameInvite.notePlaceholder": "なにか書く…",
+    "gameInvite.send": "招待を送信",
+    "gameInvite.noGames": "今招待できる実行中の Steam ゲームはありません。",
+    "gameInvite.failedToSend": "招待を送信できませんでした。",
+    "gameInvite.cardTitle": "ゲームへの招待",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "パーティー {current}/{max}人",
+    "gameInvite.confirmSteam": "{game} を引数 {connect} で起動します",
+    "gameInvite.confirmLobby": "{game} のロビーに参加します",
+    "gameInvite.joinGame": "ゲームに参加",
+    "gameInvite.joinSent": "ゲームに参加を送信しました。",
+    "gameInvite.openInDesktop":
+        "参加するには Zam デスクトップアプリで開いてください。",
+    "gameInvite.joinUnsupported":
+        "このコンピューターではこのゲームへの参加に対応していません。",
+    "gameInvite.joinInvalid": "この招待は無効です。",
+    "gameInvite.joinFailed": "ゲームに参加できませんでした。",
     "reactions.couldNotAddReaction": "リアクションを追加できませんでした",
     "qrScanner.startingTheCamera": "カメラを起動中…",
     "qrScanner.cameraAccessWasDenied": "カメラへのアクセスが拒否されました。",
@@ -2894,6 +2951,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "それは公式リポジトリです(すでに含まれています)。",
     "repoList.thatRepoIsAlreadyAdded":
         "そのリポジトリはすでに追加されています。",
+    "gifSearch.couldNotLoadGifsTryAgain":
+        "GIFを読み込めませんでした。もう一度お試しください。",
     "gifSearch.couldnTReachKlipyTryAgain":
         "KLIPY に接続できませんでした - もう一度お試しください。",
     "liveLocation.youCanTShareLiveLocation":
@@ -3197,6 +3256,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "アプリが同期している間はオンラインとして表示されます",
     "presence.shownAsIdleToOtherUsers":
         "他のユーザーにはアイドルとして表示されます",
+    "presence.doNotDisturb": "応答不可",
+    "presence.doNotDisturbDescription":
+        "すべての端末で通知と着信を鳴らしません",
     "presence.invisible": "オフライン表示",
     "presence.appearOfflineToOtherUsers": "他のユーザーにオフラインとして表示",
     "pushRuleWrite.yourHomeserverHasNoNotificationRule":
@@ -3380,6 +3442,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "キャッシュを消去",
     "settingsSearch.showAllEvents": "すべてのイベントを表示",
     "settingsSearch.orderHints": "メッセージ順序のヒント",
+    "settingsSearch.stickyCallMembership": "スティッキー通話メンバーシップ",
     "settingsSearch.pushDiagnostics": "プッシュの診断",
     "settingsSearch.pushService": "プッシュサービス(UnifiedPush / Firebase)",
     "settingsSearch.language": "言語",
@@ -3466,6 +3529,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "リリースページを開く",
     "updateStatus.flatpakManualUpdate":
         "アップデートがあります{versionSuffix}。ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.packageManagerUpdate":
+        "アップデートがあります{versionSuffix}。{manager}で更新してください",
     "updateStatus.updateCheckFailed": "アップデートの確認に失敗しました",
     "updateStatus.checkForUpdatesToInstallThe":
         "最新バージョンをインストールするにはアップデートを確認してください。",
@@ -3539,8 +3604,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.failedOffline":
         "送信者に接続できません。送信者が Zam を開いている必要があります。",
     "fileOffer.failedRefused": "送信者のセッションがこの転送を拒否しました。",
-    "fileOffer.failedNoSfu":
-        "送信者のサーバーには、ファイルを中継する通話サービスがありません。",
+    "fileOffer.failedNoRelay":
+        "ピアツーピア接続に中継サーバーが必須ですが、中継（TURN）サーバーがないため、IPアドレスを見せずにファイルを送ることはできません。",
     "fileOffer.failedConnection": "接続が切れました。",
     "fileOffer.failedStalled": "転送が進まなくなりました。",
     "fileOffer.failedCorrupt":
@@ -3768,6 +3833,91 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.photosAndVideos": "写真と動画",
     "composerActionsMenu.files": "ファイル",
     "settingsSearch.richPresence": "リッチプレゼンス",
+    "messageActionsMenu.copyText": "メッセージのテキストをコピー",
+    "messageActionsMenu.textCopied": "メッセージのテキストをコピーしました",
+    "messageActionsMenu.couldnTCopyText":
+        "メッセージのテキストをコピーできませんでした",
+    "messageActionsMenu.selectHint": "テキストを長押しして一部を選択",
+    "roomSettings.readReceipts": "既読情報",
+    "roomSettings.readReceiptsRoomHelp":
+        "このルームで既読にしたメッセージを他のメンバーが見られるかどうかを選択します。",
+    "roomSettings.readReceiptsSpaceHelp":
+        "このスペースとそのルームで既読にしたメッセージを他のメンバーが見られるかどうかを選択します。ルーム自身の設定が優先されます。",
+    "roomSettings.readReceiptsDefaultShare":
+        "プライバシー設定に従い、現在は他の人に共有されています",
+    "roomSettings.readReceiptsDefaultHide":
+        "プライバシー設定に従い、現在は他の人から非表示になっています",
+    "roomSettings.readReceiptsShare": "自分の既読情報を共有する",
+    "roomSettings.readReceiptsShareDesc":
+        "他の人があなたが既読にしたメッセージを確認できます。",
+    "roomSettings.readReceiptsHide": "自分の既読情報を非表示にする",
+    "roomSettings.readReceiptsHideDesc":
+        "未読の状態は引き続き同期されますが、他の人があなたの既読状況を見ることはできません。",
+    "privacySafetySettings.receiptsOverrideHint":
+        "ルームやスペースは通知設定でこの設定を上書きできます。",
+    "richPresence.steam": "Steam リッチプレゼンス",
+    "richPresence.steamHint":
+        "プレイ中の Steam ゲームを、マップやモードなどのリッチプレゼンス状態とともに表示します。これにより Steam のローカルデバッグポートが有効になり、このコンピューターからのみ接続を受け付けます。反映させるには Steam を一度再起動する必要があります。",
+    "richPresence.steamConnected": "Steam に接続しました。",
+    "richPresence.steamNeedsRestart":
+        "Steam のデバッグポートはまだ開いていません。Steam を再起動して開いてください。",
+    "richPresence.steamNotRunning":
+        "Steam が起動していません。起動すると Zam が自動的に接続します。",
+    "richPresence.restartSteam": "Steam を再起動",
+    "richPresence.restartSteamTitle": "Steam を再起動しますか?",
+    "richPresence.restartSteamBody":
+        "Steam が閉じてから再び起動します。Steam から起動したゲームも一緒に終了する場合があります。",
+    "richPresence.restartSteamFailed":
+        "Steam を再起動できませんでした: {error}",
+    "richPresence.steamEnableFailed":
+        "Steam のデバッグポートを有効にできませんでした: {error}",
+    "richPresence.steamDisableFailed":
+        "Steam のデバッグポートを無効にできませんでした: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows が管理者権限を求めましたが許可されなかったため、何も変更されませんでした。",
+    "richPresence.steamFailed": "Steam リッチプレゼンスに失敗しました: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "この通話は他の参加者と直接接続されます",
+    "meshConsent.titleNewcomer":
+        "この通話の参加者の一人は、直接接続でしか到達できません",
+    "meshConsent.noCallServer":
+        "お使いのホームサーバーには通話サーバーがないため、音声・ビデオ・画面共有は、お使いの端末から通話内の各参加者へ直接送られます。",
+    "meshConsent.someoneWithoutCallServer":
+        "この通話の参加者の一人は、通話サーバーのないホームサーバーを使用しています。その人の音声と映像を受信するため、お使いの端末はその人の端末に直接接続します。",
+    "meshConsent.ipVisible":
+        "ホームサーバーに中継（TURN）サーバーがないため、直接接続する相手全員にあなたのIPアドレスが見え、おおよその所在地が分かる場合があります。",
+    "meshConsent.relayed":
+        "この接続はホームサーバーの中継サーバーを経由します。相手にはあなたのIPアドレスではなく、中継サーバーのアドレスが見えます。中継で相手に届かない場合は直接接続するため、その相手にはIPアドレスが見えます。これを防ぐには、音声とビデオの設定で「ピアツーピア通話に中継サーバーを必須にする」をオンにしてください。",
+    "meshConsent.relayRequired":
+        "「ピアツーピア通話に中継サーバーを必須にする」がオンですが、ホームサーバーに中継（TURN）サーバーがないため接続できません。直接接続するには、音声とビデオの設定でオフにしてください。",
+    "meshConsent.titleFileTransfer": "このファイル転送は相手と直接接続します",
+    "meshConsent.fileTransferDirect":
+        "あなたまたは相手のホームサーバーに通話サーバーがないため、ファイルは端末から端末へ直接送られます。",
+    "meshConsent.join": "参加",
+    "meshConsent.connectDirectly": "直接接続",
+    "meshConsent.joinWithoutThem": "その人を除いて参加",
+    "meshConsent.notNow": "今はしない",
+    "voiceCall.meshNeedsTurn":
+        "「ピアツーピア通話に中継サーバーを必須にする」がオンですが、ホームサーバーに中継（TURN）サーバーがありません。参加するには、音声とビデオの設定でオフにしてください。",
+    "voiceAudioSettings.meshRelayOnly":
+        "ピアツーピア通話に中継サーバーを必須にする",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "ピアツーピア通話とファイル転送は、ホームサーバーに中継（TURN）サーバーがあればそれを経由するため、誰にもIPアドレスは見えません。ない場合や、中継で相手に届かない場合は直接接続し、アドレスが見えてしまいます。この設定をオンにすると、直接接続は一切行わず、中継が使えなければ接続しません。",
+    "voiceCall.meshPeerUnreachable":
+        "この通話には直接しか接続できない人がいますが、中継サーバーが必須で、ホームサーバーに中継（TURN）サーバーがないため、その人の声は聞こえません。",
+    "meshConsent.usePublicStun": "公開STUNサーバーを使用する。",
+    "meshConsent.usePublicStunHint":
+        "ホームサーバーには家庭用ルーターを越えて接続するのを助けるサーバーがないため、それがないと直接接続のほとんどは失敗します。CloudflareのSTUNサーバーはあなたのIPアドレスを知ることになりますが、通話の内容は知りません。",
+    "voiceAudioSettings.meshPublicStun": "公開STUNサーバーを使用する",
+    "voiceAudioSettings.meshPublicStunHint":
+        "ホームサーバーに中継サーバーもSTUNサーバーもない場合にのみ使われます。ピアツーピア通話は、多くの家庭用ルーターが必要とする公開アドレスをCloudflareのSTUNサーバーに問い合わせます。サーバーが知るのはIPアドレスだけで、通話の内容は知りません。",
+    "settingsSearch.meshPublicStun": "公開STUNサーバーを使用する",
+    "voiceCall.meshFailed":
+        "{name}への直接接続に失敗しました。相手のネットワークが接続をブロックしているか、相手のホームサーバーに家庭用ルーターを越える方法がない可能性があります。",
+    "voiceCall.meshFailedNoServers":
+        "{name}への直接接続に失敗しました。ホームサーバーには中継サーバーもSTUNサーバーもないため、家庭用ルーターを経由する接続は通常失敗します。「音声と映像」設定で「公開STUNサーバーを使用する」をオンにすると改善する場合があります。",
+    "settingsSearch.meshRelayOnly":
+        "ピアツーピア通話に中継サーバーを必須にする",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: ja };

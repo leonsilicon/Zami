@@ -122,6 +122,22 @@ public class MainActivity extends BridgeActivity {
         consumeIntent(intent);
     }
 
+    /** True the first time a reply nonce is seen; remembers the last 30. */
+    private boolean claimReply(String nonce) {
+        android.content.SharedPreferences prefs =
+            getSharedPreferences("notif_reply_nonces", MODE_PRIVATE);
+        String joined = prefs.getString("seen", "");
+        java.util.List<String> seen = new java.util.ArrayList<>();
+        if (!joined.isEmpty()) {
+            seen.addAll(java.util.Arrays.asList(joined.split(",")));
+        }
+        if (seen.contains(nonce)) return false;
+        seen.add(nonce);
+        while (seen.size() > 30) seen.remove(0);
+        prefs.edit().putString("seen", android.text.TextUtils.join(",", seen)).commit();
+        return true;
+    }
+
     /** Strip the one-shot action extras once handled, so nothing that hands
      *  this intent back later (recreation, getIntent()) can replay them. */
     private void consumeIntent(Intent intent) {
@@ -211,6 +227,16 @@ public class MainActivity extends BridgeActivity {
             CharSequence cs = results != null
                 ? results.getCharSequence(MessageActionReceiver.KEY_TEXT_REPLY) : null;
             if (cs != null) typedReply = cs.toString();
+            // The system can hand this same intent back on a later reopen
+            // (the task's launch intent keeps its RemoteInput text in the
+            // ClipData, which consumeIntent leaves alone). Send each posted
+            // notification's reply once.
+            String nonce = intent.getStringExtra("reply_nonce");
+            if (typedReply != null && nonce != null && !claimReply(nonce)) {
+                // A replay: send nothing, and leave the room's current
+                // notification alone.
+                return;
+            }
             // Acted on: take the message notification down (id = room hash,
             // as MatrixMessagingService.showNotification() posts it).
             try {
@@ -220,6 +246,15 @@ public class MainActivity extends BridgeActivity {
         final String replyText = typedReply;
         // Mark-read action: silent receipt send, no window focus.
         final boolean markRead = intent.getBooleanExtra("mark_read", false);
+        // Accept on an invite notification: the web layer joins (its accept
+        // records a DM in m.direct and loads the room's state), then opens it.
+        final boolean acceptInvite =
+            MessageActionReceiver.ACTION_ACCEPT_INVITE.equals(intent.getAction());
+        if (acceptInvite) {
+            try {
+                NotificationManagerCompat.from(this).cancel(roomId.hashCode());
+            } catch (Throwable ignored) {}
+        }
         if (getBridge() == null || getBridge().getWebView() == null) return;
         // Defer so the web app has a chance to define the hook / finish loading.
         getBridge()
@@ -270,6 +305,14 @@ public class MainActivity extends BridgeActivity {
                                 ", '" +
                                 safeUser +
                                 "')";
+                        } else if (acceptInvite) {
+                            js =
+                                "window.__matrixInviteFromNotification && " +
+                                "window.__matrixInviteFromNotification('" +
+                                safeRoom +
+                                "', '" +
+                                safeUser +
+                                "', true)";
                         } else if (markRead) {
                             // Mark-read: silent receipt send (the bridge skips
                             // window focus), same fail-closed guard.
@@ -295,6 +338,20 @@ public class MainActivity extends BridgeActivity {
                                 eventArg +
                                 ")";
                         }
+                    }
+                    // A cold start (the notification woke a dead app) reaches
+                    // here long before the web app has defined its hooks, and a
+                    // bare `hook && hook(...)` silently dropped the reply / tap.
+                    // Wait for the hook instead, up to 30s.
+                    java.util.regex.Matcher hook = java.util.regex.Pattern
+                        .compile("^window\\.(\\w+) &&").matcher(js);
+                    if (hook.find()) {
+                        js =
+                            "(function(n){var f=function(){if(window." +
+                            hook.group(1) +
+                            "){" +
+                            js +
+                            "}else if(n-->0){setTimeout(f,500)}};f()})(60)";
                     }
                     getBridge().getWebView().evaluateJavascript(js, null);
                 },

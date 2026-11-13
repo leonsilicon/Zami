@@ -16,6 +16,7 @@ import type {
     MessageDecorator,
     MessageAnnotator,
     MessageEmbed,
+    GifProvider,
     HeaderButton,
     ShortcutRegistration,
     PanelRegistration,
@@ -34,6 +35,9 @@ import type {
     ProfileSectionRegistration,
     RoomActionItem,
     OverlayOptions,
+    CallControl,
+    CallPanelRegistration,
+    CallTileDecoration,
 } from "./types";
 
 export interface RegistryEntry<T> {
@@ -50,6 +54,7 @@ export interface PluginRegistryData {
     decorators: RegistryEntry<MessageDecorator>[];
     annotators: RegistryEntry<MessageAnnotator>[];
     embeds: RegistryEntry<MessageEmbed>[];
+    gifProviders: RegistryEntry<GifProvider>[];
     headerButtons: RegistryEntry<HeaderButton>[];
     shortcuts: RegistryEntry<ShortcutRegistration>[];
     panels: RegistryEntry<PanelRegistration>[];
@@ -68,6 +73,9 @@ export interface PluginRegistryData {
     profileSections: RegistryEntry<ProfileSectionRegistration>[];
     roomActions: RegistryEntry<RoomActionItem>[];
     overlays: RegistryEntry<OverlayOptions>[];
+    callControls: RegistryEntry<CallControl>[];
+    callPanels: RegistryEntry<CallPanelRegistration>[];
+    callTileDecorations: RegistryEntry<CallTileDecoration>[];
     tick: number;
     nextEntryId: number;
 }
@@ -85,6 +93,7 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "decorators",
     "annotators",
     "embeds",
+    "gifProviders",
     "headerButtons",
     "shortcuts",
     "panels",
@@ -103,6 +112,9 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "profileSections",
     "roomActions",
     "overlays",
+    "callControls",
+    "callPanels",
+    "callTileDecorations",
 ];
 
 export function createRegistryData(): PluginRegistryData {
@@ -114,6 +126,7 @@ export function createRegistryData(): PluginRegistryData {
         decorators: [],
         annotators: [],
         embeds: [],
+        gifProviders: [],
         headerButtons: [],
         shortcuts: [],
         panels: [],
@@ -132,6 +145,9 @@ export function createRegistryData(): PluginRegistryData {
         profileSections: [],
         roomActions: [],
         overlays: [],
+        callControls: [],
+        callPanels: [],
+        callTileDecorations: [],
         tick: 0,
         nextEntryId: 1,
     };

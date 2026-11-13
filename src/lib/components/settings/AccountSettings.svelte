@@ -27,7 +27,10 @@
     import { getBackupStatus } from "$lib/matrix/crypto";
     import { getClient } from "$lib/matrix/runtime";
     import { auth, isOAuthSession } from "$lib/stores/auth.svelte";
-    import { changeOwnPresence } from "$lib/stores/presence.svelte";
+    import {
+        changeOwnPresence,
+        changeDoNotDisturb,
+    } from "$lib/stores/presence.svelte";
     import { settingsState } from "$lib/stores/settings.svelte";
     import {
         deactivationConfirmed,
@@ -42,6 +45,7 @@
         type Capabilities,
     } from "$lib/utils/serverCapabilities";
     import { syncStateLabel } from "$lib/utils/syncStatus";
+    import { shownHomeserver, shownUserId } from "$lib/utils/streamerAlias";
 
     interface Props {
         onLogout: () => void;
@@ -243,6 +247,17 @@
         }
     }
 
+    async function toggleDoNotDisturb() {
+        presenceError = "";
+        try {
+            await changeDoNotDisturb(!settingsState.doNotDisturb);
+        } catch (error) {
+            presenceError =
+                (error as Error)?.message ??
+                t("accountSettings.couldNotSetPresence");
+        }
+    }
+
     async function changePassword() {
         if (passwordProblem || passwordBusy) return;
         passwordBusy = true;
@@ -410,15 +425,23 @@
         <div class="flex justify-between py-2 border-b border-discord-divider">
             <span class="text-discord-textMuted"
                 >{t("accountSettings.userId")}</span
-            ><span class="text-discord-textPrimary font-mono text-xs"
-                >{auth.userId}</span
+            ><span
+                class="text-discord-textPrimary font-mono text-xs streamer-hide"
+                >{auth.userId
+                    ? shownUserId(auth.userId, settingsState.streamerMode)
+                    : ""}</span
             >
         </div>
         <div class="flex justify-between py-2 border-b border-discord-divider">
             <span class="text-discord-textMuted"
                 >{t("accountSettings.homeserver")}</span
-            ><span class="text-discord-textPrimary text-xs"
-                >{auth.homeserverUrl}</span
+            ><span class="text-discord-textPrimary text-xs streamer-hide"
+                >{auth.homeserverUrl
+                    ? shownHomeserver(
+                          auth.homeserverUrl,
+                          settingsState.streamerMode,
+                      )
+                    : ""}</span
             >
         </div>
         <div class="flex justify-between py-2 border-b border-discord-divider">
@@ -447,6 +470,22 @@
                 {selectedPresence?.description}
             </p>
         </div>
+        <label class="mt-3 flex items-start gap-3 cursor-pointer">
+            <input
+                type="checkbox"
+                class="mt-1"
+                checked={settingsState.doNotDisturb}
+                onchange={toggleDoNotDisturb}
+            />
+            <span>
+                <span class="block text-sm text-discord-textPrimary"
+                    >{t("presence.doNotDisturb")}</span
+                >
+                <span class="block text-xs text-discord-textMuted"
+                    >{t("presence.doNotDisturbDescription")}</span
+                >
+            </span>
+        </label>
         {#if presenceError}<p class="mt-2 text-xs text-discord-danger">
                 {presenceError}
             </p>{/if}
@@ -552,7 +591,8 @@
                         >{identifier.medium === "email"
                             ? t("accountSettings.email")
                             : t("accountSettings.phone")}</span
-                    ><span class="text-discord-textPrimary font-mono text-xs"
+                    ><span
+                        class="text-discord-textPrimary font-mono text-xs streamer-hide"
                         >{identifier.address}</span
                     >
                 </div>
