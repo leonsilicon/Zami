@@ -90,7 +90,7 @@
       "react-native-audio-api": "1.0.0",
       "react-native-gesture-handler": "3.3.0",
       "react-native-get-random-values": "2.1.0",
-      "react-native-indexeddb-sqlite": "0.1.1",
+      "react-native-indexeddb-sqlite": "0.2.0",
       "react-native-keyboard-controller": "1.22.7",
       "react-native-maps": "1.29.11",
       "react-native-matrix-sdk-crypto-wasm": "0.1.0",
@@ -128,6 +128,8 @@
   },
   "packageManager": "bun@1.4.4",
   "patchedDependencies": {
-    "uniwind@1.13.0": "patches/uniwind@1.13.0.patch"
+    "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
+    "matrix-js-sdk@45.0.0": "patches/matrix-js-sdk@45.0.0.patch",
+    "fake-indexeddb@6.2.7": "patches/fake-indexeddb@6.2.7.patch"
   }
 }

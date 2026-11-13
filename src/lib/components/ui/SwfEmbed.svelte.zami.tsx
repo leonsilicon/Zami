@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Pressable, Text } from "react-native";
 import { Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
-import FlashEmbed from "./FlashEmbed.svelte";
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const FlashEmbed = lazyComponent(
+    () =>
+        require("./FlashEmbed.svelte") as typeof import("./FlashEmbed.svelte"),
+);
 
 interface Props {
     getSrc: () => Promise<string>;

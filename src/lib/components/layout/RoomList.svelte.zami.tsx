@@ -1,5 +1,10 @@
+import { createRowCache } from "@-/com.leonsilicon.zami.lists";
 import { SvgIcon, Spin } from "@-/com.leonsilicon.zami.rn";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    sameObject,
+    shallowEqual,
+    useRune,
+} from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import {
@@ -22,6 +27,7 @@ import {
     BackHandler,
     FlatList,
     I18nManager,
+    PixelRatio,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -34,6 +40,8 @@ import {
     type ViewStyle,
 } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
+import { useSharedValue, type SharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useCSSVariable, useResolveClassNames } from "uniwind";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
@@ -74,6 +82,7 @@ import {
     patchCachedHierarchyEntry,
     getDMPartnerId,
     getRoomCallMemberships,
+    getCallParticipantCounts,
     getMemberName,
     getMemberAvatar,
     isVideoRoom,
@@ -108,6 +117,7 @@ import {
     TAG_FAVOURITE,
     TAG_LOWPRIORITY,
     type RoomTagKind,
+    type RoomTagMap,
 } from "$lib/utils/roomOrdering";
 import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
@@ -177,11 +187,19 @@ function dmPreviewFor(room: Room): string | undefined {
     const text = latestMessagePreview(
         // Messages still being sent live outside the timeline until the
         // server accepts them; they are the newest.
-        [...room.getLiveTimeline().getEvents(), ...room.getPendingEvents()],
+        // Zami: only the timeline's tail, as latestMessagePreview looks at
+        // most PREVIEW_SCAN events back: copying a long timeline per row per
+        // tick was the cost.
+        [
+            ...room.getLiveTimeline().getEvents().slice(-PREVIEW_SCAN),
+            ...room.getPendingEvents(),
+        ],
         auth.userId,
     );
     return text || undefined;
 }
+// latestMessagePreview's SCAN_LIMIT.
+const PREVIEW_SCAN = 50;
 
 // ── Sub-spaces as tree categories ────────────────────────────────────
 type SubSpace = { id: string; name: string };
@@ -237,28 +255,94 @@ function subtreeState(spaceId: string): {
         if (id === spaceId) continue;
         const room = getRoom(id);
         if (!room) continue;
-        const b = roomButton(room);
-        if (b.isActive) hasActive = true;
+        if (roomIsActive(room.roomId)) hasActive = true;
+        const b = roomUnread(room);
         if (b.unread) unread = true;
         if (b.highlight || b.loud) alert = true;
     }
     return { unread, alert, hasActive };
 }
 
-function roomButton(room: Room) {
+// Zami: upstream's `roomButton`, in two parts each row reads on its own: a
+// room switch then re-renders only the two rows whose `isActive` flips, and
+// an unread change only the rows whose unread state did.
+function roomIsActive(roomId: string): boolean {
     // A draft DM covers the main pane, so the room under it is not active.
-    const isActive =
-        roomsState.activeRoomId === room.roomId && !roomsState.draftDm;
+    return roomsState.activeRoomId === roomId && !roomsState.draftDm;
+}
+
+function roomUnread(room: Room) {
     void roomsState.unreadTick; // track read receipt / new message changes
     const { unread, highlight } = getRoomUnreadInfo(room);
     const loud = hasLoudInRoom(room.roomId);
     const threadUnread = roomHasThreadUnread(room);
     return {
-        isActive,
         unread: unread || loud || threadUnread,
         highlight,
         loud,
     };
+}
+
+function roomButton(room: Room) {
+    return { isActive: roomIsActive(room.roomId), ...roomUnread(room) };
+}
+
+// Zami: who is in a call, per room: one pass over the call sessions per
+// voiceTick, shared by every row (each row used to fetch its own room's
+// session and build its roster on every tick).
+let callCountsMemo: {
+    tick: number;
+    userId: string | null;
+    counts: ReadonlyMap<string, number>;
+} | null = null;
+function callCounts(): ReadonlyMap<string, number> {
+    const tick = voiceCallState.voiceTick;
+    const userId = auth.userId;
+    if (callCountsMemo?.tick !== tick || callCountsMemo.userId !== userId)
+        callCountsMemo = { tick, userId, counts: getCallParticipantCounts() };
+    return callCountsMemo.counts;
+}
+
+function sameCounts(
+    a: ReadonlyMap<string, number>,
+    b: ReadonlyMap<string, number>,
+): boolean {
+    if (a === b) return true;
+    if (a.size !== b.size) return false;
+    for (const [id, n] of a) if (b.get(id) !== n) return false;
+    return true;
+}
+
+// Zami: `groupRoomsByTag` (a sort) again only when the rooms or a room's tags
+// changed (an `m.tag` event replaces the room's `tags` object), not on each
+// sync tick.
+function memoByTags<T>(
+    derive: (rooms: Room[], getTags: (r: Room) => RoomTagMap) => T,
+) {
+    let last: { rooms: Room[]; tags: RoomTagMap[]; value: T } | null = null;
+    const tagsOf = (r: Room) => getRoomTags(r.roomId);
+    return (rooms: readonly Room[]): T => {
+        const list = rooms.slice();
+        const tags = list.map(tagsOf);
+        if (
+            last?.rooms.length === list.length &&
+            list.every((room, i) => {
+                const prev = last!.tags[i];
+                return (
+                    room === last!.rooms[i] &&
+                    (tags[i] === prev || (isEmpty(tags[i]) && isEmpty(prev)))
+                );
+            })
+        )
+            return last.value;
+        last = { rooms: list, tags, value: derive(list, tagsOf) };
+        return last.value;
+    };
+}
+
+function isEmpty(tags: RoomTagMap | undefined): boolean {
+    for (const _ in tags) return false;
+    return true;
 }
 
 // ── Reorder mode (edit-mode drag + raw-order field) ─────────────────────
@@ -322,7 +406,8 @@ function rawOrderOf(room: Room, section: Section): string {
 // subscribes to whether it is the target). Upstream finds the row under the
 // pointer with `elementFromPoint`; here the draggable rows register their views,
 // and those of the dragged row's section and list are measured as the drag
-// starts (the list doesn't scroll during a drag).
+// starts (the list doesn't scroll during a drag). The gesture finds the row
+// under the finger on the UI thread, against those rects (`publish`).
 type DragTarget = { roomId: string; section: Section; list: DragList };
 type DragRect = DragTarget & LayoutRectangle;
 type ViewInstance = ComponentRef<typeof View>;
@@ -334,7 +419,6 @@ function createDragStore() {
         string,
         DragTarget & { view: RefObject<ViewInstance | null> }
     >();
-    let rects: DragRect[] = [];
     return {
         get: () => drag,
         set(next: DragState | null) {
@@ -355,36 +439,148 @@ function createDragStore() {
                 if (targets.get(key) === entry) targets.delete(key);
             };
         },
-        measure(section: Section, list: DragList) {
+        measure(
+            section: Section,
+            list: DragList,
+            publish: (rects: DragRect[]) => void,
+        ) {
             const next: DragRect[] = [];
-            rects = next;
+            // The measurements arrive one callback each: publish them once
+            // per turn, not once per row.
+            let queued = false;
             for (const target of targets.values()) {
                 if (target.section !== section || target.list !== list)
                     continue;
                 const { roomId } = target;
-                target.view.current?.measureInWindow((x, y, width, height) =>
-                    next.push({ roomId, section, list, x, y, width, height }),
-                );
+                target.view.current?.measureInWindow((x, y, width, height) => {
+                    next.push({ roomId, section, list, x, y, width, height });
+                    if (queued) return;
+                    queued = true;
+                    setTimeout(() => {
+                        queued = false;
+                        publish(next.slice());
+                    }, 0);
+                });
             }
         },
-        rowAt(x: number, y: number): DragRect | null {
-            return (
-                rects.find(
-                    (r) =>
-                        x >= r.x &&
-                        x <= r.x + r.width &&
-                        y >= r.y &&
-                        y <= r.y + r.height,
-                ) ?? null
-            );
-        },
     };
+}
+
+/** The row under a point, on the UI thread. Upstream's `elementFromPoint`. */
+function rowAt(
+    rects: readonly DragRect[],
+    x: number,
+    y: number,
+): DragRect | null {
+    "worklet";
+    for (const r of rects)
+        if (x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height)
+            return r;
+    return null;
 }
 type DragStore = ReturnType<typeof createDragStore>;
 
 // How long a row is held, in reorder mode, before it follows the finger. A
 // quicker move scrolls the list instead.
 const DRAG_DELAY_MS = 300;
+
+/** The drop target the gesture last reported, on the UI thread. */
+type DragHover = { overId: string; before: boolean } | null;
+
+// ── Join / knock state ──────────────────────────────────────────────────
+// Zami: upstream's `joiningIds`, `knockPromptId`, `knockReason` and
+// `knockError` live outside React state: each unjoined row reads its own part,
+// so a keystroke in the knock reason re-renders the row with the prompt, not
+// every cell through the list's `renderItem`.
+type KnockPrompt = { reason: string; error: string };
+
+function createJoinStore() {
+    let joiningIds = new Set<string>();
+    let knockPromptId: string | null = null;
+    let knock: KnockPrompt = { reason: "", error: "" };
+    const listeners = new Set<() => void>();
+    const emit = () => {
+        for (const listener of listeners) listener();
+    };
+    return {
+        subscribe(listener: () => void) {
+            listeners.add(listener);
+            return () => {
+                listeners.delete(listener);
+            };
+        },
+        isJoining: (roomId: string) => joiningIds.has(roomId),
+        get knockPromptId() {
+            return knockPromptId;
+        },
+        /** The prompt's text, the same object until it changes. */
+        get knock() {
+            return knock;
+        },
+        addJoining(roomId: string) {
+            joiningIds = new Set(joiningIds).add(roomId);
+            emit();
+        },
+        removeJoining(roomId: string) {
+            joiningIds = new Set(joiningIds);
+            joiningIds.delete(roomId);
+            emit();
+        },
+        setKnockPromptId(roomId: string | null) {
+            knockPromptId = roomId;
+            emit();
+        },
+        setKnockReason(reason: string) {
+            knock = { ...knock, reason };
+            emit();
+        },
+        setKnockError(error: string) {
+            knock = { ...knock, error };
+            emit();
+        },
+    };
+}
+type JoinStore = ReturnType<typeof createJoinStore>;
+
+// ── Row heights ─────────────────────────────────────────────────────────
+// Zami: each kind of row has a fixed height, from the text size (the system's
+// font scale), set on the row and summed for FlatList's `getItemLayout`, so
+// the list places rows it hasn't drawn instead of measuring every one. Text
+// is one line of its class's line height (text-xs 16px, text-sm 20px), which
+// React Native scales and rounds up to a pixel. The parts that vary are
+// added: a call's roster (a fixed height per person) and the knock prompt
+// (measured).
+type RowMetrics = ReturnType<typeof rowMetrics>;
+
+function rowMetrics(fontScale: number) {
+    const pixel = PixelRatio.get() || 1;
+    const line = (px: number) =>
+        Math.ceil(px * fontScale * pixel - 0.01) / pixel;
+    const xs = line(16);
+    const sm = line(20);
+    return {
+        /** `xs` and `sm` text, for the DM row's two-line column. */
+        xs,
+        sm,
+        /** The inbox button, less its `mb-2`. */
+        inbox: 12 + Math.max(20, sm, xs),
+        inboxMargin: 8,
+        heading: 8 + xs,
+        channel: 12 + Math.max(20, sm),
+        unjoined: 12 + Math.max(20, sm),
+        category: 8 + Math.max(12, xs),
+        emptyCategory: 8 + xs,
+        browse: 8 + Math.max(12, xs),
+        // The preview line is always allowed for, so every DM row is the same
+        // height whether or not it has one.
+        dm: 12 + Math.max(32, sm + xs),
+        empty: 64 + sm,
+        rosterEntry: 4 + Math.max(20, xs),
+        rosterMargin: 2,
+        /** Until the knock prompt is measured. */
+        knockPrompt: 96,
+    };
+}
 
 // ── What the rows share ─────────────────────────────────────────────────
 type RowActions = {
@@ -410,6 +606,8 @@ type RowActions = {
     handleCancelKnock: (roomId: string) => Promise<void>;
     setKnockPromptId: (roomId: string | null) => void;
     setKnockReason: (reason: string) => void;
+    /** The knock prompt's measured height, for `getItemLayout`. */
+    setKnockPromptHeight: (height: number) => void;
     commitRawOrder: (
         room: Room,
         section: Section,
@@ -420,7 +618,9 @@ type RowActions = {
         section: Section,
         list: DragList,
     ) => void;
-    onRowPointerMove: (x: number, y: number) => void;
+    /** Zami: the drop target under the finger, which the gesture found on
+     *  the UI thread, each time it changes (not each frame). */
+    onRowPointerMove: (overId: string, before: boolean) => void;
     onRowPointerUp: () => Promise<void>;
     onRowPointerCancel: () => void;
 };
@@ -431,6 +631,11 @@ interface RowContextValue {
     isTouchscreen: boolean;
     actions: RowActions;
     drag: DragStore;
+    /** The dragged section's rows, measured as the drag starts. */
+    dragRects: SharedValue<DragRect[]>;
+    dragHover: SharedValue<DragHover>;
+    join: JoinStore;
+    metrics: RowMetrics;
     /** The selected row's background (see `selectedBackground`). */
     selectedStyle: ViewStyle | undefined;
 }
@@ -505,6 +710,8 @@ function useDragMarker(
 // press (`DRAG_DELAY_MS`) starts the drag, so the list still scrolls in reorder
 // mode. The order field and the settings button sit outside it, as their
 // `stopPropagation()` keeps them out of the web drag.
+// The gesture runs on the UI thread: it finds the row under the finger there
+// and calls into JS only when the drop target changes, and on release.
 function Draggable({
     target,
     children,
@@ -512,22 +719,42 @@ function Draggable({
     target: DragTarget;
     children: ReactNode;
 }) {
-    const { actions } = useRowContext();
+    const { actions, dragRects, dragHover } = useRowContext();
+    const {
+        onRowPointerDown,
+        onRowPointerMove,
+        onRowPointerUp,
+        onRowPointerCancel,
+    } = actions;
+    const { roomId, section, list } = target;
     const pan = usePanGesture({
-        runOnJS: true,
         activateAfterLongPress: DRAG_DELAY_MS,
         onActivate: () => {
-            vibrate();
-            actions.onRowPointerDown(
-                target.roomId,
-                target.section,
-                target.list,
-            );
+            "worklet";
+            // The last drag's rows are stale (the list may have scrolled).
+            dragRects.value = [];
+            dragHover.value = null;
+            scheduleOnRN(vibrate);
+            scheduleOnRN(onRowPointerDown, roomId, section, list);
         },
-        onUpdate: (e) => actions.onRowPointerMove(e.absoluteX, e.absoluteY),
+        onUpdate: (e) => {
+            "worklet";
+            const row = rowAt(dragRects.value, e.absoluteX, e.absoluteY);
+            // Only accept a sibling row within the same section AND the same
+            // on-screen cluster (data-list) — otherwise a Home-view favourite DM
+            // row could become a drop target for a favourite channel row.
+            if (!row || row.section !== section || row.list !== list) return;
+            if (row.roomId === roomId) return;
+            const before = e.absoluteY < row.y + row.height / 2;
+            const hover = dragHover.value;
+            if (hover?.overId === row.roomId && hover.before === before) return;
+            dragHover.value = { overId: row.roomId, before };
+            scheduleOnRN(onRowPointerMove, row.roomId, before);
+        },
         onDeactivate: (e) => {
-            if (e.canceled) actions.onRowPointerCancel();
-            else void actions.onRowPointerUp();
+            "worklet";
+            if (e.canceled) scheduleOnRN(onRowPointerCancel);
+            else scheduleOnRN(onRowPointerUp);
         },
     });
     return <GestureDetector gesture={pan}>{children}</GestureDetector>;
@@ -564,7 +791,7 @@ const CHEVRON_PATH = "M7 10l5 5 5-5z";
 // ── Rows ────────────────────────────────────────────────────────────────
 
 function InboxButtonRow() {
-    const { selectedStyle } = useRowContext();
+    const { selectedStyle, metrics } = useRowContext();
     const showInbox = useRune(() => roomsState.showInbox);
     const pending = useRune(
         () => roomsState.invitedRooms.length + roomsState.knockedRooms.length,
@@ -588,7 +815,7 @@ function InboxButtonRow() {
                     ? "border-s-[3px] border-discord-accent ps-[5px]"
                     : "ps-2 active:bg-discord-messageHover"
             }`}
-            style={showInbox ? selectedStyle : undefined}
+            style={[{ height: metrics.inbox }, showInbox && selectedStyle]}
         >
             <SvgIcon
                 className={`w-5 h-5 flex-shrink-0 opacity-70 ${color}`}
@@ -616,25 +843,38 @@ function CountBadge({ count }: { count: number | string }) {
 
 // Who's in this room's call — rendered under the room's own row.
 // Replaces the old participant-count badge.
-// Zami: rooms without a call read only the membership tick; the roster
-// (speaking, muted) is read by the rooms that have one.
+// Zami: rooms without a call read only whether they have one (one count per
+// room, computed once per voiceTick for every row); the roster (speaking,
+// muted) is read by the rooms that have one.
 const CallRoster = memo(function CallRoster({ room }: { room: Room }) {
-    const participants = useRune(() => {
-        void voiceCallState.voiceTick;
-        return dedupeParticipants(getRoomCallMemberships(room));
-    }, [room]);
-    if (participants.length === 0) return null;
-    return <CallRosterList room={room} participants={participants} />;
+    const inCall = useRune(() => callCounts().has(room.roomId), [room]);
+    if (!inCall) return null;
+    return <CallRosterList room={room} />;
 });
 
-function CallRosterList({
-    room,
-    participants,
-}: {
-    room: Room;
-    participants: VoiceParticipant[];
-}) {
-    const { actions } = useRowContext();
+function sameParticipants(a: VoiceParticipant[], b: VoiceParticipant[]) {
+    return (
+        a.length === b.length && a.every((p, i) => p.userId === b[i]!.userId)
+    );
+}
+
+function sameRoster(
+    a: { userId: string; name: string; avatar: string | null }[],
+    b: { userId: string; name: string; avatar: string | null }[],
+) {
+    return a.length === b.length && a.every((p, i) => shallowEqual(p, b[i]));
+}
+
+function CallRosterList({ room }: { room: Room }) {
+    const { actions, metrics } = useRowContext();
+    const participants = useRune(
+        () => {
+            void voiceCallState.voiceTick;
+            return dedupeParticipants(getRoomCallMemberships(room));
+        },
+        [room],
+        { isEqual: sameParticipants },
+    );
     const speaking = useRune(() => voiceCallState.speakingUserIds);
     const muted = useRune(() => voiceCallState.mutedUserIds);
     const inThisCall = useRune(
@@ -644,14 +884,18 @@ function CallRosterList({
     const selfMicMuted = useRune(() => voiceCallState.micMuted);
     const selfDeafened = useRune(() => voiceCallState.deafened);
     const userId = useRune(() => auth.userId);
-    const members = useRune(() => {
-        void roomsState.roomsTick;
-        return participants.map((p) => ({
-            userId: p.userId,
-            name: getMemberName(room, p.userId),
-            avatar: getMemberAvatar(room, p.userId),
-        }));
-    }, [room, participants]);
+    const members = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return participants.map((p) => ({
+                userId: p.userId,
+                name: getMemberName(room, p.userId),
+                avatar: getMemberAvatar(room, p.userId),
+            }));
+        },
+        [room, participants],
+        { isEqual: sameRoster },
+    );
     return (
         <View className="mb-0.5">
             {members.map((p) => {
@@ -671,6 +915,7 @@ function CallRosterList({
                         accessibilityRole="button"
                         accessibilityLabel={t("roomList.inVoice", { name })}
                         className="w-full flex-row items-center gap-2 ps-8 pe-2 py-0.5 rounded active:bg-discord-messageHover"
+                        style={{ height: metrics.rosterEntry }}
                         onPress={() => {
                             setActiveRoom(room.roomId);
                             showCallView(room.roomId);
@@ -741,7 +986,9 @@ function RawOrderInput({ room, section }: { room: Room; section: Section }) {
             key={rawOrder}
             defaultValue={rawOrder}
             accessibilityLabel={t("roomList.orderValue")}
-            className="w-16 me-1 flex-shrink-0 rounded bg-discord-backgroundTertiary px-1 text-xs text-discord-textSecondary"
+            // Zami: `py-0` drops Android's own padding, which made the field
+            // taller than its row.
+            className="w-16 me-1 flex-shrink-0 rounded bg-discord-backgroundTertiary px-1 py-0 text-xs text-discord-textSecondary"
             onEndEditing={(e) => {
                 const v = e.nativeEvent.text;
                 if (v !== rawOrderOf(room, section))
@@ -751,8 +998,18 @@ function RawOrderInput({ room, section }: { room: Room; section: Section }) {
     );
 }
 
-function DropMarker() {
-    return <View className="h-0.5 mx-2 rounded bg-discord-accent" />;
+// Zami: drawn over the row's top or bottom edge rather than between rows, so
+// it moves nothing: rows keep their fixed heights, and the rects the drag
+// measured stay where the rows are.
+function DropMarker({ at }: { at: "before" | "after" }) {
+    return (
+        <View
+            pointerEvents="none"
+            className={`absolute start-2 end-2 h-0.5 rounded bg-discord-accent ${
+                at === "before" ? "top-0" : "bottom-0"
+            }`}
+        />
+    );
 }
 
 // Joined rooms / channels
@@ -763,18 +1020,33 @@ const ChannelRow = memo(function ChannelRow({
     room: Room;
     section: Section | null;
 }) {
-    const state = useRune(() => {
-        const b = roomButton(room);
-        void roomsState.roomsTick;
-        return {
-            ...b,
-            isVideo: isVideoRoom(room),
-            // Tick dependency: names change by in-place Room
-            // mutation (late-seeded state, renames).
-            roomName: getRoomDisplayName(room),
-        };
-    }, [room]);
-    return <ChannelRowView room={room} section={section} {...state} />;
+    // Zami: what changes on its own, read on its own (see roomIsActive).
+    const isActive = useRune(() => roomIsActive(room.roomId), [room]);
+    const unreadState = useRune(() => roomUnread(room), [room], {
+        isEqual: shallowEqual,
+    });
+    const label = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return {
+                isVideo: isVideoRoom(room),
+                // Tick dependency: names change by in-place Room
+                // mutation (late-seeded state, renames).
+                roomName: getRoomDisplayName(room),
+            };
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
+    return (
+        <ChannelRowView
+            room={room}
+            section={section}
+            isActive={isActive}
+            {...unreadState}
+            {...label}
+        />
+    );
 });
 
 const ChannelRowView = memo(function ChannelRowView({
@@ -802,6 +1074,7 @@ const ChannelRowView = memo(function ChannelRowView({
         isTouchscreen,
         actions,
         drag,
+        metrics,
         selectedStyle,
     } = useRowContext();
     const draggable =
@@ -852,7 +1125,9 @@ const ChannelRowView = memo(function ChannelRowView({
                         : "ps-2 active:bg-discord-messageHover"
                 }`}
             >
-                <View className="w-5 flex-shrink-0 flex-row items-center justify-center">
+                {/* Zami: `min-h-5`, so the unread dot's slot is as tall as the
+                    icon's and the row keeps its height at small text sizes. */}
+                <View className="w-5 min-h-5 flex-shrink-0 flex-row items-center justify-center">
                     {unread && !isActive ? (
                         <View
                             className={`w-2 h-2 rounded-full ${
@@ -890,13 +1165,12 @@ const ChannelRowView = memo(function ChannelRowView({
     );
     return (
         <>
-            {draggable && marker === "before" ? <DropMarker /> : null}
             <View
                 ref={rowRef}
                 className={`flex-row items-center transition-colors ${
                     isActive ? "border-s-[3px] border-discord-accent" : ""
                 }`}
-                style={isActive ? selectedStyle : undefined}
+                style={[{ height: metrics.channel }, isActive && selectedStyle]}
             >
                 {target ? (
                     <Draggable target={target}>{pressable}</Draggable>
@@ -924,8 +1198,10 @@ const ChannelRowView = memo(function ChannelRowView({
                         />
                     </Pressable>
                 )}
+                {draggable && marker !== null ? (
+                    <DropMarker at={marker} />
+                ) : null}
             </View>
-            {draggable && marker === "after" ? <DropMarker /> : null}
             <CallRoster room={room} />
         </>
     );
@@ -934,15 +1210,20 @@ const ChannelRowView = memo(function ChannelRowView({
 // A space child we haven't joined: join / knock in place
 const UnjoinedRow = memo(function UnjoinedRow({
     room,
-    isJoining,
-    knock,
 }: {
     room: SpaceChildInfo;
-    isJoining: boolean;
-    /** The knock-to-join prompt under the row, while it is open. */
-    knock: { reason: string; error: string } | null;
 }) {
-    const { actions } = useRowContext();
+    const { actions, join, metrics } = useRowContext();
+    // Zami: this row's part of the join store (see createJoinStore).
+    const isJoining = useSyncExternalStore(join.subscribe, () =>
+        join.isJoining(room.roomId),
+    );
+    /** The knock-to-join prompt under the row, while it is open. */
+    const knock = useSyncExternalStore(join.subscribe, () =>
+        join.knockPromptId === room.roomId && !room.isKnocked
+            ? join.knock
+            : null,
+    );
     return (
         <>
             {/* Same row geometry as channelRow (flex, py-1.5, 0.5rem inset,
@@ -950,7 +1231,10 @@ const UnjoinedRow = memo(function UnjoinedRow({
                 share height, hover and spacing. The member count lives in
                 the tooltip rather than a second line.
                 Zami: there are no tooltips, so the member count isn't shown. */}
-            <View className="flex-row items-center transition-colors">
+            <View
+                className="flex-row items-center transition-colors"
+                style={{ height: metrics.unjoined }}
+            >
                 <View className="flex-1 flex-row items-center gap-2 py-1.5 min-w-0 ps-2">
                     <View className="w-5 flex-shrink-0 flex-row items-center justify-center">
                         <View className="w-5 h-5 opacity-70 flex-row items-center justify-center">
@@ -1017,7 +1301,15 @@ const UnjoinedRow = memo(function UnjoinedRow({
                 )}
             </View>
             {knock ? (
-                <View className="mx-2 mb-1.5 p-2 rounded bg-discord-backgroundTertiary flex-col gap-1.5">
+                // Zami: its height (with `mb-1.5`) goes to getItemLayout.
+                <View
+                    className="mx-2 mb-1.5 p-2 rounded bg-discord-backgroundTertiary flex-col gap-1.5"
+                    onLayout={(e) =>
+                        actions.setKnockPromptHeight(
+                            e.nativeEvent.layout.height + 6,
+                        )
+                    }
+                >
                     <Text className="text-xs text-discord-textMuted">
                         {t("roomList.youCanTJoinThisRoom")}
                     </Text>
@@ -1076,10 +1368,11 @@ const CategoryHeader = memo(function CategoryHeader({
     expanded: boolean;
     loading: boolean;
 }) {
-    const { actions } = useRowContext();
+    const { actions, metrics } = useRowContext();
     const sub = useRune(
         () => (expanded ? null : subtreeState(id)),
         [id, expanded],
+        { isEqual: shallowEqual },
     );
     const color =
         sub?.hasActive || sub?.unread
@@ -1091,6 +1384,7 @@ const CategoryHeader = memo(function CategoryHeader({
             accessibilityState={{ expanded }}
             onPress={() => actions.toggleSubspace(id)}
             className="w-full flex-row items-center gap-1 px-2 py-1 transition-colors"
+            style={{ height: metrics.category }}
         >
             <SvgIcon
                 className={`w-3 h-3 flex-shrink-0 transition-transform ${
@@ -1121,21 +1415,40 @@ const CategoryHeader = memo(function CategoryHeader({
 
 // Direct messages
 const DmRow = memo(function DmRow({ room }: { room: Room }) {
-    const state = useRune(() => {
-        const b = roomButton(room);
-        void roomsState.roomsTick;
-        const presence = dmPresenceFor(room);
-        return {
-            ...b,
-            avatarSrc: getRoomAvatar(room),
-            dmName: getRoomDisplayName(room),
-            preview: dmPreviewFor(room),
-            dmSection: dmSectionOf(roomTagKind(getRoomTags(room.roomId))),
-            presenceDotClass: presence.dotClass,
-            presenceLabel: presence.label,
-        };
-    }, [room]);
-    return <DmRowView room={room} {...state} />;
+    // Zami: what changes on its own, read on its own: a room switch, an
+    // unread change, a new message, a rename and a presence change each
+    // re-run (and re-render for) only their own part.
+    const isActive = useRune(() => roomIsActive(room.roomId), [room]);
+    const unreadState = useRune(() => roomUnread(room), [room], {
+        isEqual: shallowEqual,
+    });
+    const label = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return {
+                avatarSrc: getRoomAvatar(room),
+                dmName: getRoomDisplayName(room),
+                dmSection: dmSectionOf(roomTagKind(getRoomTags(room.roomId))),
+            };
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
+    const preview = useRune(() => dmPreviewFor(room), [room]);
+    const presence = useRune(() => dmPresenceFor(room), [room], {
+        isEqual: shallowEqual,
+    });
+    return (
+        <DmRowView
+            room={room}
+            isActive={isActive}
+            {...unreadState}
+            {...label}
+            preview={preview}
+            presenceDotClass={presence.dotClass}
+            presenceLabel={presence.label}
+        />
+    );
 });
 
 const DmRowView = memo(function DmRowView({
@@ -1163,7 +1476,8 @@ const DmRowView = memo(function DmRowView({
     presenceDotClass: string;
     presenceLabel: string;
 }) {
-    const { reorderMode, actions, drag, selectedStyle } = useRowContext();
+    const { reorderMode, actions, drag, metrics, selectedStyle } =
+        useRowContext();
     const dmDraggable = reorderMode && dmSection !== null;
     const rowRef = useRef<ViewInstance>(null);
     const target =
@@ -1230,7 +1544,12 @@ const DmRowView = memo(function DmRowView({
                         />
                     )}
                 </View>
-                <View className="flex-1 min-w-0 flex-col">
+                {/* Zami: two lines tall with or without the preview, so every
+                    DM row has the same height (see rowMetrics). */}
+                <View
+                    className="flex-1 min-w-0 flex-col justify-center"
+                    style={{ minHeight: metrics.sm + metrics.xs }}
+                >
                     <Text
                         numberOfLines={1}
                         className={`text-sm ${color} ${
@@ -1262,8 +1581,10 @@ const DmRowView = memo(function DmRowView({
     // inside it — wrap both as siblings.
     return (
         <View ref={rowRef}>
-            {dmDraggable && marker === "before" ? <DropMarker /> : null}
-            <View className="flex-row items-center">
+            <View
+                className="flex-row items-center"
+                style={{ height: metrics.dm }}
+            >
                 {target ? (
                     <Draggable target={target}>{pressable}</Draggable>
                 ) : (
@@ -1272,8 +1593,10 @@ const DmRowView = memo(function DmRowView({
                 {dmDraggable && dmSection !== null ? (
                     <RawOrderInput room={room} section={dmSection} />
                 ) : null}
+                {dmDraggable && marker !== null ? (
+                    <DropMarker at={marker} />
+                ) : null}
             </View>
-            {dmDraggable && marker === "after" ? <DropMarker /> : null}
             <CallRoster room={room} />
         </View>
     );
@@ -1308,25 +1631,73 @@ type Row =
     | { kind: "gap"; key: string; depth: number; size: "h-1" | "h-2" }
     | { kind: "empty"; key: string };
 
-// Keep the previous render's row objects (and array) where nothing changed, so
-// a sync tick that changes no row re-renders no cell.
-function reuseRows(prev: readonly Row[], next: Row[]): Row[] {
-    const byKey = new Map(prev.map((r) => [r.key, r]));
-    let same = prev.length === next.length;
-    const out = next.map((r, i) => {
-        const old = byKey.get(r.key);
-        const keep =
-            old &&
-            Object.keys(r).length === Object.keys(old).length &&
-            Object.entries(r).every(
-                ([k, v]) => (old as Record<string, unknown>)[k] === v,
-            )
-                ? old
-                : r;
-        if (keep !== prev[i]) same = false;
-        return keep;
-    });
-    return same ? (prev as Row[]) : out;
+/** A category the list shows, for the `loadSubHierarchy` action. */
+type CategoryLoad = { id: string; depth: number; expanded: boolean };
+
+// Zami: each row's height, as `rowMetrics` and the rows set them, for
+// getItemLayout. A room with a call has its roster under its row.
+function rowHeight(
+    row: Row,
+    m: RowMetrics,
+    calls: ReadonlyMap<string, number>,
+    knock: { roomId: string | null; height: number | null },
+): number {
+    const roster = (roomId: string) => {
+        const n = calls.get(roomId) ?? 0;
+        return n > 0 ? n * m.rosterEntry + m.rosterMargin : 0;
+    };
+    switch (row.kind) {
+        case "inbox":
+            return m.inbox + m.inboxMargin;
+        case "heading":
+            return m.heading;
+        case "channel":
+            return m.channel + roster(row.room.roomId);
+        case "unjoined":
+            return (
+                m.unjoined +
+                (knock.roomId === row.room.roomId && !row.room.isKnocked
+                    ? (knock.height ?? m.knockPrompt)
+                    : 0)
+            );
+        case "category":
+            return m.category;
+        case "emptyCategory":
+            return m.emptyCategory;
+        case "browse":
+            return m.browse;
+        case "dm":
+            return m.dm + roster(row.room.roomId);
+        case "gap":
+            return row.size === "h-1" ? 4 : 8;
+        case "empty":
+            return m.empty;
+    }
+}
+
+function rowKey(row: Row): string {
+    return row.key;
+}
+
+const NO_ROOMS: SpaceChildInfo[] = [];
+const NO_SUBSPACES: SubSpace[] = [];
+
+function sameSubSpaces(a: SubSpace[], b: SubSpace[]): boolean {
+    return a.length === b.length && a.every((s, i) => shallowEqual(s, b[i]));
+}
+
+function sameMenu(
+    a: {
+        eligibleSpaces: Room[];
+    } | null,
+    b: {
+        eligibleSpaces: Room[];
+    } | null,
+): boolean {
+    if (a === null || b === null) return a === b;
+    const { eligibleSpaces: aSpaces, ...aRest } = a;
+    const { eligibleSpaces: bSpaces, ...bRest } = b;
+    return shallowEqual(aSpaces, bSpaces) && shallowEqual(aRest, bRest);
 }
 
 // Zami: `positionMenu`, `focusTrap` and `dismissOnOutsidePointer` for the
@@ -1498,7 +1869,8 @@ export default function RoomList({
     // only that row.
 
     // Rooms currently being joined (show spinner)
-    const [joiningIds, setJoiningIds] = useState(new Set<string>());
+    // Zami: in the join store, with the knock prompt (see createJoinStore).
+    const [join] = useState(createJoinStore);
     // Zami: upstream's `inviteActionIds`, `handleAccept` and `handleReject` have no
     // control in this list (invites live in the inbox), so they aren't kept.
 
@@ -1521,9 +1893,19 @@ export default function RoomList({
     }
 
     // Knock-to-join prompt (shown when a join is refused but knocking may work)
-    const [knockPromptId, setKnockPromptId] = useState<string | null>(null);
-    const [knockReason, setKnockReason] = useState("");
-    const [knockError, setKnockError] = useState("");
+    // Zami: its text is the join store's; the list reads which room has it
+    // (its height is in getItemLayout).
+    const knockPromptId = useSyncExternalStore(
+        join.subscribe,
+        () => join.knockPromptId,
+    );
+    const [knockPromptHeight, setKnockPromptHeight] = useState<number | null>(
+        null,
+    );
+    const setKnockPromptId = (roomId: string | null) => {
+        setKnockPromptHeight(null);
+        join.setKnockPromptId(roomId);
+    };
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -1697,7 +2079,9 @@ export default function RoomList({
     }
 
     const activeSpaceId = useRune(() => roomsState.activeSpaceId);
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // Zami: the list itself doesn't re-render on each sync tick: what reads
+    // the tick below returns the same value (or object) when nothing in it
+    // changed, so a tick that changes no row renders nothing.
 
     // Space names mutate in place on the live Room object, so depend on the
     // tick — roomsState.spaces is no longer reassigned on every sync.
@@ -1719,35 +2103,53 @@ export default function RoomList({
     );
 
     // Tags mutate in place on the live Room objects, so depend on roomsTick.
-    const roomGroups = useMemo(() => {
-        void roomsTick;
-        return groupRoomsByTag(visibleRooms, (r) => getRoomTags(r.roomId));
-    }, [roomsTick, visibleRooms]);
+    // Zami: regrouped (sorted) only when the rooms or their tags changed.
+    const [groupByTags] = useState(() => memoByTags(groupRoomsByTag));
+    const roomGroups = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return groupByTags(visibleRooms);
+        },
+        [visibleRooms, groupByTags],
+        { isEqual: sameObject },
+    );
 
     const directRooms = useRune(() => roomsState.directRooms);
-    const sortedDirectRooms = useMemo(() => {
-        void roomsTick;
-        return sortRoomsByTag(directRooms, (r) => getRoomTags(r.roomId));
-    }, [roomsTick, directRooms]);
+    const [sortByTags] = useState(() => memoByTags(sortRoomsByTag));
+    const sortedDirectRooms = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return sortByTags(directRooms);
+        },
+        [directRooms, sortByTags],
+        { isEqual: sameObject },
+    );
 
     // `isJoined` is baked in when /hierarchy is fetched, so it goes stale after
     // a join or leave — isJoinedNow prefers live membership; roomsTick
     // re-derives when it changes.
     const spaceHierarchy = useRune(() => roomsState.spaceHierarchy);
-    const unjoinedRooms = useMemo(() => {
-        if (activeSpaceId === null) return [];
-        void roomsTick;
-        return spaceHierarchy.filter((r) => !r.isSpace && !isJoinedNow(r));
-    }, [activeSpaceId, roomsTick, spaceHierarchy]);
+    const unjoinedRooms = useRune(
+        () => {
+            if (activeSpaceId === null) return NO_ROOMS;
+            void roomsState.roomsTick;
+            return spaceHierarchy.filter((r) => !r.isSpace && !isJoinedNow(r));
+        },
+        [activeSpaceId, spaceHierarchy],
+        { isEqual: shallowEqual },
+    );
 
     // Zami: `spaceChildren` is at module level, above.
 
-    const childSpaces = useMemo(() => {
-        void roomsTick;
-        return activeSpaceId !== null
-            ? spaceChildren(activeSpaceId, spaceHierarchy).spaces
-            : [];
-    }, [activeSpaceId, roomsTick, spaceHierarchy]);
+    const childSpaces = useRune(
+        () => {
+            if (activeSpaceId === null) return NO_SUBSPACES;
+            void roomsState.roomsTick;
+            return spaceChildren(activeSpaceId, spaceHierarchy).spaces;
+        },
+        [activeSpaceId, spaceHierarchy],
+        { isEqual: sameSubSpaces },
+    );
 
     // Collapsed categories, persisted per browser (expanded by default).
     const COLLAPSED_SUBSPACES_KEY = "roomlist.collapsedSubspaces";
@@ -1852,16 +2254,10 @@ export default function RoomList({
 
     const showDMs = activeSpaceId === null && directRooms.length > 0;
 
-    function addJoining(roomId: string) {
-        setJoiningIds((s) => new Set(s).add(roomId));
-    }
-    function removeJoining(roomId: string) {
-        setJoiningIds((s) => {
-            const next = new Set(s);
-            next.delete(roomId);
-            return next;
-        });
-    }
+    const addJoining = join.addJoining;
+    const removeJoining = join.removeJoining;
+    const setKnockReason = join.setKnockReason;
+    const setKnockError = join.setKnockError;
 
     async function handleJoin(room: SpaceChildInfo) {
         const roomId = room.roomId;
@@ -1889,7 +2285,7 @@ export default function RoomList({
         addJoining(roomId);
         setKnockError("");
         try {
-            await knockRoom(roomId, knockReason, room.via);
+            await knockRoom(roomId, join.knock.reason, room.via);
             setKnockPromptId(null);
             // Mark as requested in hierarchy so the UI updates immediately
             patchHierarchyEntry(roomId, { isKnocked: true });
@@ -1923,15 +2319,15 @@ export default function RoomList({
         [activeSpaceId],
     );
 
-    const canAccessSpaceSettings = useMemo(() => {
+    const canAccessSpaceSettings = useRune(() => {
         // Power levels arrive over sync mutating the same Room object, so
         // re-run on the tick or this stays false after a fresh page load.
-        void roomsTick;
+        void roomsState.roomsTick;
         if (!activeSpaceRoom) return false;
         const myPl = getMyPowerLevel(activeSpaceRoom);
         const pl = getRoomPowerLevels(activeSpaceRoom);
         return myPl >= pl.state_default || myPl >= pl.kick || myPl >= pl.ban;
-    }, [roomsTick, activeSpaceRoom]);
+    }, [activeSpaceRoom]);
 
     // The header "+" opens QuickActions (create room/space/dm, join) plus, in a
     // space, Space Settings. Inside a space where you can neither add a room nor
@@ -1939,17 +2335,20 @@ export default function RoomList({
     // sliver — so hide the trigger entirely there. On Home the menu always has
     // the global create actions. Space creation itself now lives on the space
     // rail's "+" (SpaceSidebar), reachable regardless of the active space.
-    const hasHeaderActions = useMemo(() => {
-        void roomsTick;
+    const hasHeaderActions = useRune(() => {
+        void roomsState.roomsTick;
         if (!activeSpaceId) return true;
         return canAddRoomToSpace(activeSpaceId) || canAccessSpaceSettings;
-    }, [roomsTick, activeSpaceId, canAccessSpaceSettings]);
+    }, [activeSpaceId, canAccessSpaceSettings]);
 
     // Zami: `roomButton` is at module level, above.
 
     // ── Reorder mode (edit-mode drag + raw-order field) ─────────────────────
     const [reorderMode, setReorderMode] = useState(false);
     const [drag] = useState(createDragStore);
+    // Zami: what the drag gesture reads on the UI thread (see Draggable).
+    const dragRects = useSharedValue<DragRect[]>([]);
+    const dragHover = useSharedValue<DragHover>(null);
     // Zami: whether a drag is under way, so the list holds still under it.
     const [dragging, setDragging] = useState(false);
 
@@ -1970,10 +2369,10 @@ export default function RoomList({
 
     // Space channels are only reorderable when we can write the space's
     // m.space.child state (same power-level gate as adding a room to a space).
-    const canReorderChannels = useMemo(() => {
-        void roomsTick;
+    const canReorderChannels = useRune(() => {
+        void roomsState.roomsTick;
         return activeSpaceId ? canAddRoomToSpace(activeSpaceId) : false;
-    }, [roomsTick, activeSpaceId]);
+    }, [activeSpaceId]);
 
     // Hide the reorder toggle where nothing could be reordered: a space whose
     // channels we can't write and which shows no personal favourite/low-priority
@@ -2004,21 +2403,18 @@ export default function RoomList({
             overId: null,
             before: false,
         });
-        drag.measure(section, list);
+        drag.measure(section, list, (rects) => {
+            if (drag.get()?.roomId === roomId) dragRects.value = rects;
+        });
         setDragging(true);
     }
 
-    function onRowPointerMove(x: number, y: number) {
+    // Zami: the gesture found the row under the finger (`rowAt`, with the
+    // same-section and same-list check) on the UI thread; this commits it.
+    function onRowPointerMove(overId: string, before: boolean) {
         const d = drag.get();
         if (!d) return;
-        const row = drag.rowAt(x, y);
-        // Only accept a sibling row within the same section AND the same
-        // on-screen cluster (data-list) — otherwise a Home-view favourite DM
-        // row could become a drop target for a favourite channel row.
-        if (!row || row.section !== d.section || row.list !== d.list) return;
-        const overId = row.roomId;
         if (!overId || overId === d.roomId) return;
-        const before = y < row.y + row.height / 2;
         if (d.overId !== overId || d.before !== before)
             drag.set({ ...d, overId, before });
     }
@@ -2122,199 +2518,236 @@ export default function RoomList({
 
     const hierarchyLoading = useRune(() => roomsState.hierarchyLoading);
 
-    // Zami: the list's blocks, in upstream's order, as FlatList rows.
-    const flatRows = useMemo(() => {
-        void roomsTick;
-        const out: Row[] = [];
-        const loads: { id: string; depth: number; expanded: boolean }[] = [];
+    // Zami: the list's blocks, in upstream's order, as FlatList rows. Built in
+    // a rune selector: sub-space categories read their children live, so with
+    // any on screen it re-runs on each sync tick, but unchanged rows keep their
+    // objects and the list its array (`rowCache`), so such a tick re-renders
+    // nothing.
+    const [rowCache] = useState(() => createRowCache<Row>());
+    const lastLoads = useRef<CategoryLoad[]>([]);
+    const flatRows = useRune(
+        () => {
+            if (childSpaces.length > 0) void roomsState.roomsTick;
+            let loads: CategoryLoad[] = [];
+            const rows = rowCache.build((row) => {
+                const out: Row[] = [];
+                const push = (r: Row) => out.push(row(r));
 
-        // Inbox button (home view only)
-        if (!activeSpaceId) out.push({ kind: "inbox", key: "inbox" });
+                // Inbox button (home view only)
+                if (!activeSpaceId) push({ kind: "inbox", key: "inbox" });
 
-        if (visibleRooms.length > 0) {
-            // px-2 matches the channel rows' 8px left inset (the row
-            // button's padding-left: 0.5rem). MemberList and the
-            // context menus use other values on purpose: a heading's
-            // inset tracks the rows it labels, so don't collapse the
-            // three panels onto one number.
-            const group = (
-                id: string,
-                label: string,
-                rooms: Room[],
-                section: Section | null,
-            ) => {
-                if (rooms.length === 0) return;
-                out.push({ kind: "heading", key: `heading:${id}`, label });
-                for (const room of rooms)
-                    out.push({
-                        kind: "channel",
-                        key: `${id}:${room.roomId}`,
-                        room,
-                        section,
-                        depth: 0,
-                    });
-            };
-            group(
-                "favourites",
-                t("roomList.favourites"),
-                roomGroups.favourites,
-                "favourite",
-            );
-            group(
-                "normal",
-                activeSpaceId ? t("roomList.channels") : t("roomList.rooms"),
-                roomGroups.normal,
-                activeSpaceId ? "channels" : null,
-            );
-            group(
-                "lowPriority",
-                t("roomList.lowPriority"),
-                roomGroups.lowPriority,
-                "lowPriority",
-            );
-            out.push({ kind: "gap", key: "gap:rooms", depth: 0, size: "h-2" });
-        }
-
-        // A sub-space, rendered as a collapsible category (recursive)
-        const spaceCategory = (
-            node: SubSpace,
-            depth: number,
-            ancestors: string[],
-            indent: number,
-            path: string,
-        ) => {
-            const expanded = !collapsedSubspaces.has(node.id);
-            const hier = subHierarchies[node.id] ?? getCachedHierarchy(node.id);
-            const kids = spaceChildren(node.id, hier);
-            // Spinner only when there's nothing cached to show meanwhile.
-            const loading = subHierarchyLoading.has(node.id) && !hier;
-            const nestedSpaces = kids.spaces.filter(
-                (c) => c.id !== node.id && !ancestors.includes(c.id),
-            );
-            loads.push({ id: node.id, depth, expanded });
-            out.push({
-                kind: "category",
-                key: path,
-                id: node.id,
-                name: node.name,
-                depth: indent,
-                expanded,
-                loading,
-            });
-            if (expanded) {
-                for (const room of kids.rooms)
-                    out.push({
-                        kind: "channel",
-                        key: `${path}|room:${room.roomId}`,
-                        room,
-                        section: null,
-                        depth: indent + 1,
-                    });
-                for (const room of kids.unjoined)
-                    out.push({
-                        kind: "unjoined",
-                        key: `${path}|unjoined:${room.roomId}`,
-                        room,
-                        depth: indent + 1,
-                    });
-                for (const child of nestedSpaces)
-                    spaceCategory(
-                        child,
-                        depth + 1,
-                        [...ancestors, node.id],
-                        indent + 1,
-                        `${path}/${child.id}`,
+                if (visibleRooms.length > 0) {
+                    // px-2 matches the channel rows' 8px left inset (the row
+                    // button's padding-left: 0.5rem). MemberList and the
+                    // context menus use other values on purpose: a heading's
+                    // inset tracks the rows it labels, so don't collapse the
+                    // three panels onto one number.
+                    const group = (
+                        id: string,
+                        label: string,
+                        rooms: Room[],
+                        section: Section | null,
+                    ) => {
+                        if (rooms.length === 0) return;
+                        push({ kind: "heading", key: `heading:${id}`, label });
+                        for (const room of rooms)
+                            push({
+                                kind: "channel",
+                                key: `${id}:${room.roomId}`,
+                                room,
+                                section,
+                                depth: 0,
+                            });
+                    };
+                    group(
+                        "favourites",
+                        t("roomList.favourites"),
+                        roomGroups.favourites,
+                        "favourite",
                     );
-                if (
-                    !loading &&
-                    kids.rooms.length === 0 &&
-                    kids.unjoined.length === 0 &&
-                    nestedSpaces.length === 0
-                )
-                    out.push({
-                        kind: "emptyCategory",
-                        key: `${path}|empty`,
-                        depth: indent + 1,
-                    });
-            }
-            out.push({
-                kind: "gap",
-                key: `${path}|gap`,
-                depth: indent,
-                size: "h-1",
-            });
-        };
-
-        // Sub-spaces of the active space
-        for (const space of childSpaces)
-            spaceCategory(
-                space,
-                1,
-                [activeSpaceId ?? ""],
-                0,
-                `category:${space.id}`,
-            );
-
-        // Unjoined rooms (from space hierarchy)
-        if (unjoinedRooms.length > 0) {
-            out.push({
-                kind: "browse",
-                key: "browse",
-                collapsed: browseCollapsed,
-            });
-            if (!browseCollapsed)
-                for (const room of unjoinedRooms)
-                    out.push({
-                        kind: "unjoined",
-                        key: `unjoined:${room.roomId}`,
-                        room,
+                    group(
+                        "normal",
+                        activeSpaceId
+                            ? t("roomList.channels")
+                            : t("roomList.rooms"),
+                        roomGroups.normal,
+                        activeSpaceId ? "channels" : null,
+                    );
+                    group(
+                        "lowPriority",
+                        t("roomList.lowPriority"),
+                        roomGroups.lowPriority,
+                        "lowPriority",
+                    );
+                    push({
+                        kind: "gap",
+                        key: "gap:rooms",
                         depth: 0,
+                        size: "h-2",
                     });
-            out.push({ kind: "gap", key: "gap:browse", depth: 0, size: "h-2" });
-        }
+                }
 
-        // Direct messages
-        if (showDMs) {
-            out.push({
-                kind: "heading",
-                key: "heading:dms",
-                label: t("roomList.directMessages"),
+                // A sub-space, rendered as a collapsible category (recursive)
+                const spaceCategory = (
+                    node: SubSpace,
+                    depth: number,
+                    ancestors: string[],
+                    indent: number,
+                    path: string,
+                ) => {
+                    const expanded = !collapsedSubspaces.has(node.id);
+                    const hier =
+                        subHierarchies[node.id] ?? getCachedHierarchy(node.id);
+                    const kids = spaceChildren(node.id, hier);
+                    // Spinner only when there's nothing cached to show meanwhile.
+                    const loading = subHierarchyLoading.has(node.id) && !hier;
+                    const nestedSpaces = kids.spaces.filter(
+                        (c) => c.id !== node.id && !ancestors.includes(c.id),
+                    );
+                    loads.push({ id: node.id, depth, expanded });
+                    push({
+                        kind: "category",
+                        key: path,
+                        id: node.id,
+                        name: node.name,
+                        depth: indent,
+                        expanded,
+                        loading,
+                    });
+                    if (expanded) {
+                        for (const room of kids.rooms)
+                            push({
+                                kind: "channel",
+                                key: `${path}|room:${room.roomId}`,
+                                room,
+                                section: null,
+                                depth: indent + 1,
+                            });
+                        for (const room of kids.unjoined)
+                            push({
+                                kind: "unjoined",
+                                key: `${path}|unjoined:${room.roomId}`,
+                                room,
+                                depth: indent + 1,
+                            });
+                        for (const child of nestedSpaces)
+                            spaceCategory(
+                                child,
+                                depth + 1,
+                                [...ancestors, node.id],
+                                indent + 1,
+                                `${path}/${child.id}`,
+                            );
+                        if (
+                            !loading &&
+                            kids.rooms.length === 0 &&
+                            kids.unjoined.length === 0 &&
+                            nestedSpaces.length === 0
+                        )
+                            push({
+                                kind: "emptyCategory",
+                                key: `${path}|empty`,
+                                depth: indent + 1,
+                            });
+                    }
+                    push({
+                        kind: "gap",
+                        key: `${path}|gap`,
+                        depth: indent,
+                        size: "h-1",
+                    });
+                };
+
+                // Sub-spaces of the active space
+                for (const space of childSpaces)
+                    spaceCategory(
+                        space,
+                        1,
+                        [activeSpaceId ?? ""],
+                        0,
+                        `category:${space.id}`,
+                    );
+
+                // Unjoined rooms (from space hierarchy)
+                if (unjoinedRooms.length > 0) {
+                    push({
+                        kind: "browse",
+                        key: "browse",
+                        collapsed: browseCollapsed,
+                    });
+                    if (!browseCollapsed)
+                        for (const room of unjoinedRooms)
+                            push({
+                                kind: "unjoined",
+                                key: `unjoined:${room.roomId}`,
+                                room,
+                                depth: 0,
+                            });
+                    push({
+                        kind: "gap",
+                        key: "gap:browse",
+                        depth: 0,
+                        size: "h-2",
+                    });
+                }
+
+                // Direct messages
+                if (showDMs) {
+                    push({
+                        kind: "heading",
+                        key: "heading:dms",
+                        label: t("roomList.directMessages"),
+                    });
+                    for (const room of sortedDirectRooms)
+                        push({ kind: "dm", key: `dm:${room.roomId}`, room });
+                    push({
+                        kind: "gap",
+                        key: "gap:dms",
+                        depth: 0,
+                        size: "h-2",
+                    });
+                }
+
+                if (
+                    visibleRooms.length === 0 &&
+                    unjoinedRooms.length === 0 &&
+                    childSpaces.length === 0 &&
+                    !hierarchyLoading &&
+                    !showDMs
+                )
+                    push({ kind: "empty", key: "empty" });
+
+                return out;
             });
-            for (const room of sortedDirectRooms)
-                out.push({ kind: "dm", key: `dm:${room.roomId}`, room });
-            out.push({ kind: "gap", key: "gap:dms", depth: 0, size: "h-2" });
-        }
-
-        if (
-            visibleRooms.length === 0 &&
-            unjoinedRooms.length === 0 &&
-            childSpaces.length === 0 &&
-            !hierarchyLoading &&
-            !showDMs
-        )
-            out.push({ kind: "empty", key: "empty" });
-
-        return { rows: out, loads };
-    }, [
-        roomsTick,
-        activeSpaceId,
-        visibleRooms,
-        roomGroups,
-        childSpaces,
-        collapsedSubspaces,
-        subHierarchies,
-        subHierarchyLoading,
-        unjoinedRooms,
-        browseCollapsed,
-        showDMs,
-        sortedDirectRooms,
-        hierarchyLoading,
-    ]);
-    const prevRows = useRef<Row[]>([]);
-    const rows = useMemo(
-        () => reuseRows(prevRows.current, flatRows.rows),
-        [flatRows],
+            // The same loads keep their array, so the effect below doesn't
+            // run for nothing.
+            if (
+                loads.length === lastLoads.current.length &&
+                loads.every((l, i) => shallowEqual(l, lastLoads.current[i]))
+            )
+                loads = lastLoads.current;
+            else lastLoads.current = loads;
+            return { rows, loads };
+        },
+        [
+            activeSpaceId,
+            visibleRooms,
+            roomGroups,
+            childSpaces,
+            collapsedSubspaces,
+            subHierarchies,
+            subHierarchyLoading,
+            unjoinedRooms,
+            browseCollapsed,
+            showDMs,
+            sortedDirectRooms,
+            hierarchyLoading,
+            rowCache,
+        ],
+        { isEqual: (a, b) => a.rows === b.rows && a.loads === b.loads },
     );
+    const rows = flatRows.rows;
+    const prevRows = useRef<readonly Row[]>(rows);
     useLayoutEffect(() => {
         prevRows.current = rows;
     }, [rows]);
@@ -2357,6 +2790,9 @@ export default function RoomList({
         handleCancelKnock,
         setKnockPromptId,
         setKnockReason,
+        setKnockPromptHeight: (height) => {
+            if (height !== knockPromptHeight) setKnockPromptHeight(height);
+        },
         commitRawOrder,
         onRowPointerDown,
         onRowPointerMove,
@@ -2365,6 +2801,8 @@ export default function RoomList({
     });
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
     const selectedStyle = useSelectedBackground();
+    const { fontScale } = useWindowDimensions();
+    const metrics = useMemo(() => rowMetrics(fontScale), [fontScale]);
     const rowContext = useMemo<RowContextValue>(
         () => ({
             reorderMode,
@@ -2372,6 +2810,10 @@ export default function RoomList({
             isTouchscreen,
             actions,
             drag,
+            dragRects,
+            dragHover,
+            join,
+            metrics,
             selectedStyle,
         }),
         [
@@ -2380,8 +2822,31 @@ export default function RoomList({
             isTouchscreen,
             actions,
             drag,
+            dragRects,
+            dragHover,
+            join,
+            metrics,
             selectedStyle,
         ],
+    );
+
+    // Zami: where each row starts, for getItemLayout (see rowMetrics). Only a
+    // change to the rows, a call's roster or the knock prompt redoes it.
+    const calls = useRune(() => callCounts(), [], { isEqual: sameCounts });
+    const offsets = useMemo(() => {
+        const knock = { roomId: knockPromptId, height: knockPromptHeight };
+        const out = new Float64Array(rows.length + 1);
+        for (let i = 0; i < rows.length; i++)
+            out[i + 1] = out[i]! + rowHeight(rows[i]!, metrics, calls, knock);
+        return out;
+    }, [rows, metrics, calls, knockPromptId, knockPromptHeight]);
+    const getItemLayout = useCallback(
+        (_: ArrayLike<Row> | null | undefined, index: number) => ({
+            length: offsets[index + 1]! - offsets[index]!,
+            offset: offsets[index]!,
+            index,
+        }),
+        [offsets],
     );
 
     const renderItem = useCallback(
@@ -2390,10 +2855,13 @@ export default function RoomList({
                 case "inbox":
                     return <InboxButton />;
                 case "heading":
+                    // Zami: one line at a fixed height (see rowMetrics).
                     return (
                         <Text
                             accessibilityRole="header"
+                            numberOfLines={1}
                             className="px-2 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            style={{ height: metrics.heading }}
                         >
                             {item.label}
                         </Text>
@@ -2410,19 +2878,7 @@ export default function RoomList({
                 case "unjoined":
                     return (
                         <Indent depth={item.depth}>
-                            <UnjoinedRow
-                                room={item.room}
-                                isJoining={joiningIds.has(item.room.roomId)}
-                                knock={
-                                    knockPromptId === item.room.roomId &&
-                                    !item.room.isKnocked
-                                        ? {
-                                              reason: knockReason,
-                                              error: knockError,
-                                          }
-                                        : null
-                                }
-                            />
+                            <UnjoinedRow room={item.room} />
                         </Indent>
                     );
                 case "category":
@@ -2439,7 +2895,11 @@ export default function RoomList({
                 case "emptyCategory":
                     return (
                         <Indent depth={item.depth}>
-                            <Text className="px-2 py-1 text-xs italic text-discord-textMuted">
+                            <Text
+                                numberOfLines={1}
+                                className="px-2 py-1 text-xs italic text-discord-textMuted"
+                                style={{ height: metrics.emptyCategory }}
+                            >
                                 {t("roomList.emptyCategory")}
                             </Text>
                         </Indent>
@@ -2451,6 +2911,7 @@ export default function RoomList({
                             accessibilityState={{ expanded: !item.collapsed }}
                             onPress={actions.toggleBrowseCollapsed}
                             className="w-full flex-row items-center gap-1 px-2 py-1 transition-colors"
+                            style={{ height: metrics.browse }}
                         >
                             <Text
                                 numberOfLines={1}
@@ -2482,7 +2943,9 @@ export default function RoomList({
                     );
             }
         },
-        [actions, joiningIds, knockPromptId, knockReason, knockError],
+        // Zami: no row state: rows read their own (the join store, runes),
+        // so this stays the same and FlatList re-renders no cell for it.
+        [actions, metrics],
     );
 
     // Header actions dropdown: its trigger's box places it.
@@ -2495,21 +2958,26 @@ export default function RoomList({
     );
 
     // The context menu's live state (notification setting, tags, spaces).
+    // Zami: a sync tick that changes none of it re-renders nothing (`sameMenu`).
     const cmRoomId = contextMenu?.roomId ?? null;
-    const menu = useRune(() => {
-        if (cmRoomId === null) return null;
-        const currentSetting = getRoomNotificationSetting(cmRoomId);
-        void roomsState.roomsTick;
-        return {
-            currentSetting,
-            canInvite: canInviteToRoom(cmRoomId),
-            activeTagKind: roomTagKind(getRoomTags(cmRoomId)),
-            eligibleSpaces: getSpaces().filter((s) =>
-                canAddRoomToSpace(s.roomId),
-            ),
-            isLastMember: isLastJoinedMember(cmRoomId),
-        };
-    }, [cmRoomId]);
+    const menu = useRune(
+        () => {
+            if (cmRoomId === null) return null;
+            const currentSetting = getRoomNotificationSetting(cmRoomId);
+            void roomsState.roomsTick;
+            return {
+                currentSetting,
+                canInvite: canInviteToRoom(cmRoomId),
+                activeTagKind: roomTagKind(getRoomTags(cmRoomId)),
+                eligibleSpaces: getSpaces().filter((s) =>
+                    canAddRoomToSpace(s.roomId),
+                ),
+                isLastMember: isLastJoinedMember(cmRoomId),
+            };
+        },
+        [cmRoomId],
+        { isEqual: sameMenu },
+    );
 
     const menuItemClass =
         "w-full px-3 py-1.5 active:bg-discord-messageHover transition-colors";
@@ -2795,12 +3263,16 @@ export default function RoomList({
 
                 {/* Room list */}
                 <RowContext.Provider value={rowContext}>
+                    {/* Zami: rows have fixed heights (getItemLayout), and a screen
+                        or two either side are mounted, not FlatList's ten. */}
                     <FlatList
                         className="flex-1"
                         data={rows}
-                        keyExtractor={(row) => row.key}
+                        keyExtractor={rowKey}
                         renderItem={renderItem}
+                        getItemLayout={getItemLayout}
                         initialNumToRender={30}
+                        windowSize={5}
                         keyboardShouldPersistTaps="handled"
                         scrollEnabled={!dragging}
                     />

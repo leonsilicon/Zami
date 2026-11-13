@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { Image, mediaSource, pickedFile } from "@-/com.leonsilicon.zami.rn";
+import {
+    useProgressiveCount,
+    useStableCallback,
+} from "@-/com.leonsilicon.zami.incremental/react";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import {
     getJoinedRoomPacks,
     getStaleEmoteSubscriptions,
     getUserPackInfo,
+    imagePackRevision,
     setPackGlobal,
     updateUserPackMeta,
     uploadContent,
@@ -23,8 +28,11 @@ export default function SharedPackSettings() {
     // MSC2545 sharing: packs from rooms you are in can be enabled for every
     // room (im.ponies.emote_rooms); your own pack can carry a name, avatar and
     // attribution so people who copy from it can credit you.
-    const view = useRune(() => {
-        void roomsState.roomsTick;
+    // Zami: rebuilt (a scan of every joined room) only when a pack, a room or
+    // the account's pack settings changed, not on every sync's roomsTick.
+    const packRevision = useRune(() => imagePackRevision());
+    const view = useMemo(() => {
+        void packRevision;
         const packs = getJoinedRoomPacks();
         return {
             enabled: packs.filter((p) => p.global),
@@ -32,7 +40,7 @@ export default function SharedPackSettings() {
             stale: getStaleEmoteSubscriptions(),
             mine: getUserPackInfo(),
         };
-    });
+    }, [packRevision]);
 
     const [busy, setBusy] = useState<string | null>(null);
     const [error, setError] = useState("");
@@ -43,14 +51,28 @@ export default function SharedPackSettings() {
     );
     const [avatarUploading, setAvatarUploading] = useState(false);
 
-    const filtered = view.available.filter((pack) => {
+    // Zami: each pack's name and room lowercased once per rebuild, not per
+    // keystroke.
+    const searchable = useMemo(
+        () =>
+            view.available.map((pack) => ({
+                pack,
+                name: pack.name.toLowerCase(),
+                room: (pack.sourceName ?? "").toLowerCase(),
+            })),
+        [view],
+    );
+    const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return (
-            !q ||
-            pack.name.toLowerCase().includes(q) ||
-            (pack.sourceName ?? "").toLowerCase().includes(q)
-        );
-    });
+        return searchable
+            .filter((e) => !q || e.name.includes(q) || e.room.includes(q))
+            .map((e) => e.pack);
+    }, [searchable, query]);
+    // Zami: the rows' action, the same function across renders; and the
+    // available packs mounted a slice per turn of the event loop (this sits in
+    // the settings panel's scroll view, so it can't be virtualized).
+    const onToggle = useStableCallback(toggle);
+    const shownCount = useProgressiveCount(filtered.length, 30, filtered);
 
     async function toggle(roomId: string, stateKey: string, enabled: boolean) {
         setBusy(`${roomId}:${stateKey}`);
@@ -107,69 +129,15 @@ export default function SharedPackSettings() {
     }
 
     function packRow(pack: CustomImagePack, enabled: boolean) {
+        // Zami: memoized (PackRow, below).
         return (
-            <View
+            <PackRow
                 key={pack.id}
-                className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
-            >
-                {pack.avatarUrl ? (
-                    <Image
-                        source={mediaSource(pack.avatarUrl)}
-                        contentFit="cover"
-                        accessibilityIgnoresInvertColors
-                        className="w-8 h-8 rounded object-cover flex-shrink-0"
-                    />
-                ) : null}
-                <View className="flex-1 min-w-0">
-                    <Text
-                        numberOfLines={1}
-                        className="text-sm text-discord-textPrimary truncate"
-                    >
-                        {pack.name}
-                    </Text>
-                    <Text
-                        numberOfLines={1}
-                        className="text-xs text-discord-textMuted truncate"
-                    >
-                        {t("sharedPackSettings.packSummary", {
-                            room: pack.sourceName ?? "",
-                            count: pack.images.length,
-                        })}
-                    </Text>
-                    {pack.attribution ? (
-                        <Text
-                            numberOfLines={1}
-                            className="text-xs text-discord-textMuted truncate"
-                        >
-                            {t("imagePackEditor.attribution", {
-                                value: pack.attribution,
-                            })}
-                        </Text>
-                    ) : null}
-                </View>
-                <Pressable
-                    accessibilityRole="button"
-                    onPress={() =>
-                        toggle(pack.roomId ?? "", packKey(pack), !enabled)
-                    }
-                    disabled={busy === `${pack.roomId}:${packKey(pack)}`}
-                    className={`px-3 py-1.5 rounded disabled:opacity-50 ${
-                        enabled
-                            ? "bg-discord-backgroundSecondary hover:bg-discord-messageHover"
-                            : "bg-discord-accent hover:bg-discord-accentHover"
-                    }`}
-                >
-                    <Text
-                        className={`text-xs font-semibold ${
-                            enabled ? "text-discord-textPrimary" : "text-white"
-                        }`}
-                    >
-                        {enabled
-                            ? t("sharedPackSettings.disable")
-                            : t("sharedPackSettings.enable")}
-                    </Text>
-                </Pressable>
-            </View>
+                pack={pack}
+                enabled={enabled}
+                busy={busy === `${pack.roomId}:${packKey(pack)}`}
+                onToggle={onToggle}
+            />
         );
     }
 
@@ -329,7 +297,9 @@ export default function SharedPackSettings() {
                     autoCorrect={false}
                     className="w-full bg-discord-backgroundTertiary text-discord-textPrimary placeholder-discord-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
                 />
-                {filtered.map((pack) => packRow(pack, false))}
+                {filtered
+                    .slice(0, shownCount)
+                    .map((pack) => packRow(pack, false))}
                 {filtered.length === 0 && (
                     <Text className="text-sm text-discord-textMuted text-center py-2">
                         {t("sharedPackSettings.noPacksFound")}
@@ -339,3 +309,78 @@ export default function SharedPackSettings() {
         </View>
     );
 }
+
+// Zami: a pack of the lists above, memoized on what it shows.
+const PackRow = memo(function PackRow({
+    pack,
+    enabled,
+    busy,
+    onToggle,
+}: {
+    pack: CustomImagePack;
+    enabled: boolean;
+    busy: boolean;
+    onToggle: (roomId: string, stateKey: string, enabled: boolean) => void;
+}) {
+    return (
+        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary">
+            {pack.avatarUrl ? (
+                <Image
+                    source={mediaSource(pack.avatarUrl)}
+                    contentFit="cover"
+                    accessibilityIgnoresInvertColors
+                    className="w-8 h-8 rounded object-cover flex-shrink-0"
+                />
+            ) : null}
+            <View className="flex-1 min-w-0">
+                <Text
+                    numberOfLines={1}
+                    className="text-sm text-discord-textPrimary truncate"
+                >
+                    {pack.name}
+                </Text>
+                <Text
+                    numberOfLines={1}
+                    className="text-xs text-discord-textMuted truncate"
+                >
+                    {t("sharedPackSettings.packSummary", {
+                        room: pack.sourceName ?? "",
+                        count: pack.images.length,
+                    })}
+                </Text>
+                {pack.attribution ? (
+                    <Text
+                        numberOfLines={1}
+                        className="text-xs text-discord-textMuted truncate"
+                    >
+                        {t("imagePackEditor.attribution", {
+                            value: pack.attribution,
+                        })}
+                    </Text>
+                ) : null}
+            </View>
+            <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                    onToggle(pack.roomId ?? "", packKey(pack), !enabled)
+                }
+                disabled={busy}
+                className={`px-3 py-1.5 rounded disabled:opacity-50 ${
+                    enabled
+                        ? "bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                        : "bg-discord-accent hover:bg-discord-accentHover"
+                }`}
+            >
+                <Text
+                    className={`text-xs font-semibold ${
+                        enabled ? "text-discord-textPrimary" : "text-white"
+                    }`}
+                >
+                    {enabled
+                        ? t("sharedPackSettings.disable")
+                        : t("sharedPackSettings.enable")}
+                </Text>
+            </Pressable>
+        </View>
+    );
+});

@@ -1,6 +1,7 @@
 import { SvgIcon } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import {
+    memo,
     useCallback,
     useEffect,
     useEffectEvent,
@@ -169,10 +170,15 @@ export default function ThreadPanel({
     const modal = useRune(() => interfaceState.modal);
 
     // Subscribe to thread events
+    // Zami: this room's only: each re-read the thread and re-rendered its
+    // replies, for every thread reply, edit and redaction in any room (B7).
     useEffect(() => {
-        const unsub = onThreadEvent(bump);
+        const roomId = room.roomId;
+        const unsub = onThreadEvent((_event, eventRoom) => {
+            if (!eventRoom || eventRoom.roomId === roomId) bump();
+        });
         return unsub;
-    }, []);
+    }, [room]);
 
     // Subscribe to local echo updates so pending sends appear immediately
     useEffect(() => {
@@ -302,36 +308,30 @@ export default function ThreadPanel({
         messageInputEl.current?.focus();
     }, []);
 
-    const renderItem = ({
-        item: event,
-        index,
-    }: {
-        item: MatrixEvent;
-        index: number;
-    }) => {
-        const i = messages.length - 1 - index;
-        return (
-            <View>
-                {/* Zami: the jump's `message-highlight`, under the row. */}
-                <MessageHighlight
-                    n={
+    // Zami: stable while what it reads is, so a render of the panel doesn't
+    // re-render every reply; each is a memo'd ReplyRow (B7).
+    const renderItem = useCallback(
+        ({ item: event, index }: { item: MatrixEvent; index: number }) => {
+            const i = messages.length - 1 - index;
+            return (
+                <ReplyRow
+                    event={event}
+                    room={room}
+                    messages={messages}
+                    index={i}
+                    showHeader={shouldShowHeader(messages, i)}
+                    highlightN={
                         highlight && highlight.eventId === event.getId()
                             ? highlight.n
                             : 0
                     }
-                />
-                <MessageItem
-                    event={event}
-                    room={room}
-                    showHeader={shouldShowHeader(messages, i)}
-                    timelineEvents={messages}
-                    timelineIndex={i}
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                 />
-            </View>
-        );
-    };
+            );
+        },
+        [messages, room, highlight, onReply, jumpToReply],
+    );
 
     const titleLabel = threadName
         ? t("renameThreadDialog.renameThread")
@@ -433,7 +433,6 @@ export default function ThreadPanel({
                     data={rows}
                     keyExtractor={(event) => timelineKey(event) ?? ""}
                     renderItem={renderItem}
-                    extraData={highlight}
                     onScroll={onScroll}
                     scrollEventThrottle={16}
                     onScrollToIndexFailed={onScrollToIndexFailed}
@@ -513,6 +512,66 @@ export default function ThreadPanel({
             ) : null}
         </>
     );
+}
+
+interface ReplyRowProps {
+    event: MatrixEvent;
+    room: Room;
+    /** The chronological replies and this one's index in them. */
+    messages: MatrixEvent[];
+    index: number;
+    showHeader: boolean;
+    highlightN: number;
+    onReply: (event: MatrixEvent) => void;
+    jumpToReply: (eventId: string) => void;
+}
+
+/**
+ * Zami: one reply of the `{#each}`. Memo'd, as MessageItem is: `messages` and
+ * `index` change for every reply whenever one arrives or older ones load, but
+ * only an image upload reads them (to page across its siblings).
+ */
+const ReplyRow = memo(function ReplyRow({
+    event,
+    room,
+    messages,
+    index: i,
+    showHeader,
+    highlightN,
+    onReply,
+    jumpToReply,
+}: ReplyRowProps) {
+    return (
+        <View>
+            {/* Zami: the jump's `message-highlight`, under the row. */}
+            <MessageHighlight n={highlightN} />
+            <MessageItem
+                event={event}
+                room={room}
+                showHeader={showHeader}
+                timelineEvents={messages}
+                timelineIndex={i}
+                onReply={onReply}
+                jumpToReply={jumpToReply}
+            />
+        </View>
+    );
+}, sameReplyRowProps);
+
+function sameReplyRowProps(
+    prev: Readonly<ReplyRowProps>,
+    next: Readonly<ReplyRowProps>,
+): boolean {
+    for (const key of Object.keys(next) as (keyof ReplyRowProps)[]) {
+        if (Object.is(prev[key], next[key])) continue;
+        if (
+            (key === "messages" || key === "index") &&
+            next.event.getContent()?.msgtype !== "m.image"
+        )
+            continue;
+        return false;
+    }
+    return true;
 }
 
 /**

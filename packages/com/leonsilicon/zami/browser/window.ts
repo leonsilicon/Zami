@@ -7,6 +7,7 @@ import { audioGlobals } from "#audio";
 import { DOM_CLASSES } from "#dom";
 import { createEventHub } from "#events";
 import { zamiFetch } from "#fetch";
+import { createMediaQueryList, recheckMediaQueries } from "#media-query";
 import { notificationGlobals } from "#notification";
 
 export const windowEvents = createEventHub();
@@ -17,11 +18,20 @@ AppState.addEventListener("change", (next) => {
   active = next === "active";
   windowEvents.dispatch(active ? "focus" : "blur");
 });
-Dimensions.addEventListener("change", () => windowEvents.dispatch("resize"));
+// The one dimensions listener: `matchMedia`'s lists are checked from here too.
+Dimensions.addEventListener("change", () => {
+  windowEvents.dispatch("resize");
+  recheckMediaQueries();
+});
 
 let reduceMotion = false;
-void AccessibilityInfo.isReduceMotionEnabled().then((on) => (reduceMotion = on));
-AccessibilityInfo.addEventListener("reduceMotionChanged", (on) => (reduceMotion = on));
+const setReduceMotion = (on: boolean) => {
+  reduceMotion = on;
+  recheckMediaQueries();
+};
+void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+Appearance.addChangeListener(() => recheckMediaQueries());
 
 /** Evaluates the media queries Zam uses: widths/heights in px, hover, pointer, preferences. */
 function evaluate(query: string): boolean {
@@ -57,27 +67,9 @@ function evaluate(query: string): boolean {
   );
 }
 
-function matchMedia(query: string) {
-  const hub = createEventHub();
-  const list = {
-    media: query,
-    get matches(): boolean {
-      return evaluate(query);
-    },
-    addEventListener: hub.addEventListener,
-    removeEventListener: hub.removeEventListener,
-    addListener: (listener: unknown) => hub.addEventListener("change", listener),
-    removeListener: (listener: unknown) => hub.removeEventListener("change", listener),
-    onchange: null,
-  };
-  let matches = list.matches;
-  Dimensions.addEventListener("change", () => {
-    if (list.matches === matches) return;
-    matches = list.matches;
-    hub.dispatch("change", { matches, media: query });
-  });
-  return list;
-}
+// A list watches the window only while it has a listener, through the shared
+// listeners above (#media-query): one per call would leak a `Dimensions` listener.
+const matchMedia = (query: string) => createMediaQueryList(query, evaluate);
 
 const extras: Record<PropertyKey, unknown> = {
   ...DOM_CLASSES,

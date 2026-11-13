@@ -1,6 +1,8 @@
 # Keeps Zami in step with upstream Zam (https://github.com/az4521/Zam):
-#  1. merges new upstream commits into the `zami/upstream-sync` branch (always clean:
-#     Zami never edits upstream files, it only adds `.zami.` files next to them);
+#  1. merges new upstream commits into the `zami/upstream-sync` branch (clean, since Zami
+#     never edits upstream files, it only adds `.zami.` files next to them; if upstream
+#     rewrites its history, upstream's version of its files wins). An open sync branch
+#     first gets trunk merged in, and Claude resolves any conflicts with trunk's changes;
 #  2. `_zami sync` copies new upstream files and three-way merges upstream changes into
 #     the copied Zami files;
 #  3. Claude (Opus 5.5) migrates what that can't: merge conflicts, upstream changes to
@@ -49,8 +51,8 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.ZAMI_BOT_TOKEN }}
 
-      - name: Merge upstream Zam
-        id: merge
+      - name: Merge trunk into the open sync branch
+        id: trunk
         run: |
           git config user.name "zami-bot"
           git config user.email "zami-bot@users.noreply.github.com"
@@ -63,10 +65,52 @@ jobs:
           if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
             git fetch origin "$BRANCH"
             git checkout -B "$BRANCH" "origin/$BRANCH"
-            git merge --no-edit origin/trunk
+            # Trunk can change the same Zami code this branch migrated upstream changes into.
+            # Claude resolves those conflicts in the next step, instead of every run failing here.
+            if ! git merge --no-edit origin/trunk; then
+              git diff --name-only --diff-filter=U > "$RUNNER_TEMP/trunk-conflicts.txt"
+              cat "$RUNNER_TEMP/trunk-conflicts.txt"
+              echo "conflicts=true" >> "$GITHUB_OUTPUT"
+            fi
           else
             git checkout -B "$BRANCH"
           fi
+
+      - name: Resolve trunk's conflicts with Claude
+        if: steps.trunk.outputs.conflicts == 'true'
+        timeout-minutes: 30
+        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.ZAMI_BOT_TOKEN }}
+          prompt: Follow the instructions in packages/com/leonsilicon/zami/ports/@prompts/resolve-trunk.md. The conflicted files are listed in ${{ runner.temp }}/trunk-conflicts.txt.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 100
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+            --disallowedTools "Bash(git commit:*),Bash(git push:*),Bash(git checkout:*),Bash(git reset:*),Bash(git merge:*),Bash(git restore:*)"
+
+      - name: Finish merging trunk
+        if: steps.trunk.outputs.conflicts == 'true'
+        run: |
+          # Stops the run if Claude left a conflict unresolved: nothing is pushed, and the
+          # next run tries again.
+          left=$(tr '\n' '\0' < "$RUNNER_TEMP/trunk-conflicts.txt" | xargs -0 grep -lE '^(<<<<<<<|>>>>>>>)( |$)' || true)
+          if [ -n "$left" ]; then
+            echo "::error::Conflict markers are left in: $left"
+            exit 1
+          fi
+          git add -u
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            echo "::error::Unmerged files are left: $(git diff --name-only --diff-filter=U)"
+            exit 1
+          fi
+          git commit --no-edit
+
+      - name: Merge upstream Zam
+        id: merge
+        run: |
           previous=$(git merge-base HEAD upstream/master)
           latest=$(git rev-parse upstream/master)
           # Review everything that hasn't reached trunk, so a run that stopped partway
@@ -78,7 +122,26 @@ jobs:
             echo "merged=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git merge --no-ff --no-edit -m "Merge upstream Zam ${latest:0:10}" upstream/master
+          if ! git merge --no-ff --no-edit -m "Merge upstream Zam ${latest:0:10}" upstream/master; then
+            # Zami never edits upstream's files, so they conflict only when upstream rewrote
+            # history it had already published, as it did once in November 2026. Upstream's
+            # version is the right one by definition. A conflict in a Zami file is a real problem.
+            git diff --name-only --diff-filter=U > "$RUNNER_TEMP/upstream-conflicts.txt"
+            while read -r path; do
+              case "$path" in
+                *.zami | *.zami.*)
+                  echo "::error::$path conflicts with upstream"
+                  exit 1
+                  ;;
+              esac
+              if git cat-file -e "upstream/master:$path" 2>/dev/null; then
+                git checkout upstream/master -- "$path"
+              else
+                git rm -q -- "$path"
+              fi
+            done < "$RUNNER_TEMP/upstream-conflicts.txt"
+            git commit --no-edit
+          fi
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
@@ -94,6 +157,9 @@ jobs:
           SINCE_INPUT: ${{ inputs.since }}
           SINCE: ${{ inputs.since || steps.merge.outputs.since }}
         run: |
+          # After upstream rewrites history, the files' recorded upstream commits are upstream's
+          # old copies; point them at the new ones. What it can't map, `_zami check` reports.
+          vpx _zami remap || echo "::warning::_zami remap couldn't map every file; see above"
           vpx _zami sync --since "$SINCE" --worklist node_modules/.cache/zami/worklist.json --summary node_modules/.cache/zami/summary.md
           work=$(node -e 'const w=require("./node_modules/.cache/zami/worklist.json").work; console.log(w.filter(i => i.kind !== "port" || i.new).length)')
           # Claude reviews every upstream change, so it runs whenever upstream moved, not
@@ -156,8 +222,11 @@ jobs:
             if [ -n "$unchanged" ]; then printf '\n## Translations that did not change\n\nUpstream changed these components, but their translations are the same. Claude'"'"'s report should say why.\n\n%s\n' "$unchanged"; fi
             if [ "$CHECK_OK" != "true" ]; then printf '\n## `_zami check` failed\n\n```\n'; tail -n 60 node_modules/.cache/zami/check.txt; printf '```\n'; fi
           } > "$RUNNER_TEMP/body.md"
-          if gh pr view "$BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
-            gh pr edit "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
+          number=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -n "$number" ]; then
+            # Not `gh pr edit`: it also reads the PR's reviewers and projects, which needs
+            # the read:org scope this token doesn't have, so the step failed after pushing.
+            gh api -X PATCH "repos/$GH_REPO/pulls/$number" -f title="Sync with upstream Zam ${LATEST:0:10}" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
           else
             gh pr create --base trunk --head "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
           fi

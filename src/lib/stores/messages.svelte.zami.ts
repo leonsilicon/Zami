@@ -12,6 +12,34 @@ interface RoomMessages {
     canLoadMore: boolean;
 }
 
+// Zami: a room's entry is replaced whole, never changed in place, so keep it
+// (and its events) out of the deep $state proxy, as $state.raw would: every
+// index read through the proxy was a Proxy trap (slow on Hermes) and a
+// dependency of whoever read it. byRoom[roomId] stays reactive; a class
+// instance isn't proxied.
+class RawRoomMessages implements RoomMessages {
+    events: MatrixEvent[];
+    isLoading: boolean;
+    canLoadMore: boolean;
+    constructor(entry: RoomMessages) {
+        this.events = entry.events;
+        this.isLoading = entry.isLoading;
+        this.canLoadMore = entry.canLoadMore;
+    }
+}
+const raw = (entry: RoomMessages): RoomMessages => new RawRoomMessages(entry);
+
+// Zami: each events array's ids, so appending doesn't scan the whole room.
+const idsOf = new WeakMap<MatrixEvent[], Set<string | undefined>>();
+function eventIds(events: MatrixEvent[]): Set<string | undefined> {
+    let ids = idsOf.get(events);
+    if (!ids) {
+        ids = new Set(events.map(byId));
+        idsOf.set(events, ids);
+    }
+    return ids;
+}
+
 // Use an array of tuples instead of a Map so Svelte's deep reactivity works cleanly
 export const messagesState = $state({
     byRoom: {} as Record<string, RoomMessages>,
@@ -48,11 +76,11 @@ export function getMessages(roomId: string): MatrixEvent[] {
 
 export function setMessages(roomId: string, events: MatrixEvent[]): void {
     const existing = messagesState.byRoom[roomId];
-    messagesState.byRoom[roomId] = {
+    messagesState.byRoom[roomId] = raw({
         events: dedupeById(events, byId),
         isLoading: false,
         canLoadMore: existing?.canLoadMore ?? true,
-    };
+    });
     messagesState.timelineTick++;
 }
 
@@ -60,21 +88,24 @@ export function appendMessage(roomId: string, event: MatrixEvent): void {
     const existing = messagesState.byRoom[roomId];
     if (existing) {
         // Check for duplicate (can happen if the event was already in the timeline)
-        const alreadyExists = existing.events.some(
-            (e) => e.getId() === event.getId(),
-        );
+        // Zami: by id set (see eventIds).
+        const ids = eventIds(existing.events);
+        const alreadyExists = ids.has(event.getId());
         if (alreadyExists) return;
-        messagesState.byRoom[roomId] = {
+        const events = [...existing.events, event];
+        idsOf.delete(existing.events);
+        idsOf.set(events, ids.add(event.getId()));
+        messagesState.byRoom[roomId] = raw({
             ...existing,
-            events: [...existing.events, event],
-        };
+            events,
+        });
         messagesState.timelineTick++;
     } else {
-        messagesState.byRoom[roomId] = {
+        messagesState.byRoom[roomId] = raw({
             events: [event],
             isLoading: false,
             canLoadMore: true,
-        };
+        });
     }
 }
 
@@ -82,11 +113,11 @@ export function prependMessages(roomId: string, events: MatrixEvent[]): void {
     const existing = messagesState.byRoom[roomId];
     const existingIds = new Set(existing?.events.map((e) => e.getId()) ?? []);
     const newEvents = events.filter((e) => !existingIds.has(e.getId()));
-    messagesState.byRoom[roomId] = {
+    messagesState.byRoom[roomId] = raw({
         events: dedupeById([...newEvents, ...(existing?.events ?? [])], byId),
         isLoading: false,
         canLoadMore: events.length >= 30,
-    };
+    });
 }
 
 export function setLoading(roomId: string, isLoading: boolean): void {
@@ -94,7 +125,7 @@ export function setLoading(roomId: string, isLoading: boolean): void {
         events: [],
         canLoadMore: true,
     };
-    messagesState.byRoom[roomId] = { ...existing, isLoading };
+    messagesState.byRoom[roomId] = raw({ ...existing, isLoading });
 }
 
 export function canLoadMore(roomId: string): boolean {
@@ -106,5 +137,5 @@ export function setCanLoadMore(roomId: string, value: boolean): void {
         events: [],
         canLoadMore: true,
     };
-    messagesState.byRoom[roomId] = { ...existing, canLoadMore: value };
+    messagesState.byRoom[roomId] = raw({ ...existing, canLoadMore: value });
 }

@@ -40,13 +40,27 @@ import ProfileFooter from "$lib/components/layout/ProfileFooter.svelte";
 import ReconnectPill from "$lib/components/layout/ReconnectPill.svelte";
 import MessageArea from "$lib/components/layout/MessageArea.svelte";
 import DraftDmView from "$lib/components/layout/DraftDmView.svelte";
-import CallView from "$lib/components/layout/CallView.svelte";
-import RoomSettings from "$lib/components/layout/RoomSettings.svelte";
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const CallView = lazyComponent(
+    () =>
+        require("$lib/components/layout/CallView.svelte") as typeof import("$lib/components/layout/CallView.svelte"),
+);
+// Zami: lazyComponent, as CallView above.
+const RoomSettings = lazyComponent(
+    () =>
+        require("$lib/components/layout/RoomSettings.svelte") as typeof import("$lib/components/layout/RoomSettings.svelte"),
+);
 import InviteModal from "$lib/components/layout/InviteModal.svelte";
 import CreatePollDialog from "$lib/components/messages/CreatePollDialog.svelte";
 import ShareLocationDialog from "$lib/components/messages/ShareLocationDialog.svelte";
 import ShareTargetSheet from "$lib/components/messages/ShareTargetSheet.svelte";
-import AppSettings from "$lib/components/layout/AppSettings.svelte";
+// Zami: lazyComponent, as CallView above.
+const AppSettings = lazyComponent(
+    () =>
+        require("$lib/components/layout/AppSettings.svelte") as typeof import("$lib/components/layout/AppSettings.svelte"),
+);
 import InboxPanel from "$lib/components/layout/InboxPanel.svelte";
 import SpaceLandingPanel from "./SpaceLandingPanel.svelte";
 import IncomingCallCard from "$lib/components/layout/IncomingCallCard.svelte";
@@ -175,7 +189,7 @@ import { initUpdateWatch } from "$lib/stores/updateBanner.svelte";
 import UpdateBanner from "$lib/components/layout/UpdateBanner.svelte";
 import UpdateToastWatch from "$lib/components/layout/UpdateToastWatch.svelte";
 import IdentityChangeBanner from "$lib/components/layout/IdentityChangeBanner.svelte";
-import { checkRoomIdentities } from "$lib/matrix/crypto";
+import { checkRoomIdentities, prepareToSend } from "$lib/matrix/crypto";
 import {
     markNotification,
     clearReadNotifications,
@@ -212,7 +226,7 @@ import {
     onThreadSummaryChange,
     clearReadThreadCounts,
     onTimelineEvent,
-    onAnyReceiptEvent,
+    onOwnReceipt,
     getClient,
     getOwnUserId,
     isInitialSyncComplete,
@@ -278,7 +292,6 @@ import {
     showNativeNotification,
 } from "$lib/utils/desktopAlert";
 import { shouldNotifyThreadEvent } from "$lib/utils/threadNotify";
-import { isOffCanvasClosed } from "$lib/utils/drawerInert";
 import { decideDrawerSnap, MAX_SNAP_MS } from "$lib/utils/drawerSnap";
 import {
     notificationsToClose,
@@ -317,6 +330,48 @@ import { onNativeCallEvent } from "$lib/nativeCall";
 import { startPushDecryptResponder } from "$lib/pushDecrypt";
 import { Capacitor } from "@capacitor/core";
 
+// Zami: what the shell adds for its performance (imported here rather than
+// above, to keep it in one place).
+import { PauseRunes } from "@-/com.leonsilicon.zami.svelte-react";
+import { memo, useCallback } from "react";
+import {
+    getRoomListGenerations,
+    onUnreadGroupsCounted,
+} from "$lib/matrix/client";
+
+// Zami: the shell's panes and overlays, memoized. With the stable callbacks
+// the shell hands them, a render of the shell (a modal opening, the drawer
+// opening or closing, the sync state changing) leaves each one alone unless
+// its own props changed.
+const Pane = {
+    SpaceSidebar: memo(SpaceSidebar),
+    RoomList: memo(RoomList),
+    ProfileFooter: memo(ProfileFooter),
+    UpdateBanner: memo(UpdateBanner),
+    ReconnectPill: memo(ReconnectPill),
+    MessageArea: memo(MessageArea),
+    CallView: memo(CallView),
+    DraftDmView: memo(DraftDmView),
+    InboxPanel: memo(InboxPanel),
+    SpaceLandingPanel: memo(SpaceLandingPanel),
+    CallPipOverlay: memo(CallPipOverlay),
+    VerificationModal: memo(VerificationModal),
+    ErrorToasts: memo(ErrorToasts),
+    ScreenSharePicker: memo(ScreenSharePicker),
+    UpdateToastWatch: memo(UpdateToastWatch),
+    IdentityChangeBanner: memo(IdentityChangeBanner),
+    JoinConsentDialog: memo(JoinConsentDialog),
+};
+
+// Zami: the shell's callbacks that read only stores, made once, so the
+// memoized panes get the same function on every render.
+function goHome() {
+    setActiveSpace(null);
+}
+function openLeftDrawer() {
+    interfaceState.leftOpen = true;
+}
+
 // Zami: Uniwind's rem, for the widths upstream gives in rem (React Native has
 // no root font size, so there's no text scale to follow).
 const REM_PX = 16;
@@ -348,6 +403,36 @@ function backdropOpacityOf(
     return isMobile && drawerWidth > 0
         ? ((drawerTranslate + drawerWidth) / drawerWidth) * 0.5
         : 0;
+}
+
+// Zami: `isOffCanvasClosed(drawerTranslate, -drawerWidth)` (utils/drawerInert)
+// and the backdrop's `backdropOpacity > 0.01`, as one worklet: the drawer's
+// position is read on the UI thread, and only a flip of either flag goes to
+// JS (bit 1: closed, bit 2: the backdrop takes touches), not every frame.
+function drawerFlagsOf(
+    drawerTranslate: number,
+    drawerWidth: number,
+    isMobile: boolean,
+): number {
+    "worklet";
+    const closedTranslate = -drawerWidth;
+    const closed =
+        Number.isFinite(drawerTranslate) &&
+        Number.isFinite(closedTranslate) &&
+        closedTranslate !== 0 &&
+        (closedTranslate < 0
+            ? drawerTranslate <= closedTranslate
+            : drawerTranslate >= closedTranslate);
+    const touchable =
+        backdropOpacityOf(drawerTranslate, drawerWidth, isMobile) > 0.01;
+    return (closed ? 1 : 0) | (touchable ? 2 : 0);
+}
+
+// Zami: the room-list resize grip's clamp (clampRoomListWidth), on the UI
+// thread, so dragging the grip doesn't render the shell on every frame.
+function clampWidthWorklet(w: number, maxWidth: number, minWidth: number) {
+    "worklet";
+    return Math.round(Math.min(maxWidth, Math.max(minWidth, w)));
 }
 
 // Zami: a number per Room object, for `activeRoom` below. useRune re-renders
@@ -440,14 +525,19 @@ export default function AppShell() {
         setLastSeenVersion(APP_VERSION);
     }
 
-    function openAppSettings() {
+    // Zami: the same functions every render, for the memoized panes (Pane).
+    const openAppSettings = useCallback(() => {
         openModal("app-settings", () => {});
-    }
-    function openRoomSettings(r: Room) {
+    }, []);
+    const openRoomSettings = useCallback((r: Room) => {
         // Claim first — a same-id handover runs the outgoing close, which nulls settingsRoom.
         openModal("room-settings", () => setSettingsRoom(null));
         setSettingsRoom(r);
-    }
+    }, []);
+    const openAppSettingsFromDrawer = useCallback(() => {
+        openAppSettings();
+        interfaceState.leftOpen = false;
+    }, [openAppSettings]);
 
     // Desktop room-list width (px), user-resizable from its right edge and
     // persisted per browser. The space rail beside it stays a fixed 4.5rem.
@@ -476,27 +566,59 @@ export default function AppShell() {
     }
     // Zami: the grip's pointer drag (`startRoomListResize`, with pointer
     // capture) is a pan on the grip, and its double-click a double tap. A
-    // touch drags it too: upstream's grip is `touch-none`.
-    const resizeStartW = useRef(roomListWidth);
-    const roomListResizePan = usePanGesture({
-        runOnJS: true,
-        hitSlop: { horizontal: 8 },
-        onActivate: () => {
-            resizeStartW.current = roomListWidth;
-        },
-        onUpdate: (e) => {
-            setRoomListWidth(
-                clampRoomListWidth(resizeStartW.current + e.translationX),
-            );
-        },
-        onDeactivate: (e) => {
-            const width = clampRoomListWidth(
-                resizeStartW.current + e.translationX,
-            );
-            setRoomListWidth(width);
-            saveRoomListWidth(width);
-        },
-    });
+    // touch drags it too: upstream's grip is `touch-none`. The drag moves a
+    // shared value the sidebar's width reads on the UI thread, and the width
+    // is set (and saved) on release: a render of the shell per frame of the
+    // drag was most of a frame's budget.
+    const roomListWidthNow = useSharedValue(roomListWidth);
+    const resizeStartW = useSharedValue(roomListWidth);
+    useEffect(() => {
+        roomListWidthNow.value = roomListWidth;
+    }, [roomListWidth, roomListWidthNow]);
+    // saveRoomListWidth reads only its argument here.
+    const commitRoomListWidth = useCallback((width: number) => {
+        setRoomListWidth(width);
+        saveRoomListWidth(width);
+    }, []);
+    const roomListMaxWidth = roomListMaxW();
+    const roomListResizePan = usePanGesture(
+        useMemo(
+            (): PanGestureConfig => ({
+                hitSlop: { horizontal: 8 },
+                onActivate: () => {
+                    "worklet";
+                    resizeStartW.value = roomListWidthNow.value;
+                },
+                onUpdate: (e) => {
+                    "worklet";
+                    roomListWidthNow.value = clampWidthWorklet(
+                        resizeStartW.value + e.translationX,
+                        roomListMaxWidth,
+                        ROOM_LIST_MIN_W,
+                    );
+                },
+                onDeactivate: (e) => {
+                    "worklet";
+                    const width = clampWidthWorklet(
+                        resizeStartW.value + e.translationX,
+                        roomListMaxWidth,
+                        ROOM_LIST_MIN_W,
+                    );
+                    roomListWidthNow.value = width;
+                    scheduleOnRN(commitRoomListWidth, width);
+                },
+            }),
+            [
+                roomListMaxWidth,
+                resizeStartW,
+                roomListWidthNow,
+                commitRoomListWidth,
+            ],
+        ),
+    );
+    const roomListColumnStyle = useAnimatedStyle(() => ({
+        width: 4.5 * REM_PX + roomListWidthNow.value,
+    }));
     const roomListResizeReset = useTapGesture({
         runOnJS: true,
         hitSlop: { horizontal: 8 },
@@ -598,29 +720,32 @@ export default function AppShell() {
     // accessibility tree; `aria-hidden` is belt-and-braces for webviews that
     // predate `inert`. Same notion as the box-shadow gate below it
     // (`drawerTranslate <= -drawerWidth`), expressed once.
-    // Zami: computed on the JS thread whenever the drag or a settle moves
-    // `drawerTranslate`, and kept as state only when it flips; the backdrop's
-    // `pointer-events` (`backdropOpacity > 0.01`) with it.
+    // Zami: worked out on the UI thread as the drag or a settle moves
+    // `drawerTranslate` (drawerFlagsOf), and sent to JS only when it flips;
+    // the backdrop's `pointer-events` (`backdropOpacity > 0.01`) with it.
     const [leftDrawerClosed, setLeftDrawerClosed] = useState(
         () => !interfaceState.leftOpen,
     );
     const [backdropTouchable, setBackdropTouchable] = useState(
         () => interfaceState.leftOpen && interfaceState.isMobile,
     );
-    function onDrawerTranslate(drawerTranslate: number) {
-        setLeftDrawerClosed(isOffCanvasClosed(drawerTranslate, -drawerWidth));
-        setBackdropTouchable(
-            backdropOpacityOf(drawerTranslate, drawerWidth, isMobile) > 0.01,
-        );
+    function onDrawerFlags(flags: number) {
+        setLeftDrawerClosed((flags & 1) !== 0);
+        setBackdropTouchable((flags & 2) !== 0);
     }
     useAnimatedReaction(
-        () => drawerTranslate.value,
-        (translate, previous) => {
-            if (translate !== previous)
-                scheduleOnRN(onDrawerTranslate, translate);
+        () => drawerFlagsOf(drawerTranslate.value, drawerWidth, isMobile),
+        (flags, previous) => {
+            if (flags !== previous) scheduleOnRN(onDrawerFlags, flags);
         },
         [drawerWidth, isMobile],
     );
+    // Zami: the closed drawer's panes stop following the stores (PauseRunes):
+    // with a chat open they rebuilt the room list and every badge on each sync
+    // for nothing on screen. They follow again, and catch up, the moment the
+    // drawer starts to open (a drag moves it off its closed position, or
+    // `leftOpen` is set), not when it has finished opening.
+    const drawerPaused = isMobile && !leftOpen && leftDrawerClosed;
 
     const backdropStyle = useAnimatedStyle(() => ({
         backgroundColor: `rgba(0,0,0,${backdropOpacityOf(
@@ -1572,9 +1697,16 @@ export default function AppShell() {
 
     // MSC4153: surface changed cross-signing identities among the open room's
     // members.
+    // Zami: the checks wait their turn on the crypto queue, and the ones not
+    // started are dropped when the room changes. The room's key sharing is also
+    // prepared a moment after it opens, so the first send doesn't do it.
     useEffect(() => {
         const id = activeRoomId;
-        if (id) void checkRoomIdentities(id);
+        if (!id) return;
+        const left = new AbortController();
+        void checkRoomIdentities(id, left.signal);
+        void prepareToSend(id, { signal: left.signal });
+        return () => left.abort();
     }, [activeRoomId]);
 
     useEffect(() => {
@@ -1754,12 +1886,57 @@ export default function AppShell() {
         if (!sameOrder(next, roomsState[bucket])) roomsState[bucket] = next;
     }
 
+    // Zami: what the room list was last built from (see refreshRooms).
+    const builtRoomList = useRef<{
+        structure: number;
+        data: number;
+        spaceId: string | null;
+    } | null>(null);
+
     function refreshRooms() {
         const layout = getSpaceLayout();
         // Deliberately unconditional: SpaceSidebar's `rootItems` derived reads
         // spaceLayout and leans on this reassignment to pick up renamed or
         // re-avatared spaces. Do not dedupe it.
-        roomsState.spaceLayout = layout;
+        // Zami: deduped. Here the rail re-renders on roomsTick, which a rename
+        // or a new avatar bumps (below), and the reassignment re-rendered
+        // everything reading the layout on every sync.
+        const layoutChanged =
+            JSON.stringify(layout) !== JSON.stringify(roomsState.spaceLayout);
+        if (layoutChanged) roomsState.spaceLayout = layout;
+        // Zami: this runs after every sync, and on an account with thousands
+        // of rooms a rebuild is a pass over all of them and a re-render of
+        // everything that reads roomsTick. Rebuild only when the room set, the
+        // spaces, the layout or the active space changed, and bump roomsTick
+        // only when anything the list shows did (getRoomListGenerations).
+        const generations = getRoomListGenerations();
+        const built = builtRoomList.current;
+        const rebuild =
+            built === null ||
+            built.structure !== generations.structure ||
+            built.spaceId !== roomsState.activeSpaceId ||
+            layoutChanged;
+        const changed = rebuild || built.data !== generations.data;
+        builtRoomList.current = {
+            ...generations,
+            spaceId: roomsState.activeSpaceId,
+        };
+        if (rebuild) rebuildRoomBuckets(layout);
+        if (roomsState.activeSpaceId)
+            requestHierarchy(roomsState.activeSpaceId, false);
+        // The room list has just been rebuilt from the SDK, so this is the
+        // earliest honest moment to settle a surface choice boot had to defer.
+        resolvePendingSurface();
+        // Same reasoning as the line above: the room list is real now, so this
+        // is the first honest moment to replace an empty or stale main pane.
+        // Bumping the tick afterwards lets the new selection render in the
+        // same pass.
+        resolveLandingSurface();
+        if (changed) roomsState.roomsTick++;
+    }
+
+    // Zami: refreshRooms' rebuild of the buckets, upstream's body.
+    function rebuildRoomBuckets(layout: ReturnType<typeof getSpaceLayout>) {
         const classification = getRoomClassification(roomsState.activeSpaceId);
         const spaces = classification.spaces;
         if (layout.order.length) {
@@ -1785,19 +1962,8 @@ export default function AppShell() {
         publishBucket("directRooms", classification.directRooms);
         publishBucket("invitedRooms", classification.invitedRooms);
         publishBucket("knockedRooms", classification.knockedRooms);
-        if (roomsState.activeSpaceId) {
+        if (roomsState.activeSpaceId)
             publishBucket("roomsInSpace", classification.roomsInSpace);
-            requestHierarchy(roomsState.activeSpaceId, false);
-        }
-        // The room list has just been rebuilt from the SDK, so this is the
-        // earliest honest moment to settle a surface choice boot had to defer.
-        resolvePendingSurface();
-        // Same reasoning as the line above: the room list is real now, so this
-        // is the first honest moment to replace an empty or stale main pane.
-        // Bumping the tick afterwards lets the new selection render in the
-        // same pass.
-        resolveLandingSurface();
-        roomsState.roomsTick++;
     }
 
     // Electron right-click "Save image as" (fetches with auth; see module).
@@ -2428,8 +2594,14 @@ export default function AppShell() {
         // walks every room twice, and a saved sync replays a receipt per room
         // in one chain of microtasks: per receipt, that was quadratic in the
         // number of rooms (see bumpUnreadTick).
+        // Zami: and only for the rooms where one of the user's own receipts
+        // moved (onOwnReceipt): nothing below follows anyone else's, which on
+        // a bridge account arrive in nearly every sync, and each pass over
+        // every room was two walks of thousands.
         let receiptsTimer: ReturnType<typeof setTimeout> | null = null;
-        const unsubReceiptEvents = onAnyReceiptEvent(() => {
+        const receiptRooms = new Set<Room>();
+        const unsubReceiptEvents = onOwnReceipt((room) => {
+            receiptRooms.add(room);
             receiptsTimer ??= setTimeout(() => {
                 receiptsTimer = null;
                 onReceipts();
@@ -2439,17 +2611,19 @@ export default function AppShell() {
             unsubReceiptEvents();
             if (receiptsTimer) clearTimeout(receiptsTimer);
             receiptsTimer = null;
+            receiptRooms.clear();
         };
         function onReceipts(): void {
             const userId = getOwnUserId();
             const client = getClient();
+            const rooms = [...receiptRooms];
+            receiptRooms.clear();
             // Before the bump: thread counts a receipt now covers drop to zero
             // (sliding sync never sends fresh per-thread counts).
-            for (const room of client?.getRooms() ?? [])
-                clearReadThreadCounts(room);
+            for (const room of rooms) clearReadThreadCounts(room);
             bumpUnreadTick();
             if (!userId || !client) return;
-            for (const room of client.getRooms()) {
+            for (const room of rooms) {
                 clearReadNotifications(room, userId);
             }
             // …and take the OS notifications down too. A receipt from ANY of
@@ -2643,6 +2817,11 @@ export default function AppShell() {
         // A message you just sent is a local echo until the server accepts it;
         // the DM preview shows it from the moment it is sent.
         const unsubLocalEcho = onLocalEchoUpdated(() => bumpUnreadTick());
+        // Zami: the badges read the unread groups again once a large count,
+        // done a slice at a time, has finished (see getSpaceUnreadGroup).
+        const unsubUnreadCounted = onUnreadGroupsCounted(() =>
+            bumpUnreadTick(),
+        );
         const unsubAccountData = onAccountData((type) => {
             // Pack changes made on another device (or by us) reach pickers.
             if (
@@ -2734,6 +2913,7 @@ export default function AppShell() {
             unsubPlugins();
             unsubAccountData();
             unsubLocalEcho();
+            unsubUnreadCounted();
             unsubThreadNames();
             unsubThreadSummaries();
             unsubUpdateWatch();
@@ -2785,7 +2965,9 @@ export default function AppShell() {
     // in that window would remove the successor account from the registry.
     const loggingOut = useRef(false);
 
-    async function handleLogout() {
+    // Zami: the same function every render, for the memoized panes (Pane); it
+    // reads only a ref and stores.
+    const handleLogout = useCallback(async () => {
         if (loggingOut.current) return;
         loggingOut.current = true;
         // A live call must not survive logout.
@@ -2811,7 +2993,7 @@ export default function AppShell() {
         // Clear local session and leave.
         clearSession();
         window.location.assign("/");
-    }
+    }, []);
 
     // Derive directly from activeRoomId (a stable string) rather than the room arrays,
     // so sync-triggered array refreshes don't invalidate this derived and remount MessageArea.
@@ -2930,22 +3112,24 @@ export default function AppShell() {
                         {/* Sync-state indicator: an unobtrusive, non-blocking floating pill (see
                             ReconnectPill) instead of a full-width bar that overlaid the header
                             and read as "the app is frozen". Offline never locks the app. */}
-                        <ReconnectPill syncState={syncState} />
+                        <Pane.ReconnectPill syncState={syncState} />
 
                         {!isMobile ? (
                             // Desktop: permanent sidebars + full-width profile footer
                             // Zami: on the footer's color, which shows under it
                             // in the home indicator's inset.
-                            <View
+                            // Zami: its width follows the resize grip's drag on
+                            // the UI thread (roomListColumnStyle).
+                            <Animated.View
                                 className="relative flex-col flex-shrink-0 min-h-0 bg-discord-backgroundTertiary"
-                                style={{
-                                    width: 4.5 * REM_PX + roomListWidth,
-                                    paddingBottom: insets.bottom,
-                                }}
+                                style={[
+                                    { paddingBottom: insets.bottom },
+                                    roomListColumnStyle,
+                                ]}
                             >
                                 <View className="flex-row flex-1 min-h-0 overflow-hidden">
-                                    <SpaceSidebar
-                                        onHomeClick={() => setActiveSpace(null)}
+                                    <Pane.SpaceSidebar
+                                        onHomeClick={goHome}
                                         onOpenSpaceSettings={openRoomSettings}
                                     />
                                     {/* Zami: `display: contents` with `dir` is a
@@ -2954,7 +3138,7 @@ export default function AppShell() {
                                         className="flex-1 min-w-0"
                                         style={{ direction: uiDir }}
                                     >
-                                        <RoomList
+                                        <Pane.RoomList
                                             onOpenSpaceSettings={
                                                 openRoomSettings
                                             }
@@ -2965,8 +3149,8 @@ export default function AppShell() {
                                     </View>
                                 </View>
                                 <View style={{ direction: uiDir }}>
-                                    <UpdateBanner />
-                                    <ProfileFooter
+                                    <Pane.UpdateBanner />
+                                    <Pane.ProfileFooter
                                         onLogout={handleLogout}
                                         onSettings={openAppSettings}
                                     />
@@ -2998,7 +3182,7 @@ export default function AppShell() {
                                         className="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-discord-accent/40 focus-visible:bg-discord-accent/40 transition-colors"
                                     />
                                 </GestureDetector>
-                            </View>
+                            </Animated.View>
                         ) : (
                             // Mobile: animated drawer + backdrop
                             <>
@@ -3063,38 +3247,39 @@ export default function AppShell() {
                                             : "auto"
                                     }
                                 >
-                                    <View className="flex-row flex-1 min-h-0 overflow-hidden">
-                                        <SpaceSidebar
-                                            onHomeClick={() =>
-                                                setActiveSpace(null)
-                                            }
-                                            onOpenSpaceSettings={
-                                                openRoomSettings
-                                            }
-                                        />
-                                        <View
-                                            className="flex-1 min-w-0"
-                                            style={{ direction: uiDir }}
-                                        >
-                                            <RoomList
+                                    {/* Zami: paused while the drawer is closed
+                                        (see drawerPaused). */}
+                                    <PauseRunes paused={drawerPaused}>
+                                        <View className="flex-row flex-1 min-h-0 overflow-hidden">
+                                            <Pane.SpaceSidebar
+                                                onHomeClick={goHome}
                                                 onOpenSpaceSettings={
                                                     openRoomSettings
                                                 }
-                                                onOpenRoomSettings={
-                                                    openRoomSettings
+                                            />
+                                            <View
+                                                className="flex-1 min-w-0"
+                                                style={{ direction: uiDir }}
+                                            >
+                                                <Pane.RoomList
+                                                    onOpenSpaceSettings={
+                                                        openRoomSettings
+                                                    }
+                                                    onOpenRoomSettings={
+                                                        openRoomSettings
+                                                    }
+                                                />
+                                            </View>
+                                        </View>
+                                        <View style={{ direction: uiDir }}>
+                                            <Pane.ProfileFooter
+                                                onLogout={handleLogout}
+                                                onSettings={
+                                                    openAppSettingsFromDrawer
                                                 }
                                             />
                                         </View>
-                                    </View>
-                                    <View style={{ direction: uiDir }}>
-                                        <ProfileFooter
-                                            onLogout={handleLogout}
-                                            onSettings={() => {
-                                                openAppSettings();
-                                                interfaceState.leftOpen = false;
-                                            }}
-                                        />
-                                    </View>
+                                    </PauseRunes>
                                 </Animated.View>
                             </>
                         )}
@@ -3114,20 +3299,16 @@ export default function AppShell() {
                             }}
                         >
                             {showInbox ? (
-                                <InboxPanel
+                                <Pane.InboxPanel
                                     isMobile={isMobile}
-                                    onMenuOpen={() =>
-                                        (interfaceState.leftOpen = true)
-                                    }
+                                    onMenuOpen={openLeftDrawer}
                                 />
                             ) : draftDm ? (
-                                <DraftDmView
+                                <Pane.DraftDmView
                                     userId={draftDm.userId}
                                     encrypt={draftDm.encrypt}
                                     isMobile={isMobile}
-                                    onMenuOpen={() =>
-                                        (interfaceState.leftOpen = true)
-                                    }
+                                    onMenuOpen={openLeftDrawer}
                                 />
                             ) : activeRoom ? (
                                 <Animated.View
@@ -3135,29 +3316,23 @@ export default function AppShell() {
                                     style={roomPaneStyle}
                                 >
                                     {callViewRoomId === activeRoom.roomId ? (
-                                        <CallView
+                                        <Pane.CallView
                                             room={activeRoom}
                                             isMobile={isMobile}
-                                            onMenuOpen={() =>
-                                                (interfaceState.leftOpen = true)
-                                            }
+                                            onMenuOpen={openLeftDrawer}
                                         />
                                     ) : (
-                                        <MessageArea
+                                        <Pane.MessageArea
                                             room={activeRoom}
                                             isMobile={isMobile}
-                                            onMenuOpen={() =>
-                                                (interfaceState.leftOpen = true)
-                                            }
+                                            onMenuOpen={openLeftDrawer}
                                         />
                                     )}
                                 </Animated.View>
                             ) : activeSpaceId !== null ? (
-                                <SpaceLandingPanel
+                                <Pane.SpaceLandingPanel
                                     isMobile={isMobile}
-                                    onMenuOpen={() =>
-                                        (interfaceState.leftOpen = true)
-                                    }
+                                    onMenuOpen={openLeftDrawer}
                                 />
                             ) : (
                                 <View className="flex-1 flex-col items-center justify-center p-8">
@@ -3259,7 +3434,7 @@ export default function AppShell() {
                 <ShareTargetSheet />
             )}
 
-            <CallPipOverlay />
+            <Pane.CallPipOverlay />
 
             {/* Zami: `fixed top-4 right-4` → a Portal at the app root, below
                 the status bar and clear of a notch. */}
@@ -3291,7 +3466,7 @@ export default function AppShell() {
                 </Portal>
             )}
 
-            <VerificationModal />
+            <Pane.VerificationModal />
             {encryptionSetupOpen && <EncryptionSetupDialog />}
 
             {/* Opened by the Ctrl+Shift+T / Ctrl+Shift+N shortcuts. */}
@@ -3313,12 +3488,12 @@ export default function AppShell() {
                 />
             )}
 
-            <ErrorToasts />
-            <ScreenSharePicker />
+            <Pane.ErrorToasts />
+            <Pane.ScreenSharePicker />
 
-            <UpdateToastWatch />
-            <IdentityChangeBanner />
-            <JoinConsentDialog />
+            <Pane.UpdateToastWatch />
+            <Pane.IdentityChangeBanner />
+            <Pane.JoinConsentDialog />
         </>
     );
 }

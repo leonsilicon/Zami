@@ -30,6 +30,42 @@ const UNWATCHED = [
   "scripts",
   "unsubmitted-mscs",
   ".github",
+  // Agents' git worktrees (`.claude/worktrees/*`), each a full checkout with node_modules.
+  ".claude",
+];
+
+// Inline requires: a module imported for its named exports runs when one of them is first
+// used, not when the importing module does, so the app's first frame no longer waits for every
+// module (matrix-js-sdk, livekit, the emoji tables, every store) to run. A bare `import "x"`, a
+// default or namespace import, and a name used at a module's top level still run in order.
+// These entry files run before anything else and in order, so none of their imports is
+// deferred: the polyfills, the browser globals and storage everything after them relies on.
+const EAGER_FILES = [
+  "apps/zami/index.ts",
+  "apps/zami/polyfills.ts",
+  "apps/zami/globals.ts",
+  "apps/zami/blob.ts",
+  "apps/zami/fonts.ts",
+  "apps/zami/media.ts",
+  "apps/zami/calls.ts",
+  "apps/zami/notifications.ts",
+  "apps/zami/storage.ts",
+  "src/lib/polyfills.zami.ts",
+];
+// Never deferred, anywhere: React and React Native (Metro's own list), and Svelte's runtime,
+// which rune modules read all the time.
+const NON_INLINED_REQUIRES = [
+  "React",
+  "react",
+  "react/jsx-dev-runtime",
+  "react/jsx-runtime",
+  "react-compiler-runtime",
+  "react-native",
+  "svelte",
+  "svelte/internal/client",
+  "svelte/internal/disclose-version",
+  "svelte/internal/flags/legacy",
+  "svelte/reactivity",
 ];
 
 function isFile(filePath) {
@@ -133,6 +169,38 @@ export function withZami(config, { repoRoot }) {
   config.transformer.babelTransformerPath =
     require.resolve("@-/com.leonsilicon.zami.metro/transformer");
   config.transformer.unstable_allowRequireContext = true;
+  // See EAGER_FILES. `ZAMI_INLINE_REQUIRES=0` turns it off, to tell whether a problem is an
+  // import that something relied on running early.
+  if (process.env.ZAMI_INLINE_REQUIRES !== "0") {
+    const eagerFiles = new Set(EAGER_FILES.map((file) => path.join(repoRoot, file)));
+    const getTransformOptions = config.transformer.getTransformOptions;
+    config.transformer.getTransformOptions = async (...args) => {
+      const options = (await getTransformOptions?.(...args)) ?? {};
+      return {
+        ...options,
+        transform: {
+          ...options.transform,
+          inlineRequires: {
+            // Metro asks `file in blockList`, in this process, per file. Besides the entry
+            // files, nothing under node_modules is inlined: libraries rely on their own
+            // modules running in order (core-js's `inspect-source` must capture
+            // `Function.prototype.toString` before `make-built-in` replaces it, or every
+            // `toString` recurses until the stack overflows at launch). Our own imports
+            // of those libraries are still deferred, which is where the time goes.
+            blockList: new Proxy(
+              {},
+              {
+                has: (_, file) =>
+                  typeof file === "string" &&
+                  (eagerFiles.has(file) || file.includes(`${path.sep}node_modules${path.sep}`)),
+              },
+            ),
+          },
+          nonInlinedRequires: NON_INLINED_REQUIRES,
+        },
+      };
+    };
+  }
   return config;
 }
 

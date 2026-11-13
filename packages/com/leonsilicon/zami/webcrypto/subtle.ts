@@ -1,7 +1,8 @@
 // WebCrypto's SubtleCrypto, for what Zam and matrix-js-sdk use (see README.md). Every
 // method is async, so a bad argument rejects rather than throws, and copies its byte
-// inputs before it returns. Results are ArrayBuffers. Digests, HMAC, AES-CTR and PBKDF2
-// run natively when the app has the native module (#native), on @noble otherwise.
+// inputs before it returns. Results are ArrayBuffers. Digests, HMAC, AES-CTR, AES-GCM and
+// PBKDF2 run natively, off the JS thread, when the app has the native module (#native),
+// on @noble otherwise.
 import { ctr, gcm } from "@noble/ciphers/aes.js";
 import { equalBytes } from "@noble/ciphers/utils.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
@@ -34,7 +35,7 @@ import {
   type KeyAlgorithm,
   type KeyUsage,
 } from "#key";
-import { nativeCrypto } from "#native";
+import { nativeCrypto, preferNative } from "#native";
 
 const KEY_FORMATS: readonly string[] = ["raw", "spki", "pkcs8", "jwk"];
 
@@ -50,6 +51,8 @@ const ALLOWED_USAGES: Record<KeyAlgorithm["name"], readonly KeyUsage[]> = {
 const AES_BLOCK = 16;
 const AES_KEY_BYTES: readonly number[] = [16, 24, 32];
 const GCM_TAG_BITS: readonly number[] = [32, 64, 96, 104, 112, 120, 128];
+/** The iv length the native AES-GCM takes: CryptoKit's and Conscrypt's own. */
+const NATIVE_GCM_IV_BYTES = 12;
 
 function isKeyUsage(value: string): value is KeyUsage {
   return (KEY_USAGES as readonly string[]).includes(value);
@@ -80,13 +83,11 @@ function fromBigInt(value: bigint, length: number): Uint8Array<ArrayBuffer> {
 }
 
 /** AES-CTR over the whole counter block, as noble's `ctr`: natively when it can. */
-async function ctrRun(
-  secret: Uint8Array,
-  counter: Uint8Array,
-  data: Uint8Array,
-): Promise<Uint8Array> {
-  const native = nativeCrypto();
-  return native ? native.aesCtr(secret, counter, data) : ctr(secret, counter).encrypt(data);
+function ctrRun(secret: Uint8Array, counter: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+  return preferNative(
+    (native) => native.aesCtr(secret, counter, data),
+    () => ctr(secret, counter).encrypt(data),
+  );
 }
 
 async function aesCtr(
@@ -121,12 +122,29 @@ async function aesCtr(
   return out;
 }
 
-function aesGcm(
+/** AES-GCM on @noble: null when the data doesn't authenticate. */
+function nobleGcm(
+  encrypt: boolean,
+  secret: Uint8Array,
+  iv: Uint8Array,
+  additionalData: Uint8Array | undefined,
+  data: Uint8Array,
+): Uint8Array | null {
+  const cipher = gcm(secret, iv, additionalData);
+  if (encrypt) return cipher.encrypt(data);
+  try {
+    return cipher.decrypt(data);
+  } catch {
+    return null;
+  }
+}
+
+async function aesGcm(
   operation: "encrypt" | "decrypt",
   secret: Uint8Array,
   { iv, additionalData, tagLength = 128 }: Extract<CipherAlgorithm, { name: "AES-GCM" }>,
   data: Uint8Array,
-): Uint8Array {
+): Promise<Uint8Array> {
   if (!GCM_TAG_BITS.includes(tagLength)) {
     throw cryptoError("OperationError", `${tagLength} is not a valid AES-GCM tag length`);
   }
@@ -137,16 +155,21 @@ function aesGcm(
   if (iv.length < 8) {
     throw cryptoError("NotSupportedError", "AES-GCM ivs shorter than 8 bytes aren't implemented");
   }
-  const cipher = gcm(secret, iv, additionalData);
-  if (operation === "encrypt") return cipher.encrypt(data);
-  if (data.length < tagLength / 8) {
+  const encrypt = operation === "encrypt";
+  if (!encrypt && data.length < tagLength / 8) {
     throw cryptoError("OperationError", "The data is shorter than an AES-GCM tag");
   }
-  try {
-    return cipher.decrypt(data);
-  } catch {
-    throw cryptoError("OperationError", "The data, key, iv or additional data is wrong");
-  }
+  // Natively for the usual 12-byte iv (file transfers seal 1 MiB blocks with one), when
+  // the app's build has it; any other iv on @noble.
+  const native = iv.length === NATIVE_GCM_IV_BYTES && typeof nativeCrypto()?.aesGcm === "function";
+  const result = await preferNative(
+    native
+      ? (module) => module.aesGcm!(encrypt, secret, iv, additionalData ?? new Uint8Array(0), data)
+      : null,
+    () => nobleGcm(encrypt, secret, iv, additionalData, data),
+  );
+  if (!result) throw cryptoError("OperationError", "The data, key, iv or additional data is wrong");
+  return result;
 }
 
 async function crypt(
@@ -162,7 +185,7 @@ async function crypt(
   return toArrayBuffer(
     normalized.name === "AES-CTR"
       ? await aesCtr(secret, normalized, bytes)
-      : aesGcm(operation, secret, normalized, bytes),
+      : await aesGcm(operation, secret, normalized, bytes),
   );
 }
 
@@ -177,15 +200,21 @@ async function mac(
   const name = normalizeSign(algorithm, usage);
   const { algorithm: keyAlgorithm, secret } = useKey(slots, name, usage);
   const hash = keyAlgorithm.hash.name;
-  const native = nativeCrypto();
-  return native ? native.hmac(hash, secret, bytes) : hmac(HASHES[hash], secret, bytes);
+  return preferNative(
+    (native) => native.hmac(hash, secret, bytes),
+    () => hmac(HASHES[hash], secret, bytes),
+  );
 }
 
 async function digest(algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer> {
   const bytes = copyBytes(data, "data");
   const hash = normalizeHash(algorithm);
-  const native = nativeCrypto();
-  return toArrayBuffer(native ? await native.digest(hash, bytes) : HASHES[hash](bytes));
+  return toArrayBuffer(
+    await preferNative(
+      (native) => native.digest(hash, bytes),
+      () => HASHES[hash](bytes),
+    ),
+  );
 }
 
 /** Imports raw secret keys: the only format Zam and matrix-js-sdk import. */
@@ -305,15 +334,15 @@ async function deriveBits(
     throw cryptoError("OperationError", "Pbkdf2Params.iterations can't be 0");
   }
   if (bytes === 0) return new ArrayBuffer(0);
-  const native = nativeCrypto();
-  if (native) {
-    const { hash: name, salt, iterations } = normalized;
-    return toArrayBuffer(await native.pbkdf2(name, secret, salt, iterations, bytes));
-  }
-  // The async version yields to the event loop as it goes: Matrix's passphrases take
-  // hundreds of thousands of iterations.
-  const options = { c: normalized.iterations, dkLen: bytes };
-  return toArrayBuffer(await pbkdf2Async(hash, secret, normalized.salt, options));
+  const { hash: name, salt, iterations } = normalized;
+  return toArrayBuffer(
+    await preferNative(
+      (native) => native.pbkdf2(name, secret, salt, iterations, bytes),
+      // The async version yields to the event loop as it goes: Matrix's passphrases take
+      // hundreds of thousands of iterations.
+      () => pbkdf2Async(hash, secret, salt, { c: iterations, dkLen: bytes }),
+    ),
+  );
 }
 
 /**

@@ -11,10 +11,16 @@ import {
     SoundBankLoader,
     SpessaSynthProcessor,
     SpessaSynthSequencer,
-    audioToWav,
     BasicSoundBank,
 } from "spessasynth_core";
 import { decodeBankOpusSamples } from "$lib/utils/opusSample";
+// Zami: this runs on the app's one JS thread (see render), so its long loops
+// give the event loop a turn every few ms.
+import {
+    audioToWavSliced,
+    createSlicer,
+    nextTurn,
+} from "@-/com.leonsilicon.zami.sliced";
 
 // Zami: spessasynth's SF3 Vorbis decoder is WebAssembly, which Hermes lacks.
 // Its constructor attaches a success-only .then to this shared promise, so
@@ -54,15 +60,33 @@ let loaded: { key: string; bank: BasicSoundBank } | null = null;
  * which the synth can't decode itself: decode them all up front.
  */
 async function decodeOpusSamples(bank: BasicSoundBank): Promise<void> {
-    for (const d of await decodeBankOpusSamples(bank.samples)) {
-        bank.samples[d.index].setAudioData(d.pcm, d.sampleRate);
-    }
+    // Zami: a few samples at a time (each a native decode, with JS around it
+    // to build its Ogg stream and copy out its PCM), with a turn of the event
+    // loop between once the slice is used up, rather than all ~600 at once.
+    const slicer = createSlicer();
+    let next = 0;
+    const decodeSome = async (): Promise<void> => {
+        while (next < bank.samples.length) {
+            const index = next++;
+            if (slicer.due) await slicer.pause();
+            const [d] = await decodeBankOpusSamples([bank.samples[index]]);
+            if (d) bank.samples[index].setAudioData(d.pcm, d.sampleRate);
+        }
+    };
+    await Promise.all(Array.from({ length: OPUS_DECODES_AT_ONCE }, decodeSome));
 }
+
+/** Zami: native Opus decodes in flight at once while the bank loads. */
+const OPUS_DECODES_AT_ONCE = 4;
 
 // Zami: exported: React Native has no Web Workers, so midiSoundBank calls it on
 // the app's own thread.
 export async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
     if (req.bank) {
+        // Zami: parsing the bank is one call into spessasynth_core, which
+        // can't be sliced (tens of ms for the bundled bank): it gets a turn of
+        // its own, at least.
+        await nextTurn();
         const bank = SoundBankLoader.fromArrayBuffer(req.bank.data);
         await decodeOpusSamples(bank);
         loaded = { key: req.bank.key, bank };
@@ -115,10 +139,10 @@ export async function render(req: MidiRenderRequest): Promise<ArrayBuffer> {
                 endFrame = Math.min(maxFrames, i + BLOCK + tailFrames);
             }
         }
-        return audioToWav(
+        // Zami: audioToWav's bytes (normalized), a slice at a time.
+        return await audioToWavSliced(
             [left.subarray(0, endFrame), right.subarray(0, endFrame)],
             SAMPLE_RATE,
-            { normalizeAudio: true },
         );
     } finally {
         // destroySynthProcessor() also destroys every bank still attached,

@@ -30,6 +30,21 @@ export function findEmojiQuery(text: string, caret: number): EmojiQuery | null {
     return match ? { query: match[1], start: caret - match[0].length } : null;
 }
 
+// Zami: ALL_EMOJIS with each one's shortcodes and lowercased name, built on
+// the first query: the composer ranks every emoji per keystroke of a `:query`,
+// and looking these up again each time was most of that.
+let unicodeEntries:
+    | { e: (typeof ALL_EMOJIS)[number]; codes: string[]; lowerName: string }[]
+    | null = null;
+function unicodeIndex() {
+    unicodeEntries ??= ALL_EMOJIS.map((e) => ({
+        e,
+        codes: shortcodesFor(e.emoji),
+        lowerName: e.name.toLowerCase(),
+    }));
+    return unicodeEntries;
+}
+
 /**
  * Suggestions for `query` (at least 2 chars): up to 5 custom emotes, then
  * unicode emoji, 8 in all. Unicode ranks Discord-style: an exact shortcode
@@ -52,16 +67,18 @@ export function rankEmojiCandidates(
             source: e.source,
         }));
     const ranked: { rank: number; candidate: EmojiCandidate }[] = [];
-    for (const e of ALL_EMOJIS) {
-        const codes = shortcodesFor(e.emoji);
+    // Zami: each emoji's shortcodes and lowercased name, looked up once (see
+    // unicodeIndex). A weaker find is skipped once a stronger one matched:
+    // only the strongest decides the rank and the name shown.
+    for (const { e, codes, lowerName } of unicodeIndex()) {
         const exact = codes.find((c) => c === q);
-        const prefix = codes.find((c) => c.startsWith(q));
-        const partial = codes.find((c) => c.includes(q));
+        const prefix = exact ?? codes.find((c) => c.startsWith(q));
+        const partial = prefix ?? codes.find((c) => c.includes(q));
         const rank = exact
             ? 0
             : prefix
               ? 1
-              : partial || e.name.toLowerCase().includes(q)
+              : partial || lowerName.includes(q)
                 ? 2
                 : -1;
         if (rank < 0) continue;

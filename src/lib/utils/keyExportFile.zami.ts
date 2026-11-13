@@ -17,6 +17,17 @@
  * the AES key, the last 256 the HMAC key.
  */
 
+// Zami: a large account's export is tens of MB; its UTF-8, AES-CTR and base64
+// are done a piece at a time, with turns of the event loop between pieces,
+// instead of in single steps.
+import {
+    Base64FormatError,
+    aesCtrInPieces,
+    decodeBase64Lines,
+    encodeBase64Lines,
+    encodeUtf8InPieces,
+} from "@-/com.leonsilicon.zami.crypto-work";
+
 const HEADER = "-----BEGIN MEGOLM SESSION DATA-----";
 const FOOTER = "-----END MEGOLM SESSION DATA-----";
 const VERSION = 1;
@@ -78,25 +89,20 @@ async function deriveKeys(
     return { aesKey, hmacKey };
 }
 
-function toBase64(bytes: Uint8Array): string {
-    let binary = "";
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
-}
-
-function fromBase64(text: string): Uint8Array<ArrayBuffer> {
-    let binary: string;
+// Zami: `text` between `start` and `end`, whitespace ignored
+// (decodeBase64Lines).
+async function fromBase64(
+    text: string,
+    start: number,
+    end: number,
+): Promise<Uint8Array<ArrayBuffer>> {
     try {
-        binary = atob(text);
-    } catch {
-        throw new KeyExportFileError("format");
+        return await decodeBase64Lines(text, start, end);
+    } catch (error) {
+        if (error instanceof Base64FormatError)
+            throw new KeyExportFileError("format");
+        throw error;
     }
-    const out = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-    return out;
 }
 
 /** Encrypt an exported key list (JSON) into a key export file's text. */
@@ -112,12 +118,13 @@ export async function encryptKeyExportFile(
     // counter can never wrap into the IV half on another implementation.
     iv[8] &= 0x7f;
     const { aesKey, hmacKey } = await deriveKeys(passphrase, salt, rounds);
-    const ciphertext = new Uint8Array(
-        await subtle.encrypt(
-            { name: "AES-CTR", counter: iv, length: 64 },
-            aesKey,
-            new TextEncoder().encode(json),
-        ),
+    // Zami: in pieces (aesCtrInPieces), the same ciphertext.
+    const ciphertext = await aesCtrInPieces(
+        subtle,
+        "encrypt",
+        aesKey,
+        iv,
+        await encodeUtf8InPieces(json),
     );
 
     const body = new Uint8Array(HEADER_LEN + ciphertext.length + MAC_LEN);
@@ -130,12 +137,9 @@ export async function encryptKeyExportFile(
     const mac = new Uint8Array(await subtle.sign("HMAC", hmacKey, signed));
     body.set(mac, HEADER_LEN + ciphertext.length);
 
-    const b64 = toBase64(body);
-    const lines: string[] = [];
-    for (let i = 0; i < b64.length; i += LINE_LEN) {
-        lines.push(b64.slice(i, i + LINE_LEN));
-    }
-    return [HEADER, ...lines, FOOTER, ""].join("\n");
+    // Zami: the same lines, each ending in "\n", built a piece at a time.
+    const lines = await encodeBase64Lines(body, LINE_LEN);
+    return `${HEADER}\n${lines}${FOOTER}\n`;
 }
 
 /**
@@ -149,9 +153,7 @@ export async function decryptKeyExportFile(
     const start = text.indexOf(HEADER);
     const end = text.indexOf(FOOTER);
     if (start < 0 || end < start) throw new KeyExportFileError("format");
-    const body = fromBase64(
-        text.slice(start + HEADER.length, end).replace(/\s+/g, ""),
-    );
+    const body = await fromBase64(text, start + HEADER.length, end);
     if (body.length < HEADER_LEN + MAC_LEN) {
         throw new KeyExportFileError("format");
     }
@@ -173,9 +175,12 @@ export async function decryptKeyExportFile(
         body.slice(0, macStart),
     );
     if (!ok) throw new KeyExportFileError("passphrase");
-    const plain = await subtle.decrypt(
-        { name: "AES-CTR", counter: iv, length: 64 },
+    // Zami: in pieces (aesCtrInPieces), the same plaintext.
+    const plain = await aesCtrInPieces(
+        subtle,
+        "decrypt",
         aesKey,
+        iv,
         ciphertext,
     );
     return new TextDecoder().decode(plain);

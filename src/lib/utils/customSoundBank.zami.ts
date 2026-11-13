@@ -58,6 +58,55 @@ const DB_NAME = "zam-soundbanks";
 const STORE = "banks";
 const RECORD_ID = "custom";
 
+// Zami: the bank's bytes (up to 256 MB) live in a file, and its record in IndexedDB holds
+// the rest and the file's name. react-native-indexeddb-sqlite keeps every database it has
+// opened in memory and copies a value on every read, so a bank in the record sat in memory
+// for good and was copied whenever its name was shown. Records stored with their `data`
+// before still work. expo-file-system is imported when it's used (it needs the native app).
+type StoredRecord = Omit<StoredSoundBank, "data"> & {
+    data?: ArrayBuffer;
+    file?: string;
+};
+
+async function bankFile(name: string) {
+    const { File, Paths } = await import("expo-file-system");
+    return new File(Paths.document, name);
+}
+
+/** The record's bank with its bytes, read from its file if they're there. */
+async function withBytes(rec: StoredRecord): Promise<StoredSoundBank | null> {
+    if (rec.data) return rec as StoredSoundBank;
+    if (!rec.file) return null;
+    const file = await bankFile(rec.file);
+    if (!file.exists) return null;
+    const { file: _file, ...bank } = rec;
+    return { ...bank, data: await file.arrayBuffer() };
+}
+
+async function deleteBankFile(name: string | undefined): Promise<void> {
+    if (!name) return;
+    try {
+        const file = await bankFile(name);
+        if (file.exists) file.delete();
+    } catch {
+        /* a leftover file is harmless */
+    }
+}
+
+async function readStoredRecord(): Promise<StoredRecord | null> {
+    try {
+        const db = await openDb();
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, "readonly");
+            const r = tx.objectStore(STORE).get(RECORD_ID);
+            r.onsuccess = () => resolve((r.result as StoredRecord) ?? null);
+            r.onerror = () => reject(r.error);
+        });
+    } catch {
+        return null;
+    }
+}
+
 function openDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, 1);
@@ -74,13 +123,11 @@ function openDb(): Promise<IDBDatabase> {
 
 export async function getStoredSoundBank(): Promise<StoredSoundBank | null> {
     try {
-        const db = await openDb();
-        return await new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE, "readonly");
-            const r = tx.objectStore(STORE).get(RECORD_ID);
-            r.onsuccess = () => resolve((r.result as StoredSoundBank) ?? null);
-            r.onerror = () => reject(r.error);
-        });
+        // Zami: the record, then the bytes from its file (see StoredRecord). A bank stored
+        // in its record moves to a file, so the record stops loading it.
+        const rec = await readStoredRecord();
+        if (rec?.data) void putStoredSoundBank(rec as StoredSoundBank);
+        return rec ? await withBytes(rec) : null;
     } catch {
         return null;
     }
@@ -91,7 +138,8 @@ export async function getStoredSoundBankInfo(): Promise<{
     name: string;
     size: number;
 } | null> {
-    const rec = await getStoredSoundBank();
+    // Zami: the record alone; reading the bytes only to drop them took a copy of the bank.
+    const rec = await readStoredRecord();
     return rec ? { name: rec.name, size: rec.size } : null;
 }
 
@@ -101,22 +149,35 @@ export async function getStoredSoundBankInfo(): Promise<{
 export async function putStoredSoundBank(
     rec: Omit<StoredSoundBank, "id">,
 ): Promise<boolean> {
+    // Zami: the bytes go to a new file first, then the record names it, then the old file
+    // goes: a crash at any point leaves a record that names a whole file.
+    const previous = (await readStoredRecord())?.file;
+    const fileName = `zami-sound-bank-${Date.now()}`;
     try {
+        await (await bankFile(fileName)).write(rec.data);
+        const { data: _data, ...info } = rec;
         const db = await openDb();
         await new Promise<void>((resolve, reject) => {
             const tx = db.transaction(STORE, "readwrite");
-            tx.objectStore(STORE).put({ ...rec, id: RECORD_ID });
+            tx.objectStore(STORE).put({
+                ...info,
+                file: fileName,
+                id: RECORD_ID,
+            });
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
             tx.onabort = () => reject(tx.error);
         });
+        await deleteBankFile(previous);
         return true;
     } catch {
+        await deleteBankFile(fileName);
         return false;
     }
 }
 
 export async function deleteStoredSoundBank(): Promise<void> {
+    const previous = (await readStoredRecord())?.file; // Zami: and its file.
     try {
         const db = await openDb();
         await new Promise<void>((resolve, reject) => {
@@ -125,6 +186,7 @@ export async function deleteStoredSoundBank(): Promise<void> {
             tx.oncomplete = () => resolve();
             tx.onerror = () => reject(tx.error);
         });
+        await deleteBankFile(previous);
     } catch {
         /* ignore */
     }

@@ -1,4 +1,5 @@
 import { keepFocus, useInputKeys } from "@-/com.leonsilicon.zami.browser";
+import { roomStateRevision } from "@-/com.leonsilicon.zami.incremental";
 import { Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,7 +43,6 @@ import {
 } from "$lib/utils/searchAutocomplete";
 import { createStaleGuard } from "$lib/utils/staleGuard";
 import { searchState } from "$lib/stores/search.svelte";
-import { roomsState } from "$lib/stores/rooms.svelte";
 import { interfaceState } from "$lib/stores/interface.svelte";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import { compactDateTime } from "$lib/utils/timeFormat";
@@ -285,13 +285,27 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
     }
 
     // Autocomplete suggestions for operators and values.
-    const roomsTick = useRune(() => roomsState.roomsTick);
+    // Zami: the room's members as "from:" candidates, read again only when its
+    // state changes (and only while a "from:" value is being typed), not on
+    // every sync; a keystroke then only filters them.
+    const fromCandidates = activeToken?.kind === "from";
+    const memberRevision = useRune(
+        () => (fromCandidates ? roomStateRevision(room) : -1),
+        [fromCandidates, room],
+    );
+    const memberCandidates = useMemo(() => {
+        void memberRevision;
+        if (!fromCandidates) return [];
+        return getRoomMembers(room).map((m) => ({
+            userId: m.userId,
+            displayName: m.rawDisplayName || m.userId,
+        }));
+    }, [memberRevision, fromCandidates, room]);
     const suggestions = useMemo((): {
         label: string;
         completion: string;
         sub?: string;
     }[] => {
-        void roomsTick;
         if (!activeToken) return [];
         const { kind, query } = activeToken;
         if (kind === "operator") {
@@ -307,18 +321,12 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
             }));
         }
         // kind === "from"
-        return filterMemberSuggestions(
-            getRoomMembers(room).map((m) => ({
-                userId: m.userId,
-                displayName: m.rawDisplayName || m.userId,
-            })),
-            query,
-        ).map((m) => ({
+        return filterMemberSuggestions(memberCandidates, query).map((m) => ({
             label: m.displayName,
             sub: m.userId,
             completion: `from:${m.userId}`,
         }));
-    }, [roomsTick, activeToken, room]);
+    }, [activeToken, memberCandidates]);
 
     // Clamp selectedIdx when suggestions shrink (mirror MessageInput's mention clamp).
     useEffect(() => {

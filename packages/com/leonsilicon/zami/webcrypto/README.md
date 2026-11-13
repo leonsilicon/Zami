@@ -35,8 +35,19 @@ and HMAC key lengths that aren't whole bytes.
 
 In pure JS on Hermes, which has no JIT, the expensive operations are slow: a megabyte
 takes most of a second to encrypt or hash, and a key file's 500,000 PBKDF2 iterations take
-minutes. So it's also an Expo module (`ios/ZamiWebCryptoModule.swift`). When the app has
-it, digests, HMAC, AES-CTR and PBKDF2 run in CommonCrypto, off the JS thread, after the
-JS side has checked every argument as before. Without it (in Node, and on Android for now),
-everything runs on @noble, on the JS thread; PBKDF2 yields to the event loop as it goes.
-`__tests__/native.test.ts` runs the native path with a stand-in module on `node:crypto`.
+minutes. So it's also an Expo module, with the same functions on both platforms:
+`ios/ZamiWebCryptoModule.swift` (CommonCrypto, and CryptoKit for AES-GCM) and
+`android/…/ZamiWebCryptoModule.kt` (javax.crypto, with PBKDF2 written out over the
+platform's HMAC, since Java's own takes the password as characters). When the app has it,
+digests, HMAC, AES-CTR, AES-GCM and PBKDF2 run natively, off the JS thread (on a queue of
+their own, so a long one holds up no other module's async functions), after the JS side
+has checked every argument as before.
+
+What stays on @noble, on the JS thread: everything in Node and the tests, HKDF (a few
+hashes of a few bytes), AES-GCM with an iv that isn't 12 bytes (no caller uses one; the
+platforms' GCM takes 12), and AES-GCM in a build of the app from before the module had it.
+A native call that fails for a reason of its own (a key size a provider refuses, say) is
+computed on @noble instead, so the result never depends on the platform; it's only slower.
+PBKDF2 on @noble yields to the event loop as it goes; the rest are single calls, so a
+megabyte on @noble holds the thread for most of a second. `__tests__/native.test.ts` runs
+the native path with a stand-in module on `node:crypto`.

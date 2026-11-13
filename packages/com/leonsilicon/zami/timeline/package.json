@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.timeline",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What keeps an open room's timeline, composer and member list from freezing the app: coalesced re-reads, work in time slices, one shared listener per SDK event, and prebuilt search indexes.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*"
+  }
+}

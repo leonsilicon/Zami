@@ -16,6 +16,7 @@
     "#html": "./html.tsx",
     "#html-tree": "./html-tree.ts",
     "#image": "./image.tsx",
+    "#lazy": "./lazy.tsx",
     "#notification-permission": "./notification-permission.ts",
     "#picked-file": "./picked-file.ts",
     "#portal": "./portal.tsx",
@@ -30,6 +31,7 @@
     ".": "./+.ts"
   },
   "dependencies": {
+    "@-/com.leonsilicon.zami.blob": "workspace:*",
     "@-/com.leonsilicon.zami.icons": "workspace:*",
     "acorn": "catalog:",
     "expo-document-picker": "catalog:",
@@ -48,6 +50,7 @@
     "uniwind": "catalog:"
   },
   "devDependencies": {
+    "fake-indexeddb": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

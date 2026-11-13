@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    memo,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     FlatList,
     Pressable,
@@ -15,8 +23,17 @@ import {
     type TextInputInstance,
 } from "react-native";
 import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
+import {
+    lastIndexAtOrBefore,
+    type Selection,
+} from "@-/com.leonsilicon.zami.incremental";
+import {
+    useSelected,
+    useSelection,
+    useStableCallback,
+} from "@-/com.leonsilicon.zami.incremental/react";
 import { Image, mediaSource, SvgIcon } from "@-/com.leonsilicon.zami.rn";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { sameObject, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
 import { EMOJI_CATEGORIES, ALL_EMOJIS } from "$lib/data/emojis";
@@ -84,6 +101,31 @@ type Row =
 
 /** `grid gap-1`. */
 const GAP = 4;
+
+// Zami: the standard emoji as options, built once: they never change, and
+// building them (a spread per emoji) on every open and every sync was much of
+// the picker's cost. The same objects each time also keep the rows below
+// from re-rendering.
+let standardItems: FlatItem[] | undefined;
+function standardFlatItems(): FlatItem[] {
+    return (standardItems ??= EMOJI_CATEGORIES.flatMap((cat) =>
+        cat.emojis.map((e): FlatItem => ({
+            kind: "standard",
+            sectionId: cat.id,
+            data: e,
+        })),
+    ));
+}
+let searchStandardItems: FlatItem[] | undefined;
+function searchStandardFlatItems(): FlatItem[] {
+    return (searchStandardItems ??= ALL_EMOJIS.map((e): FlatItem => ({
+        kind: "standard",
+        sectionId: "search-standard",
+        data: e,
+    })));
+}
+const NO_PACKS: CustomEmojiPack[] = [];
+const NO_ITEMS: FlatItem[] = [];
 
 export default function EmojiPicker({
     room = null,
@@ -159,15 +201,21 @@ export default function EmojiPicker({
     // Pack data lives in room state that mutates in place, so this must depend
     // on the tick, not on roomsState.spaces being reassigned (it no longer is
     // when the space set has not actually changed).
-    const customPacks = useRune((): CustomEmojiPack[] => {
-        void roomsState.roomsTick;
-        if (unicodeOnly) return [];
-        return getCustomEmojiPacks(
-            roomsState.activeSpaceId,
-            roomsState.spaces,
-            room,
-        );
-    }, [unicodeOnly, room]);
+    // Zami: getCustomEmojiPacks returns the same array until a pack changes,
+    // so a sync that changes no pack re-renders nothing here.
+    const customPacks = useRune(
+        (): CustomEmojiPack[] => {
+            void roomsState.roomsTick;
+            if (unicodeOnly) return NO_PACKS;
+            return getCustomEmojiPacks(
+                roomsState.activeSpaceId,
+                roomsState.spaces,
+                room,
+            );
+        },
+        [unicodeOnly, room],
+        { isEqual: sameObject },
+    );
     const ownAvatarUrl = getOwnAvatarUrl();
 
     const tabs = useMemo(
@@ -192,31 +240,40 @@ export default function EmojiPicker({
         if (!activeTab && tabs.length > 0) setActiveTab(tabs[0].id);
     }, [activeTab, tabs]);
 
+    // Zami: each custom emoji as an option, built once per pack change, with
+    // its shortcode lowercased once for the search below.
+    const customItems = useMemo(() => {
+        const browse: FlatItem[] = [];
+        const searchable: { key: string; item: FlatItem }[] = [];
+        for (const pack of customPacks) {
+            for (const e of pack.emojis) {
+                const data = { ...e, packId: pack.id };
+                browse.push({ kind: "custom", sectionId: pack.id, data });
+                searchable.push({
+                    key: e.shortcode.toLowerCase(),
+                    item: { kind: "custom", sectionId: "search-custom", data },
+                });
+            }
+        }
+        return { browse, searchable };
+    }, [customPacks]);
+
     // Search results: custom first, then standard
-    const searchCustom = useMemo(
-        () =>
-            search
-                ? customPacks.flatMap((p) =>
-                      p.emojis
-                          .filter((e) =>
-                              e.shortcode
-                                  .toLowerCase()
-                                  .includes(search.toLowerCase()),
-                          )
-                          .map((e) => ({ ...e, packId: p.id })),
-                  )
-                : [],
-        [search, customPacks],
-    );
-    const searchStandard = useMemo(
-        () =>
-            search
-                ? ALL_EMOJIS.filter((e) =>
-                      e.name.includes(search.toLowerCase()),
-                  )
-                : [],
-        [search],
-    );
+    // Zami: as options already (`FlatItem`s), from the prebuilt lists.
+    const searchCustom = useMemo((): FlatItem[] => {
+        if (!search) return NO_ITEMS;
+        const query = search.toLowerCase();
+        return customItems.searchable
+            .filter((e) => e.key.includes(query))
+            .map((e) => e.item);
+    }, [search, customItems]);
+    const searchStandard = useMemo((): FlatItem[] => {
+        if (!search) return NO_ITEMS;
+        const query = search.toLowerCase();
+        return searchStandardFlatItems().filter(
+            (e) => e.kind === "standard" && e.data.name.includes(query),
+        );
+    }, [search]);
 
     // Reset selection when search changes
     useEffect(() => {
@@ -224,38 +281,18 @@ export default function EmojiPicker({
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only `search`, as upstream's effect does.
     }, [search]);
 
+    // Zami: the browsing list on its own, so clearing a search gets the same
+    // array (and rows) back rather than a new one.
+    const browseItems = useMemo(
+        (): FlatItem[] => [...customItems.browse, ...standardFlatItems()],
+        [customItems],
+    );
     const flatItems = useMemo((): FlatItem[] => {
         if (search) {
-            return [
-                ...searchCustom.map((e): FlatItem => ({
-                    kind: "custom",
-                    sectionId: "search-custom",
-                    data: e,
-                })),
-                ...searchStandard.map((e): FlatItem => ({
-                    kind: "standard",
-                    sectionId: "search-standard",
-                    data: e,
-                })),
-            ];
+            return [...searchCustom, ...searchStandard];
         }
-        const items: FlatItem[] = [];
-        for (const pack of customPacks) {
-            for (const e of pack.emojis) {
-                items.push({
-                    kind: "custom",
-                    sectionId: pack.id,
-                    data: { ...e, packId: pack.id },
-                });
-            }
-        }
-        for (const cat of EMOJI_CATEGORIES) {
-            for (const e of cat.emojis) {
-                items.push({ kind: "standard", sectionId: cat.id, data: e });
-            }
-        }
-        return items;
-    }, [search, searchCustom, searchStandard, customPacks]);
+        return browseItems;
+    }, [search, searchCustom, searchStandard, browseItems]);
 
     // Identity of every option, in render order — the anchor's key list.
     const activeKeys = useMemo(() => emojiOptionKeys(flatItems), [flatItems]);
@@ -311,34 +348,28 @@ export default function EmojiPicker({
         listView.current.y = e.nativeEvent.contentOffset.y;
         if (search) return;
         const top = e.nativeEvent.contentOffset.y;
-        let current = "";
-        for (const header of rows) {
-            if (header.kind !== "header") continue;
-            if (header.offset <= top + 8) current = header.sectionId;
-            else break;
-        }
+        // Zami: a binary search over the header offsets (`headers`, below).
+        const current =
+            headers.sectionIds[lastIndexAtOrBefore(headers.offsets, top + 8)] ??
+            "";
         if (current && current !== activeTab) setActiveTab(current);
     }
 
-    const pick = useCallback(
-        (emoji: string) => {
-            onSelect(emoji);
-            onClose();
-        },
-        [onSelect, onClose],
-    );
+    // Zami: the same function across renders (calling the latest props), so
+    // the memoized rows below don't re-render when the parent does.
+    const pick = useStableCallback((emoji: string) => {
+        onSelect(emoji);
+        onClose();
+    });
 
-    const pickCustom = useCallback(
-        (emoji: CustomEmoji) => {
-            if (onSelectCustom) {
-                onSelectCustom(emoji);
-            } else {
-                onSelect(`:${emoji.shortcode}:`);
-            }
-            onClose();
-        },
-        [onSelect, onSelectCustom, onClose],
-    );
+    const pickCustom = useStableCallback((emoji: CustomEmoji) => {
+        if (onSelectCustom) {
+            onSelectCustom(emoji);
+        } else {
+            onSelect(`:${emoji.shortcode}:`);
+        }
+        onClose();
+    });
 
     function onKeydown(e: KeyboardEvent) {
         if (e.key === "Escape") {
@@ -512,6 +543,25 @@ export default function EmojiPicker({
         flatItems,
         sectionOffsets,
     ]);
+    // Zami: the header rows' offsets and sections, for onScroll's search.
+    const headers = useMemo(() => {
+        const offsets: number[] = [];
+        const sectionIds: string[] = [];
+        for (const row of rows) {
+            if (row.kind !== "header") continue;
+            offsets.push(row.offset);
+            sectionIds.push(row.sectionId);
+        }
+        return { offsets, sectionIds };
+    }, [rows]);
+    const getItemLayout = useCallback(
+        (_: unknown, index: number) => ({
+            length: rows[index].length,
+            offset: rows[index].offset,
+            index,
+        }),
+        [rows],
+    );
 
     // Scroll the selected item into view, and follow it with the active tab.
     // Zami: the FlatList renders every row near the viewport, so there's no
@@ -546,6 +596,16 @@ export default function EmojiPicker({
     // the cell, not the system text size.
     const glyphSize = Math.floor((cell - 8) * 0.8);
 
+    // Zami: the option the cursor is on, outside React state: moving it
+    // re-renders the cell it leaves and the one it lands on (`EmojiCell`), not
+    // every row.
+    const selection = useSelection<FlatItem>();
+    useLayoutEffect(() => {
+        selection.set(
+            activeIndex >= 0 ? (flatItems[activeIndex] ?? null) : null,
+        );
+    }, [selection, activeIndex, flatItems]);
+
     const renderRow = useCallback(
         ({ item: row }: ListRenderItemInfo<Row>) => {
             if (row.kind === "header")
@@ -563,67 +623,17 @@ export default function EmojiPicker({
                     </View>
                 );
             return (
-                <View
-                    style={{ height: row.length, paddingTop: row.paddingTop }}
-                    className="flex-row gap-1"
-                >
-                    {row.items.map((item) => {
-                        // Zami: `class:ring-2` / `class:ring-discord-accent`
-                        // on the option the cursor is on.
-                        const selected =
-                            activeIndex >= 0 && flatItems[activeIndex] === item;
-                        const ring = selected
-                            ? " border-2 border-discord-accent"
-                            : "";
-                        return item.kind === "custom" ? (
-                            <Pressable
-                                key={
-                                    item.data.packId + ":" + item.data.shortcode
-                                }
-                                onPress={() => pickCustom(item.data)}
-                                accessibilityRole="button"
-                                accessibilityLabel={item.data.shortcode}
-                                accessibilityState={{ selected }}
-                                style={{ width: cell, height: cell }}
-                                className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
-                            >
-                                <Image
-                                    source={mediaSource(item.data.url)}
-                                    accessibilityLabel={item.data.shortcode}
-                                    style={{
-                                        width: cell - 8,
-                                        height: cell - 8,
-                                    }}
-                                    contentFit="contain"
-                                />
-                            </Pressable>
-                        ) : (
-                            <Pressable
-                                key={item.data.name}
-                                onPress={() => pick(item.data.emoji)}
-                                accessibilityRole="button"
-                                accessibilityLabel={item.data.name}
-                                accessibilityState={{ selected }}
-                                style={{ width: cell, height: cell }}
-                                className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
-                            >
-                                <Text
-                                    allowFontScaling={false}
-                                    style={{
-                                        fontSize: glyphSize,
-                                        includeFontPadding: false,
-                                    }}
-                                    className="text-center"
-                                >
-                                    {item.data.emoji}
-                                </Text>
-                            </Pressable>
-                        );
-                    })}
-                </View>
+                <EmojiRow
+                    row={row}
+                    cell={cell}
+                    glyphSize={glyphSize}
+                    selection={selection}
+                    pick={pick}
+                    pickCustom={pickCustom}
+                />
             );
         },
-        [cell, glyphSize, pick, pickCustom, activeIndex, flatItems],
+        [cell, glyphSize, selection, pick, pickCustom],
     );
 
     // Zami: `height: 50dvh` on touch. The desktop panel keeps the composer
@@ -800,16 +810,15 @@ export default function EmojiPicker({
                 data={rows}
                 keyExtractor={(row) => row.key}
                 renderItem={renderRow}
-                getItemLayout={(_, index) => ({
-                    length: rows[index].length,
-                    offset: rows[index].offset,
-                    index,
-                })}
+                getItemLayout={getItemLayout}
                 onLayout={(e) => {
                     setScrollWidth(e.nativeEvent.layout.width);
                     listView.current.height = e.nativeEvent.layout.height;
                 }}
                 onScroll={onScroll}
+                // Zami: a few screens of rows around the viewport, not the default
+                // 21: opening the picker mounts a few hundred cells, not thousands.
+                windowSize={7}
                 scrollEventThrottle={16}
                 // Zami: one tap picks an emoji even while the search field
                 // holds the keyboard open.
@@ -831,3 +840,91 @@ export default function EmojiPicker({
         </View>
     );
 }
+
+interface EmojiCellProps {
+    cell: number;
+    glyphSize: number;
+    selection: Selection<FlatItem>;
+    pick: (emoji: string) => void;
+    pickCustom: (emoji: CustomEmoji) => void;
+}
+
+// Zami: a grid row, memoized: rows are rebuilt only when the packs, the
+// search or the width change, and the callbacks keep their identity.
+const EmojiRow = memo(function EmojiRow({
+    row,
+    ...cellProps
+}: EmojiCellProps & { row: Extract<Row, { kind: "cells" }> }) {
+    return (
+        <View
+            style={{ height: row.length, paddingTop: row.paddingTop }}
+            className="flex-row gap-1"
+        >
+            {row.items.map((item) => (
+                <EmojiCell
+                    key={
+                        item.kind === "custom"
+                            ? item.data.packId + ":" + item.data.shortcode
+                            : item.data.name
+                    }
+                    item={item}
+                    {...cellProps}
+                />
+            ))}
+        </View>
+    );
+});
+
+const EmojiCell = memo(function EmojiCell({
+    item,
+    cell,
+    glyphSize,
+    selection,
+    pick,
+    pickCustom,
+}: EmojiCellProps & { item: FlatItem }) {
+    // Zami: `class:ring-2` / `class:ring-discord-accent` on the option the
+    // cursor is on.
+    const selected = useSelected(selection, item);
+    const ring = selected ? " border-2 border-discord-accent" : "";
+    return item.kind === "custom" ? (
+        <Pressable
+            onPress={() => pickCustom(item.data)}
+            accessibilityRole="button"
+            accessibilityLabel={item.data.shortcode}
+            accessibilityState={{ selected }}
+            style={{ width: cell, height: cell }}
+            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
+        >
+            <Image
+                source={mediaSource(item.data.url)}
+                accessibilityLabel={item.data.shortcode}
+                style={{
+                    width: cell - 8,
+                    height: cell - 8,
+                }}
+                contentFit="contain"
+            />
+        </Pressable>
+    ) : (
+        <Pressable
+            onPress={() => pick(item.data.emoji)}
+            accessibilityRole="button"
+            accessibilityLabel={item.data.name}
+            accessibilityState={{ selected }}
+            style={{ width: cell, height: cell }}
+            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
+        >
+            <Text
+                allowFontScaling={false}
+                style={{
+                    fontSize: glyphSize,
+                    includeFontPadding: false,
+                }}
+                className="text-center"
+            >
+                {item.data.emoji}
+            </Text>
+        </Pressable>
+    );
+});

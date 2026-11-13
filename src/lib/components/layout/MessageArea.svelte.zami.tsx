@@ -1,5 +1,10 @@
 import { DomMount, Pulse, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { sameObject, useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    createCoalescer,
+    movesOthersReceipts,
+    type ReceiptContent,
+} from "@-/com.leonsilicon.zami.timeline";
 import {
     memo,
     useCallback,
@@ -9,6 +14,7 @@ import {
     useMemo,
     useRef,
     useState,
+    useSyncExternalStore,
     type ComponentProps,
 } from "react";
 import {
@@ -101,8 +107,13 @@ import {
     getCallSummaries,
     getContextCallSummaries,
     getOwnUserId,
+    decryptEventsForDisplay,
+    isRenderableTimelineEvent,
+    onCallEvent,
+    shouldLoadMembersOnOpen,
     type ReadReceiptInfo,
 } from "$lib/matrix/client";
+import { isCallEventType } from "$lib/utils/callSummary";
 import { logSync } from "$lib/matrix/syncLog";
 import { setActiveRoom } from "$lib/stores/rooms.svelte";
 import {
@@ -278,6 +289,15 @@ const SMOOTH_SCROLL_MS = 400;
 const VIEWABILITY = { itemVisiblePercentThreshold: 0 };
 // Zami: the rows the list renders before its first layout, from the bottom.
 const INITIAL_NUM_TO_RENDER = 15;
+// Zami: read receipts are worked out for the rows from the bottom up to the
+// screen's top row and this many more (the list mounts about five screens
+// either side), at least RECEIPT_ROWS of them, and at most once per
+// RECEIPT_COALESCE_MS for a burst of receipt events (B4).
+const RECEIPT_ROWS = 60;
+const RECEIPT_MARGIN_ROWS = 60;
+const RECEIPT_COALESCE_MS = 250;
+// Zami: rows this far beyond the screen decrypt ahead of the backlog (B2).
+const DECRYPT_MARGIN_ROWS = 30;
 // Zami: the far end of a pan's offset ranges, for "never".
 const OFFSET_NEVER = 100_000;
 // Zami: the drawers' `transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)`.
@@ -450,9 +470,13 @@ export default function MessageArea({
     // getMember reads don't re-run on their own when the member mutates in
     // place. Idempotent (loadMembersIfNeeded caches); the bump is untracked so
     // it can't re-enter this effect.
+    // Zami: not for a room of hundreds of members or more, whose list loads
+    // when the member list or a mention search needs it (C7): fetching and
+    // applying thousands of members on every first open froze the switch.
     useEffect(() => {
         const r = room;
         void r.roomId;
+        if (!shouldLoadMembersOnOpen(r)) return;
         loadRoomMembersIfNeeded(r)
             .then(() => void roomsState.roomsTick++)
             .catch(() => {});
@@ -1156,7 +1180,10 @@ export default function MessageArea({
     const [contextMessages, setContextMessages, contextMessagesRef] =
         useLiveState<MatrixEvent[] | null>(null);
     const loadingNewer = useRef(false);
-    const liveMessages = useRune(() => getMessages(roomId), [roomId]);
+    // Zami: the store replaces a room's list whole, never changes it in place.
+    const liveMessages = useRune(() => getMessages(roomId), [roomId], {
+        isEqual: sameObject,
+    });
     const messages = contextMessages ?? liveMessages;
     // Zami: the list as it stands now (the store is written synchronously),
     // for the async code below.
@@ -1172,7 +1199,18 @@ export default function MessageArea({
     useLayoutEffect(() => {
         rows.current = listRows;
     });
+    // Zami: what the rows read (see rowsContext below).
+    const [rowsStore] = useState(createRowsStore);
     const [receiptTick, setReceiptTick] = useState(0);
+    // Zami: the rows read receipts are worked out for: from the newest up to
+    // this many rows from the bottom, the screen's top row plus a margin
+    // (onViewableItemsChanged moves it), not the whole timeline (B4).
+    const [receiptRows, setReceiptRows, receiptRowsRef] =
+        useLiveState(RECEIPT_ROWS);
+    useLayoutEffect(() => {
+        void roomId;
+        setReceiptRows(RECEIPT_ROWS);
+    }, [roomId, setReceiptRows]);
     // Zami: each row keeps its previous receipts array while its readers are
     // the same, so a receipt elsewhere doesn't re-render it (MessageItem is
     // memo'd on it).
@@ -1182,7 +1220,10 @@ export default function MessageArea({
     const receiptsByEvent = useMemo(() => {
         void receiptTick;
         const next = showReadReceiptAvatars
-            ? getReceiptsByDisplayedEvent(room, messages)
+            ? getReceiptsByDisplayedEvent(
+                  room,
+                  messages.slice(Math.max(0, messages.length - receiptRows)),
+              )
             : null;
         receiptCache.map = keepEqualValues(
             receiptCache.map,
@@ -1190,14 +1231,24 @@ export default function MessageArea({
             sameReceipts,
         );
         return receiptCache.map;
-    }, [receiptTick, showReadReceiptAvatars, room, messages, receiptCache]);
+    }, [
+        receiptTick,
+        showReadReceiptAvatars,
+        room,
+        messages,
+        receiptRows,
+        receiptCache,
+    ]);
     const isContextView = contextMessages !== null;
     // Top of the timeline (issue #49): the start banner only once the room's
     // m.room.create is really loaded; a loading line while older history may
     // still come. Re-derived on every timeline write and every page end, since
     // a page of hidden events skips setMessages.
+    // Zami: on this room's timeline writes (`messages`), not every room's
+    // (timelineTick, which every decryption anywhere bumps): each walked the
+    // whole timeline for the room's m.room.create.
     const historyEdgeState = useRune(() => {
-        void messagesState.timelineTick;
+        void messages;
         void loadingOlder;
         void contextMessages;
         return historyEdge({
@@ -1207,7 +1258,7 @@ export default function MessageArea({
             hasOlder: hasOlderToLoad(),
             loadingOlder,
         });
-    }, [room, loadingOlder, contextMessages, contextWindow]);
+    }, [room, loadingOlder, contextMessages, contextWindow, messages]);
     // Native anchoring pins the view to the bottom anchor row only on the live
     // timeline. A context view's bottom is history: pinned there, each page
     // maybeLoadNewer added below kept the user at the bottom, so the next page
@@ -1309,13 +1360,10 @@ export default function MessageArea({
     // per-row isHighlightEvent(event) call never re-ran: decryption mutates the
     // SAME MatrixEvent, so the row saw no change and a mention that arrived as
     // ciphertext stayed unhighlighted (issue #39).
-    const highlightedIds = useMemo(
-        () =>
-            new Set(
-                messages.filter(isHighlightEvent).map((event) => event.getId()),
-            ),
-        [messages],
-    );
+    // Zami: per row as it renders (mentionHighlightOf), remembered per event
+    // until it decrypts, rather than for the whole list on every change; the
+    // rows re-check after decryptions (the rows store's touch, below).
+
     // Liveness comes from the room's MatrixRTC memberships, which the SDK
     // recomputes asynchronously AFTER the m.call.member event reaches the
     // timeline; voiceTick re-folds once it lands, or a just-started call
@@ -1324,13 +1372,21 @@ export default function MessageArea({
     // the getter returns a version that only moves when one changed, so the
     // ticks (every room's timeline writes among them) don't re-render the
     // room otherwise.
+    // Zami: and re-folded on this room's list and call events (callEventTick),
+    // not on every room's timeline writes and every sync (timelineTick,
+    // roomsTick), which each walked the whole timeline.
     const [summaryCache] = useState(() => ({
         map: new Map<string, CallSummary>(),
         version: 0,
     }));
+    const [callEventTick, setCallEventTick] = useState(0);
+    useEffect(
+        () => onCallEvent(room, () => setCallEventTick((n) => n + 1)),
+        [room],
+    );
     const callSummaryVersion = useRune(() => {
-        void messagesState.timelineTick;
-        void roomsState.roomsTick;
+        void messages;
+        void callEventTick;
         void voiceCallState.voiceTick;
         const next = keepEqualValues(
             summaryCache.map,
@@ -1344,7 +1400,14 @@ export default function MessageArea({
             summaryCache.version++;
         }
         return summaryCache.version;
-    }, [room, isContextView, contextWindow, summaryCache]);
+    }, [
+        room,
+        isContextView,
+        contextWindow,
+        summaryCache,
+        messages,
+        callEventTick,
+    ]);
     const callSummaries = useMemo(() => {
         void callSummaryVersion;
         return summaryCache.map;
@@ -1698,7 +1761,7 @@ export default function MessageArea({
                     );
                 }
                 if (isAtBottomRef.current) {
-                    void tick().then(() => scrollToBottom(false));
+                    scrollToBottomAfterRender();
                 }
                 if (isLiveAppend) queueArrivalAnnouncement(event);
             },
@@ -1731,7 +1794,7 @@ export default function MessageArea({
             clearTimeout(announceTimer.current);
             announcerState.current = EMPTY_ANNOUNCER;
         };
-    }, [room, tick]);
+    }, [room]);
 
     // Incoming encrypted messages reach the live timeline as `m.room.encrypted`
     // and are filtered out of the live-append path (onTimelineEvent) until they
@@ -1739,24 +1802,65 @@ export default function MessageArea({
     // decrypting so new encrypted messages appear live instead of only after a
     // manual reload. getTimelineMessages includes the now-decrypted message and
     // still excludes decrypted reactions, so the re-read stays correct.
+    // Zami: decryptions arrive an event at a time, a page of them at once
+    // when a room opens or keys arrive, and each re-read the whole timeline
+    // (B2). They're collected and handled once per turn of the event loop (or
+    // frame, whichever comes first), and the timeline is re-read only when one
+    // changes which rows there are: a placeholder that turned out to be an
+    // edit, a reaction or a thread reply, or a call event. A row whose content
+    // changed redraws itself; the rows re-check their mention highlight.
     useEffect(() => {
         const currentRoomId = room.roomId;
         const currentRoom = room;
+        let decrypted: MatrixEvent[] = [];
+        const flush = createCoalescer(() => {
+            const batch = decrypted;
+            decrypted = [];
+            if (
+                roomRef.current !== currentRoom ||
+                contextMessagesRef.current !== null
+            )
+                return;
+            const shown = getMessages(currentRoomId);
+            const keys = keyIndex(shown);
+            let reread = settingsState.orderHints;
+            let calls = false;
+            for (const event of batch) {
+                const isCall = isCallEventType(event.getType());
+                calls ||= isCall;
+                if (
+                    isCall ||
+                    keys.has(rowKey(event)) !== isRenderableTimelineEvent(event)
+                )
+                    reread = true;
+            }
+            if (reread) {
+                const events = getTimelineMessages(currentRoom);
+                if (!sameEvents(events, shown))
+                    setMessages(currentRoomId, events);
+            }
+            if (calls) setCallEventTick((n) => n + 1);
+            rowsStore.touch();
+            if (isAtBottomRef.current) {
+                scrollToBottomAfterRender();
+            }
+        });
         const unsub = onEventDecrypted(
-            (_event: MatrixEvent, eventRoom: Room) => {
+            (event: MatrixEvent, eventRoom: Room) => {
                 if (
                     eventRoom.roomId !== currentRoomId ||
                     contextMessagesRef.current !== null
                 )
                     return;
-                setMessages(currentRoomId, getTimelineMessages(currentRoom));
-                if (isAtBottomRef.current) {
-                    void tick().then(() => scrollToBottom(false));
-                }
+                decrypted.push(event);
+                flush.request();
             },
         );
-        return unsub;
-    }, [room, tick]);
+        return () => {
+            unsub();
+            flush.cancel();
+        };
+    }, [room, rowsStore]);
 
     // Subscribe to local echo updates (own pending messages in Detached ordering mode)
     useEffect(() => {
@@ -1769,12 +1873,12 @@ export default function MessageArea({
             ) {
                 setMessages(currentRoomId, getTimelineMessages(currentRoom));
                 if (isAtBottomRef.current) {
-                    void tick().then(() => scrollToBottom(false));
+                    scrollToBottomAfterRender();
                 }
             }
         });
         return unsub;
-    }, [room, tick]);
+    }, [room]);
 
     // Subscribe to reaction, poll-vote, and edit events to trigger re-renders
     useEffect(() => {
@@ -1812,11 +1916,23 @@ export default function MessageArea({
         return unsub;
     }, [room]);
 
+    // Zami: once per RECEIPT_COALESCE_MS for a burst of receipts, and not for
+    // the user's own (most of them), which the avatars never show (B4).
     useEffect(() => {
         const currentRoom = room;
-        return onReceiptEvent(currentRoom, () => {
-            setReceiptTick((n) => n + 1);
+        const refresh = createCoalescer(() => setReceiptTick((n) => n + 1), {
+            delayMs: RECEIPT_COALESCE_MS,
         });
+        const unsub = onReceiptEvent(currentRoom, (event) => {
+            const content = event?.getContent() as ReceiptContent | undefined;
+            if (content && !movesOthersReceipts(content, getOwnUserId()))
+                return;
+            refresh.request();
+        });
+        return () => {
+            unsub();
+            refresh.cancel();
+        };
     }, [room]);
 
     function markAsRead() {
@@ -1893,6 +2009,26 @@ export default function MessageArea({
         });
         markAsReadIfDisplayable();
     }
+
+    // Zami: upstream's `tick().then(() => scrollToBottom(false))` as messages
+    // arrive: once, after the next frame (by when the list has rendered what
+    // arrived), for however many arrived. Waiting on tick() forced a render of
+    // this whole component per message.
+    const bottomFrame = useRef<number | null>(null);
+    function scrollToBottomAfterRender() {
+        if (bottomFrame.current !== null) return;
+        bottomFrame.current = requestAnimationFrame(() => {
+            bottomFrame.current = null;
+            scrollToBottom(false);
+        });
+    }
+    useEffect(
+        () => () => {
+            if (bottomFrame.current !== null)
+                cancelAnimationFrame(bottomFrame.current);
+        },
+        [],
+    );
 
     // Supplemental scroll anchor. When content grows LATE while the user is
     // reading history — a link-preview card fetching in, an image decoding — the
@@ -2169,7 +2305,8 @@ export default function MessageArea({
         const list = currentMessages();
         const out: { eventId: string }[] = [];
         for (const key of [...viewableKeys.current].reverse()) {
-            const eventId = list.find((e) => rowKey(e) === key)?.getId();
+            const at = keyIndex(list).get(key);
+            const eventId = at === undefined ? undefined : list[at]?.getId();
             if (eventId) out.push({ eventId });
         }
         return out;
@@ -2198,7 +2335,8 @@ export default function MessageArea({
         if (!scrollEl.current) return 0;
         const list = currentMessages();
         const key = viewableKeys.current.at(-1);
-        const i = key ? list.findIndex((e) => rowKey(e) === key) : -1;
+        // Zami: by the list's key index, not a search per scroll event.
+        const i = key ? (keyIndex(list).get(key) ?? -1) : -1;
         return i >= 0 ? i : Math.max(0, list.length - INITIAL_NUM_TO_RENDER);
     }
 
@@ -2286,6 +2424,30 @@ export default function MessageArea({
                 needsOlderMessages()
             )
                 void backfillFromTop();
+            // Zami: rows coming near the screen decrypt ahead of the backlog
+            // (getTimelineMessages asks only for the newest), and read
+            // receipts are worked out down from the screen's top row plus a
+            // margin (B2, B4). Indexes count from the bottom.
+            let top = -1;
+            let bottom = Infinity;
+            for (const v of viewableItems) {
+                if (!v.isViewable || v.index == null) continue;
+                top = Math.max(top, v.index);
+                bottom = Math.min(bottom, v.index);
+            }
+            if (top < 0) return;
+            decryptEventsForDisplay(
+                rows.current.slice(
+                    Math.max(0, bottom - DECRYPT_MARGIN_ROWS),
+                    top + DECRYPT_MARGIN_ROWS + 1,
+                ),
+            );
+            const needed = top + 1 + RECEIPT_MARGIN_ROWS;
+            const have = receiptRowsRef.current;
+            if (needed > have || have > needed + 3 * RECEIPT_MARGIN_ROWS)
+                setReceiptRows(
+                    Math.max(RECEIPT_ROWS, needed + RECEIPT_MARGIN_ROWS),
+                );
         },
     );
 
@@ -2318,41 +2480,51 @@ export default function MessageArea({
         setRevealedBlockedIds((ids) => ({ ...ids, [eventId]: true }));
     }, []);
 
+    // Zami: what the rows read to work out their props (upstream's {#each}
+    // body), handed to them through the rows store rather than through
+    // renderItem: a change re-renders only the rows it changes, where a new
+    // renderItem re-rendered every cell of the list (B3). The rows that mount
+    // in this render read it at once; those already mounted, after the commit.
+    const rowsContext = useMemo(
+        (): RowsContext => ({
+            messages,
+            unreadMarkerEventId,
+            isRawDebugEvent,
+            ignoredUserIds,
+            myUserId,
+            revealedBlockedIds,
+            receiptsByEvent,
+            callSummaries,
+            editRequestedEventId,
+            highlight,
+        }),
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- isRawDebugEvent reads showAllEvents and debugTick.
+        [
+            messages,
+            unreadMarkerEventId,
+            showAllEvents,
+            debugTick,
+            ignoredUserIds,
+            myUserId,
+            revealedBlockedIds,
+            receiptsByEvent,
+            callSummaries,
+            editRequestedEventId,
+            highlight,
+        ],
+    );
+    rowsStore.update(rowsContext);
+    useLayoutEffect(() => rowsStore.notify(), [rowsStore, rowsContext]);
+
     const renderItem = useCallback(
-        ({ item: event, index }: ListRenderItemInfo<MatrixEvent>) => {
-            // Zami: the list is newest first; `i` is the chronological index.
-            const i = messages.length - 1 - index;
-            const id = event.getId() ?? "";
+        ({ item: event }: ListRenderItemInfo<MatrixEvent>) => {
+            // Zami: the list is newest first; the row finds its chronological
+            // index in the rows store.
             return (
                 <TimelineRow
                     event={event}
                     room={room}
-                    messages={messages}
-                    index={i}
-                    sepTs={dateSeparatorLabel(messages, i)}
-                    unreadHere={unreadDividerBefore(
-                        messages,
-                        i,
-                        unreadMarkerEventId,
-                    )}
-                    rawDebug={isRawDebugEvent(event)}
-                    blocked={
-                        shouldHideMessage(
-                            event.getSender(),
-                            ignoredUserIds,
-                            myUserId,
-                        ) && !revealedBlockedIds[id]
-                    }
-                    showHeader={shouldShowHeader(messages, i)}
-                    receipts={receiptsByEvent?.get(id) ?? NO_RECEIPTS}
-                    mentionHighlight={highlightedIds.has(event.getId())}
-                    callSummary={callSummaries.get(id) ?? null}
-                    editRequested={editRequestedEventId === event.getId()}
-                    highlightN={
-                        highlight && highlight.eventId === event.getId()
-                            ? highlight.n
-                            : 0
-                    }
+                    rowsStore={rowsStore}
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                     onOpenThread={onOpenThread}
@@ -2363,19 +2535,8 @@ export default function MessageArea({
             );
         },
         [
-            messages,
             room,
-            unreadMarkerEventId,
-            showAllEvents,
-            debugTick,
-            ignoredUserIds,
-            myUserId,
-            revealedBlockedIds,
-            receiptsByEvent,
-            highlightedIds,
-            callSummaries,
-            editRequestedEventId,
-            highlight,
+            rowsStore,
             onReply,
             jumpToReply,
             onOpenThread,
@@ -3372,9 +3533,74 @@ export default function MessageArea({
 
 const rowKey = (event: MatrixEvent) => timelineKey(event) ?? "";
 
-interface TimelineRowProps {
-    event: MatrixEvent;
-    room: Room;
+/** Zami: what a row reads to work out its props (see rowsContext). */
+interface RowsContext {
+    messages: MatrixEvent[];
+    unreadMarkerEventId: string | null;
+    isRawDebugEvent: (event: MatrixEvent) => boolean;
+    ignoredUserIds: string[];
+    myUserId: string | null;
+    revealedBlockedIds: Record<string, boolean>;
+    receiptsByEvent: Map<string, ReadReceiptInfo[]> | null;
+    callSummaries: Map<string, CallSummary>;
+    editRequestedEventId: string | null;
+    highlight: { eventId: string; n: number } | null;
+}
+
+/**
+ * Zami: the rows' context outside React state. MessageArea `update`s it as it
+ * renders (so rows mounting in that render read the new one) and `notify`s the
+ * mounted rows after the commit; `touch` makes them re-read it without a new
+ * one, after decryptions (their mention highlights). Each row re-renders only
+ * when its own props change (useRowProps).
+ */
+interface RowsStore {
+    context: RowsContext;
+    version: number;
+    subscribe: (listener: () => void) => () => void;
+    update: (context: RowsContext) => void;
+    notify: () => void;
+    touch: () => void;
+}
+
+function createRowsStore(): RowsStore {
+    const listeners = new Set<() => void>();
+    const store: RowsStore = {
+        context: {
+            messages: [],
+            unreadMarkerEventId: null,
+            isRawDebugEvent: () => false,
+            ignoredUserIds: [],
+            myUserId: null,
+            revealedBlockedIds: {},
+            receiptsByEvent: null,
+            callSummaries: new Map(),
+            editRequestedEventId: null,
+            highlight: null,
+        },
+        version: 0,
+        subscribe: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+        },
+        update: (context) => {
+            if (context === store.context) return;
+            store.context = context;
+            store.version++;
+        },
+        notify: () => {
+            for (const listener of [...listeners]) listener();
+        },
+        touch: () => {
+            store.version++;
+            store.notify();
+        },
+    };
+    return store;
+}
+
+/** Zami: a row's props from the rows' context (upstream's {#each} body). */
+interface RowProps {
     /** The chronological list and this row's index in it. */
     messages: MatrixEvent[];
     index: number;
@@ -3388,6 +3614,98 @@ interface TimelineRowProps {
     callSummary: CallSummary | null;
     editRequested: boolean;
     highlightN: number;
+}
+
+function rowPropsOf(context: RowsContext, event: MatrixEvent): RowProps {
+    const { messages } = context;
+    const i = keyIndex(messages).get(rowKey(event)) ?? -1;
+    const id = event.getId() ?? "";
+    return {
+        messages,
+        index: i,
+        sepTs: i >= 0 ? dateSeparatorLabel(messages, i) : null,
+        unreadHere:
+            i >= 0 &&
+            unreadDividerBefore(messages, i, context.unreadMarkerEventId),
+        rawDebug: context.isRawDebugEvent(event),
+        blocked:
+            shouldHideMessage(
+                event.getSender(),
+                context.ignoredUserIds,
+                context.myUserId,
+            ) && !context.revealedBlockedIds[id],
+        showHeader: i >= 0 && shouldShowHeader(messages, i),
+        receipts: context.receiptsByEvent?.get(id) ?? NO_RECEIPTS,
+        mentionHighlight: mentionHighlightOf(event),
+        callSummary: context.callSummaries.get(id) ?? null,
+        editRequested: context.editRequestedEventId === event.getId(),
+        highlightN:
+            context.highlight && context.highlight.eventId === event.getId()
+                ? context.highlight.n
+                : 0,
+    };
+}
+
+/** Zami: the row's props, re-rendering it only when they change. */
+function useRowProps(store: RowsStore, event: MatrixEvent): RowProps {
+    const last = useRef<{
+        version: number;
+        event: MatrixEvent;
+        props: RowProps;
+    } | null>(null);
+    const getSnapshot = useCallback(() => {
+        const prev = last.current;
+        if (prev && prev.version === store.version && prev.event === event)
+            return prev.props;
+        let props = rowPropsOf(store.context, event);
+        if (
+            prev &&
+            prev.event === event &&
+            sameRowProps(prev.props, props, event)
+        )
+            props = prev.props;
+        last.current = { version: store.version, event, props };
+        return props;
+    }, [store, event]);
+    return useSyncExternalStore(store.subscribe, getSnapshot);
+}
+
+/** Zami: isHighlightEvent per event, remembered until it decrypts (#39). */
+const mentionHighlights = new WeakMap<
+    MatrixEvent,
+    { clear: boolean; value: boolean }
+>();
+function mentionHighlightOf(event: MatrixEvent): boolean {
+    const clear = !event.isEncrypted() || !!event.getClearContent();
+    const known = mentionHighlights.get(event);
+    if (known && known.clear === clear) return known.value;
+    const value = isHighlightEvent(event);
+    mentionHighlights.set(event, { clear, value });
+    return value;
+}
+
+/** Zami: each list's row keys and their indexes, built once per list. */
+const keyIndexes = new WeakMap<MatrixEvent[], Map<string, number>>();
+function keyIndex(list: MatrixEvent[]): Map<string, number> {
+    let index = keyIndexes.get(list);
+    if (!index) {
+        index = new Map();
+        for (const [i, event] of list.entries()) index.set(rowKey(event), i);
+        keyIndexes.set(list, index);
+    }
+    return index;
+}
+
+/** Zami: whether two lists hold the very same events in the same order. */
+function sameEvents(a: MatrixEvent[], b: MatrixEvent[]): boolean {
+    return a.length === b.length && a.every((e, i) => e === b[i]);
+}
+
+interface TimelineRowProps {
+    event: MatrixEvent;
+    room: Room;
+    /** Zami: the rows' context, from which the row works out its props. */
+    rowsStore: RowsStore;
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
     onOpenThread: (rootEventId: string) => void;
@@ -3399,24 +3717,13 @@ interface TimelineRowProps {
 /**
  * Zami: one row of the `{#each}`: its day separator, unread divider, and the
  * message (or its debug row, or the blocked-user placeholder). Memo'd, as
- * MessageItem is: `messages` and `index` only matter to an image upload,
- * which pages across its siblings.
+ * MessageItem is; its props from the rows' context re-render it only when they
+ * change (useRowProps).
  */
 const TimelineRow = memo(function TimelineRow({
     event,
     room,
-    messages,
-    index: i,
-    sepTs,
-    unreadHere,
-    rawDebug,
-    blocked,
-    showHeader,
-    receipts,
-    mentionHighlight,
-    callSummary,
-    editRequested,
-    highlightN,
+    rowsStore,
     onReply,
     jumpToReply,
     onOpenThread,
@@ -3424,6 +3731,20 @@ const TimelineRow = memo(function TimelineRow({
     onRevealBlocked,
     onRowTouch,
 }: TimelineRowProps) {
+    const {
+        messages,
+        index: i,
+        sepTs,
+        unreadHere,
+        rawDebug,
+        blocked,
+        showHeader,
+        receipts,
+        mentionHighlight,
+        callSummary,
+        editRequested,
+        highlightN,
+    } = useRowProps(rowsStore, event);
     // One box per row, measured for the spacers. It carries the
     // unread divider's anchoring: a child can't opt back in
     // under a parent that opted out.
@@ -3491,20 +3812,56 @@ const TimelineRow = memo(function TimelineRow({
             )}
         </View>
     );
-}, sameRowProps);
+});
 
+/**
+ * Zami: whether a row renders the same with `next` as with `prev`. The list
+ * and the row's index in it are new for every row whenever the timeline grows
+ * or pages, but only an image upload reads them, when it's opened (to page
+ * across the uploads around it), and then only that run of uploads matters.
+ */
 function sameRowProps(
-    prev: Readonly<TimelineRowProps>,
-    next: Readonly<TimelineRowProps>,
+    prev: Readonly<RowProps>,
+    next: Readonly<RowProps>,
+    event: MatrixEvent,
 ): boolean {
-    for (const key of Object.keys(next) as (keyof TimelineRowProps)[]) {
+    for (const key of Object.keys(next) as (keyof RowProps)[]) {
         if (Object.is(prev[key], next[key])) continue;
-        if (
-            (key === "messages" || key === "index") &&
-            next.event.getContent()?.msgtype !== "m.image"
-        )
-            continue;
+        if (key === "messages" || key === "index") {
+            if (event.getContent()?.msgtype !== "m.image") continue;
+            if (
+                sameUploadRun(
+                    prev.messages,
+                    prev.index,
+                    next.messages,
+                    next.index,
+                )
+            )
+                continue;
+        }
         return false;
+    }
+    return true;
+}
+
+/**
+ * Zami: whether the image at `a[i]` is `b[j]` with the same run of images on
+ * either side and the same event ending each run: what MessageItem pages
+ * across when it's opened, from the list and index it last rendered with.
+ */
+function sameUploadRun(
+    a: MatrixEvent[],
+    i: number,
+    b: MatrixEvent[],
+    j: number,
+): boolean {
+    if (i < 0 || j < 0 || a[i] !== b[j]) return false;
+    for (const step of [-1, 1]) {
+        for (let d = step; ; d += step) {
+            const x = a[i + d];
+            if (x !== b[j + d]) return false;
+            if (!x || x.getContent()?.msgtype !== "m.image") break;
+        }
     }
     return true;
 }
@@ -3732,7 +4089,9 @@ function useLiveState<T>(initial: T) {
 function useTick(): () => Promise<void> {
     const [, setTick] = useState(0);
     const waiting = useRef<(() => void)[]>([]);
+    const forcing = useRef(false);
     useEffect(() => {
+        forcing.current = false;
         if (waiting.current.length === 0) return;
         const resolve = waiting.current;
         waiting.current = [];
@@ -3742,7 +4101,19 @@ function useTick(): () => Promise<void> {
         () =>
             new Promise<void>((resolve) => {
                 waiting.current.push(resolve);
-                setTick((n) => n + 1);
+                if (forcing.current) return;
+                forcing.current = true;
+                // Most callers have just set state (or written a store the
+                // component reads), so a commit is on its way and resolves
+                // them. Only one that doesn't come by the next frame is
+                // forced: forcing one each time rendered this whole component
+                // again per arriving message. (A timer too: no frames come
+                // while the app is in the background.)
+                const force = () => {
+                    if (forcing.current) setTick((n) => n + 1);
+                };
+                requestAnimationFrame(force);
+                setTimeout(force, 32);
             }),
         [],
     );

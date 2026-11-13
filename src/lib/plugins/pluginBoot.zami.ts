@@ -264,9 +264,14 @@ function pluginScope(): Record<string, unknown> {
 // --- module import: built-in (direct) + repo (blob-import) ---
 async function blobImport(code: string): Promise<PluginModule> {
     // Zami: Hermes can't import() a module at run time (from a blob: URL or
-    // anywhere), so importModule evaluates the bundle as an ES module.
+    // anywhere), so importModule evaluates the bundle as an ES module. Its
+    // rewrite of the bundle is kept between launches (compileCache): parsing
+    // a large bundle held the JS thread at every launch.
     {
-        const mod = (await importModule(code, { scope: pluginScope() })) as {
+        const mod = (await importModule(code, {
+            scope: pluginScope(),
+            compileCache: "zami-plugin-modules",
+        })) as {
             default?: PluginModule;
         } & Partial<PluginModule>;
         const resolved = mod.default ?? (mod as PluginModule);
@@ -470,10 +475,16 @@ function timelinePayload(
  *  Returns an unsubscribe-all. */
 function initEventBus(): () => void {
     const unsubs: Array<() => void> = [];
+    // Zami: whether a plugin listens for any of `names`. With none (the usual
+    // case) an event builds no payload: a copy of its content per timeline
+    // event, during a launch's whole backlog.
+    const subscribed = (...names: string[]): boolean =>
+        pluginRegistry.eventSubs.some((e) => names.includes(e.value.event));
 
     unsubs.push(
         onClearRoomEvent((event, room, isLive) => {
             if (event.getType() === "m.reaction") {
+                if (!subscribed("reaction-added")) return;
                 const rel = event.getContent()["m.relates_to"] as
                     | { event_id?: unknown; key?: unknown }
                     | undefined;
@@ -491,6 +502,7 @@ function initEventBus(): () => void {
                 });
                 return;
             }
+            if (!subscribed("message", "timeline")) return;
             const types = rendererEventTypes(
                 pluginRegistry.messageRenderers.map((e) => e.value),
             );
@@ -503,6 +515,7 @@ function initEventBus(): () => void {
 
     unsubs.push(
         onOwnEventSent((event, room) => {
+            if (!subscribed("message-sent")) return;
             emit("message-sent", {
                 roomId: room.roomId,
                 eventId: event.getId() ?? "",
@@ -528,7 +541,11 @@ function initEventBus(): () => void {
         ),
     );
 
-    unsubs.push(onRoomUpdate(() => emit("room-update", {})));
+    unsubs.push(
+        onRoomUpdate(() => {
+            if (subscribed("room-update")) emit("room-update", {});
+        }),
+    );
     unsubs.push(onSyncPrepared(() => emit("sync", { state: "PREPARED" })));
     unsubs.push(
         onSyncReconnected(() => emit("sync", { state: "RECONNECTED" })),
@@ -542,6 +559,31 @@ function initEventBus(): () => void {
                 /* best-effort teardown */
             }
         }
+    };
+}
+
+/** Zami: resolves once the next frame has been drawn. */
+function afterNextFrame(): Promise<void> {
+    return new Promise((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve, 0)),
+    );
+}
+
+/**
+ * Zami: the plugin, loaded on a turn of the event loop of its own. Once
+ * plugins are stopped (`stopped()`), it never loads: a load that failed instead
+ * would be recorded as the plugin's error.
+ */
+function onItsOwnTurn(
+    plugin: LoadablePlugin,
+    stopped: () => boolean,
+): LoadablePlugin {
+    return {
+        ...plugin,
+        load: () =>
+            new Promise((resolve) => setTimeout(resolve, 0)).then(() =>
+                stopped() ? new Promise<PluginModule>(() => {}) : plugin.load(),
+            ),
     };
 }
 
@@ -627,11 +669,21 @@ export function initPlugins(): () => void {
     }
 
     // 3) Boot-load enabled plugins (built-ins first, each error-isolated).
-    void loader.bootLoad(toBoot);
+    // Zami: once the first frame is drawn, and each on a turn of the event
+    // loop of its own: compiling and starting them all in one go held the JS
+    // thread while the session was being restored.
+    let disposed = false;
+    void afterNextFrame().then(() => {
+        if (disposed) return;
+        return loader.bootLoad(
+            toBoot.map((p) => onItsOwnTurn(p, () => disposed)),
+        );
+    });
     const stopRepoWatch = startLocalRepoWatch();
 
     // Disposer: unsubscribe the event bus + disable every loaded plugin.
     return () => {
+        disposed = true;
         stopRepoWatch();
         disposeEventBus();
         for (const id of [...loadables.keys()]) {

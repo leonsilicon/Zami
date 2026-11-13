@@ -28,35 +28,45 @@ function normalizeKey(hex: string): string {
 }
 
 const byKey = new Map<string, string[]>();
-for (const data of [joypixels, github] as ShortcodeData[]) {
-    for (const [hex, codes] of Object.entries(data)) {
-        const key = normalizeKey(hex);
-        const list = byKey.get(key) ?? [];
-        for (const code of Array.isArray(codes) ? codes : [codes])
-            if (!list.includes(code)) list.push(code);
-        byKey.set(key, list);
-    }
-}
-
 const shortcodesByEmoji = new Map<string, string[]>();
 const emojiByShortcode = new Map<string, string>();
-for (const { emoji } of ALL_EMOJIS) {
-    const codes = byKey.get(hexKey(emoji));
-    if (!codes) continue;
-    shortcodesByEmoji.set(emoji, codes);
-    // First emoji to claim a name keeps it (JoyPixels before GitHub).
-    for (const code of codes)
-        if (!emojiByShortcode.has(code))
-            emojiByShortcode.set(code, textSymbolPresentation(emoji));
+
+// Zami: the maps are built the first time a shortcode is looked up, not when
+// the app starts (the composer imports this module): thousands of emoji.
+let built = false;
+function buildMaps(): void {
+    if (built) return;
+    built = true;
+    for (const data of [joypixels, github] as ShortcodeData[]) {
+        for (const [hex, codes] of Object.entries(data)) {
+            const key = normalizeKey(hex);
+            const list = byKey.get(key) ?? [];
+            for (const code of Array.isArray(codes) ? codes : [codes])
+                if (!list.includes(code)) list.push(code);
+            byKey.set(key, list);
+        }
+    }
+
+    for (const { emoji } of ALL_EMOJIS) {
+        const codes = byKey.get(hexKey(emoji));
+        if (!codes) continue;
+        shortcodesByEmoji.set(emoji, codes);
+        // First emoji to claim a name keeps it (JoyPixels before GitHub).
+        for (const code of codes)
+            if (!emojiByShortcode.has(code))
+                emojiByShortcode.set(code, textSymbolPresentation(emoji));
+    }
 }
 
 /** The `:shortcode:` names of a unicode emoji (without colons), best first. */
 export function shortcodesFor(emoji: string): string[] {
+    buildMaps();
     return shortcodesByEmoji.get(emoji) ?? [];
 }
 
 /** The unicode emoji a shortcode (without colons) stands for, if any. */
 export function emojiForShortcode(code: string): string | undefined {
+    buildMaps();
     return emojiByShortcode.get(code.toLowerCase());
 }
 

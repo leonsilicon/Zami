@@ -12,7 +12,11 @@ import type { ReusableMedia } from "$lib/matrix/favouriteFile";
 import { withRandomFileName } from "$lib/utils/randomFileName";
 import { gifToAnimatedWebp } from "$lib/utils/gifToWebp";
 import { isMidiAttachment, midiSendMimetype } from "$lib/utils/midi";
-import { createImageThumbnail } from "$lib/utils/imageThumbnail";
+import {
+    createImageThumbnail,
+    fitThumbnail,
+    THUMBNAIL_MIN_SOURCE_BYTES,
+} from "$lib/utils/imageThumbnail";
 import { isRoomEncrypted, isRoomEncryptedForSend } from "$lib/matrix/crypto";
 import { withMessageRelation } from "$lib/utils/threadContent";
 import {
@@ -25,7 +29,11 @@ import {
     thumbnailFields,
     type UploadedAttachment,
 } from "$lib/utils/encryptAttachment";
-import { safeMediaBlob } from "$lib/utils/attachmentMime";
+import {
+    isSvgMimeType,
+    safeAttachmentMimeType,
+    safeMediaBlob,
+} from "$lib/utils/attachmentMime";
 import { exceedsUploadLimit, FileTooLargeError } from "$lib/utils/uploadLimits";
 import { parseMxc, isSameOrigin } from "$lib/utils/mxcUri";
 import {
@@ -37,6 +45,25 @@ import {
     mediaFilterDefinition,
     type RoomMediaItem,
 } from "$lib/utils/roomMedia";
+// Zami: attachments without their bytes in JS: downloads verified, decrypted and
+// cached on disk natively, encryption file to file, thumbnails from the file.
+import { accountsState } from "$lib/stores/accounts.svelte";
+import {
+    cachedEncryptedMedia,
+    downloadEncryptedMedia,
+    downloadPlainMedia,
+    encryptForUpload,
+    forgetSignedOutMedia,
+    imageThumbnailFor,
+    nativeMedia,
+    stripJpegMetadata,
+    videoThumbnailFor,
+} from "@-/com.leonsilicon.zami.media";
+import {
+    createObjectURLAsync,
+    extensionFor,
+    fileFromUri,
+} from "@-/com.leonsilicon.zami.blob/files";
 
 async function captureVideoThumbnail(file: File): Promise<{
     blob: Blob;
@@ -83,6 +110,57 @@ async function captureVideoThumbnail(file: File): Promise<{
         };
         video.src = objectUrl;
     });
+}
+
+// Zami: the video's frame and size from its file, natively (no full copy for
+// an object URL, and a detached <video> loads nothing here), given up after
+// 10 s so a send never waits on it for good. Upstream's <video> and <canvas>
+// only without the native module.
+async function zamiVideoThumbnail(
+    file: File,
+): ReturnType<typeof captureVideoThumbnail> {
+    const native = videoThumbnailFor(file);
+    if (!native) return captureVideoThumbnail(file);
+    const thumb = await native;
+    return (
+        thumb && {
+            blob: thumb.file,
+            w: thumb.w,
+            h: thumb.h,
+            thumbW: thumb.thumbW,
+            thumbH: thumb.thumbH,
+        }
+    );
+}
+
+// Zami: no createImageBitmap or <canvas> here: the native module decodes the
+// image upright from its file and encodes each step of upstream's size ladder
+// (fitThumbnail). Upstream's createImageThumbnail only without the module.
+async function zamiImageThumbnail(
+    file: File,
+): ReturnType<typeof createImageThumbnail> {
+    if (!nativeMedia()) return createImageThumbnail(file);
+    if (file.type === "image/svg+xml") return null;
+    const first = await imageThumbnailFor(file);
+    if (!first) return null;
+    const { w, h } = first;
+    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) return { blob: null, w, h };
+    const fit = await fitThumbnail(w, h, async (tw, th, quality) => {
+        const made = await imageThumbnailFor(file, {
+            maxEdge: Math.max(tw, th),
+            quality,
+        });
+        return made?.file ?? null;
+    });
+    if (!fit || fit.blob.size >= file.size) return { blob: null, w, h };
+    return { ...fit, w, h };
+}
+
+// Zami: a JPEG's metadata comes off natively, byte for byte as utils/
+// stripMetadata's stripJpeg takes it off (its scan of the image data blocks the
+// JS thread for a big photo); every other format, walked box by box, as upstream.
+async function zamiStripMetadata(file: File): Promise<File> {
+    return (await stripJpegMetadata(file)) ?? stripLocationMetadata(file);
 }
 
 /** Where a media send lands: a thread (by root) and/or a reply target. */
@@ -174,6 +252,25 @@ export async function uploadAttachment(
     ownedClientOrThrow(owner);
 
     if (encrypt) {
+        // Zami: encrypted file to file natively, the same EncryptedFile as
+        // encryptAttachment's, and uploaded from the ciphertext's file: the
+        // bytes never enter JS. The JS path below only without the module.
+        const native = await encryptForUpload(blob);
+        if (native) {
+            try {
+                ownedClientOrThrow(owner);
+                const { content_uri } = await ownedClientOrThrow(
+                    owner,
+                ).uploadContent(native.ciphertext, {
+                    type: "application/octet-stream",
+                    includeFilename: false,
+                    progressHandler,
+                });
+                return { file: { ...native.info, url: content_uri } };
+            } finally {
+                native.release();
+            }
+        }
         // Encrypted path: encrypt the blob, upload as application/octet-stream
         // with no filename (filename must NOT leak to the media repo).
         const plainBytes = await blob.arrayBuffer();
@@ -288,7 +385,8 @@ export async function sendFile(
 
     // Decode and encode the image thumbnail while the main file is prepared
     // and uploads.
-    const imageThumb = isImage ? createImageThumbnail(file) : null;
+    // Zami: natively (zamiImageThumbnail).
+    const imageThumb = isImage ? zamiImageThumbnail(file) : null;
 
     // An MP4/MOV with its index at the end only starts playing once fully
     // downloaded; move the index to the front so receivers can stream it. A
@@ -300,7 +398,7 @@ export async function sendFile(
     // file type (utils/stripMetadata); the steps below then work on the clean
     // copy.
     const source = settingsState.stripMetadata
-        ? await stripLocationMetadata(file)
+        ? await zamiStripMetadata(file)
         : file;
     const processed =
         isVideo && settingsState.faststartVideos
@@ -356,7 +454,8 @@ export async function sendFile(
     }
 
     if (isVideo) {
-        const thumb = await captureVideoThumbnail(file);
+        // Zami: natively, from the file (zamiVideoThumbnail).
+        const thumb = await zamiVideoThumbnail(file);
         if (thumb) {
             ownedClientOrThrow(owner);
             const thumbFile = new File([thumb.blob], "thumbnail.jpg", {
@@ -525,6 +624,30 @@ export async function fetchAttachmentBlob(
     const token = matrixClient.getAccessToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
+    // Zami: downloaded natively into the media cache (the bytes never enter
+    // JS), named for the same allowlisted type; an SVG is still sanitized.
+    const native = downloadPlainMedia({
+        account: matrixClient.getUserId() ?? "",
+        url: httpUrl,
+        headers,
+        expectedSize: opts.expectedSize,
+        signal: opts.signal,
+        onProgress: opts.onProgress,
+        httpError: (status) =>
+            new Error(t("media.failedToFetchAttachment", { status })),
+        extension: (type) =>
+            isSvgMimeType(type)
+                ? ".svg"
+                : extensionFor(safeAttachmentMimeType(type)),
+    });
+    if (native) {
+        const uri = await native;
+        if (!uri.endsWith(".svg")) return uri;
+        const svg = await fileFromUri(uri).arrayBuffer();
+        return URL.createObjectURL(
+            await safeMediaBlob(new Blob([svg]), "image/svg+xml"),
+        );
+    }
     const resp = await fetch(httpUrl, { headers, signal: opts.signal });
     if (!resp.ok)
         throw new Error(
@@ -537,7 +660,8 @@ export async function fetchAttachmentBlob(
         new Blob(chunks as BlobPart[]),
         resp.headers.get("content-type"),
     );
-    return URL.createObjectURL(blob);
+    // Zami: a big blob's file is written off the JS thread.
+    return createObjectURLAsync(blob);
 }
 
 /** Fetch a homeserver media URL (with auth) as bytes, refusing anything over
@@ -592,6 +716,31 @@ export async function fetchDecryptedAttachmentBlob(
     const token = matrixClient.getAccessToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
+    // Zami: downloaded, checked against its hash and decrypted natively into
+    // the media cache (the bytes never enter JS), named for the same
+    // allowlisted type; an SVG still takes the sanitizing path below.
+    const native = isSvgMimeType(mimetype)
+        ? null
+        : downloadEncryptedMedia(
+              file,
+              extensionFor(safeAttachmentMimeType(mimetype)) ||
+                  extensionFor(mimetype ?? ""),
+              {
+                  account: matrixClient.getUserId() ?? "",
+                  url: httpUrl,
+                  headers,
+                  expectedSize: opts.expectedSize,
+                  signal: opts.signal,
+                  onProgress: opts.onProgress,
+                  httpError: (status) =>
+                      new Error(
+                          t("media.failedToFetchEncryptedAttachment", {
+                              status,
+                          }),
+                      ),
+              },
+          );
+    if (native) return native;
     const resp = await fetch(httpUrl, { headers, signal: opts.signal });
     if (!resp.ok) {
         throw new Error(
@@ -608,7 +757,19 @@ export async function fetchDecryptedAttachmentBlob(
     // text/html blob in our origin (audit SEC-L9). SVG is the exception: it is
     // sanitized instead, so it keeps the type an <img> needs to render it.
     const blob = await safeMediaBlob(new Blob([plaintext]), mimetype);
-    return URL.createObjectURL(blob);
+    // Zami: a big blob's file is written off the JS thread.
+    return createObjectURLAsync(blob);
+}
+
+/**
+ * Zami: the decrypted attachment's file if the media cache has it now, so a
+ * row scrolled away and back (or another room's) shows it without waiting.
+ */
+export function cachedDecryptedAttachment(
+    file: EncryptedFileInfo & { url: string },
+): string | null {
+    const userId = matrixClient?.getUserId();
+    return userId ? cachedEncryptedMedia(userId, file) : null;
 }
 
 /** HEAD-request a URL (with auth for homeserver URLs) and return its Content-Type. */
@@ -703,7 +864,7 @@ export async function uploadContent(file: File): Promise<string> {
     if (!matrixClient) throw new Error(t("media.notLoggedIn"));
     // Avatars, banners and emote images are photos too.
     const upload = settingsState.stripMetadata
-        ? await stripLocationMetadata(file)
+        ? await zamiStripMetadata(file)
         : file;
     const { content_uri } = await matrixClient.uploadContent(upload, {
         name: upload.name,
@@ -714,4 +875,15 @@ export async function uploadContent(file: File): Promise<string> {
 /** Reset the cached media upload size limit (called on account switch). */
 export function resetMediaUploadSizeLimit(): void {
     mediaUploadSizePromise = null;
+    // Zami: this runs on every sign-in, restore and switch: drop the media
+    // cached on disk for accounts that are no longer signed in.
+    forgetSignedOutMedia(
+        accountsState.registry.accounts.map((account) => account.userId),
+    );
 }
+
+// Zami: and at launch, for an account signed out in an earlier run and not
+// followed by another sign-in.
+forgetSignedOutMedia(
+    accountsState.registry.accounts.map((account) => account.userId),
+);

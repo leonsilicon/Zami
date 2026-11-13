@@ -339,7 +339,15 @@ export function createKeyDispatcher(options: KeyDispatcherOptions): KeyDispatche
     track(press);
     setHardware(true);
     const focused = options.focusedInput() ?? null;
-    const target = focused === null ? options.body() : inputTarget(focused);
+    // A text input UIKit says has focus, before React Native's focus state hears of it
+    // (the tap that focused it is still on its way): the press types into it, so its
+    // target is an input too, or "type to focus" would type the key a second time.
+    const target =
+      focused !== null
+        ? inputTarget(focused)
+        : press.textInputFocused === true
+          ? inputTarget(null)
+          : options.body();
     const { event, state } = createKeyEvent(press, target, now(), capsLock);
     const handlerName = press.type === "keydown" ? "onKeydown" : "onKeyup";
 

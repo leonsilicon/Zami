@@ -22,12 +22,22 @@ import {
     sasEmojiRows,
 } from "$lib/utils/verification";
 import { NO_METHOD_OPTIONS } from "$lib/utils/qrVerification";
-import QrCodeImage from "$lib/components/ui/QrCodeImage.svelte";
+import { lazyComponent } from "@-/com.leonsilicon.zami.rn";
+// Zami: loaded the first time it's shown (lazyComponent): rarely used,
+// and its code ran before the app's first frame.
+const QrCodeImage = lazyComponent(
+    () =>
+        require("$lib/components/ui/QrCodeImage.svelte") as typeof import("$lib/components/ui/QrCodeImage.svelte"),
+);
 // Zami: the scanner (upstream fetches it, and its jsQR decoder, only once the
 // camera pane opens) is bundled with the app by Metro, so it is imported
 // statically: there is no load to wait for (upstream's spinner) or to fail
 // ("could not load the scanner").
-import QrScanner from "$lib/components/ui/QrScanner.svelte";
+// Zami: lazyComponent, as QrCodeImage above.
+const QrScanner = lazyComponent(
+    () =>
+        require("$lib/components/ui/QrScanner.svelte") as typeof import("$lib/components/ui/QrScanner.svelte"),
+);
 
 // Zami: `use:focusTrap` → the dialog is modal to VoiceOver, and its Escape
 // (`onEscape: closeActive`) is Android's back button and VoiceOver's escape
