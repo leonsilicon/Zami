@@ -60,6 +60,7 @@ import {
     setUserShareVolume,
     setUserSoundVolume,
     setUserLocalMute,
+    setUserShareMute,
     participantAudioFor,
     setUserVideoHidden,
 } from "$lib/stores/voiceCall.svelte";
@@ -683,6 +684,29 @@ export default function CallParticipantMenu({
                             {t("common.mute")}
                         </Text>
                     </Pressable>
+                    {sharesAudio && (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() =>
+                                setUserShareMute(userId, !audio.shareMuted)
+                            }
+                            accessibilityState={{ selected: audio.shareMuted }}
+                            className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                        >
+                            <View className="w-3 flex-row items-center justify-center">
+                                {audio.shareMuted && (
+                                    <Circle
+                                        size={8}
+                                        fill="currentColor"
+                                        className="text-discord-textSecondary"
+                                    />
+                                )}
+                            </View>
+                            <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                                {t("callParticipantMenu.muteShare")}
+                            </Text>
+                        </Pressable>
+                    )}
                     <Pressable
                         accessibilityRole="button"
                         onPress={() =>
