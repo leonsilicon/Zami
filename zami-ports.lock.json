@@ -168,7 +168,7 @@
   "src/lib/components/layout/MemberList.svelte.zami.tsx": "3cb42917281e5e27e3b4ac7b2b2a53408ec92821",
   "src/lib/components/layout/MemberList.test.zami.ts": "3cb42917281e5e27e3b4ac7b2b2a53408ec92821",
   "src/lib/components/layout/MeshConsentDialog.svelte.zami.tsx": "5ebd1f612f72565a5c5da651e7611cd496be1716",
-  "src/lib/components/layout/MessageArea.svelte.zami.tsx": "5ebd1f612f72565a5c5da651e7611cd496be1716",
+  "src/lib/components/layout/MessageArea.svelte.zami.tsx": "3cb42917281e5e27e3b4ac7b2b2a53408ec92821",
   "src/lib/components/layout/MessageSearchPanel.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/NotificationsPanel.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
   "src/lib/components/layout/OwnStatusEditor.svelte.zami.tsx": "4b8e27aa95e56cf740a2109a6cd4f9bd31dabb92",
