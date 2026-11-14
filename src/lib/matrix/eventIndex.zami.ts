@@ -76,6 +76,7 @@ const CRAWL_PAGE_DELAY_MS = 2_000;
 const CRAWL_IDLE_MS = 5 * 60_000;
 const CRAWL_PAUSED_MS = 30_000;
 const CRAWL_PAGE_SIZE = 100;
+const CRAWL_DECRYPT_BATCH = 4;
 /** Stop crawling past this much origin storage, or half the quota. */
 const STORAGE_CAP_BYTES = 1024 * 1024 * 1024;
 
@@ -521,14 +522,21 @@ async function fetchPage(
     );
     if (s.stopped) return null;
     const events = (res.chunk ?? []).map((raw) => new MatrixEvent(raw));
-    // Zami: one at a time, with a turn of the event loop between once the
-    // slice is used up, rather than a page at once in one microtask chain;
-    // the index may have stopped meanwhile.
+    // A few at a time: every decryption in flight holds working memory in the
+    // crypto WASM, which never shrinks, so a whole page at once raises the
+    // module's size for the rest of the session.
+    // Zami: with a turn of the event loop between batches once the slice is
+    // used up, rather than a page in one microtask chain.
     const slicer = createSlicer();
-    for (const e of events) {
-        if (e.getType() !== "m.room.encrypted") continue;
+    const encrypted = events.filter((e) => e.getType() === "m.room.encrypted");
+    for (let i = 0; i < encrypted.length; i += CRAWL_DECRYPT_BATCH) {
         if (slicer.due) await slicer.pause();
-        await s.client.decryptEventIfNeeded(e).catch(() => {});
+        if (s.stopped) return null;
+        await Promise.all(
+            encrypted
+                .slice(i, i + CRAWL_DECRYPT_BATCH)
+                .map((e) => s.client.decryptEventIfNeeded(e).catch(() => {})),
+        );
     }
     if (s.stopped) return null;
     let minTs: number | null = null;

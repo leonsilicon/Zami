@@ -23,10 +23,7 @@ import {
     type TextInputInstance,
 } from "react-native";
 import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
-import {
-    lastIndexAtOrBefore,
-    type Selection,
-} from "@-/com.leonsilicon.zami.incremental";
+import type { Selection } from "@-/com.leonsilicon.zami.incremental";
 import {
     useSelected,
     useSelection,
@@ -50,6 +47,14 @@ import { scrollBehavior } from "$lib/utils/motionPreference";
 import { nextActiveIndex } from "$lib/utils/listboxNavigation";
 import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
 import { emojiOptionKeys } from "$lib/utils/pickerOptionKeys";
+import {
+    buildGridLayout,
+    rowAt,
+    scrollTopToReveal,
+    type GridRow,
+    type GridSection,
+} from "$lib/utils/virtualGrid";
+import { pickerThumbUrl } from "$lib/matrix/media";
 
 interface Props {
     room?: Room | null;
@@ -75,32 +80,25 @@ type FlatItem =
           data: { emoji: string; name: string };
       };
 
-// Zami: the web renders every section into one scroll box and reveals each
-// section's grid lazily (`lazySection`). Here one FlatList holds the sections
-// as rows, a header row and then rows of `cols` cells, and virtualizes them.
-// Every row's height is known, so `getItemLayout` and the section scrolling
-// below work from these offsets instead of measuring elements.
+// Zami: the web positions the layout's rows (utils/virtualGrid.ts) absolutely
+// in one scroll box and renders those near the viewport. Here they are the
+// rows of a FlatList, which virtualizes them itself: each row also holds its
+// options and its `length`, the space down to the next row (a section's last
+// row takes the section gap), for `getItemLayout`.
 type Row =
-    | {
-          kind: "header";
-          key: string;
-          sectionId: string;
-          label: string;
-          className: string;
-          length: number;
-          offset: number;
-      }
-    | {
-          kind: "cells";
-          key: string;
+    | (Extract<GridRow, { kind: "header" }> & { length: number })
+    | (Extract<GridRow, { kind: "cells" }> & {
           items: FlatItem[];
-          paddingTop: number;
           length: number;
-          offset: number;
-      };
+      });
 
-/** `grid gap-1`. */
-const GAP = 4;
+const GAP = 4; // gap-1, between cells and between rows
+const SECTION_GAP = 8; // mb-2 under each section's grid
+// Custom emoji are drawn ~32px; 96 covers a 3x screen without fetching
+// the original (often a 512px animation) for every cell.
+// Zami: expo-image keeps the thumbnails in its disk cache, as Zam's service
+// worker does (utils/pickerThumbCache.ts).
+const EMOJI_THUMB_PX = 96;
 
 // Zami: the standard emoji as options, built once: they never change, and
 // building them (a spread per emoji) on every open and every sync was much of
@@ -159,11 +157,11 @@ export default function EmojiPicker({
     const [scrollWidth, setScrollWidth] = useState(0);
     const w = scrollWidth - 16; // minus the px-2 padding
     const cols = w > 0 ? Math.max(6, Math.floor(w / CELL)) : 6;
-    // Zami: the grid cell (`aspect-square`, `minmax(0, 1fr)` columns).
-    const cell = w > 0 ? (w - (cols - 1) * GAP) / cols : 0;
-
-    // Zami: no `revealedSections`: the FlatList only renders the rows near
-    // the viewport, which is what the IntersectionObserver reveal did.
+    // The grid is virtualized (only rows near the viewport exist): the
+    // standard set alone is ~1900 emoji, plus every custom pack.
+    // Zami: the FlatList's width comes from onLayout; its height and scroll
+    // position are kept here, outside state, as nothing renders from them.
+    const listView = useRef({ y: 0, height: 0 });
 
     useEffect(() => {
         if (!isTouchscreen) searchEl.current?.focus();
@@ -195,8 +193,8 @@ export default function EmojiPicker({
         if (search) tabBarView.current.x = 0;
     }, [search]);
 
-    // Zami: no `emojiHtml`: iOS draws emoji itself, so the grid shows them as
-    // text rather than Twemoji images.
+    // Zami: no `emojiHtml` and no Twemoji sprite sheets (utils/emojiSprites.ts):
+    // iOS draws emoji itself, so the grid shows them as text.
 
     // Pack data lives in room state that mutates in place, so this must depend
     // on the tick, not on roomsState.spaces being reassigned (it no longer is
@@ -275,9 +273,11 @@ export default function EmojiPicker({
         );
     }, [search]);
 
-    // Reset selection when search changes
+    // Reset selection, and go back to the top, when search changes
     useEffect(() => {
         moveCursor(-1);
+        scrollEl.current?.scrollToOffset({ offset: 0, animated: false });
+        listView.current.y = 0;
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only `search`, as upstream's effect does.
     }, [search]);
 
@@ -331,28 +331,127 @@ export default function EmojiPicker({
     // content instead of an empty list.
     const hasOptions = flatItems.length > 0;
 
+    // ---- Virtualized layout (utils/virtualGrid.ts) ---------------------------
+    // Rows are either a section header or one line of `cols` cells, each at a
+    // computed `top`.
+    // Zami: the header's text-xs line (16) scales with the system text size,
+    // plus pt-2 (8) + pb-1 (4).
+    const HEADER_H = 12 + 16 * windowSize.fontScale;
+
+    // Zami: the grid cell (`minmax(0, 1fr)` columns).
+    const cellSize = w > 0 ? (w - GAP * (cols - 1)) / cols : 0;
+
+    const sections = useMemo((): GridSection[] => {
+        const at = (id: string) => sectionOffsets.get(id) ?? 0;
+        if (search) {
+            const out: GridSection[] = [];
+            if (searchCustom.length > 0)
+                out.push({
+                    id: "search-custom",
+                    label: t("emojiPicker.custom"),
+                    start: at("search-custom"),
+                    count: searchCustom.length,
+                });
+            if (searchStandard.length > 0)
+                out.push({
+                    id: "search-standard",
+                    label:
+                        searchCustom.length > 0
+                            ? t("emojiPicker.standard")
+                            : null,
+                    start: at("search-standard"),
+                    count: searchStandard.length,
+                });
+            return out;
+        }
+        return [
+            ...customPacks.map((p) => ({
+                id: p.id,
+                label: p.id === "user" ? t("emojiPicker.myEmojis2") : p.name,
+                start: at(p.id),
+                count: p.emojis.length,
+            })),
+            ...EMOJI_CATEGORIES.map((c) => ({
+                id: c.id,
+                label: c.name,
+                start: at(c.id),
+                count: c.emojis.length,
+            })),
+        ];
+    }, [search, searchCustom, searchStandard, customPacks, sectionOffsets]);
+
+    const layout = useMemo(
+        () =>
+            buildGridLayout(sections, flatItems.length, {
+                cols,
+                cellSize,
+                gap: GAP,
+                headerHeight: HEADER_H,
+                sectionGap: SECTION_GAP,
+            }),
+        [sections, flatItems.length, cols, cellSize, HEADER_H],
+    );
+    // Zami: no `visibleRowRange`: the FlatList renders the rows near the
+    // viewport. Its rows are the layout's (see `Row`).
+    const rows = useMemo(
+        (): Row[] =>
+            layout.rows.map((row, i): Row => {
+                const length =
+                    (layout.rows[i + 1]?.top ?? layout.total) - row.top;
+                return row.kind === "header"
+                    ? { ...row, length }
+                    : {
+                          ...row,
+                          items: flatItems.slice(row.start, row.end),
+                          length,
+                      };
+            }),
+        [layout, flatItems],
+    );
+    const getItemLayout = useCallback(
+        (_: unknown, index: number) => ({
+            length: rows[index].length,
+            offset: rows[index].top,
+            index,
+        }),
+        [rows],
+    );
+
+    // Scroll the selected item into view and follow it with the active tab.
+    // Only `activeIndex` is tracked: reading `activeTab` or the scroll position
+    // here would re-run this on every scroll and yank the view back.
+    useEffect(() => {
+        const idx = activeIndex;
+        if (idx < 0 || idx >= flatItems.length) return;
+        const item = flatItems[idx];
+        if (!search && activeTab !== item.sectionId)
+            setActiveTab(item.sectionId);
+        const row = layout.rows[layout.itemRow[idx]];
+        const view = listView.current;
+        if (!scrollEl.current || !row || view.height === 0) return;
+        const next = scrollTopToReveal(row, view.y, view.height);
+        if (next !== null)
+            scrollEl.current.scrollToOffset({ offset: next, animated: false });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
     function scrollToSection(id: string) {
         setActiveTab(id);
         if (!scrollEl.current) return;
-        const el = rows.find(
-            (row) => row.kind === "header" && row.sectionId === id,
-        );
-        if (el)
+        const row = layout.rows.find((r) => r.sectionId === id);
+        if (row)
             scrollEl.current.scrollToOffset({
-                offset: Math.max(0, el.offset - 4),
+                offset: row.top,
                 animated: scrollBehavior() === "smooth",
             });
     }
 
     function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-        listView.current.y = e.nativeEvent.contentOffset.y;
+        const scrollTop = e.nativeEvent.contentOffset.y;
+        listView.current.y = scrollTop;
         if (search) return;
-        const top = e.nativeEvent.contentOffset.y;
-        // Zami: a binary search over the header offsets (`headers`, below).
-        const current =
-            headers.sectionIds[lastIndexAtOrBefore(headers.offsets, top + 8)] ??
-            "";
-        if (current && current !== activeTab) setActiveTab(current);
+        const row = layout.rows[rowAt(layout.rows, scrollTop + 8)];
+        if (row && row.sectionId !== activeTab) setActiveTab(row.sectionId);
     }
 
     // Zami: the same function across renders (calling the latest props), so
@@ -444,157 +543,10 @@ export default function EmojiPicker({
     // Zami: the search field's `onkeydown`.
     useInputKeys(searchEl, { onKeydown: onSearchKeydown });
 
-    // Zami: the rows the FlatList renders, with their heights and offsets.
-    // Header text is `text-xs` (a 16px line, scaled with the system text
-    // size) plus its padding; a grid row is a cell plus the `gap-1` below it,
-    // or the grid's `mb-2` below the last row.
-    const fontScale = windowSize.fontScale;
-    const rows = useMemo((): Row[] => {
-        const out: Row[] = [];
-        if (cell <= 0) return out;
-        let offset = 0;
-        const header = (
-            sectionId: string,
-            label: string,
-            className: string,
-            padding: number,
-        ) => {
-            const length = padding + 16 * fontScale;
-            out.push({
-                kind: "header",
-                key: `header:${sectionId}`,
-                sectionId,
-                label,
-                className,
-                length,
-                offset,
-            });
-            offset += length;
-        };
-        const grid = (
-            sectionId: string,
-            count: number,
-            marginBottom: number,
-        ) => {
-            const start = sectionOffsets.get(sectionId) ?? 0;
-            const rowCount = Math.ceil(count / cols);
-            for (let r = 0; r < rowCount; r++) {
-                const length = cell + (r === rowCount - 1 ? marginBottom : GAP);
-                out.push({
-                    kind: "cells",
-                    key: `row:${sectionId}:${r}`,
-                    items: flatItems.slice(
-                        start + r * cols,
-                        start + Math.min((r + 1) * cols, count),
-                    ),
-                    paddingTop: 0,
-                    length,
-                    offset,
-                });
-                offset += length;
-            }
-        };
-        if (search) {
-            if (searchCustom.length > 0) {
-                header(
-                    "search-custom",
-                    t("emojiPicker.custom"),
-                    "px-1 py-1",
-                    8,
-                );
-                grid("search-custom", searchCustom.length, 8);
-            }
-            if (searchStandard.length > 0) {
-                if (searchCustom.length > 0)
-                    header(
-                        "search-standard",
-                        t("emojiPicker.standard"),
-                        "px-1 py-1",
-                        8,
-                    );
-                grid("search-standard", searchStandard.length, 0);
-            }
-        } else {
-            // All custom packs
-            for (const pack of customPacks) {
-                header(
-                    pack.id,
-                    pack.id === "user" ? t("emojiPicker.myEmojis2") : pack.name,
-                    "px-1 pt-2 pb-1",
-                    12,
-                );
-                grid(pack.id, pack.emojis.length, 8);
-            }
-            // All standard categories
-            for (const cat of EMOJI_CATEGORIES) {
-                header(cat.id, cat.name, "px-1 pt-2 pb-1", 12);
-                grid(cat.id, cat.emojis.length, 8);
-            }
-        }
-        return out;
-    }, [
-        cell,
-        cols,
-        fontScale,
-        search,
-        searchCustom,
-        searchStandard,
-        customPacks,
-        flatItems,
-        sectionOffsets,
-    ]);
-    // Zami: the header rows' offsets and sections, for onScroll's search.
-    const headers = useMemo(() => {
-        const offsets: number[] = [];
-        const sectionIds: string[] = [];
-        for (const row of rows) {
-            if (row.kind !== "header") continue;
-            offsets.push(row.offset);
-            sectionIds.push(row.sectionId);
-        }
-        return { offsets, sectionIds };
-    }, [rows]);
-    const getItemLayout = useCallback(
-        (_: unknown, index: number) => ({
-            length: rows[index].length,
-            offset: rows[index].offset,
-            index,
-        }),
-        [rows],
-    );
-
-    // Scroll the selected item into view, and follow it with the active tab.
-    // Zami: the FlatList renders every row near the viewport, so there's no
-    // section to reveal; `scrollIntoView({ block: "nearest" })` is worked out
-    // from the row offsets and the list's own scroll position.
-    const listView = useRef({ y: 0, height: 0 });
-    useEffect(() => {
-        const idx = activeIndex;
-        if (idx < 0 || idx >= flatItems.length) return;
-        const item = flatItems[idx];
-
-        // Update active tab when navigating
-        if (!search && activeTab !== item.sectionId)
-            setActiveTab(item.sectionId);
-
-        const row = rows.find(
-            (r) => r.kind === "cells" && r.items.includes(item),
-        );
-        const view = listView.current;
-        if (!row || !scrollEl.current || view.height === 0) return;
-        let y: number | null = null;
-        if (row.offset < view.y) y = row.offset;
-        else if (row.offset + row.length > view.y + view.height)
-            y = row.offset + row.length - view.height;
-        if (y !== null)
-            scrollEl.current.scrollToOffset({ offset: y, animated: false });
-        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
-    }, [activeIndex]);
-
     // Zami: an emoji glyph is about 1.2em wide, so this fills the cell's
     // padded box the way the Twemoji image did. Like the image, it follows
     // the cell, not the system text size.
-    const glyphSize = Math.floor((cell - 8) * 0.8);
+    const glyphSize = Math.floor((cellSize - 8) * 0.8);
 
     // Zami: the option the cursor is on, outside React state: moving it
     // re-renders the cell it leaves and the one it lands on (`EmojiCell`), not
@@ -612,7 +564,7 @@ export default function EmojiPicker({
                 return (
                     <View
                         style={{ height: row.length }}
-                        className={row.className}
+                        className="px-1 pt-2 pb-1"
                     >
                         <Text
                             numberOfLines={1}
@@ -625,7 +577,7 @@ export default function EmojiPicker({
             return (
                 <EmojiRow
                     row={row}
-                    cell={cell}
+                    cell={cellSize}
                     glyphSize={glyphSize}
                     selection={selection}
                     pick={pick}
@@ -633,7 +585,7 @@ export default function EmojiPicker({
                 />
             );
         },
-        [cell, glyphSize, selection, pick, pickCustom],
+        [cellSize, glyphSize, selection, pick, pickCustom],
     );
 
     // Zami: `height: 50dvh` on touch. The desktop panel keeps the composer
@@ -828,9 +780,7 @@ export default function EmojiPicker({
                 className="relative flex-1 min-h-0"
                 contentContainerClassName="px-2 pb-2"
                 ListEmptyComponent={
-                    search &&
-                    searchCustom.length === 0 &&
-                    searchStandard.length === 0 ? (
+                    search && !hasOptions ? (
                         <Text className="text-center text-discord-textMuted text-sm py-8">
                             {t("common.noResults")}
                         </Text>
@@ -856,10 +806,7 @@ const EmojiRow = memo(function EmojiRow({
     ...cellProps
 }: EmojiCellProps & { row: Extract<Row, { kind: "cells" }> }) {
     return (
-        <View
-            style={{ height: row.length, paddingTop: row.paddingTop }}
-            className="flex-row gap-1"
-        >
+        <View style={{ height: row.length }} className="flex-row gap-1">
             {row.items.map((item) => (
                 <EmojiCell
                     key={
@@ -897,7 +844,10 @@ const EmojiCell = memo(function EmojiCell({
             className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
         >
             <Image
-                source={mediaSource(item.data.url)}
+                source={mediaSource(
+                    pickerThumbUrl(item.data.mxcUrl, EMOJI_THUMB_PX) ??
+                        item.data.url,
+                )}
                 accessibilityLabel={item.data.shortcode}
                 style={{
                     width: cell - 8,

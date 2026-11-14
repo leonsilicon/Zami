@@ -3168,7 +3168,7 @@ export default function MessageInput({
                         <textarea> would get for free. spellcheck follows the
                         "Check spelling" setting; autocorrect is the Safari name for
                         the same keyboard behaviour. */}
-                    <View className="flex-1 min-w-0 relative">
+                    <View className="flex-1 min-w-0 self-center relative">
                         {/* Zami: `.composer-editor:empty::before`, the placeholder
                             as one line that ellipsizes: a long room name must never
                             wrap and grow the composer (a TextInput's own

@@ -236,6 +236,7 @@ import {
     clearReadThreadCounts,
     onTimelineEvent,
     onOwnReceipt,
+    onMarkedUnreadChange,
     getClient,
     acceptInvite,
     rejectInvite,
@@ -2773,6 +2774,8 @@ export default function AppShell() {
                 void dismissNativeRoomNotifications(read);
             }, 400);
         };
+        // A room marked (or no longer marked) unread, from any device.
+        const unsubMarkedUnread = onMarkedUnreadChange(() => bumpUnreadTick());
         // Zami: once per turn of the event loop, not per receipt. Each pass
         // walks every room twice, and a saved sync replays a receipt per room
         // in one chain of microtasks: per receipt, that was quadratic in the
@@ -3082,6 +3085,7 @@ export default function AppShell() {
             unsubThreadNotify();
             unsubMissedNotify();
             unsubReceipts();
+            unsubMarkedUnread();
             unsubReadConfirmed();
             unsubFavourites();
             unsubCustomization();

@@ -42,6 +42,7 @@ import type {
     MatrixClient,
     Room,
     RoomMember,
+    RoomState,
     ReceiptType,
     Beacon,
     RegisterResponse,
@@ -5776,6 +5777,48 @@ export function getRoomMembers(room: Room): RoomMember[] {
     return room.getMembers().filter((m) => m.membership === "join");
 }
 
+/**
+ * Calls `callback` (coalesced, at most once per 250 ms) when `room`'s joined
+ * members, their names/avatars, or its power levels / create event change.
+ * Loading a big room's members fires one event per member, hence the coalescing.
+ */
+export function onRoomMembersChanged(
+    room: Room,
+    callback: () => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const client = matrixClient;
+    const roomId = room.roomId;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+        if (timer !== null) return;
+        timer = setTimeout(() => {
+            timer = null;
+            callback();
+        }, 250);
+    };
+    const onMembers = (_event: MatrixEvent, state: RoomState) => {
+        if (state.roomId === roomId) schedule();
+    };
+    const onEvents = (event: MatrixEvent, state: RoomState) => {
+        if (state.roomId !== roomId) return;
+        const type = event.getType();
+        if (type === "m.room.power_levels" || type === "m.room.create") {
+            schedule();
+        }
+    };
+    client.on(RoomStateEvent.Members as never, onMembers as never);
+    client.on(RoomStateEvent.NewMember as never, onMembers as never);
+    client.on(RoomStateEvent.Events as never, onEvents as never);
+    return () => {
+        client.off(RoomStateEvent.Members as never, onMembers as never);
+        client.off(RoomStateEvent.NewMember as never, onMembers as never);
+        client.off(RoomStateEvent.Events as never, onEvents as never);
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+    };
+}
+
 // One fresh member load per Room object (so per account and session).
 const freshMemberLoads = new WeakMap<Room, Promise<void>>();
 
@@ -5910,6 +5953,7 @@ export function getRoomUnreadInfo(room: Room): {
     if (!userId) return { unread: false, highlight };
 
     if (getUnreadCount(room) >= 1) return { unread: true, highlight };
+    if (getMarkedUnread(room)) return { unread: true, highlight };
 
     // Zami: the timeline's answer is kept per room until the room changes
     // (see "Zami: room index"): every row and badge asks on every sync.
@@ -6694,6 +6738,127 @@ export async function deleteKeywordRule(ruleId: string): Promise<void> {
     });
 }
 
+// "Mark as unread" (spec v1.12, MSC2867): a per-room account-data flag, as
+// receipts can't move backwards (tuwunel and Synapse ignore older ones). The
+// flag has no position, so the first unread message rides along in our own
+// key, which other clients ignore; they still show the room unread.
+const MARKED_UNREAD_TYPE = "m.marked_unread";
+const LEGACY_MARKED_UNREAD_TYPE = "com.famedly.marked_unread";
+const UNREAD_FROM_KEY = "moe.crafty.unread_from";
+
+export interface UnreadFrom {
+    /** The first message to show as unread. */
+    eventId: string;
+    ts: number;
+}
+
+/**
+ * Whether the room is marked unread, and from which message when Zam marked
+ * it (null when marked by the room menu or another client). Null when not
+ * marked.
+ */
+export function getMarkedUnread(
+    room: Room,
+): { from: UnreadFrom | null } | null {
+    for (const type of [MARKED_UNREAD_TYPE, LEGACY_MARKED_UNREAD_TYPE]) {
+        const content = room.getAccountData(type)?.getContent();
+        if (!content || typeof content.unread !== "boolean") continue;
+        if (!content.unread) return null;
+        const from = content[UNREAD_FROM_KEY];
+        return {
+            from:
+                from &&
+                typeof from.event_id === "string" &&
+                typeof from.ts === "number"
+                    ? { eventId: from.event_id, ts: from.ts }
+                    : null,
+        };
+    }
+    return null;
+}
+
+/** Mark the room unread, from `from` when given (a message's "Mark as unread"). */
+export async function markRoomUnread(
+    roomId: string,
+    from: UnreadFrom | null,
+): Promise<void> {
+    if (!matrixClient) return;
+    await matrixClient.setRoomAccountData(
+        roomId,
+        MARKED_UNREAD_TYPE as never,
+        {
+            unread: true,
+            ...(from
+                ? { [UNREAD_FROM_KEY]: { event_id: from.eventId, ts: from.ts } }
+                : {}),
+        } as never,
+    );
+}
+
+/**
+ * Mark the room unread from its newest message (the room menu's "Mark as
+ * unread"). Returns where it marked from, or null when nothing is loaded.
+ */
+export async function markRoomUnreadFromLatest(
+    roomId: string,
+): Promise<UnreadFrom | null> {
+    const room = matrixClient?.getRoom(roomId);
+    if (!room) return null;
+    const events = room.getLiveTimeline().getEvents();
+    let latest: MatrixEvent | undefined;
+    for (let i = events.length - 1; i >= 0 && !latest; i--)
+        if (
+            isNotificationEvent(events[i]) &&
+            events[i].getId()?.startsWith("$")
+        )
+            latest = events[i];
+    const from = latest
+        ? { eventId: latest.getId()!, ts: latest.getTs() }
+        : null;
+    await markRoomUnread(roomId, from);
+    return from;
+}
+
+const clearingMarkedUnread = new Set<string>();
+/** Drop the room's "marked unread" flag (both the stable and legacy types). */
+export async function clearMarkedUnread(roomId: string): Promise<void> {
+    if (!matrixClient || clearingMarkedUnread.has(roomId)) return;
+    const room = matrixClient.getRoom(roomId);
+    if (!room) return;
+    clearingMarkedUnread.add(roomId);
+    try {
+        for (const type of [MARKED_UNREAD_TYPE, LEGACY_MARKED_UNREAD_TYPE]) {
+            if (room.getAccountData(type)?.getContent()?.unread === true)
+                await matrixClient.setRoomAccountData(
+                    roomId,
+                    type as never,
+                    {
+                        unread: false,
+                    } as never,
+                );
+        }
+    } catch (err) {
+        console.warn("Clearing marked-unread failed:", err);
+    } finally {
+        clearingMarkedUnread.delete(roomId);
+    }
+}
+
+/** Calls back with the room id whenever a room's marked-unread flag changes. */
+export function onMarkedUnreadChange(
+    callback: (roomId: string) => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const handler = (event: MatrixEvent, room: Room) => {
+        const type = event.getType();
+        if (type === MARKED_UNREAD_TYPE || type === LEGACY_MARKED_UNREAD_TYPE)
+            callback(room.roomId);
+    };
+    matrixClient.on(RoomEvent.AccountData as never, handler as never);
+    return () =>
+        matrixClient?.off(RoomEvent.AccountData as never, handler as never);
+}
+
 export function onAnyReceiptEvent(callback: () => void): () => void {
     if (!matrixClient) return () => {};
     matrixClient.on(RoomEvent.Receipt as never, callback as never);
@@ -7095,6 +7260,9 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
     // whose request failed must not block the retry.
     const room = matrixClient.getRoom(roomId);
     const myUserId = matrixClient.getUserId();
+    // Reading the room ends a "mark as unread", as the spec asks. Before the
+    // guard below: the receipt is usually already on the newest event then.
+    if (room && getMarkedUnread(room)) void clearMarkedUnread(roomId);
     if (
         room &&
         myUserId &&
@@ -7176,6 +7344,27 @@ export function getMessageShareLink(roomId: string, eventId: string): string {
     const room = matrixClient?.getRoom(roomId);
     const alias = room?.getCanonicalAlias();
     return matrixToUrl(alias ?? roomId, roomViaServers(room), eventId);
+}
+
+/**
+ * Our newest read receipt in the room (public or private), even when its
+ * event isn't loaded. getEventReadUpTo returns null then, which under sliding
+ * sync is most rooms on open: they start with only their newest event.
+ */
+export function getOwnReadReceipt(
+    room: Room,
+): { eventId: string; ts: number } | null {
+    const userId = matrixClient?.getUserId();
+    if (!userId) return null;
+    const receipts = [
+        room.getReadReceiptForUserId(userId, true),
+        room.getReadReceiptForUserId(userId, true, "m.read.private" as any),
+    ].filter((r) => r !== null);
+    if (!receipts.length) return null;
+    const newest = receipts.reduce((a, b) =>
+        (b.data?.ts ?? 0) > (a.data?.ts ?? 0) ? b : a,
+    );
+    return { eventId: newest.eventId, ts: newest.data?.ts ?? 0 };
 }
 
 /** Returns the event ID the current user has read up to in this room, or null. */
@@ -10099,23 +10288,24 @@ export function isRoomCreator(room: Room, userId: string): boolean {
     const state = room.getLiveTimeline().getState(EventTimeline.FORWARDS);
     const create = state?.getStateEvents("m.room.create", "");
     if (!create) return roomCreatorCache.get(room.roomId)?.has(userId) ?? false;
-    // Zami: ranking a member list asks this for every member; build the set
-    // once per create event.
-    const known = creatorsByCreateEvent.get(create);
-    if (known) return known.has(userId);
-    const creators = new Set<string>();
-    const sender = create.getSender();
-    if (sender) creators.add(sender);
-    const additional =
-        (create.getContent()?.additional_creators as string[]) ?? [];
-    for (const id of additional) creators.add(id);
+    // Built once per m.room.create event rather than per call: a member list
+    // asks this for every member, and the event only changes on a new event.
+    let creators = creatorSetByEvent.get(create);
+    if (!creators) {
+        creators = new Set<string>();
+        const sender = create.getSender();
+        if (sender) creators.add(sender);
+        const additional =
+            (create.getContent()?.additional_creators as string[]) ?? [];
+        for (const id of additional) creators.add(id);
+        creatorSetByEvent.set(create, creators);
+    }
     roomCreatorCache.set(room.roomId, creators);
-    creatorsByCreateEvent.set(create, creators);
     return creators.has(userId);
 }
 
-/** Zami: the creators read from each `m.room.create` event (isRoomCreator). */
-const creatorsByCreateEvent = new WeakMap<MatrixEvent, Set<string>>();
+/** Creator set per m.room.create event object (see isRoomCreator). */
+const creatorSetByEvent = new WeakMap<MatrixEvent, Set<string>>();
 
 /**
  * Creators seen in each room's `m.room.create`, so a just-joined room whose
@@ -11544,7 +11734,11 @@ const SLIDING_PRESENCE_TTL_MS = 60_000;
 const SLIDING_PRESENCE_ERROR_TTL_MS = 10 * 60_000;
 const slidingPresenceFetchedAt = new Map<string, number>();
 
-function refreshPresenceOverSlidingSync(userId: string): void {
+/**
+ * Fetches one user's presence over HTTP when sliding sync is on (sliding sync
+ * never pushes presence). At most once per TTL per user. No-op otherwise.
+ */
+export function refreshUserPresence(userId: string): void {
     const client = matrixClient;
     if (!client || !isUsingSlidingSync()) return;
     const now = Date.now();
@@ -11577,10 +11771,10 @@ function refreshPresenceOverSlidingSync(userId: string): void {
 /**
  * Locally-synced presence for a user, or null when the server has never sent
  * us presence for them (unknown ≠ offline — some servers disable presence;
- * callers decide how to render the gap).
+ * callers decide how to render the gap). A pure read: it never fetches. Call
+ * refreshUserPresence first if a fresh value over sliding sync is wanted.
  */
 export function getUserPresence(userId: string): PresenceInfo | null {
-    refreshPresenceOverSlidingSync(userId);
     const user = matrixClient?.getUser(userId);
     if (!user?.events.presence) return null;
     return {

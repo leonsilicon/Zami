@@ -40,7 +40,7 @@ import {
     setActiveRoom,
     openDraftDm,
 } from "$lib/stores/rooms.svelte";
-import { presenceState, presenceFor } from "$lib/stores/presence.svelte";
+import { presenceFor } from "$lib/stores/presence.svelte";
 import {
     isUserBlocked,
     blockUser,
@@ -168,10 +168,7 @@ export default function UserProfileCard({ room }: Props) {
     const displayName = member ? memberDisplayName(member) : userId;
     const avatarSrc = userId ? getMemberAvatar(room, userId) : null;
     const presence = useRune(
-        () => (
-            void presenceState.presenceTick,
-            userId ? presenceFor(userId) : null
-        ),
+        () => (userId ? presenceFor(userId) : null),
         [userId],
     );
     const dotState = presence?.state ?? "offline";

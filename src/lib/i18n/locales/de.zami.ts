@@ -1183,6 +1183,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.loadingHistory": "Ältere Nachrichten werden geladen",
     "messageArea.room": ".",
     "messageArea.newMessages": "Neue Nachrichten",
+    "messageArea.unreadSince":
+        "{count, plural, one {# neue Nachricht seit {since}} other {# neue Nachrichten seit {since}}}",
+    "messageArea.markAsRead": "Als gelesen markieren",
+    "messageArea.unreadSinceMany": "{count}+ neue Nachrichten seit {since}",
+    "messageArea.unreadMany": "{count}+ neue Nachrichten",
     "messageArea.messageFromABlockedUser":
         "Nachricht von einem blockierten Benutzer",
     "messageArea.showBlockedMessage": "Blockierte Nachricht anzeigen",
@@ -1918,6 +1923,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "Keine Räume",
     "roomList.copyRoomLink": "Raumlink kopieren",
     "roomList.markAsRead": "Als gelesen markieren",
+    "roomList.markAsUnread": "Als ungelesen markieren",
     "roomList.addToSpace": "Zu Space hinzufügen",
     "roomList.clickAgainToLeave": "Zum Verlassen erneut klicken",
     "roomList.leaveRoom": "Raum verlassen",
@@ -3728,6 +3734,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Lösen",
     "messageActionsMenu.pin": "Anheften",
     "messageActionsMenu.copyLink": "Link kopieren",
+    "messageActionsMenu.markUnread": "Als ungelesen markieren",
+    "messageActionsMenu.couldNotMarkUnread":
+        "Konnte nicht als ungelesen markiert werden",
     "messageActionsMenu.report": "Melden",
 
     // src/lib/utils/messageDisplay.ts
