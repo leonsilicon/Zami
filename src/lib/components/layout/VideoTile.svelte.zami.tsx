@@ -2,7 +2,7 @@ import { Portal } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { VideoView } from "@livekit/react-native";
 import type { Track, VideoTrack } from "livekit-client";
-import { Maximize2, PictureInPicture2 } from "lucide-svelte";
+import { Eye, EyeOff, Maximize2, PictureInPicture2 } from "lucide-svelte";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import {
     openPipWindow,
     pipWindowSupported,
 } from "$lib/stores/callPip.svelte";
+import { stopWatchingShare, watchShare } from "$lib/stores/voiceCall.svelte";
 
 interface Props {
     tile: VideoTileDescriptor;
@@ -57,20 +58,57 @@ export default function VideoTile({
         else void openPipWindow(tile.key, tile.track as Track);
     }
 
+    // Someone else's screen share can be left and picked up again.
+    // Zami: a press on a tile's button doesn't reach the tile's own handler,
+    // so there's no stopPropagation.
+    const canLeave = tile.source === "screenshare" && !tile.isLocal;
+    function leave(): void {
+        stopWatchingShare(tile);
+    }
+    function watch(): void {
+        watchShare(tile);
+    }
+
     const contents = (
         <View className="group relative w-full h-full bg-black">
-            {/* Zami: the <video> with `use:videoTrack` → LiveKit's VideoView,
-                which renders the track natively (a local one is never heard:
-                video tracks carry no audio). A new track gets a new view, as
-                the action re-attached. */}
-            <VideoView
-                key={(tile.track as VideoTrack).sid ?? tile.key}
-                videoTrack={tile.track as VideoTrack}
-                objectFit={fit}
-                mirror={mirror}
-                style={{ width: "100%", height: "100%" }}
-            />
-            {!compact && (
+            {tile.unwatched ? (
+                <View className="absolute inset-0 flex-col items-center justify-center gap-2 p-2">
+                    <EyeOff
+                        size={compact ? 16 : 28}
+                        className="text-discord-textMuted"
+                    />
+                    {!compact && (
+                        <>
+                            <Text className="text-sm text-white text-center">
+                                {label}
+                            </Text>
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={watch}
+                                className="relative z-20 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-discord-accent hover:opacity-90"
+                            >
+                                <Eye size={16} className="text-white" />
+                                <Text className="text-white text-sm">
+                                    {t("videoTile.watchStream")}
+                                </Text>
+                            </Pressable>
+                        </>
+                    )}
+                </View>
+            ) : (
+                /* Zami: the <video> with `use:videoTrack` → LiveKit's VideoView,
+                   which renders the track natively (a local one is never heard:
+                   video tracks carry no audio). A new track gets a new view, as
+                   the action re-attached. */
+                <VideoView
+                    key={(tile.track as VideoTrack).sid ?? tile.key}
+                    videoTrack={tile.track as VideoTrack}
+                    objectFit={fit}
+                    mirror={mirror}
+                    style={{ width: "100%", height: "100%" }}
+                />
+            )}
+            {!compact && !tile.unwatched && (
                 <>
                     {/* Zami: `max-w-[calc(100%-1rem)]` → the end inset. */}
                     <View
@@ -86,33 +124,47 @@ export default function VideoTile({
                             </Text>
                         </View>
                     </View>
-                    {pipSupported && (
+                    <View className="absolute bottom-2 end-2 flex-row gap-1">
+                        {canLeave && (
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={leave}
+                                className="p-1.5 rounded bg-black/60 opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                accessibilityLabel={t("videoTile.stopWatching")}
+                            >
+                                <EyeOff size={16} className="text-white" />
+                            </Pressable>
+                        )}
+                        {pipSupported && (
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={togglePip}
+                                className="p-1.5 rounded bg-black/60 opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                accessibilityLabel={
+                                    inPip
+                                        ? t("videoTile.exitPictureInPicture")
+                                        : t("videoTile.pictureInPicture")
+                                }
+                            >
+                                <PictureInPicture2
+                                    size={16}
+                                    className={
+                                        inPip
+                                            ? "text-discord-accent"
+                                            : "text-white"
+                                    }
+                                />
+                            </Pressable>
+                        )}
                         <Pressable
                             accessibilityRole="button"
-                            onPress={togglePip}
-                            className="absolute bottom-2 end-11 p-1.5 rounded bg-black/60 opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                            accessibilityLabel={
-                                inPip
-                                    ? t("videoTile.exitPictureInPicture")
-                                    : t("videoTile.pictureInPicture")
-                            }
+                            onPress={toggleFullscreen}
+                            className="p-1.5 rounded bg-black/60 opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                            accessibilityLabel={t("videoTile.fullscreen")}
                         >
-                            <PictureInPicture2
-                                size={16}
-                                className={
-                                    inPip ? "text-discord-accent" : "text-white"
-                                }
-                            />
+                            <Maximize2 size={16} className="text-white" />
                         </Pressable>
-                    )}
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={toggleFullscreen}
-                        className="absolute bottom-2 end-2 p-1.5 rounded bg-black/60 opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                        accessibilityLabel={t("videoTile.fullscreen")}
-                    >
-                        <Maximize2 size={16} className="text-white" />
-                    </Pressable>
+                    </View>
                 </>
             )}
         </View>

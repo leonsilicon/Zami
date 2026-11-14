@@ -27,6 +27,7 @@ import {
     pipWindowSupported,
     openPipWindow,
     showPipTrack,
+    setPipLabel,
     closePipWindow,
     bindPipCallActions,
     reportPipCallState,
@@ -142,8 +143,12 @@ export default function CallPipOverlay() {
             toggleMic: toggleCallMute,
             toggleCamera: cameraDisabled ? null : () => void toggleCamera(),
             hangUp: leaveCall,
+            openCall,
         });
     }, [windowOpen, cameraDisabled]);
+    useEffect(() => {
+        if (windowOpen) setPipLabel(label);
+    }, [windowOpen, label]);
     useEffect(() => {
         if (!windowOpen) return;
         reportPipCallState(!micMuted, cameraOn);

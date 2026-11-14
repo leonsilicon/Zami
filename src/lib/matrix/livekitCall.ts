@@ -17,6 +17,12 @@ import {
     type Room,
 } from "matrix-js-sdk";
 import type * as LivekitClient from "livekit-client";
+import {
+    createShareCropProcessor,
+    SHARE_CROP_PROCESSOR,
+    type ShareCropProcessor,
+} from "./call/shareCrop";
+import { shareEncoderSteps } from "$lib/utils/shareCrop";
 import { matrixClient } from "./runtime";
 import { getDirectRoomIds, getRoomCallMemberships } from "./client";
 import {
@@ -66,6 +72,7 @@ import {
     withShareVolume,
     withSoundVolume,
     withLocalMute,
+    withShareMute,
     withVideoHidden,
     DEFAULT_PARTICIPANT_AUDIO,
     type AudioKind,
@@ -119,12 +126,14 @@ import { clampBitrate } from "$lib/utils/screenShareBitrate";
 import {
     codecsFromMimeTypes,
     codecFromMime,
+    backupCodecFor,
     isBlockedMime,
     isDecodeStall,
     isMandatoryCodec,
     withoutBlocked,
     VIDEO_CODEC_LABELS,
     planCodecs,
+    hevcFitsShare,
     DECODE_ATTRIBUTE,
     encodeDecodeAttribute,
     parseDecodeAttribute,
@@ -383,11 +392,16 @@ function ensureAudioGraph(call: ActiveVoiceCall): CallAudioGraph | null {
  *  is unavailable the level is capped at 100%. */
 function applyElementVolume(el: HTMLAudioElement, identity: string): void {
     const call = activeVoice;
-    const gain = effectiveVolume(
-        voiceOutputVolume,
-        participantAudio.get(userIdFromIdentity(identity)),
-        elKind.get(el) ?? "voice",
-    );
+    const kind = elKind.get(el) ?? "voice";
+    // A share the user stopped watching goes quiet with its picture.
+    const gain =
+        kind === "share" && call && isShareUnwatched(call, identity)
+            ? 0
+            : effectiveVolume(
+                  voiceOutputVolume,
+                  participantAudio.get(userIdFromIdentity(identity)),
+                  kind,
+              );
     let graph = call?.audioGraph || null;
     if (call && !graph?.has(el) && (voiceNormalize || needsBoost(gain))) {
         graph = ensureAudioGraph(call);
@@ -448,6 +462,43 @@ export function setParticipantLocalMute(userId: string, muted: boolean): void {
     const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
     participantAudio.set(userId, withLocalMute(current, muted));
     applyVolumeForUser(userId);
+}
+
+/** Mute just the sound of their screen or application share. */
+export function setParticipantShareMute(
+    userId: string,
+    shareMuted: boolean,
+): void {
+    const current = participantAudio.get(userId) ?? DEFAULT_PARTICIPANT_AUDIO;
+    participantAudio.set(userId, withShareMute(current, shareMuted));
+    applyVolumeForUser(userId);
+}
+
+// Screen shares the user stopped watching, by identity. Per call and never
+// saved: like leaving a stream in Discord, the next call starts watching.
+const unwatchedShares = new WeakMap<ActiveVoiceCall, Set<string>>();
+
+function isShareUnwatched(call: ActiveVoiceCall, identity: string): boolean {
+    return unwatchedShares.get(call)?.has(identity) === true;
+}
+
+/** Stop or start watching someone's screen share: stops its video arriving
+ *  and silences its sound, while the tile stays to start watching again. */
+export function setShareWatched(identity: string, watched: boolean): void {
+    const call = activeVoice;
+    if (!call) return;
+    let set = unwatchedShares.get(call);
+    if (!set) unwatchedShares.set(call, (set = new Set()));
+    if (watched) set.delete(identity);
+    else set.add(identity);
+    for (const p of callParticipants(call)) {
+        if (p.identity !== identity) continue;
+        for (const track of p.tracks)
+            if (track.source === "screen_share") track.setEnabled(watched);
+    }
+    for (const el of call.elsByIdentity.get(identity) ?? [])
+        applyElementVolume(el, identity);
+    notifyCallVideo(call);
 }
 
 export function setParticipantVideoHidden(
@@ -619,13 +670,19 @@ function currentVideoInputs(call: ActiveVoiceCall): VideoPublicationInput[] {
             // than an unpublish. Either way skip it so the tile drops back to
             // the avatar / disappears instead of freezing on a black frame.
             // No track yet: not subscribed.
-            if (!source || !view.track || view.muted || view.paused) continue;
+            // A share we stopped watching is paused by us, not by its
+            // sharer: keep its tile so it can be watched again.
+            const unwatched =
+                source === "screenshare" && isShareUnwatched(call, p.identity);
+            if (!source || !view.track || view.muted) continue;
+            if (view.paused && !unwatched) continue;
             out.push({
                 userId: userIdFromIdentity(p.identity),
                 identity: p.identity,
                 source,
                 isLocal: false,
                 track: view.track,
+                ...(unwatched ? { unwatched: true } : {}),
             });
         }
     const me = matrixClient?.getUserId();
@@ -915,13 +972,25 @@ export async function ownSfuTarget(
     return pickLivekitTransport([], await configuredRtcFoci(), alias);
 }
 
+/** A publishing and a subscribing peer connection, not LiveKit's default of
+ *  one for both. In one connection the client offers and the SFU answers
+ *  for incoming video, and LiveKit's SFU (1.13.10) answered H.264 with the
+ *  payload type number the *sender's* browser used: 108 from Chromium 152,
+ *  where a Chrome 157 viewer had offered 102/127. The viewer had no decoder
+ *  under 108 and dropped every packet (no frames, no keyframe requests), so
+ *  H.264 shares showed nothing between browser versions that number H.264
+ *  differently; VP8 and HEVC keep the same numbers and were unaffected.
+ *  With a subscribing connection the SFU offers and the viewer accepts its
+ *  numbers. Seen live 2026-11-14 in the viewer's SDP. */
+const SEPARATE_PEER_CONNECTIONS = { singlePeerConnection: false } as const;
+
 /** Join a LiveKit room no call knows about. Nothing goes in the Matrix room,
  *  so only someone told its name can find it (see fileTransfer.ts). */
 export async function joinHiddenSfuRoom(target: LivekitTarget) {
     const lk = await livekit.load();
     const { url, jwt } = await fetchSfuJwt(target);
     await bypassProxyFor(url);
-    const room = new lk.Room();
+    const room = new lk.Room({ ...SEPARATE_PEER_CONNECTIONS });
     await room.connect(url, jwt, { autoSubscribe: false });
     return { room, lk };
 }
@@ -1068,6 +1137,11 @@ function callListener(
             if (
                 view.source === "camera" &&
                 participantAudio.get(userIdFromIdentity(identity))?.videoHidden
+            )
+                view.setEnabled(false);
+            if (
+                view.source === "screen_share" &&
+                isShareUnwatched(call, identity)
             )
                 view.setEnabled(false);
         },
@@ -1575,6 +1649,7 @@ async function connectRemoteSfu(
     const lkRoom = new call.lk.Room({
         ...(call.e2ee ? { e2ee: call.e2ee.roomOptions() } : {}),
         adaptiveStream: settingsState.adaptiveStream,
+        ...SEPARATE_PEER_CONNECTIONS,
     });
     try {
         const { url, jwt } = await fetchSfuJwt(target);
@@ -1803,6 +1878,7 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
               // and pause video that is off screen. Needs track.attach()
               // (videoTrack).
               adaptiveStream: settingsState.adaptiveStream,
+              ...SEPARATE_PEER_CONNECTIONS,
           })
         : null;
     const local = lkRoom
@@ -2541,15 +2617,22 @@ export async function setScreenShareEnabled(on: boolean): Promise<boolean> {
                 // "motion"/"maintain-framerate" for the screen-share path.
                 contentHint: "detail",
             },
-            {
-                screenShareEncoding: screenShareEncodingFor(
-                    screenShareBitrateNow(),
-                    Number(settingsState.screenShareFps),
-                ),
-                degradationPreference: "maintain-resolution",
-                ...videoCodecPublishOptions(call),
+            async (track) => {
+                if (track.kind === "video") await trimShareForGpu(track);
+                return {
+                    screenShareEncoding: screenShareEncodingFor(
+                        screenShareBitrateNow(),
+                        Number(settingsState.screenShareFps),
+                    ),
+                    degradationPreference: "maintain-resolution",
+                    ...(track.kind === "video"
+                        ? shareCodecOptions(call, track)
+                        : videoCodecPublishOptions(call)),
+                };
             },
         );
+        if (on) void superviseShareEncoder(call);
+        else shareSupervision++;
         if (on) void publishShareAudio(call);
         else stopShareAudio();
         if (on && screenShareQualityKey() !== startedWith)
@@ -3288,23 +3371,216 @@ function sendableCodecs(call: ActiveVoiceCall): VideoCodec[] {
  *  and for anything but VP8/H.264 an H.264 (or VP8) backup. The server asks
  *  for the backup only once a viewer can't decode the main stream, and sends
  *  it to them alone; everyone else keeps the picked codec. */
-function codecPlan(call: ActiveVoiceCall) {
+function codecPlan(call: ActiveVoiceCall, without: VideoCodec[] = []) {
     return planCodecs(
         settingsState.callVideoCodec,
-        sendableCodecs(call),
+        sendableCodecs(call).filter((c) => !without.includes(c)),
         peerDecode(call),
         call.e2ee !== null,
         call.codecs.hardware,
     );
 }
 
-function videoCodecPublishOptions(call: ActiveVoiceCall) {
-    const { current, backup } = codecPlan(call);
+function videoCodecPublishOptions(
+    call: ActiveVoiceCall,
+    without: VideoCodec[] = [],
+) {
+    const { current, backup } = codecPlan(call, without);
     return {
         videoCodec: current,
         backupCodec: backup ? { codec: backup } : false,
         backupCodecPolicy: call.lk.BackupCodecPolicy.SIMULCAST,
     } as const;
+}
+
+/** The codec options for a screen share, once its capture exists: HEVC only
+ *  where the capture can't trip its encoder (utils/videoCodecs hevcFitsShare),
+ *  otherwise the next pick, which has a software encoder to fall back on. */
+function shareCodecOptions(
+    call: ActiveVoiceCall,
+    track: LivekitClient.LocalTrack,
+) {
+    // Never back onto a codec this capture's encoder already failed on.
+    const failed = [...(failedShareCodecs.get(track) ?? [])];
+    const options = videoCodecPublishOptions(call, failed);
+    if (options.videoCodec !== "h265") return options;
+    // Trimmed frames suit the encoder whatever is shared.
+    if (track.getProcessor()?.name === SHARE_CROP_PROCESSOR) return options;
+    const settings =
+        track.mediaStreamTrack.getSettings() as MediaTrackSettings & {
+            displaySurface?: string;
+        };
+    return hevcFitsShare(settings)
+        ? options
+        : videoCodecPublishOptions(call, [...failed, "h265"]);
+}
+
+/** Send a screen share trimmed to sizes a GPU encoder takes (a few pixels
+ *  off the right and bottom at most), so a tab or window can stay on the GPU
+ *  codec. Where the browser can't, or the trim fails, the share goes out
+ *  untrimmed and shareCodecOptions keeps it off HEVC. */
+// The share's encoder ladder (utils/shareCrop shareEncoderSteps). A GPU
+// encoder can refuse a frame size or fail to start; Chrome then sends nothing,
+// or switches codec by itself, which the SFU doesn't forward. So after each
+// publish the share's sender is watched, and on failure the share moves to
+// the next trim or codec.
+const SHARE_CHECK_MS = 1000;
+/** Seconds in which the capture delivered frames but the encoder made none
+ *  before an encoder counts as failed. */
+const SHARE_CHECKS_BEFORE_FAILING = 6;
+/** Codecs a capture's encoder already failed on, so a later codec switch
+ *  (republishVideo) doesn't put it back on one. */
+const failedShareCodecs = new WeakMap<
+    LivekitClient.LocalTrack,
+    Set<VideoCodec>
+>();
+let shareSupervision = 0;
+
+/** Whether `track`'s encoder makes `codec` frames. Waits while nothing is
+ *  being sent (no one watching: the server pauses every layer), and gives up
+ *  waiting (true) once `live` says the share moved on. */
+async function shareEncoderWorks(
+    track: LivekitClient.LocalTrack,
+    codec: VideoCodec,
+    live: () => boolean,
+): Promise<boolean> {
+    const sender = track.sender;
+    if (!sender) return true;
+    let firstFrames: number | null = null;
+    let lastSource: number | null = null;
+    let checks = 0;
+    while (checks < SHARE_CHECKS_BEFORE_FAILING) {
+        await new Promise((resolve) => setTimeout(resolve, SHARE_CHECK_MS));
+        if (!live() || track.mediaStreamTrack.readyState === "ended")
+            return true;
+        const report = await sender.getStats().catch(() => null);
+        if (!report) continue;
+        let frames = 0;
+        let sending = false;
+        let otherCodec = false;
+        // Frames the capture handed the encoder. A still screen or tab
+        // delivers none, so its encoder has nothing to make: that is not a
+        // failure (counting it as one walked healthy shares down the ladder).
+        let source = null as number | null;
+        report.forEach((s: RTCStats & Record<string, unknown>) => {
+            if (
+                s.type === "media-source" &&
+                s.kind === "video" &&
+                typeof s.frames === "number"
+            )
+                source = Math.max(source ?? 0, s.frames);
+            if (s.type !== "outbound-rtp" || s.kind !== "video") return;
+            if (s.active === false) return;
+            sending = true;
+            frames += typeof s.framesEncoded === "number" ? s.framesEncoded : 0;
+            const c =
+                typeof s.codecId === "string"
+                    ? (report.get(s.codecId) as { mimeType?: string })
+                    : undefined;
+            const sent = c?.mimeType ? codecFromMime(c.mimeType) : null;
+            if (sent && sent !== codec) otherCodec = true;
+        });
+        // Chrome gave up on the encoder and switched codec itself.
+        if (otherCodec) return false;
+        if (!sending) {
+            firstFrames = null;
+            checks = 0;
+            continue;
+        }
+        if (firstFrames === null) firstFrames = frames;
+        else if (frames > firstFrames) return true;
+        // Only a second in which the capture delivered frames counts against
+        // the encoder. Without the capture's count (no media-source stats)
+        // there is no telling, so only a codec switch counts as failing.
+        const fed =
+            source !== null && lastSource !== null && source > lastSource;
+        if (source !== null) lastSource = source;
+        if (fed) checks++;
+    }
+    return false;
+}
+
+/** Watch the share just published and walk it down the ladder until its
+ *  encoder makes frames: each GPU codec at each trim, then software. */
+async function superviseShareEncoder(call: ActiveVoiceCall): Promise<void> {
+    const generation = ++shareSupervision;
+    const lp = call.lkRoom?.localParticipant;
+    if (!lp) return;
+    const source = call.lk.Track.Source.ScreenShare;
+    const pub = lp.getTrackPublication(source);
+    const track = pub?.videoTrack;
+    const first = pub?.options?.videoCodec as VideoCodec | undefined;
+    if (!pub || !track || !first) return;
+    const live = () =>
+        activeVoice === call &&
+        generation === shareSupervision &&
+        lp.getTrackPublication(source)?.videoTrack === track;
+    const processor = track.getProcessor() as ShareCropProcessor | undefined;
+    const trimming = processor?.name === SHARE_CROP_PROCESSOR;
+    const settings =
+        track.mediaStreamTrack.getSettings() as MediaTrackSettings & {
+            displaySurface?: string;
+        };
+    const failed = failedShareCodecs.get(track) ?? new Set<VideoCodec>();
+    failedShareCodecs.set(track, failed);
+    const steps = shareEncoderSteps({
+        first,
+        ranked: codecPlan(call).available.filter((c) => !failed.has(c)),
+        hardware: call.codecs.hardware,
+        software: ["h264", "vp8"],
+        canTrim: trimming,
+        allowWithoutTrim: (c) => c !== "h265" || hevcFitsShare(settings),
+    });
+    for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const codec = step.codec as VideoCodec;
+        if (i > 0) {
+            if (trimming && step.align !== null)
+                processor!.setAlign(step.align);
+            console.warn(
+                `Screen share encoder failed on ${steps[i - 1].codec}` +
+                    `${steps[i - 1].align ? ` (${steps[i - 1].align}px)` : ""}` +
+                    `, trying ${codec}${step.align ? ` (${step.align}px)` : ""}`,
+            );
+            const backup = call.e2ee
+                ? null
+                : backupCodecFor(codec, sendableCodecs(call));
+            republishingSource = source;
+            try {
+                await lp.unpublishTrack(track, false);
+                if (activeVoice !== call) {
+                    track.stop();
+                    return;
+                }
+                await publishWithRetry(lp, track, {
+                    ...pub.options,
+                    source,
+                    videoCodec: codec,
+                    backupCodec: backup ? { codec: backup } : false,
+                });
+            } catch (err) {
+                console.error("Screen share encoder fallback failed:", err);
+                return;
+            } finally {
+                republishingSource = null;
+            }
+        }
+        if (await shareEncoderWorks(track, codec, live)) return;
+        if (!live()) return;
+        if (steps[i + 1]?.codec !== codec) failed.add(codec);
+    }
+    console.error("No encoder could send this screen share");
+    notifyVoiceNotice(t("client.couldNotStartScreenShare"));
+}
+
+async function trimShareForGpu(track: LivekitClient.LocalTrack): Promise<void> {
+    const processor = createShareCropProcessor();
+    if (!processor) return;
+    try {
+        await (track as LivekitClient.LocalVideoTrack).setProcessor(processor);
+    } catch (err) {
+        console.error("Screen share trim failed:", err);
+    }
 }
 
 /** Codecs this platform lists but can't show, known from how it is set up
@@ -3697,7 +3973,10 @@ async function republishVideo(
     const pub = lp.getTrackPublication(source);
     const track = pub?.videoTrack;
     if (!pub || !track) return;
-    const codecOptions = videoCodecPublishOptions(call);
+    const codecOptions =
+        source === call.lk.Track.Source.ScreenShare
+            ? shareCodecOptions(call, track)
+            : videoCodecPublishOptions(call);
     if (pub.options?.videoCodec === codecOptions.videoCodec) return;
     // What it was published with, to go back to if the new codec won't start.
     const previous = { ...pub.options, source };
@@ -3716,6 +3995,8 @@ async function republishVideo(
             return;
         }
         await publishWithRetry(lp, track, options);
+        if (source === call.lk.Track.Source.ScreenShare)
+            void superviseShareEncoder(call);
     } catch (err) {
         console.error("Video codec switch failed:", err);
         if (activeVoice === call) {

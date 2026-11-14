@@ -12309,6 +12309,8 @@ export {
     refreshDecodeSupport,
     participantHasShareAudio,
     setParticipantLocalMute,
+    setParticipantShareMute,
+    setShareWatched,
     setParticipantVideoHidden,
     onVoiceConnStateChanged,
     onActiveSpeakersChanged,
