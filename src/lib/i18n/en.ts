@@ -1274,6 +1274,11 @@ export const en = {
     "messageArea.loadingHistory": "Loading older messages",
     "messageArea.room": "room.",
     "messageArea.newMessages": "New Messages",
+    "messageArea.unreadSince":
+        "{count, plural, one {# new message since {since}} other {# new messages since {since}}}",
+    "messageArea.markAsRead": "Mark as read",
+    "messageArea.unreadSinceMany": "{count}+ new messages since {since}",
+    "messageArea.unreadMany": "{count}+ new messages",
     "messageArea.messageFromABlockedUser": "Message from a blocked user",
     "messageArea.showBlockedMessage": "Show blocked message",
     "messageArea.thisRoomHasBeenUpgraded": "This room has been upgraded",
@@ -1985,6 +1990,7 @@ export const en = {
     "roomList.emptyCategory": "No rooms",
     "roomList.copyRoomLink": "Copy Room Link",
     "roomList.markAsRead": "Mark as Read",
+    "roomList.markAsUnread": "Mark as Unread",
     "roomList.addToSpace": "Add to Space",
     "roomList.clickAgainToLeave": "Click again to leave",
     "roomList.clickAgainToLeaveLastMember":
@@ -3582,6 +3588,8 @@ export const en = {
     "messageActionsMenu.unpin": "Unpin",
     "messageActionsMenu.pin": "Pin",
     "messageActionsMenu.copyLink": "Copy link",
+    "messageActionsMenu.markUnread": "Mark as unread",
+    "messageActionsMenu.couldNotMarkUnread": "Couldn't mark as unread",
     "messageActionsMenu.report": "Report",
     "roomSettings.readReceipts": "Read receipts",
     "roomSettings.readReceiptsRoomHelp":

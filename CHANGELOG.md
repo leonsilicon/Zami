@@ -4,6 +4,70 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.60.19
+
+🐛 **Fixed**
+
+- **Read rooms open at the bottom again:** a room you had fully read could open scrolled far up, with no "New Messages" divider, whenever its newest activity was something not shown as a message (someone joining, a reaction, an edit). It now opens at the newest message.
+
+## v1.60.18
+
+🐛 **Fixed**
+
+- **Less memory after watching YouTube videos:** a YouTube video you played and then paused stayed loaded (over 50 MB each) until you scrolled far away from it. It now goes back to its thumbnail as soon as it's off screen or the window is hidden, and clicking it carries on where you left off.
+
+## v1.60.17
+
+🐛 **Fixed**
+
+- **Message box placeholder is centred for real:** in rooms where you can't send messages, the text still sat a few pixels below the icons beside it. The message box is now vertically centred, so the placeholder and the typing cursor line up with the icons.
+- **GIFs no longer stay blank after the window was hidden:** GIF-style videos in the timeline and the GIF picker that went black or white after the app sat in the background now reload when you come back.
+
+## v1.60.16
+
+🐛 **Fixed**
+
+- **The emoji picker scrolls smoothly again:** since 1.60.15 it stuttered every time a new row of emoji scrolled in. Emoji in the picker are now drawn from a few preloaded images instead of one image per emoji.
+- **No more "Return to live" banner after catching up:** when you opened a room at your unread messages and then marked it read, the bar at the top switched to "Viewing message context - Return to live". It now keeps the "Jump to present" button.
+
+## v1.60.15
+
+🐛 **Fixed**
+
+- **The emoji picker opens instantly:** it used to take seconds to open, especially with big custom emoji packs, because it built every emoji at once. The emoji and sticker pickers now only draw what's on screen.
+- **Custom emoji and stickers load faster and are kept on your device:** the pickers now load small previews instead of full-size images, and keep them so reopening a picker doesn't download them again. They're removed when you sign out.
+- **Less memory in the desktop app while it's behind other windows:** the app now frees graphics memory when its window is fully covered, not only when it's minimised.
+- **Message box placeholder lines up again:** in rooms where you can't send messages, the placeholder text sat a few pixels below the icons beside it.
+
+## v1.60.14
+
+✨ **New**
+
+- **Mark as unread:** mark a room unread from the room list's menu, or from a specific message so that message and everything after it show as new. On phones it's in the message's long-press menu, in the desktop app it's in the right-click menu, and in a desktop browser Alt+click a message. The room stays unread on all your devices (and shows as unread in other Matrix apps) until you read it, press Escape or click "Mark as read".
+
+🐛 **Fixed**
+
+- **Catching up now works after restarting the app:** the "New Messages" line and the unread bar only appeared for messages that arrived while the app was open. Rooms now open at where you stopped reading, without loading the whole gap first: newer messages load as you scroll down, and "Jump to present" takes you straight to the latest.
+
+## v1.60.13
+
+✨ **New**
+
+- **Catch up on rooms like in Discord:** opening a room with unread messages now starts at the "New Messages" line instead of just above it, and a bar at the top shows how many messages arrived and since when. Click the bar to jump back to where the new messages start, or "Mark as read" to dismiss it.
+- **The "New Messages" line stays put:** it no longer disappears as soon as you scroll to the bottom, so you can always find where you left off until you leave the room. Shift+PageUp jumps back to it.
+
+🐛 **Fixed**
+
+- **Less memory in encrypted rooms:** opening a busy encrypted room no longer checks the encryption status of hundreds of messages all at once, which permanently grew the app's memory use by tens of megabytes. Background search indexing also decrypts in smaller batches.
+
+## v1.60.12
+
+🐛 **Fixed**
+
+- **Member list no longer freezes the app in huge rooms:** opening the member list in a room with thousands of members (like Matrix HQ) used to lock up the client. It now opens instantly and scrolls smoothly, however big the room.
+- **Lighter presence updates:** online dots now only update and refresh for people you can actually see (direct messages, visible member list rows, an open profile card), instead of everyone the app has ever shown. Presence is no longer fetched for rows you scroll past quickly.
+- **Member list follows room switches:** switching rooms with the member list open now loads the new room's full member list and starts it at the top.
+
 ## v1.60.11
 
 ✨ **New**

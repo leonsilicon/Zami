@@ -1097,6 +1097,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.loadingHistory": "過去のメッセージを読み込み中",
     "messageArea.room": "ルームの始まりです。",
     "messageArea.newMessages": "新着メッセージ",
+    "messageArea.unreadSince":
+        "{count, plural, other {{since}以降の新着メッセージ#件}}",
+    "messageArea.markAsRead": "既読にする",
+    "messageArea.unreadSinceMany": "{since}以降の新着メッセージ{count}件以上",
+    "messageArea.unreadMany": "新着メッセージ{count}件以上",
     "messageArea.messageFromABlockedUser":
         "ブロックしたユーザーからのメッセージ",
     "messageArea.showBlockedMessage": "ブロックしたメッセージを表示",
@@ -1757,6 +1762,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "ルームなし",
     "roomList.copyRoomLink": "ルームのリンクをコピー",
     "roomList.markAsRead": "既読にする",
+    "roomList.markAsUnread": "未読にする",
     "roomList.addToSpace": "スペースに追加",
     "roomList.clickAgainToLeave": "もう一度クリックすると退出",
     "roomList.leaveRoom": "ルームを退出",
@@ -3217,6 +3223,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "ピン留めを解除",
     "messageActionsMenu.pin": "ピン留め",
     "messageActionsMenu.copyLink": "リンクをコピー",
+    "messageActionsMenu.markUnread": "未読にする",
+    "messageActionsMenu.couldNotMarkUnread": "未読にできませんでした",
     "messageActionsMenu.report": "通報",
     "messageDisplay.systemDefault": "システム設定に従う",
     "micErrorMessage.microphoneAccessIsBlockedAllowIt":

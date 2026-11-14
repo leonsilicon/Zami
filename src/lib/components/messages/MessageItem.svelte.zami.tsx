@@ -136,6 +136,7 @@ import {
     getRoom,
     isRoomCachedOnly,
     getMessageShareLink,
+    markRoomUnread,
     joinRoom,
     seedRoomStateIfMissing,
     getRoomIdForAlias,
@@ -733,6 +734,8 @@ function MessageItem({
 
     // Zami: the row's press: its `touchend` runs first, as in the browser, and
     // the click only when the touch end didn't consume it.
+    // Zami: not ported: Alt+click to mark unread from here (no modifier keys
+    // on a press; the message sheet offers it).
     function onRowPress(e: GestureResponderEvent) {
         if (onMessageTouchEnd(e)) return;
         onMessageDblClick(e);
@@ -961,6 +964,19 @@ function MessageItem({
             console.error("Failed to resend:", err);
         } finally {
             setIsResending(false);
+        }
+    }
+
+    // Discord's "Mark Unread": this message and everything after it. Shown
+    // at once in the open room; the account data carries it to the room list
+    // and other devices.
+    async function markUnreadFromHere() {
+        const from = { eventId, ts: event.getTs() };
+        interfaceState.markUnreadFrom?.(from);
+        try {
+            await markRoomUnread(room.roomId, from);
+        } catch {
+            showErrorToast(t("messageActionsMenu.couldNotMarkUnread"));
         }
     }
 
@@ -1313,6 +1329,9 @@ function MessageItem({
                 break;
             case "copy-link":
                 void copyMessageLink();
+                break;
+            case "mark-unread":
+                void markUnreadFromHere();
                 break;
             // Zami: only the touch sheet chooses here (the desktop right-click
             // menu isn't ported), so report/redact drive the touch instances.
@@ -2278,6 +2297,8 @@ function MessageItem({
                 canPin,
                 isPinned,
                 hasLink: eventId.startsWith("$") && !isFailed,
+                canMarkUnread:
+                    eventId.startsWith("$") && !isFailed && !isThreadReply,
                 canViewSource: true,
                 canReport: !isOwnMessage && !isFailed,
                 canRedact: !isOwnMessage && !isFailed && canRedact,
@@ -2294,6 +2315,7 @@ function MessageItem({
             isFailed,
             isOwnMessage,
             canRedact,
+            isThreadReply,
         ],
     );
     // Root summary: this message is a thread ROOT iff other events reply to it.

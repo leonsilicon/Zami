@@ -1,9 +1,11 @@
+import { createSubscriber } from "svelte/reactivity";
 import {
     fetchOwnExtendedProfile,
     getUserPresence,
     isUsingSlidingSync,
     onPresenceEvent,
     onSlidingSyncActiveChange,
+    refreshUserPresence,
     setAccountNotificationsDisabled,
     setOwnPresence,
     supportsBusyPresence,
@@ -33,19 +35,65 @@ export interface UserPresenceView {
     statusMsg?: string;
 }
 
-// Presence data itself lives in the SDK's user model; this store only holds
-// the tick that tells $derived consumers to re-read it (house pattern — live
-// SDK objects mutate in place, so deriveds must depend on a counter).
-export const presenceState = $state({
-    presenceTick: 0,
-});
+// Presence is watched per user. Presence data itself lives in the SDK's user
+// model (live objects that mutate in place), so each user gets a
+// createSubscriber: a reactive read via presenceFor() subscribes to that user
+// alone, and a presence event for anyone else re-renders nothing. The
+// subscription ends when the last reader unmounts. Users no rendered reader
+// is watching cause no work. Watching also drives the sliding-sync poll in
+// initPresence (see watchedPresenceUsers).
+interface PresenceWatcher {
+    subscribe: () => void;
+    update: (() => void) | null;
+}
+const watchers = new Map<string, PresenceWatcher>();
+const watched = new Set<string>();
+
+/** Users whose presence a rendered reader currently watches. */
+export function watchedPresenceUsers(): string[] {
+    return [...watched];
+}
+
+const PRESENCE_SETTLE_MS = 300;
+
+function watcherFor(userId: string): PresenceWatcher {
+    let entry = watchers.get(userId);
+    if (entry) return entry;
+    const created: PresenceWatcher = {
+        update: null,
+        subscribe: createSubscriber((update) => {
+            created.update = update;
+            watched.add(userId);
+            // Only fetch for someone who stays on screen: scrolling a big
+            // member list flashes hundreds of rows past, and each would
+            // otherwise cost a request.
+            const settle = setTimeout(
+                () => refreshUserPresence(userId),
+                PRESENCE_SETTLE_MS,
+            );
+            return () => {
+                clearTimeout(settle);
+                created.update = null;
+                watched.delete(userId);
+                if (watchers.get(userId) === created) watchers.delete(userId);
+            };
+        }),
+    };
+    entry = created;
+    watchers.set(userId, entry);
+    return entry;
+}
 
 /**
  * Presence for a user, normalized for rendering. Null when nothing is known —
  * the server may have presence disabled entirely; callers typically render
- * that the same as offline.
+ * that the same as offline. Inside a reactive context it makes the caller
+ * re-render when this user's presence changes; outside one it is a plain read.
  */
 export function presenceFor(userId: string): UserPresenceView | null {
+    // Outside a reactive context there is nothing to subscribe, and making a
+    // watcher entry would leave one behind per user read.
+    if ($effect.tracking()) watcherFor(userId).subscribe();
     const raw = getUserPresence(userId);
     if (!raw) return null;
     return {
@@ -218,25 +266,30 @@ export function initPresence(): () => void {
     for (const type of inputEvents)
         window.addEventListener(type, onUserInput, { passive: true });
 
-    // Zami: one bump per turn of the event loop. Each presence update fires
-    // three SDK events, and a sync can carry hundreds of users' presence: a
-    // bump per event re-ran every presence reader (each DM row, the member
-    // list) hundreds of times in one go.
-    let presenceBump: ReturnType<typeof setTimeout> | undefined;
-    const unsubPresence = onPresenceEvent(() => {
-        presenceBump ??= setTimeout(() => {
-            presenceBump = undefined;
-            presenceState.presenceTick++;
-        }, 0);
+    const unsubPresence = onPresenceEvent((userId) => {
+        watchers.get(userId)?.update?.();
     });
+
+    // Sliding sync never pushes presence, so the watched users are re-fetched
+    // here, once a poll (refreshUserPresence's TTL keeps it to one fetch per
+    // user per minute). Hidden tabs skip it; becoming visible catches up at
+    // once. On classic sync this is a no-op: the server pushes presence.
+    const refreshWatched = () => {
+        if (document.visibilityState !== "visible") return;
+        for (const id of watched) refreshUserPresence(id);
+    };
+    const presencePoll = setInterval(refreshWatched, 30_000);
+    document.addEventListener("visibilitychange", refreshWatched);
+
     return () => {
         disposed = true;
         unsubSliding();
         clearInterval(heartbeat);
         clearInterval(idleCheck);
+        clearInterval(presencePoll);
+        document.removeEventListener("visibilitychange", refreshWatched);
         for (const type of inputEvents)
             window.removeEventListener(type, onUserInput);
         unsubPresence();
-        clearTimeout(presenceBump);
     };
 }

@@ -1310,6 +1310,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.loadingHistory": "Carregando mensagens mais antigas",
     "messageArea.room": ".",
     "messageArea.newMessages": "Novas mensagens",
+    "messageArea.unreadSince":
+        "{count, plural, one {# nova mensagem desde {since}} other {# novas mensagens desde {since}}}",
+    "messageArea.markAsRead": "Marcar como lida",
+    "messageArea.unreadSinceMany": "{count}+ novas mensagens desde {since}",
+    "messageArea.unreadMany": "{count}+ novas mensagens",
     "messageArea.messageFromABlockedUser": "Mensagem de um usuário bloqueado",
     "messageArea.showBlockedMessage": "Mostrar mensagem bloqueada",
     "messageArea.thisRoomHasBeenUpgraded": "Esta sala foi atualizada",
@@ -2048,6 +2053,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "Nenhuma sala",
     "roomList.copyRoomLink": "Copiar link da sala",
     "roomList.markAsRead": "Marcar como lida",
+    "roomList.markAsUnread": "Marcar como não lida",
     "roomList.addToSpace": "Adicionar ao espaço",
     "roomList.clickAgainToLeave": "Clique novamente para sair",
     "roomList.clickAgainToLeaveLastMember":
@@ -3729,6 +3735,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Desafixar",
     "messageActionsMenu.pin": "Fixar",
     "messageActionsMenu.copyLink": "Copiar link",
+    "messageActionsMenu.markUnread": "Marcar como não lida",
+    "messageActionsMenu.couldNotMarkUnread":
+        "Não foi possível marcar como não lida",
     "messageActionsMenu.report": "Denunciar",
 
     // src/lib/utils/messageDisplay.ts

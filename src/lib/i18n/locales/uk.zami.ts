@@ -1313,6 +1313,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.loadingHistory": "Завантаження старіших повідомлень",
     "messageArea.room": ".",
     "messageArea.newMessages": "Нові повідомлення",
+    "messageArea.unreadSince":
+        "{count, plural, one {# нове повідомлення з {since}} few {# нові повідомлення з {since}} many {# нових повідомлень з {since}} other {# нового повідомлення з {since}}}",
+    "messageArea.markAsRead": "Позначити як прочитане",
+    "messageArea.unreadSinceMany": "{count}+ нових повідомлень з {since}",
+    "messageArea.unreadMany": "{count}+ нових повідомлень",
     "messageArea.messageFromABlockedUser":
         "Повідомлення від заблокованого користувача",
     "messageArea.showBlockedMessage": "Показати заблоковане повідомлення",
@@ -2053,6 +2058,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "Немає кімнат",
     "roomList.copyRoomLink": "Копіювати посилання на кімнату",
     "roomList.markAsRead": "Позначити прочитаним",
+    "roomList.markAsUnread": "Позначити як непрочитане",
     "roomList.addToSpace": "Додати до простору",
     "roomList.clickAgainToLeave": "Клацніть ще раз, щоб вийти",
     "roomList.clickAgainToLeaveLastMember":
@@ -3705,6 +3711,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Відкріпити",
     "messageActionsMenu.pin": "Закріпити",
     "messageActionsMenu.copyLink": "Копіювати посилання",
+    "messageActionsMenu.markUnread": "Позначити як непрочитане",
+    "messageActionsMenu.couldNotMarkUnread":
+        "Не вдалося позначити як непрочитане",
     "messageActionsMenu.report": "Поскаржитися",
 
     // src/lib/utils/messageDisplay.ts

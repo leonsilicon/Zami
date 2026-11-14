@@ -98,6 +98,9 @@ import {
     getRoom,
     isRoomCachedOnly,
     getReadUpToEventId,
+    getOwnReadReceipt,
+    getMarkedUnread,
+    onMarkedUnreadChange,
     getReceiptsByDisplayedEvent,
     onReceiptEvent,
     getRoomCallMemberships,
@@ -161,12 +164,12 @@ import {
 import {
     shouldShowHeader,
     dateSeparatorLabel,
-    unreadDividerBefore,
+    unreadDividerIndex,
     isNearBottom,
     timelineKey,
 } from "$lib/utils/timelineDisplay";
 import { shouldDismissSelectionOnScroll } from "$lib/utils/scrollDismiss";
-import { daySeparator } from "$lib/utils/timeFormat";
+import { daySeparator, messageTimestamp } from "$lib/utils/timeFormat";
 import { canSendReceipt } from "$lib/utils/receiptGate";
 import {
     historyEdge,
@@ -278,10 +281,32 @@ const CHEVRON_DOWN_PATH =
     "M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z";
 const INFO_PATH =
     "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z";
+const CHECK_PATH = "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
 
 // Zami: `isNearBottom`'s default slack, for the list's follow-the-bottom
 // threshold.
 const AT_BOTTOM_SLACK = 100;
+
+// Gap left above the divider on open: some read history plus the bar.
+const UNREAD_DIVIDER_TOP_GAP = 72;
+const UNREAD_HOLD_MS = 1500;
+// Zami: how long after the hold's first aim its landing spot is trusted.
+const BOTTOM_CHECK_MS = 200;
+
+/** Zami: upstream's `dividerIndex` over a given list and unread state. */
+function dividerIndexOf(
+    messages: MatrixEvent[],
+    unreadDividerEventId: string | null,
+    unreadReadTs: number | null,
+    unreadFromFirst: boolean,
+): number {
+    if (!unreadDividerEventId) return -1;
+    if (unreadFromFirst) {
+        const i = messages.findIndex((e) => e.getId() === unreadDividerEventId);
+        return i >= 0 ? i : unreadDividerIndex(messages, null, unreadReadTs);
+    }
+    return unreadDividerIndex(messages, unreadDividerEventId, unreadReadTs);
+}
 // Zami: how long a smooth scroll to a jumped-to message runs before the
 // keep-it-in-view loop re-aims it (a re-aim cuts an animation short).
 const SMOOTH_SCROLL_MS = 400;
@@ -815,6 +840,7 @@ export default function MessageArea({
                 if (win && roomRef.current.roomId === rid) {
                     setContextWindow(win);
                     setContextMessages(getContextWindowEvents(win));
+                    setContextAtReadPosition(false);
                     await tick();
                 }
             } finally {
@@ -1204,6 +1230,11 @@ export default function MessageArea({
         useLiveState<TimelineWindow | null>(null);
     const [contextMessages, setContextMessages, contextMessagesRef] =
         useLiveState<MatrixEvent[] | null>(null);
+    // The window was opened at the read position by entering the room, not
+    // by jumping to a message. It's an ordinary visit: "Jump to present"
+    // stays and the "Viewing message context" banner never shows, even once
+    // the room is read and the unread bar goes away.
+    const [contextAtReadPosition, setContextAtReadPosition] = useState(false);
     const loadingNewer = useRef(false);
     // Zami: the store replaces a room's list whole, never changes it in place.
     const liveMessages = useRune(() => getMessages(roomId), [roomId], {
@@ -1324,19 +1355,28 @@ export default function MessageArea({
     // `viewPosition` 0 lines its bottom up with the view's ("end"), 0.5
     // centres it, 1 puts it at the top. A row the list hasn't laid out yet is
     // first scrolled near by its estimated offset, then aimed at again.
+    // `viewOffset` moves it that many pixels further from where viewPosition
+    // puts it (towards the bottom for a negative one).
     const scrollTarget = useRef<{
         index: number;
         viewPosition: number;
+        viewOffset: number;
         tries: number;
     } | null>(null);
     function scrollRowIntoView(
         index: number,
         viewPosition: number,
         animated: boolean,
+        viewOffset = 0,
     ) {
         if (index >= rows.current.length) return;
-        scrollTarget.current = { index, viewPosition, tries: 0 };
-        scrollEl.current?.scrollToIndex({ index, viewPosition, animated });
+        scrollTarget.current = { index, viewPosition, viewOffset, tries: 0 };
+        scrollEl.current?.scrollToIndex({
+            index,
+            viewPosition,
+            viewOffset,
+            animated,
+        });
     }
     function onScrollToIndexFailed(info: {
         index: number;
@@ -1356,6 +1396,7 @@ export default function MessageArea({
             scrollEl.current?.scrollToIndex({
                 index: target.index,
                 viewPosition: target.viewPosition,
+                viewOffset: target.viewOffset,
                 animated: false,
             });
         }, 50);
@@ -1441,9 +1482,174 @@ export default function MessageArea({
         return summaryCache.map;
     }, [callSummaryVersion, summaryCache]);
 
-    // The event ID the user has read up to — used to show "New messages" divider on load
+    // The event ID the user had read up to when they opened the room, while
+    // that read state is still unacknowledged. Drives the unread bar and turns
+    // off sticking to the bottom; cleared once the room is marked read.
+    // Put the "New Messages" divider near the top (a little read history
+    // above it, room for the unread bar) and keep it there while rows and
+    // media around it settle, as a jump to a message does. Any touch hands
+    // control back at once. Few unread messages clamp this to the bottom,
+    // which counts as reading them.
+    // Zami: the divider's row is aimed at (its day separator, when it has
+    // one, sits above the divider), and a touch on the list stops the loop
+    // (onListTouchStart), after which onScroll takes over.
+    function holdDividerNearTop(firstUnreadId: string) {
+        if (!scrollEl.current) return;
+        stopScrollIntoView();
+        // Zami: scrollToIndex clamps at the bottom before applying
+        // viewOffset, so a divider too near the bottom to reach the top lands
+        // the gap above the bottom; seen there, go to the bottom instead.
+        // Judged a moment after the first aim, once its scroll event has
+        // reported where the list landed.
+        let placedAt: number | null = null;
+        let atBottom = false;
+        const place = () => {
+            if (atBottom) {
+                scrollEl.current?.scrollToOffset({
+                    offset: 0,
+                    animated: false,
+                });
+                return;
+            }
+            if (
+                placedAt !== null &&
+                Date.now() - placedAt >= BOTTOM_CHECK_MS &&
+                metrics.current.offset <= UNREAD_DIVIDER_TOP_GAP + 1
+            ) {
+                atBottom = true;
+                place();
+                return;
+            }
+            const index = indexOfEvent(firstUnreadId);
+            if (index === null) return;
+            scrollRowIntoView(index, 1, false, -UNREAD_DIVIDER_TOP_GAP);
+            placedAt ??= Date.now();
+        };
+        const finish = () => {
+            // Something else (a jump, a room switch) already took over.
+            if (intervalId.current !== hold) return;
+            stopScrollIntoView();
+            setIsAtBottom(measureAtBottom());
+            if (isAtBottomRef.current && atLiveEdge())
+                markAsReadIfDisplayable();
+        };
+        place();
+        const hold = setInterval(place, 50);
+        intervalId.current = hold;
+        scrollStopTimeout.current = setTimeout(finish, UNREAD_HOLD_MS);
+    }
+
+    // Whether the bottom of what's shown is the newest message: always in the
+    // live timeline; in a window only once it has paged up to the live edge.
+    // Reaching the bottom only counts as reading the room there.
+    function atLiveEdge(): boolean {
+        if (contextMessagesRef.current === null) return true;
+        const win = contextWindowRef.current;
+        return !!win && !contextWindowCanPaginate(win, true);
+    }
     const [unreadMarkerEventId, setUnreadMarkerEventId, unreadMarkerRef] =
         useLiveState<string | null>(null);
+    // Where the "New Messages" divider sits. Unlike the marker above it stays
+    // for the whole visit (as in Discord), so reaching the bottom doesn't wipe
+    // out where the new messages started. Re-derived on every room open.
+    const [unreadDividerEventId, setUnreadDividerEventId, unreadDividerRef] =
+        useLiveState<string | null>(null);
+    // When the receipt's event isn't loaded, its time places the divider.
+    const [unreadReadTs, setUnreadReadTs, unreadReadTsRef] = useLiveState<
+        number | null
+    >(null);
+    // "Mark as unread" names the first UNREAD message, so the divider goes
+    // above unreadDividerEventId instead of below it.
+    const [unreadFromFirst, setUnreadFromFirst, unreadFromFirstRef] =
+        useLiveState(false);
+    // Marked unread while looking at the room: reaching the bottom or
+    // refocusing doesn't read it again; leaving or "Mark as read" do.
+    const keepUnreadHere = useRef(false);
+    // Row the divider sits above; -1 while the loaded rows don't reach back
+    // to the read position (or nothing is unread).
+    const dividerIndex = useMemo(
+        () =>
+            dividerIndexOf(
+                messages,
+                unreadDividerEventId,
+                unreadReadTs,
+                unreadFromFirst,
+            ),
+        [messages, unreadDividerEventId, unreadReadTs, unreadFromFirst],
+    );
+    // Zami: dividerIndex as it stands now, for the async code below.
+    function currentDividerIndex(): number {
+        return dividerIndexOf(
+            currentMessages(),
+            unreadDividerRef.current,
+            unreadReadTsRef.current,
+            unreadFromFirstRef.current,
+        );
+    }
+    // The unread bar's "N new messages since <time>". When the read position
+    // is further back than the loaded history, the count is a lower bound and
+    // "since" is when the user last read the room.
+    // Zami: refreshed on this room's timeline writes (`messages`) and on
+    // unread counts changing (unreadTick), not on every timelineTick.
+    const unreadTick = useRune(() => roomsState.unreadTick);
+    const unreadSummary = useMemo(() => {
+        void unreadTick;
+        if (!unreadMarkerEventId) return null;
+        if (dividerIndex >= 0) {
+            const since = messageTimestamp(messages[dividerIndex].getTs());
+            const loaded = messages.length - dividerIndex;
+            // A window opened at the read position holds only part of the
+            // unread run; the server's count covers all of it when the room
+            // notifies, else what's loaded is a lower bound.
+            if (
+                !isContextView ||
+                (!!contextWindow &&
+                    !contextWindowCanPaginate(contextWindow, true))
+            )
+                return {
+                    key: "messageArea.unreadSince",
+                    params: { count: loaded, since },
+                } as const;
+            const counted = room.getUnreadNotificationCount() ?? 0;
+            return counted >= loaded
+                ? ({
+                      key: "messageArea.unreadSince",
+                      params: { count: counted, since },
+                  } as const)
+                : ({
+                      key: "messageArea.unreadSinceMany",
+                      params: { count: loaded, since },
+                  } as const);
+        }
+        if (
+            !unreadFromFirst &&
+            messages.some((e) => e.getId() === unreadMarkerEventId)
+        )
+            return null;
+        const newest = messages[messages.length - 1];
+        if (unreadReadTs !== null && newest && newest.getTs() <= unreadReadTs)
+            return null;
+        const count = Math.max(
+            room.getUnreadNotificationCount() ?? 0,
+            messages.length,
+        );
+        return unreadReadTs
+            ? ({
+                  key: "messageArea.unreadSinceMany",
+                  params: { count, since: messageTimestamp(unreadReadTs) },
+              } as const)
+            : ({ key: "messageArea.unreadMany", params: { count } } as const);
+    }, [
+        unreadTick,
+        unreadMarkerEventId,
+        dividerIndex,
+        messages,
+        isContextView,
+        contextWindow,
+        room,
+        unreadFromFirst,
+        unreadReadTs,
+    ]);
 
     // This room's recent share of history events that render as a message
     // (low in rooms full of joins); sizes the next page (utils/backfillSizing).
@@ -1455,6 +1661,7 @@ export default function MessageArea({
         setReplyToEvent(null);
         setContextWindow(null);
         setContextMessages(null);
+        setContextAtReadPosition(false);
         // Release the backfill lock so the new room's initial backfill isn't
         // blocked by a load still in flight for the previous room (F2). The
         // finally in loadOlderMessages only clears the lock for its own room.
@@ -1476,7 +1683,6 @@ export default function MessageArea({
 
     // Load messages when room changes — always reload from SDK state (fast, in-memory)
     const openRoom = useEffectEvent((id: string) => {
-        let readUpTo: string | null = null;
         const events = getTimelineMessages(room);
         setMessages(id, events);
         // Re-derive "more history?" on every visit instead of trusting a
@@ -1486,20 +1692,118 @@ export default function MessageArea({
         // post-gap messages (older ones "vanished") and scrolling to the
         // top did nothing. loadPreviousMessages re-checks the real token.
         setCanLoadMore(id, true);
-        // Determine if there are unread messages by checking read marker vs last event
-        const marker = getReadUpToEventId(room);
-        const lastEventId = events[events.length - 1]?.getId();
-        if (marker && marker !== lastEventId) {
-            readUpTo = marker;
-        }
+        // Unread when our receipt is behind the newest event. Under
+        // sliding sync the receipt's event is usually not loaded yet
+        // (rooms open with only their newest event), so getReadUpToEventId
+        // is null and the receipt's own time has to tell.
+        // Zami: upstream's untrack block, as a function returning what it
+        // found.
+        const { readUpTo, readTs, fromFirst } = (() => {
+            let readUpTo: string | null = null;
+            const marker = getReadUpToEventId(room);
+            const receipt = getOwnReadReceipt(room);
+            const last = events[events.length - 1];
+            // "Mark as unread" wins over the receipt (which can't move back):
+            // from the chosen message, or the newest one when the room was
+            // marked without a position (room menu, another client).
+            const marked = getMarkedUnread(room);
+            const from =
+                marked?.from ??
+                (marked && last?.getId()
+                    ? { eventId: last.getId()!, ts: last.getTs() }
+                    : null);
+            if (from)
+                return {
+                    readUpTo: from.eventId,
+                    readTs: from.ts - 1,
+                    fromFirst: true,
+                };
+            if (marker) {
+                // Unread only when a shown message from someone else follows
+                // the receipt. It often sits on a hidden event (a join, a
+                // reaction, an edit) newer than the last shown message; a
+                // plain "not the last shown message" check called such a
+                // fully read room unread and opened it at the receipt.
+                const live = room.getLiveTimeline().getEvents();
+                const at = live.findIndex((e) => e.getId() === marker);
+                if (at < 0) {
+                    if (marker !== last?.getId()) readUpTo = marker;
+                } else {
+                    const shown = new Set(events);
+                    if (
+                        live
+                            .slice(at + 1)
+                            .some(
+                                (e) =>
+                                    shown.has(e) &&
+                                    e.getSender() !== auth.userId,
+                            )
+                    )
+                        readUpTo = marker;
+                }
+            } else if (
+                receipt &&
+                receipt.ts > 0 &&
+                last &&
+                last.getId() !== receipt.eventId &&
+                last.getSender() !== auth.userId &&
+                last.getTs() > receipt.ts
+            ) {
+                readUpTo = receipt.eventId;
+            }
+            return {
+                readUpTo,
+                readTs: receipt && receipt.ts > 0 ? receipt.ts : null,
+                fromFirst: false,
+            };
+        })();
         setUnreadMarkerEventId(readUpTo);
+        setUnreadDividerEventId(readUpTo);
+        setUnreadReadTs(readTs);
+        setUnreadFromFirst(fromFirst);
+        keepUnreadHere.current = false;
         void layoutSettled().then(async () => {
             if (readUpTo) {
-                // Scroll so the first unread message is visible near the top
-                const markerEl = await revealRow(readUpTo);
+                // The read position isn't loaded (under sliding sync a room
+                // opens with only its newest event). Open a window AT it, as
+                // a jump to that message would, instead of paging back from
+                // the present: an active room can have a huge gap, and pages
+                // are slow. Scrolling down pages the window forward; jumping
+                // to the present goes straight to the live timeline.
+                if (currentDividerIndex() < 0) {
+                    setJumpingToEventId(readUpTo);
+                    let win: TimelineWindow | null = null;
+                    try {
+                        win = await createContextWindow(room, readUpTo);
+                    } catch (err) {
+                        console.warn(
+                            "Opening at the read position failed:",
+                            err,
+                        );
+                    } finally {
+                        setJumpingToEventId(null);
+                    }
+                    if (roomRef.current.roomId !== id) return;
+                    if (win) {
+                        setContextWindow(win);
+                        setContextMessages(getContextWindowEvents(win));
+                        setContextAtReadPosition(true);
+                        await tick();
+                    }
+                }
                 if (roomRef.current.roomId !== id) return;
-                if (markerEl !== null && scrollEl.current) {
-                    scrollRowIntoView(markerEl, 0, false);
+                // Scroll so the first unread message is visible near the top
+                const at = currentDividerIndex();
+                const firstUnreadId =
+                    at >= 0 ? currentMessages()[at].getId() : null;
+                const markerEl = firstUnreadId
+                    ? await revealRow(firstUnreadId)
+                    : null;
+                if (roomRef.current.roomId !== id) return;
+                // Zami: the divider is part of the first unread row, so
+                // it's always there once the row is.
+                if (markerEl !== null && firstUnreadId && scrollEl.current) {
+                    holdDividerNearTop(firstUnreadId);
                 } else {
                     scrollToBottom(true);
                 }
@@ -1513,7 +1817,8 @@ export default function MessageArea({
             if (
                 scrollEl.current &&
                 scrollHeight > 0 &&
-                scrollHeight <= clientHeight
+                scrollHeight <= clientHeight &&
+                atLiveEdge()
             ) {
                 markAsReadIfDisplayable();
             }
@@ -1963,7 +2268,54 @@ export default function MessageArea({
         };
     }, [room]);
 
+    // Another device can read the room while it's open: drop the unread bar
+    // once our receipt reaches the latest event.
+    useEffect(() => {
+        void receiptTick;
+        if (!unreadMarkerRef.current || getMarkedUnread(room)) return;
+        const last = getLatestTimelineEvent(room);
+        if (last && getReadUpToEventId(room) === last.getId())
+            setUnreadMarkerEventId(null);
+    }, [receiptTick, room, unreadMarkerRef, setUnreadMarkerEventId]);
+
+    // Show the room as unread from `from` without leaving it (a message's
+    // "Mark as unread", here or on another device).
+    const showMarkedUnread = useEffectEvent(
+        (from: { eventId: string; ts: number }) => {
+            setUnreadMarkerEventId(from.eventId);
+            setUnreadDividerEventId(from.eventId);
+            setUnreadReadTs(from.ts - 1);
+            setUnreadFromFirst(true);
+            keepUnreadHere.current = true;
+        },
+    );
+    useEffect(() => {
+        interfaceState.markUnreadFrom = (from) => showMarkedUnread(from);
+        return () => {
+            interfaceState.markUnreadFrom = null;
+        };
+    }, []);
+    // The flag changing for this room while it's open: marked elsewhere shows
+    // it; cleared (another device reading it) ends it.
+    const onMarkedUnread = useEffectEvent((roomId: string) => {
+        const current = roomRef.current;
+        if (roomId !== current.roomId) return;
+        const marked = getMarkedUnread(current);
+        if (marked?.from) {
+            if (unreadDividerRef.current !== marked.from.eventId)
+                showMarkedUnread(marked.from);
+        } else if (!marked && keepUnreadHere.current) {
+            keepUnreadHere.current = false;
+            setUnreadMarkerEventId(null);
+        }
+    });
+    useEffect(
+        () => onMarkedUnreadChange((roomId) => onMarkedUnread(roomId)),
+        [room],
+    );
+
     function markAsRead() {
+        keepUnreadHere.current = false;
         const currentRoom = roomRef.current;
         const last = getLatestTimelineEvent(currentRoom);
         if (!last) return;
@@ -1979,6 +2331,7 @@ export default function MessageArea({
     // in the background. While gated out, local unread state deliberately
     // persists — it clears when the user next focuses (onWindowFocusRegained).
     function markAsReadIfDisplayable() {
+        if (keepUnreadHere.current) return;
         // Zami: the window's focus and visibility are AppState's "active".
         const active = AppState.currentState === "active";
         if (canSendReceipt({ hasFocus: active, visible: active })) {
@@ -2012,8 +2365,12 @@ export default function MessageArea({
 
     // Shift+PageUp (Settings > Keybinds): back to the oldest unread message.
     const jumpToUnread = useEffectEvent(() => {
-        if (unreadMarkerRef.current)
-            void scrollToMessage(unreadMarkerRef.current);
+        const at = currentDividerIndex();
+        if (at >= 0) {
+            const firstUnread = currentMessages()[at].getId();
+            if (firstUnread) void scrollToMessage(firstUnread);
+        } else if (unreadDividerRef.current)
+            void scrollToMessage(unreadDividerRef.current);
     });
     useEffect(() => {
         interfaceState.jumpToUnread = () => jumpToUnread();
@@ -2313,17 +2670,22 @@ export default function MessageArea({
         const held = viewableKeys.current[0];
         setContextWindow(null);
         setContextMessages(null);
+        setContextAtReadPosition(false);
         setMessages(currentRoom.roomId, live);
         await tick();
         const el = anchor ? await revealRow(anchor.eventId) : null;
         if (el === null || !scrollEl.current) {
             scrollToBottom(true);
-            return;
+        } else {
+            if (!held || !live.some((e) => rowKey(e) === held))
+                scrollRowIntoView(el, 1, false);
+            await layoutSettled();
+            setIsAtBottom(measureAtBottom());
         }
-        if (!held || !live.some((e) => rowKey(e) === held))
-            scrollRowIntoView(el, 1, false);
-        await layoutSettled();
-        setIsAtBottom(measureAtBottom());
+        // Landing at the present from a window opened at the read position
+        // reads the room; no scroll event follows to say so.
+        if (isAtBottomRef.current && unreadMarkerRef.current)
+            markAsReadIfDisplayable();
     }
 
     // Every message row at least partly on screen, top to bottom, with its
@@ -2516,7 +2878,7 @@ export default function MessageArea({
     const rowsContext = useMemo(
         (): RowsContext => ({
             messages,
-            unreadMarkerEventId,
+            dividerIndex,
             isRawDebugEvent,
             ignoredUserIds,
             myUserId,
@@ -2529,7 +2891,7 @@ export default function MessageArea({
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- isRawDebugEvent reads showAllEvents and debugTick.
         [
             messages,
-            unreadMarkerEventId,
+            dividerIndex,
             showAllEvents,
             debugTick,
             ignoredUserIds,
@@ -3179,7 +3541,9 @@ export default function MessageArea({
                             {/* Scroll to bottom button. Hidden while a composer suggestion list is
                                 open so it doesn't fight the autocomplete for the same space. */}
                             {!isAtBottom &&
-                            !isContextView &&
+                            (!isContextView ||
+                                unreadSummary ||
+                                contextAtReadPosition) &&
                             messages.length > 0 &&
                             !composerAutocompleteOpen ? (
                                 <View
@@ -3192,7 +3556,11 @@ export default function MessageArea({
                                         preventDefault. */}
                                     <Pressable
                                         accessibilityRole="button"
-                                        onPress={() => scrollToBottom(false)}
+                                        onPress={() =>
+                                            isContextView
+                                                ? void rejoinLive()
+                                                : scrollToBottom(false)
+                                        }
                                         className="bg-discord-backgroundSecondary hover:bg-discord-messageHover px-3 py-1.5 rounded-full shadow-lg border border-discord-divider transition-colors flex-row items-center gap-1.5"
                                     >
                                         <SvgIcon
@@ -3224,8 +3592,48 @@ export default function MessageArea({
                                 </View>
                             ) : null}
 
-                            {/* Context view banner */}
-                            {isContextView ? (
+                            {/* Unread bar: how much arrived since last visit, with a jump back to
+                                the divider and a way to dismiss it without scrolling down. */}
+                            {unreadSummary ? (
+                                <View className="absolute top-12 start-0 end-0 mx-4 z-10 flex-row items-stretch rounded-b-lg overflow-hidden shadow-lg bg-discord-accent">
+                                    <Pressable
+                                        accessibilityRole="button"
+                                        onPress={() =>
+                                            interfaceState.jumpToUnread?.()
+                                        }
+                                        className="flex-1 min-w-0 px-3 py-1 hover:bg-white/10"
+                                    >
+                                        <Text
+                                            numberOfLines={1}
+                                            className="text-white text-sm font-semibold"
+                                        >
+                                            {t(
+                                                unreadSummary.key,
+                                                unreadSummary.params,
+                                            )}
+                                        </Text>
+                                    </Pressable>
+                                    <Pressable
+                                        accessibilityRole="button"
+                                        onPress={markAsRead}
+                                        className="flex-shrink-0 px-3 py-1 hover:bg-white/10 flex-row items-center gap-1"
+                                    >
+                                        <Text className="text-white text-sm font-semibold">
+                                            {t("messageArea.markAsRead")}
+                                        </Text>
+                                        <SvgIcon
+                                            className="w-4 h-4 text-white"
+                                            d={CHECK_PATH}
+                                        />
+                                    </Pressable>
+                                </View>
+                            ) : null}
+
+                            {/* Context view banner (the unread bar stands in for it while a room
+                                is opened at the read position) */}
+                            {isContextView &&
+                            !unreadSummary &&
+                            !contextAtReadPosition ? (
                                 <View
                                     pointerEvents="box-none"
                                     className="absolute top-12 start-0 end-0 flex-row justify-center z-10"
@@ -3569,7 +3977,8 @@ const rowKey = (event: MatrixEvent) => timelineKey(event) ?? "";
 /** Zami: what a row reads to work out its props (see rowsContext). */
 interface RowsContext {
     messages: MatrixEvent[];
-    unreadMarkerEventId: string | null;
+    /** The row the "New Messages" divider sits above, or -1. */
+    dividerIndex: number;
     isRawDebugEvent: (event: MatrixEvent) => boolean;
     ignoredUserIds: string[];
     myUserId: string | null;
@@ -3601,7 +4010,7 @@ function createRowsStore(): RowsStore {
     const store: RowsStore = {
         context: {
             messages: [],
-            unreadMarkerEventId: null,
+            dividerIndex: -1,
             isRawDebugEvent: () => false,
             ignoredUserIds: [],
             myUserId: null,
@@ -3657,9 +4066,7 @@ function rowPropsOf(context: RowsContext, event: MatrixEvent): RowProps {
         messages,
         index: i,
         sepTs: i >= 0 ? dateSeparatorLabel(messages, i) : null,
-        unreadHere:
-            i >= 0 &&
-            unreadDividerBefore(messages, i, context.unreadMarkerEventId),
+        unreadHere: i >= 0 && i === context.dividerIndex,
         rawDebug: context.isRawDebugEvent(event),
         blocked:
             shouldHideMessage(
