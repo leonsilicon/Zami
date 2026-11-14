@@ -86,6 +86,9 @@ const APP_USER_MODEL_ID = "moe.crafty.matrix";
 const ICONS_DIR = path
     .join(__dirname, "icons")
     .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+// window.open name of the call's floating video; see setWindowOpenHandler.
+const CALL_PIP_FRAME = "zam-call-pip";
+const callPipWindows = new Set();
 const ICON_PATH = path.join(
     ICONS_DIR,
     process.platform === "win32" ? "icon.ico" : "icon.png",
@@ -2220,9 +2223,78 @@ async function createWindow() {
     const appOrigin = new URL(url).origin;
 
     // Open target=_blank / window.open links in the system browser, not a new window.
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // One exception: the call's floating video (src/lib/stores/callPip.svelte.ts),
+    // a blank popup the page fills itself. Chromium's own picture-in-picture
+    // window prints the page origin on it, our loopback address and port.
+    mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+        if (url === "about:blank" && frameName === CALL_PIP_FRAME) {
+            return {
+                action: "allow",
+                overrideBrowserWindowOptions: {
+                    width: 480,
+                    height: 270,
+                    minWidth: 160,
+                    minHeight: 90,
+                    title: "Zam",
+                    icon: ICON_PATH,
+                    backgroundColor: "#000000",
+                    // The page draws Chromium-style controls and drags itself.
+                    frame: false,
+                    alwaysOnTop: true,
+                    fullscreenable: false,
+                    minimizable: false,
+                    maximizable: false,
+                    skipTaskbar: true,
+                    webPreferences: {
+                        contextIsolation: true,
+                        nodeIntegration: false,
+                        sandbox: true,
+                    },
+                },
+            };
+        }
         openExternalSafely(url);
         return { action: "deny" };
+    });
+    mainWindow.webContents.on("did-create-window", (win, { frameName }) => {
+        if (frameName !== CALL_PIP_FRAME) return;
+        callPipWindows.add(win);
+        win.on("closed", () => callPipWindows.delete(win));
+        win.removeMenu();
+        // Above full-screen games and players too, like a system PiP window.
+        win.setAlwaysOnTop(true, "screen-saver");
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+        // Keep the page's own title ("Zam"), never an address.
+        win.on("page-title-updated", (e) => e.preventDefault());
+        win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+        win.webContents.on("will-navigate", (e) => e.preventDefault());
+        // The page is all drag region (it moves the frameless window), and a
+        // drag region gets no mouse events, so :hover never fires there.
+        // Watch the cursor here and tell the page when it is over the window.
+        let hovered = false;
+        const hoverTimer = setInterval(() => {
+            if (win.isDestroyed()) return;
+            const p = screen.getCursorScreenPoint();
+            const b = win.getBounds();
+            const inside =
+                p.x >= b.x &&
+                p.x < b.x + b.width &&
+                p.y >= b.y &&
+                p.y < b.y + b.height;
+            if (inside === hovered) return;
+            hovered = inside;
+            win.webContents
+                .executeJavaScript(
+                    `document.documentElement.classList.toggle("hover", ${inside})`,
+                )
+                .catch(() => {});
+        }, 100);
+        win.on("closed", () => clearInterval(hoverTimer));
+    });
+    // It has no parent (an owned window would hide when the app minimises),
+    // so close it with the app ourselves.
+    mainWindow.on("closed", () => {
+        for (const w of callPipWindows) if (!w.isDestroyed()) w.close();
     });
 
     // Any attempt to navigate the window away from the app → open externally.
