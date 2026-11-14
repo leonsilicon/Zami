@@ -43,6 +43,9 @@
         getRoom,
         isRoomCachedOnly,
         getReadUpToEventId,
+        getOwnReadReceipt,
+        getMarkedUnread,
+        onMarkedUnreadChange,
         getReceiptsByDisplayedEvent,
         onReceiptEvent,
         getRoomCallMemberships,
@@ -101,13 +104,13 @@
     import {
         shouldShowHeader,
         dateSeparatorLabel,
-        unreadDividerBefore,
+        unreadDividerIndex,
         isNearBottom,
         timelineKey,
     } from "$lib/utils/timelineDisplay";
     import { shouldDismissSelectionOnScroll } from "$lib/utils/scrollDismiss";
     import { targetCanScrollHoriz } from "$lib/utils/scrollHoriz";
-    import { daySeparator } from "$lib/utils/timeFormat";
+    import { daySeparator, messageTimestamp } from "$lib/utils/timeFormat";
     import { renderPlainTextWithTwemoji } from "$lib/utils/twemojiText";
     import { canSendReceipt } from "$lib/utils/receiptGate";
     import {
@@ -642,6 +645,7 @@
                 if (win && room.roomId === rid) {
                     contextWindow = win;
                     contextMessages = getContextWindowEvents(win);
+                    contextAtReadPosition = false;
                     await tick();
                 }
             } finally {
@@ -1036,6 +1040,11 @@
     // back to the live timeline (see rejoinLive / maybeLoadNewer).
     let contextWindow = $state<TimelineWindow | null>(null);
     let contextMessages = $state<MatrixEvent[] | null>(null);
+    // The window was opened at the read position by entering the room, not
+    // by jumping to a message. It's an ordinary visit: "Jump to present"
+    // stays and the "Viewing message context" banner never shows, even once
+    // the room is read and the unread bar goes away.
+    let contextAtReadPosition = $state(false);
     let loadingNewer = $state(false);
     const messages = $derived(contextMessages ?? getMessages(roomId));
     const receiptsByEvent = $derived.by(() => {
@@ -1435,8 +1444,136 @@
             : getCallSummaries(room)),
     );
 
-    // The event ID the user has read up to — used to show "New messages" divider on load
+    // The event ID the user had read up to when they opened the room, while
+    // that read state is still unacknowledged. Drives the unread bar and turns
+    // off sticking to the bottom; cleared once the room is marked read.
+    // Gap left above the divider on open: some read history plus the bar.
+    const UNREAD_DIVIDER_TOP_GAP = 72;
+    // Put the "New Messages" divider near the top (a little read history
+    // above it, room for the unread bar) and keep it there while rows and
+    // media around it settle, as a jump to a message does. Any wheel, touch
+    // or key input hands control back at once. Few unread messages clamp
+    // this to the bottom, which counts as reading them.
+    function holdDividerNearTop() {
+        const el = scrollEl;
+        if (!el) return;
+        stopScrollIntoView();
+        const place = () => {
+            const divider = el.querySelector<HTMLElement>(
+                "[data-unread-divider]",
+            );
+            if (!divider) return;
+            const delta =
+                divider.getBoundingClientRect().top -
+                el.getBoundingClientRect().top -
+                UNREAD_DIVIDER_TOP_GAP;
+            if (Math.abs(delta) > 1) el.scrollTop += delta;
+        };
+        const userTookOver = () => finish();
+        const inputs = ["wheel", "touchstart", "keydown", "pointerdown"];
+        const finish = () => {
+            for (const type of inputs)
+                el.removeEventListener(type, userTookOver);
+            // Something else (a jump, a room switch) already took over.
+            if (intervalId !== hold) return;
+            stopScrollIntoView();
+            isAtBottom = measureAtBottom();
+            captureScrollAnchor();
+            if (isAtBottom && atLiveEdge()) markAsReadIfDisplayable();
+        };
+        for (const type of inputs)
+            el.addEventListener(type, userTookOver, { passive: true });
+        place();
+        const hold = setInterval(place, 50);
+        intervalId = hold;
+        scrollStopTimeout = setTimeout(finish, UNREAD_HOLD_MS);
+    }
+    const UNREAD_HOLD_MS = 1500;
+
+    // Whether the bottom of what's shown is the newest message: always in the
+    // live timeline; in a window only once it has paged up to the live edge.
+    // Reaching the bottom only counts as reading the room there.
+    function atLiveEdge(): boolean {
+        if (!isContextView) return true;
+        return (
+            !!contextWindow && !contextWindowCanPaginate(contextWindow, true)
+        );
+    }
     let unreadMarkerEventId = $state<string | null>(null);
+    // Where the "New Messages" divider sits. Unlike the marker above it stays
+    // for the whole visit (as in Discord), so reaching the bottom doesn't wipe
+    // out where the new messages started. Re-derived on every room open.
+    let unreadDividerEventId = $state<string | null>(null);
+    // When the receipt's event isn't loaded, its time places the divider.
+    let unreadReadTs = $state<number | null>(null);
+    // "Mark as unread" names the first UNREAD message, so the divider goes
+    // above unreadDividerEventId instead of below it.
+    let unreadFromFirst = $state(false);
+    // Marked unread while looking at the room: reaching the bottom or
+    // refocusing doesn't read it again; leaving, Escape or "Mark as read" do.
+    let keepUnreadHere = $state(false);
+    // Row the divider sits above; -1 while the loaded rows don't reach back
+    // to the read position (or nothing is unread).
+    const dividerIndex = $derived.by(() => {
+        if (!unreadDividerEventId) return -1;
+        if (unreadFromFirst) {
+            const i = messages.findIndex(
+                (e) => e.getId() === unreadDividerEventId,
+            );
+            return i >= 0
+                ? i
+                : unreadDividerIndex(messages, null, unreadReadTs);
+        }
+        return unreadDividerIndex(messages, unreadDividerEventId, unreadReadTs);
+    });
+    // The unread bar's "N new messages since <time>". When the read position
+    // is further back than the loaded history, the count is a lower bound and
+    // "since" is when the user last read the room.
+    const unreadSummary = $derived.by(() => {
+        if (!unreadMarkerEventId) return null;
+        void messagesState.timelineTick;
+        if (dividerIndex >= 0) {
+            const since = messageTimestamp(messages[dividerIndex].getTs());
+            const loaded = messages.length - dividerIndex;
+            // A window opened at the read position holds only part of the
+            // unread run; the server's count covers all of it when the room
+            // notifies, else what's loaded is a lower bound.
+            if (!isContextView || atLiveEdge())
+                return {
+                    key: "messageArea.unreadSince",
+                    params: { count: loaded, since },
+                } as const;
+            const counted = room.getUnreadNotificationCount() ?? 0;
+            return counted >= loaded
+                ? ({
+                      key: "messageArea.unreadSince",
+                      params: { count: counted, since },
+                  } as const)
+                : ({
+                      key: "messageArea.unreadSinceMany",
+                      params: { count: loaded, since },
+                  } as const);
+        }
+        if (
+            !unreadFromFirst &&
+            messages.some((e) => e.getId() === unreadMarkerEventId)
+        )
+            return null;
+        const newest = messages[messages.length - 1];
+        if (unreadReadTs !== null && newest && newest.getTs() <= unreadReadTs)
+            return null;
+        void messagesState.timelineTick;
+        const count = Math.max(
+            room.getUnreadNotificationCount() ?? 0,
+            messages.length,
+        );
+        return unreadReadTs
+            ? ({
+                  key: "messageArea.unreadSinceMany",
+                  params: { count, since: messageTimestamp(unreadReadTs) },
+              } as const)
+            : ({ key: "messageArea.unreadMany", params: { count } } as const);
+    });
 
     // Clear reply and context view when switching rooms
     $effect(() => {
@@ -1444,6 +1581,7 @@
         replyToEvent = null;
         contextWindow = null;
         contextMessages = null;
+        contextAtReadPosition = false;
         // Release the backfill lock so the new room's initial backfill isn't
         // blocked by a load still in flight for the previous room (F2). The
         // finally in loadOlderMessages only clears the lock for its own room.
@@ -1456,6 +1594,8 @@
     $effect(() => {
         const id = room.roomId; // track room changes
         let readUpTo: string | null = null;
+        let readTs: number | null = null;
+        let fromFirst = false;
         untrack(() => {
             const events = getTimelineMessages(room);
             setMessages(id, events);
@@ -1466,21 +1606,114 @@
             // post-gap messages (older ones "vanished") and scrolling to the
             // top did nothing. loadPreviousMessages re-checks the real token.
             setCanLoadMore(id, true);
-            // Determine if there are unread messages by checking read marker vs last event
+            // Unread when our receipt is behind the newest event. Under
+            // sliding sync the receipt's event is usually not loaded yet
+            // (rooms open with only their newest event), so getReadUpToEventId
+            // is null and the receipt's own time has to tell.
             const marker = getReadUpToEventId(room);
-            const lastEventId = events[events.length - 1]?.getId();
-            if (marker && marker !== lastEventId) {
-                readUpTo = marker;
+            const receipt = getOwnReadReceipt(room);
+            const last = events[events.length - 1];
+            // "Mark as unread" wins over the receipt (which can't move back):
+            // from the chosen message, or the newest one when the room was
+            // marked without a position (room menu, another client).
+            const marked = getMarkedUnread(room);
+            const from =
+                marked?.from ??
+                (marked && last?.getId()
+                    ? { eventId: last.getId()!, ts: last.getTs() }
+                    : null);
+            if (from) {
+                readUpTo = from.eventId;
+                readTs = from.ts - 1;
+                fromFirst = true;
+                return;
             }
+            if (marker) {
+                // Unread only when a shown message from someone else follows
+                // the receipt. It often sits on a hidden event (a join, a
+                // reaction, an edit) newer than the last shown message; a
+                // plain "not the last shown message" check called such a
+                // fully read room unread and opened it at the receipt.
+                const live = room.getLiveTimeline().getEvents();
+                const at = live.findIndex((e) => e.getId() === marker);
+                if (at < 0) {
+                    if (marker !== last?.getId()) readUpTo = marker;
+                } else {
+                    const shown = new Set(events);
+                    if (
+                        live
+                            .slice(at + 1)
+                            .some(
+                                (e) =>
+                                    shown.has(e) &&
+                                    e.getSender() !== auth.userId,
+                            )
+                    )
+                        readUpTo = marker;
+                }
+            } else if (
+                receipt &&
+                receipt.ts > 0 &&
+                last &&
+                last.getId() !== receipt.eventId &&
+                last.getSender() !== auth.userId &&
+                last.getTs() > receipt.ts
+            ) {
+                readUpTo = receipt.eventId;
+            }
+            readTs = receipt && receipt.ts > 0 ? receipt.ts : null;
         });
         unreadMarkerEventId = readUpTo;
+        unreadDividerEventId = readUpTo;
+        unreadReadTs = readTs;
+        unreadFromFirst = fromFirst;
+        keepUnreadHere = false;
         tick().then(async () => {
             if (readUpTo) {
+                // The read position isn't loaded (under sliding sync a room
+                // opens with only its newest event). Open a window AT it, as
+                // a jump to that message would, instead of paging back from
+                // the present: an active room can have a huge gap, and pages
+                // are slow. Scrolling down pages the window forward; jumping
+                // to the present goes straight to the live timeline.
+                if (dividerIndex < 0) {
+                    jumpingToEventId = readUpTo;
+                    let win: TimelineWindow | null = null;
+                    try {
+                        win = await createContextWindow(room, readUpTo);
+                    } catch (err) {
+                        console.warn(
+                            "Opening at the read position failed:",
+                            err,
+                        );
+                    } finally {
+                        jumpingToEventId = null;
+                    }
+                    if (room.roomId !== id) return;
+                    if (win) {
+                        contextWindow = win;
+                        contextMessages = getContextWindowEvents(win);
+                        contextAtReadPosition = true;
+                        await tick();
+                    }
+                }
+                if (room.roomId !== id) return;
                 // Scroll so the first unread message is visible near the top
-                const markerEl = await revealRow(readUpTo);
+                const firstUnreadId =
+                    dividerIndex >= 0 ? messages[dividerIndex].getId() : null;
+                const markerEl = firstUnreadId
+                    ? await revealRow(firstUnreadId)
+                    : null;
                 if (room.roomId !== id) return;
                 if (markerEl && scrollEl) {
-                    markerEl.scrollIntoView({ block: "end" });
+                    const divider = scrollEl.querySelector<HTMLElement>(
+                        "[data-unread-divider]",
+                    );
+                    if (divider) {
+                        holdDividerNearTop();
+                    } else {
+                        markerEl.scrollIntoView({ block: "start" });
+                    }
                 } else {
                     scrollToBottom(true);
                 }
@@ -1489,7 +1722,11 @@
             }
             // If the scroll area isn't tall enough to scroll, onScroll never fires,
             // so markAsRead() is never called. Handle that here.
-            if (scrollEl && scrollEl.scrollHeight <= scrollEl.clientHeight) {
+            if (
+                scrollEl &&
+                scrollEl.scrollHeight <= scrollEl.clientHeight &&
+                atLiveEdge()
+            ) {
                 markAsReadIfDisplayable();
             }
             backfillFromTop();
@@ -1865,7 +2102,52 @@
         });
     });
 
+    // Another device, or Escape (Settings > Keybinds), can read the room while
+    // it's open: drop the unread bar once our receipt reaches the latest event.
+    $effect(() => {
+        void receiptTick;
+        untrack(() => {
+            if (!unreadMarkerEventId || getMarkedUnread(room)) return;
+            const last = getLatestTimelineEvent(room);
+            if (last && getReadUpToEventId(room) === last.getId())
+                unreadMarkerEventId = null;
+        });
+    });
+
+    // Show the room as unread from `from` without leaving it (a message's
+    // "Mark as unread", here or on another device).
+    function showMarkedUnread(from: { eventId: string; ts: number }) {
+        unreadMarkerEventId = from.eventId;
+        unreadDividerEventId = from.eventId;
+        unreadReadTs = from.ts - 1;
+        unreadFromFirst = true;
+        keepUnreadHere = true;
+    }
+    $effect(() => {
+        interfaceState.markUnreadFrom = showMarkedUnread;
+        return () => {
+            interfaceState.markUnreadFrom = null;
+        };
+    });
+    // The flag changing for this room while it's open: marked elsewhere shows
+    // it; cleared (Escape, another device reading it) ends it.
+    $effect(() => {
+        const current = room;
+        return onMarkedUnreadChange((roomId) => {
+            if (roomId !== current.roomId) return;
+            const marked = getMarkedUnread(current);
+            if (marked?.from) {
+                if (unreadDividerEventId !== marked.from.eventId)
+                    showMarkedUnread(marked.from);
+            } else if (!marked && keepUnreadHere) {
+                keepUnreadHere = false;
+                unreadMarkerEventId = null;
+            }
+        });
+    });
+
     function markAsRead() {
+        keepUnreadHere = false;
         const currentRoom = room;
         const last = getLatestTimelineEvent(currentRoom);
         if (!last) return;
@@ -1881,6 +2163,7 @@
     // in the background. While gated out, local unread state deliberately
     // persists — it clears when the user next focuses (onWindowFocusRegained).
     function markAsReadIfDisplayable() {
+        if (keepUnreadHere) return;
         if (
             canSendReceipt({
                 hasFocus: document.hasFocus(),
@@ -1920,7 +2203,11 @@
     // Shift+PageUp (Settings > Keybinds): back to the oldest unread message.
     $effect(() => {
         interfaceState.jumpToUnread = () => {
-            if (unreadMarkerEventId) void scrollToMessage(unreadMarkerEventId);
+            if (dividerIndex >= 0) {
+                const firstUnread = messages[dividerIndex].getId();
+                if (firstUnread) void scrollToMessage(firstUnread);
+            } else if (unreadDividerEventId)
+                void scrollToMessage(unreadDividerEventId);
         };
         return () => {
             interfaceState.jumpToUnread = null;
@@ -2377,15 +2664,19 @@
         }
         contextWindow = null;
         contextMessages = null;
+        contextAtReadPosition = false;
         setMessages(roomId, live);
         await tick();
         const el = anchor ? await revealRow(anchor.eventId) : null;
         if (!el || !scrollEl) {
             scrollToBottom(true);
-            return;
+        } else {
+            scrollEl.scrollTop += el.getBoundingClientRect().top - anchor!.top;
+            isAtBottom = measureAtBottom();
         }
-        scrollEl.scrollTop += el.getBoundingClientRect().top - anchor!.top;
-        isAtBottom = measureAtBottom();
+        // Landing at the present from a window opened at the read position
+        // reads the room; no scroll event follows to say so.
+        if (isAtBottom && unreadMarkerEventId) markAsReadIfDisplayable();
     }
 
     // Every message row at least partly on screen, top to bottom, with its
@@ -3008,18 +3299,15 @@
                 {@const sepTs = dateSeparatorLabel(messages, i)}
                 {@const receipts =
                     receiptsByEvent?.get(event.getId() ?? "") ?? NO_RECEIPTS}
-                {@const unreadHere = unreadDividerBefore(
-                    messages,
-                    i,
-                    unreadMarkerEventId,
-                )}
+                {@const unreadHere = i === dividerIndex}
+                {@const anchorHere = unreadHere && unreadMarkerEventId !== null}
                 <!-- One box per row, measured for the spacers. It carries the
                      unread divider's anchoring: a child can't opt back in
                      under a parent that opted out. -->
                 <div
                     data-row-index={i}
                     use:measureRow={rowKey(event)}
-                    class="flex-shrink-0{unreadHere
+                    class="flex-shrink-0{anchorHere
                         ? ' ![overflow-anchor:auto]'
                         : ''}"
                 >
@@ -3035,7 +3323,10 @@
                     {/if}
                     {#if unreadHere}
                         <div
-                            class="flex items-center gap-3 px-4 my-2 ![overflow-anchor:auto]"
+                            data-unread-divider
+                            class="flex items-center gap-3 px-4 my-2{anchorHere
+                                ? ' ![overflow-anchor:auto]'
+                                : ''}"
                         >
                             <div class="flex-1 h-px bg-discord-danger/60"></div>
                             <span
@@ -3163,14 +3454,17 @@
 
         <!-- Scroll to bottom button. Hidden while a composer suggestion list is
              open so it doesn't fight the autocomplete for the same space. -->
-        {#if !isAtBottom && !isContextView && messages.length > 0 && !composerAutocompleteOpen}
+        {#if !isAtBottom && (!isContextView || unreadSummary || contextAtReadPosition) && messages.length > 0 && !composerAutocompleteOpen}
             <div
                 class="absolute start-0 end-0 flex justify-center z-10 pointer-events-none"
                 style="bottom: {composerHeight + 12}px;"
             >
                 <button
                     onpointerdown={(e) => e.preventDefault()}
-                    onclick={() => scrollToBottom(false)}
+                    onclick={() =>
+                        isContextView
+                            ? void rejoinLive()
+                            : scrollToBottom(false)}
                     class="pointer-events-auto bg-discord-backgroundSecondary hover:bg-discord-messageHover text-discord-textPrimary px-3 py-1.5 rounded-full shadow-lg text-sm font-medium border border-discord-divider transition-colors flex items-center gap-1.5"
                 >
                     <svg
@@ -3204,8 +3498,36 @@
             </div>
         {/if}
 
-        <!-- Context view banner -->
-        {#if isContextView}
+        <!-- Unread bar: how much arrived since last visit, with a jump back to
+             the divider and a way to dismiss it without scrolling down. -->
+        {#if unreadSummary}
+            <div
+                class="absolute top-12 start-0 end-0 mx-4 z-10 flex items-stretch rounded-b-lg overflow-hidden shadow-lg bg-discord-accent text-white text-sm font-semibold"
+            >
+                <button
+                    onpointerdown={(e) => e.preventDefault()}
+                    onclick={() => interfaceState.jumpToUnread?.()}
+                    class="flex-1 min-w-0 text-start px-3 py-1 hover:bg-white/10 truncate"
+                    >{t(unreadSummary.key, unreadSummary.params)}</button
+                >
+                <button
+                    onpointerdown={(e) => e.preventDefault()}
+                    onclick={markAsRead}
+                    class="flex-shrink-0 px-3 py-1 hover:bg-white/10 flex items-center gap-1"
+                >
+                    {t("messageArea.markAsRead")}
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"
+                        ><path
+                            d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                        /></svg
+                    >
+                </button>
+            </div>
+        {/if}
+
+        <!-- Context view banner (the unread bar stands in for it while a room
+             is opened at the read position) -->
+        {#if isContextView && !unreadSummary && !contextAtReadPosition}
             <div
                 class="absolute top-12 start-0 end-0 flex justify-center z-10 pointer-events-none"
             >

@@ -1323,6 +1323,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.loadingHistory": "Загрузка более старых сообщений",
     "messageArea.room": ".",
     "messageArea.newMessages": "Новые сообщения",
+    "messageArea.unreadSince":
+        "{count, plural, one {# новое сообщение с {since}} few {# новых сообщения с {since}} many {# новых сообщений с {since}} other {# новых сообщения с {since}}}",
+    "messageArea.markAsRead": "Отметить как прочитанное",
+    "messageArea.unreadSinceMany": "{count}+ новых сообщений с {since}",
+    "messageArea.unreadMany": "{count}+ новых сообщений",
     "messageArea.messageFromABlockedUser":
         "Сообщение заблокированного пользователя",
     "messageArea.showBlockedMessage": "Показать заблокированное сообщение",
@@ -2058,6 +2063,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "Нет комнат",
     "roomList.copyRoomLink": "Копировать ссылку на комнату",
     "roomList.markAsRead": "Отметить прочитанным",
+    "roomList.markAsUnread": "Отметить как непрочитанное",
     "roomList.addToSpace": "Добавить в пространство",
     "roomList.clickAgainToLeave": "Нажмите ещё раз, чтобы выйти",
     "roomList.clickAgainToLeaveLastMember":
@@ -3714,6 +3720,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Открепить",
     "messageActionsMenu.pin": "Закрепить",
     "messageActionsMenu.copyLink": "Копировать ссылку",
+    "messageActionsMenu.markUnread": "Отметить как непрочитанное",
+    "messageActionsMenu.couldNotMarkUnread":
+        "Не удалось отметить как непрочитанное",
     "messageActionsMenu.report": "Пожаловаться",
 
     // src/lib/utils/messageDisplay.ts

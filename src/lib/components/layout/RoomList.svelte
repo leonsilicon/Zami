@@ -23,6 +23,7 @@
         canInviteToRoom,
         getRoomShareLink,
         markRoomAsRead,
+        markRoomUnreadFromLatest,
         getSpaces,
         getRoomDisplayName as getSpaceName,
         addRoomToSpace,
@@ -63,7 +64,7 @@
         Circle,
         Check,
     } from "lucide-svelte";
-    import { presenceState, presenceFor } from "$lib/stores/presence.svelte";
+    import { presenceFor } from "$lib/stores/presence.svelte";
     import { settingsState, setDmSortOrder } from "$lib/stores/settings.svelte";
     import {
         presenceDot,
@@ -118,9 +119,9 @@
     let { onOpenSpaceSettings, onOpenRoomSettings }: Props = $props();
 
     // Presence dot per DM partner, keyed by room id. Unknown presence (server
-    // may have it disabled) renders as offline.
+    // may have it disabled) renders as offline. presenceFor subscribes per
+    // partner, so only a change for a shown DM re-runs this.
     const dmPresence = $derived.by(() => {
-        void presenceState.presenceTick;
         void roomsState.roomsTick;
         const map = new Map<string, { dotClass: string; label: string }>();
         for (const room of roomsState.directRooms) {
@@ -333,6 +334,18 @@
         await markRoomAsRead(roomId);
     }
 
+    async function handleMarkUnread(roomId: string) {
+        closeModal();
+        try {
+            const from = await markRoomUnreadFromLatest(roomId);
+            // The open room shows it at once rather than on the sync echo.
+            if (from && roomId === roomsState.activeRoomId)
+                interfaceState.markUnreadFrom?.(from);
+        } catch {
+            showErrorToast(t("messageActionsMenu.couldNotMarkUnread"));
+        }
+    }
+
     async function handleSetNotification(
         roomId: string,
         setting: RoomNotificationSetting,
@@ -426,12 +439,12 @@
 
     // Untagged DMs sort by the order picked in the header menu (latest
     // message by default; the SDK's room order is arbitrary). unreadTick: a
-    // new message or a read moves the row; presenceTick: "online first".
+    // new message or a read moves the row; "online first" re-reads presence
+    // per partner through presenceFor.
     const sortedDirectRooms = $derived.by(() => {
         void roomsState.roomsTick;
         void roomsState.unreadTick;
         const order = settingsState.dmSortOrder;
-        if (order === "online") void presenceState.presenceTick;
         const facts = new Map<string, DmSortFacts>();
         for (const room of roomsState.directRooms) {
             const found = latestMessage([
@@ -1938,6 +1951,11 @@
                 onclick={() => handleMarkRead(cm.roomId)}
                 class="w-full text-start px-3 py-1.5 text-sm text-discord-textSecondary hover:bg-discord-messageHover hover:text-discord-textPrimary transition-colors"
                 >{t("roomList.markAsRead")}</button
+            >
+            <button
+                onclick={() => handleMarkUnread(cm.roomId)}
+                class="w-full text-start px-3 py-1.5 text-sm text-discord-textSecondary hover:bg-discord-messageHover hover:text-discord-textPrimary transition-colors"
+                >{t("roomList.markAsUnread")}</button
             >
             <div class="w-full h-px bg-discord-divider my-1"></div>
             <!-- px-3 matches this menu's buttons, not the sidebar's list headings. -->
