@@ -4,6 +4,56 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.61.4
+
+✨ **New**
+
+- **Images fit the screen by default:** the image viewer now opens images fitted to your screen. If you had switched **Fit images to the screen** off, it stays off.
+
+🐛 **Fixed**
+
+- **Search index sync between your devices:** a device whose search index had gaps from before index sync existed never got them filled from your other devices, because it thought those stretches were already indexed. Each sync now compares how many messages each device holds per day, and a device holding more sends that day. Sync also runs again when you return to the app after half an hour, not only when it starts. Both devices need this version.
+
+## v1.61.3
+
+✨ **New**
+
+- **Fit to screen in the image viewer:** a new button next to the zoom controls enlarges an image smaller than your screen to fill it. To have every image open that way, turn on **Fit images to the screen** in Settings → Messages and media (off by default).
+
+🐛 **Fixed**
+
+- **Zoom percentage is accurate:** the viewer now shows the image’s real scale, so a large image shrunk to fit your screen shows, say, 49% instead of 100%.
+- **Copy image copies the full image (desktop app):** right-click → Copy image on a photo in the chat now copies the original instead of the smaller preview shown in the timeline. Save image as also saves the original for encrypted photos and gallery photos.
+
+## v1.61.2
+
+✨ **New**
+
+- **Swipe between photos on mobile:** in the full-screen viewer, swipe left or right to move to the next or previous photo or video in a gallery or room. When you're zoomed in, a swipe pans the photo; once you've panned to its edge, swipe again to move on.
+
+## v1.61.1
+
+🐛 **Fixed**
+
+- **"Manage sessions" opens the right page again:** on accounts that sign in through an account provider, the link to manage your sessions now lands on the session list with providers that use the current Matrix names for it, instead of the provider's front page.
+- **Time zone uses the standard profile field:** your time zone is now saved under the name the Matrix spec defines, so other apps that follow the spec can show it. Time zones set by older versions still show.
+- **Better compatibility with newer servers and apps:** call clean-up after a crash, presence under sliding sync, notification previews, call summaries, location messages, live location and Element's space order now also understand the standard Matrix names, not only the older experimental ones.
+
+## v1.61.0
+
+✨ **New**
+
+- **Media galleries:** several photos, videos or files sent together now arrive as one message with one caption (MSC4274). Photos and videos are laid out in rows that fit your window, each keeping its own shape, and open full screen with arrows to step through them. Galleries sent from other apps that support them show the same way.
+- **Galleries are found everywhere:** they show in the room's media panel, match `has:image` and the other search filters, and their caption can be edited like any other.
+
+Apps that don't support galleries yet, such as Element, show only the caption. If that's a problem in your rooms, turn on **Settings → Debug → Don't send galleries** to send each file as its own message.
+
+## v1.60.23
+
+🐛 **Fixed**
+
+- **H.264 screen shares no longer freeze on busy content:** sharing something that changes a lot (a video, a game) as H.264 could freeze for several seconds at a time for viewers. H.264 shares are now sent as a single stream, so viewers get a steady picture. VP8, VP9 and HEVC shares are unchanged.
+
 ## v1.60.22
 
 🐛 **Fixed**

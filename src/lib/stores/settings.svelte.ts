@@ -349,6 +349,11 @@ export const settingsState = $state({
      *  pixels and metadata. Default ON; turn off to upload files byte-for-byte
      *  as picked. Local-only. */
     progressiveJpegs: readBool("progressiveJpegs", true),
+    /** Debug: stop sending MSC4274 galleries. Two or more attachments picked
+     *  together normally go as ONE gallery message (one caption, several
+     *  items); on, each goes as its own message as before. Galleries from
+     *  others are shown either way. Default OFF. Local-only. */
+    disableGallerySend: readBool("disableGallerySend", false),
     /** Device-global: strip location and other identifying metadata (Exif GPS,
      *  XMP, IPTC, video location atoms; see utils/stripMetadata) from files
      *  before upload, keeping only the Exif orientation. Default ON; turning
@@ -363,6 +368,10 @@ export const settingsState = $state({
      *  receivers can watch it as it downloads. Only used when the result is
      *  smaller. Default OFF, since the file type changes. Local-only. */
     gifsAsWebp: readBool("gifsAsWebp", false),
+    /** Device-global: the image viewer opens with images smaller than the
+     *  screen enlarged to fill it, instead of at their own size. The viewer's
+     *  fit button flips it for the image being viewed. Default ON. */
+    lightboxFitToScreen: readBool("lightboxFitToScreen", true),
     /** Device-global: which sound bank plays MIDI attachments (see
      *  utils/midiSoundBank). Default "bundled", the SoundFont Zam ships, so
      *  MIDI sounds the same everywhere. Local-only: a custom bank lives in
@@ -1131,6 +1140,11 @@ export function setProgressiveJpegs(value: boolean): void {
     writeBool("progressiveJpegs", value);
 }
 
+export function setDisableGallerySend(value: boolean): void {
+    settingsState.disableGallerySend = value;
+    writeBool("disableGallerySend", value);
+}
+
 export function setStripMetadata(value: boolean): void {
     settingsState.stripMetadata = value;
     writeBool("stripMetadata", value);
@@ -1144,6 +1158,11 @@ export function setRandomizeFileNames(value: boolean): void {
 export function setGifsAsWebp(value: boolean): void {
     settingsState.gifsAsWebp = value;
     writeBool("gifsAsWebp", value);
+}
+
+export function setLightboxFitToScreen(value: boolean): void {
+    settingsState.lightboxFitToScreen = value;
+    writeBool("lightboxFitToScreen", value);
 }
 
 export function setMidiSoundBank(value: MidiSoundBankChoice): void {

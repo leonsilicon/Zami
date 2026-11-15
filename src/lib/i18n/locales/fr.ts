@@ -590,6 +590,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "Indications d'ordre des messages",
     "debugSettings.orderHintsHint":
         "Zam ajoute à vos messages une indication de ce qui se trouvait en bas de votre discussion et place les messages des autres utilisateurs de Zam sous celui qu'ils désignent. Désactivé, les messages s'affichent dans l'ordre du serveur, comme dans Element.",
+    "debugSettings.disableGallerySend": "Ne pas envoyer de galeries",
+    "debugSettings.disableGallerySendHint":
+        "Les pièces jointes choisies ensemble partent normalement en un seul message galerie avec une seule légende (MSC4274, envoyé en dm.filament.gallery). Activé, chacune part dans son propre message. Les galeries des autres restent affichées.",
     "debugSettings.stickyCallMembership": "Appartenance aux appels en sticky",
     "debugSettings.stickyCallMembershipHint":
         "Rejoindre les appels avec un événement sticky m.rtc.member (MSC4354) au lieu d'un événement d'état m.call.member. Les clients qui ne lisent que les événements d'état, dont Zam avant 1.51, ne vous verront pas dans l'appel. S'applique dès votre prochain appel.",
@@ -910,6 +913,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.zoomIn": "Zoom avant",
     "lightbox.zoomOut": "Zoom arrière",
     "lightbox.zoomReset": "Réinitialiser le zoom",
+    "lightbox.fitToScreen": "Ajuster à l'écran",
+    "lightbox.actualSize": "Taille réelle",
+    "messagesMediaSettings.fitImagesToScreen": "Ajuster les images à l'écran",
+    "messagesMediaSettings.fitImagesToScreenDescription":
+        "Dans la visionneuse, agrandit les images plus petites que l'écran pour qu'elles le remplissent. Le bouton d'ajustement de la visionneuse bascule ce réglage pour l'image affichée.",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "Vidéo YouTube",
@@ -1251,6 +1259,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.replyPreviewVideo": "Vidéo",
     "messageItem.replyPreviewAudio": "Audio",
     "messageItem.replyPreviewFile": "Fichier",
+    "messageItem.replyPreviewGallery":
+        "{n, plural, one {# pièce jointe} other {# pièces jointes}}",
+    "messageItem.galleryLabel":
+        "Galerie, {n, plural, one {# élément} other {# éléments}}",
+    "messageItem.galleryOpenItem": "Ouvrir {name}",
+    "messageItem.galleryDownload": "Télécharger {name}",
+    "messageItem.galleryEmpty": "Galerie vide",
     "messageItem.edited": "(modifié)",
     "messageItem.decryptingImage": "Déchiffrement de l'image...",
     "messageItem.couldnTDecryptImage": "Impossible de déchiffrer l'image",
@@ -3998,6 +4013,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "Vider le cache",
     "settingsSearch.showAllEvents": "Afficher tous les événements",
     "settingsSearch.orderHints": "Indications d'ordre des messages",
+    "settingsSearch.disableGallerySend": "Ne pas envoyer de galeries",
     "settingsSearch.stickyCallMembership": "Appartenance aux appels en sticky",
     "settingsSearch.pushDiagnostics": "Diagnostic des notifications push",
     "settingsSearch.pushService": "Service push (UnifiedPush / Firebase)",

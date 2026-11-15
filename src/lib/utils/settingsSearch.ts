@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "messages-media",
+        label: t("messagesMediaSettings.fitImagesToScreen"),
+        keywords: ["lightbox", "viewer", "zoom", "fit", "image", "enlarge"],
+        anchor: "cust-messages",
+    },
+    {
+        tab: "messages-media",
         label: t("settingsSearch.midiSoundBank"),
         keywords: ["midi", "soundfont", "sf2", "dls", "instruments", "music"],
         anchor: "cust-midi",
@@ -575,6 +581,11 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "debug",
         label: t("settingsSearch.orderHints"),
         keywords: ["message order", "ordering", "element", "timeline"],
+    },
+    {
+        tab: "debug",
+        label: t("settingsSearch.disableGallerySend"),
+        keywords: ["gallery", "album", "attachments", "msc4274", "m.gallery"],
     },
     {
         tab: "debug",
