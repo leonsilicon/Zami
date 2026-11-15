@@ -1071,6 +1071,19 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Завантаження звертається до сайту, на якому це розміщено, і розкриває вашу IP-адресу",
     "linkPreview.loadPreviewMedia": "Завантажити медіа для перегляду",
     "linkPreview.playVideo": "Відтворити відео",
+    "linkPreview.replyingTo": "У відповідь",
+    "linkPreview.showMore": "Показати більше",
+    "linkPreview.showLess": "Згорнути",
+    "linkPreview.pollVotes":
+        "{count, plural, one {{votes} голос} few {{votes} голоси} many {{votes} голосів} other {{votes} голосу}}",
+    "linkPreview.pollFinal": "Остаточні результати",
+    "linkPreview.pollEnds": "Завершиться {date}",
+    "linkPreview.quoteUnavailable": "Цей допис недоступний.",
+    "linkPreview.communityNote": "Читачі додали контекст",
+    "linkPreview.repostCount":
+        "{count, plural, one {# репост} few {# репости} many {# репостів} other {# репосту}}",
+    "linkPreview.likeCount":
+        "{count, plural, one {# вподобання} few {# вподобання} many {# вподобань} other {# вподобання}}",
 
     // src/lib/components/layout/LiveLocationBanner.svelte
     "liveLocationBanner.openMap": "Відкрити карту",
@@ -1419,6 +1432,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.decryptingImage": "Розшифрування зображення...",
     "messageItem.couldnTDecryptImage": "Не вдалося розшифрувати зображення",
     "messageItem.imageUnavailable": "[Зображення недоступне]",
+    "messageItem.spoiler": "Спойлер",
+    "messageItem.revealSpoiler": "Показати спойлер",
     "messageItem.decryptingVideo": "Розшифрування відео...",
     "messageItem.couldnTDecryptVideo": "Не вдалося розшифрувати відео",
     "messageItem.video": "Відео",
@@ -2002,6 +2017,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/RenameAttachmentDialog.svelte
     "renameAttachmentDialog.editAttachment": "Редагувати вкладення",
     "renameAttachmentDialog.filename": "Назва файлу",
+    "renameAttachmentDialog.markSpoiler": "Позначити як спойлер",
+    "renameAttachmentDialog.markSpoilerHint":
+        "Приховує зображення під обкладинкою, доки його не натиснуть.",
     "renameThreadDialog.nameThread": "Назвати гілку",
     "renameThreadDialog.renameThread": "Перейменувати гілку",
     "renameThreadDialog.threadName": "Назва гілки",

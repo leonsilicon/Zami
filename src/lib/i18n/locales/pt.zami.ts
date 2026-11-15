@@ -1067,6 +1067,19 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Carregar isso contata o site que o hospeda, o que revela seu endereço IP",
     "linkPreview.loadPreviewMedia": "Carregar mídia da prévia",
     "linkPreview.playVideo": "Reproduzir vídeo",
+    "linkPreview.replyingTo": "Em resposta a",
+    "linkPreview.showMore": "Mostrar mais",
+    "linkPreview.showLess": "Mostrar menos",
+    "linkPreview.pollVotes":
+        "{count, plural, one {{votes} voto} other {{votes} votos}}",
+    "linkPreview.pollFinal": "Resultados finais",
+    "linkPreview.pollEnds": "Termina {date}",
+    "linkPreview.quoteUnavailable": "Esta publicação não está disponível.",
+    "linkPreview.communityNote": "Os leitores adicionaram contexto",
+    "linkPreview.repostCount":
+        "{count, plural, one {# repost} other {# reposts}}",
+    "linkPreview.likeCount":
+        "{count, plural, one {# curtida} other {# curtidas}}",
 
     // src/lib/components/layout/LiveLocationBanner.svelte
     "liveLocationBanner.openMap": "Abrir mapa",
@@ -1410,6 +1423,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.couldnTDecryptImage":
         "Não foi possível descriptografar a imagem",
     "messageItem.imageUnavailable": "[Imagem indisponível]",
+    "messageItem.spoiler": "Spoiler",
+    "messageItem.revealSpoiler": "Mostrar spoiler",
     "messageItem.decryptingVideo": "Descriptografando vídeo...",
     "messageItem.couldnTDecryptVideo":
         "Não foi possível descriptografar o vídeo",
@@ -1996,6 +2011,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/RenameAttachmentDialog.svelte
     "renameAttachmentDialog.editAttachment": "Editar anexo",
     "renameAttachmentDialog.filename": "Nome do arquivo",
+    "renameAttachmentDialog.markSpoiler": "Marcar como spoiler",
+    "renameAttachmentDialog.markSpoilerHint":
+        "Esconde a imagem sob uma capa até alguém clicar nela.",
     "renameThreadDialog.nameThread": "Nomear tópico",
     "renameThreadDialog.renameThread": "Renomear tópico",
     "renameThreadDialog.threadName": "Nome do tópico",
