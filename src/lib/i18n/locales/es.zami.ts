@@ -966,6 +966,19 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Al cargarlo se contacta con el sitio que lo aloja, lo que revela tu dirección IP",
     "linkPreview.loadPreviewMedia": "Cargar el contenido de la vista previa",
     "linkPreview.playVideo": "Reproducir vídeo",
+    "linkPreview.replyingTo": "En respuesta a",
+    "linkPreview.showMore": "Mostrar más",
+    "linkPreview.showLess": "Mostrar menos",
+    "linkPreview.pollVotes":
+        "{count, plural, one {{votes} voto} other {{votes} votos}}",
+    "linkPreview.pollFinal": "Resultados finales",
+    "linkPreview.pollEnds": "Termina {date}",
+    "linkPreview.quoteUnavailable": "Esta publicación no está disponible.",
+    "linkPreview.communityNote": "Los lectores añadieron contexto",
+    "linkPreview.repostCount":
+        "{count, plural, one {# repost} other {# reposts}}",
+    "linkPreview.likeCount":
+        "{count, plural, one {# me gusta} other {# me gusta}}",
 
     // src/lib/components/layout/LiveLocationBanner.svelte
     "liveLocationBanner.openMap": "Abrir el mapa",
@@ -1304,6 +1317,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.decryptingImage": "Descifrando la imagen...",
     "messageItem.couldnTDecryptImage": "No se pudo descifrar la imagen",
     "messageItem.imageUnavailable": "[Imagen no disponible]",
+    "messageItem.spoiler": "Spoiler",
+    "messageItem.revealSpoiler": "Mostrar spoiler",
     "messageItem.decryptingVideo": "Descifrando el vídeo...",
     "messageItem.couldnTDecryptVideo": "No se pudo descifrar el vídeo",
     "messageItem.video": "Vídeo",
@@ -1890,6 +1905,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/RenameAttachmentDialog.svelte
     "renameAttachmentDialog.editAttachment": "Editar el adjunto",
     "renameAttachmentDialog.filename": "Nombre del archivo",
+    "renameAttachmentDialog.markSpoiler": "Marcar como spoiler",
+    "renameAttachmentDialog.markSpoilerHint":
+        "Oculta la imagen tras una cubierta hasta que alguien haga clic.",
     "renameThreadDialog.nameThread": "Poner nombre al hilo",
     "renameThreadDialog.renameThread": "Cambiar el nombre del hilo",
     "renameThreadDialog.threadName": "Nombre del hilo",

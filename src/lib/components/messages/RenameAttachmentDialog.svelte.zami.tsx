@@ -17,6 +17,7 @@ import { t } from "$lib/i18n";
 // Edit a queued attachment before it is sent (Discord-style: tap the
 // attachment in the composer drawer). The caller owns the modal slot.
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+import { isSpoilerFilename, withSpoiler } from "$lib/utils/spoilerAttachment";
 
 interface Props {
     name: string;
@@ -45,6 +46,10 @@ export default function RenameAttachmentDialog({
     const inputEl = useRef<TextInputInstance>(null);
     // No path separators or control characters in a filename.
     const cleaned = value.replace(/[\\/\p{Cc}]/gu, "_").trim();
+    // A spoiler is just the filename prefix, so the toggle reads and writes
+    // the name field and the two can never disagree.
+    const spoiler = isSpoilerFilename(value.trimStart());
+    const canSpoiler = !!previewUrl && !video;
 
     useEffect(() => {
         if (!inputEl.current) return;
@@ -174,6 +179,36 @@ export default function RenameAttachmentDialog({
                                         className="rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary focus:ring-2 focus:ring-discord-accent"
                                     />
                                 </View>
+                                {canSpoiler && (
+                                    <View className="flex-row items-center justify-between gap-3">
+                                        <View className="flex-1 min-w-0">
+                                            <Text className="text-sm text-discord-textPrimary">
+                                                {t(
+                                                    "renameAttachmentDialog.markSpoiler",
+                                                )}
+                                            </Text>
+                                            <Text className="text-xs text-discord-textMuted">
+                                                {t(
+                                                    "renameAttachmentDialog.markSpoilerHint",
+                                                )}
+                                            </Text>
+                                        </View>
+                                        <ToggleSwitch
+                                            checked={spoiler}
+                                            onChange={(v) =>
+                                                setValue(
+                                                    withSpoiler(
+                                                        value.trimStart(),
+                                                        v,
+                                                    ),
+                                                )
+                                            }
+                                            label={t(
+                                                "renameAttachmentDialog.markSpoiler",
+                                            )}
+                                        />
+                                    </View>
+                                )}
                                 {onDirectChange && (
                                     <View className="flex-row items-center justify-between gap-3">
                                         <View className="flex-1 min-w-0">

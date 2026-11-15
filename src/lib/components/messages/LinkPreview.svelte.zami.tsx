@@ -56,7 +56,12 @@ import {
 } from "$lib/utils/gifEmbed";
 import { reservedMediaBox, safeDimension } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
-import { galleryNav, galleryPositionLabel } from "$lib/utils/mediaGallery";
+import {
+    fxStatusApiUrl,
+    parseFxStatusResponse,
+    type TweetEmbed,
+} from "$lib/utils/tweetEmbed";
+import TweetCard from "./TweetCard.svelte";
 import { isInstagramUrl } from "$lib/utils/instagramUrl";
 import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
@@ -172,33 +177,7 @@ export default function LinkPreview({ url }: Props) {
         return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
     }
 
-    interface TweetMedia {
-        url: string;
-        width?: number;
-        height?: number;
-        thumbnail?: string;
-    }
-
-    // Tweet videos, by URL, that the user has played. The rest show their
-    // thumbnail: a mounted <video>, even unplayed, holds a decoder. A played
-    // one that is paused and scrolled well away is unmounted again and
-    // resumes from `tweetResumeAt` (actions/parkOffscreen).
-    const [tweetPlaying, setTweetPlaying] = useState<Set<string>>(
-        () => new Set(),
-    );
-    const [tweetResumeAt] = useState(() => new Map<string, number>());
-    interface TweetEmbed {
-        authorName: string;
-        authorHandle: string;
-        text: string;
-        photos: TweetMedia[];
-        videos: TweetMedia[];
-    }
-
     const [tweetEmbed, setTweetEmbed] = useState<TweetEmbed | null>(null);
-    const [lightboxTweetIndex, setLightboxTweetIndex] = useState<number | null>(
-        null,
-    );
 
     // Reactively track favourite state — isFavouriteGif reads favouritesState.gifs ($state) so this auto-tracks
     const favourited = useRune(() => isFavouriteGif(url), [url]);
@@ -233,21 +212,6 @@ export default function LinkPreview({ url }: Props) {
         return null;
     }
 
-    function getTwitterApiUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h !== "x.com" && h !== "twitter.com") return null;
-            // Path: /{user}/status/{id}
-            const m = u.pathname.match(/^\/([^/]+)\/status\/(\d+)/);
-            if (!m) return null;
-            return `https://api.fxtwitter.com/${m[1]}/status/${m[2]}`;
-        } catch {
-            /* */
-        }
-        return null;
-    }
-
     // Zami: upstream's effect re-runs when the preview URL transforms change;
     // the registry's tick says when they have.
     const pluginTick = useRune(() => pluginRegistry.tick);
@@ -263,14 +227,11 @@ export default function LinkPreview({ url }: Props) {
         setImageError(false);
         setDirectEmbed(null);
         setTweetEmbed(null);
-        setLightboxTweetIndex(null);
         setVideoPlaying(false);
         setVideoParked(false);
         setVideoThumbError(false);
         setYoutubePlaying(false);
         youtubeResumeAt.current = 0;
-        setTweetPlaying((s) => (s.size === 0 ? s : new Set()));
-        tweetResumeAt.clear();
 
         // A response that lands after the URL or the policy moved on must not
         // write itself back into state — otherwise flipping the setting to a
@@ -284,10 +245,10 @@ export default function LinkPreview({ url }: Props) {
             return;
         }
 
-        // Twitter/X: use fxtwitter JSON API (has CORS headers). This is a
-        // request straight to a third party, so it needs the same consent as
-        // the media itself.
-        const twitterApiUrl = allowEmbeds ? getTwitterApiUrl(currentUrl) : null;
+        // Twitter/X: built from FxTwitter's status API (it sends CORS
+        // headers; see utils/tweetEmbed). This is a request straight to a
+        // third party, so it needs the same consent as the media itself.
+        const twitterApiUrl = allowEmbeds ? fxStatusApiUrl(currentUrl) : null;
         if (twitterApiUrl) {
             const known = resolvedPreviews.get(twitterApiUrl);
             if (known) {
@@ -300,31 +261,10 @@ export default function LinkPreview({ url }: Props) {
                 referrerPolicy: "no-referrer",
             })
                 .then((r) => r.json())
-                /* oxlint-disable typescript/no-explicit-any -- upstream's casts. */
-                .then((data: any) => {
+                .then((data: unknown) => {
                     if (cancelled) return;
-                    const tweet = data?.tweet;
-                    if (!tweet) return;
-                    const embed: TweetEmbed = {
-                        authorName: tweet.author?.name ?? "",
-                        authorHandle: tweet.author?.screen_name ?? "",
-                        text: tweet.text ?? "",
-                        // fxtwitter media objects carry width/height — keep them
-                        // so the grid can reserve layout space before the image
-                        // loads (otherwise it pops in and shoves the timeline).
-                        photos: (tweet.media?.photos ?? []).map((p: any) => ({
-                            url: p.url as string,
-                            width: p.width as number | undefined,
-                            height: p.height as number | undefined,
-                        })),
-                        videos: (tweet.media?.videos ?? []).map((v: any) => ({
-                            url: v.url as string,
-                            width: v.width as number | undefined,
-                            height: v.height as number | undefined,
-                            thumbnail: v.thumbnail_url as string | undefined,
-                        })),
-                    };
-                    /* oxlint-enable typescript/no-explicit-any */
+                    const embed = parseFxStatusResponse(data);
+                    if (!embed) return;
                     setTweetEmbed(embed);
                     rememberPreview(twitterApiUrl, {
                         preview: null,
@@ -550,7 +490,7 @@ export default function LinkPreview({ url }: Props) {
     // anything, so the button can appear immediately.
     const blockedEmbed =
         !embedsAllowed &&
-        (getYoutubeEmbedUrl(url) !== null || getTwitterApiUrl(url) !== null);
+        (getYoutubeEmbedUrl(url) !== null || fxStatusApiUrl(url) !== null);
     // Preview media the policy suppressed. `preview` is homeserver-sourced, so
     // reading it here costs nothing.
     const blockedMedia =
@@ -777,240 +717,7 @@ export default function LinkPreview({ url }: Props) {
                     controls
                 />
             );
-        if (tweetEmbed) {
-            // Twitter/X card built from fxtwitter API
-            const allMedia =
-                tweetEmbed.videos.length > 0 || tweetEmbed.photos.length > 0
-                    ? [
-                          ...tweetEmbed.videos.map((v) => ({
-                              type: "video" as const,
-                              photoIndex: -1,
-                              ...v,
-                          })),
-                          ...tweetEmbed.photos.map((p, pi) => ({
-                              type: "photo" as const,
-                              photoIndex: pi,
-                              ...p,
-                          })),
-                      ]
-                    : [];
-            // Zami: the grid's `repeat(min(n, 2), minmax(0, 1fr))` columns,
-            // as rows of equal cells.
-            const columns = Math.min(allMedia.length, 2);
-            const rows: (typeof allMedia)[] = [];
-            for (let i = 0; i < allMedia.length; i += columns)
-                rows.push(allMedia.slice(i, i + columns));
-            const lightbox = (() => {
-                if (lightboxTweetIndex === null) return null;
-                const photo = tweetEmbed.photos[lightboxTweetIndex];
-                const nav = galleryNav(
-                    tweetEmbed.photos.length,
-                    lightboxTweetIndex,
-                );
-                const prev = nav.prevIndex;
-                const next = nav.nextIndex;
-                if (!photo) return null;
-                return (
-                    <Lightbox
-                        src={photo.url}
-                        alt=""
-                        onClose={() => setLightboxTweetIndex(null)}
-                        onPrev={
-                            prev !== null
-                                ? () => setLightboxTweetIndex(prev)
-                                : undefined
-                        }
-                        onNext={
-                            next !== null
-                                ? () => setLightboxTweetIndex(next)
-                                : undefined
-                        }
-                        position={galleryPositionLabel(
-                            tweetEmbed.photos.length,
-                            lightboxTweetIndex,
-                        )}
-                    />
-                );
-            })();
-            return (
-                <View className="mt-2">
-                    <Pressable
-                        accessibilityRole="link"
-                        onPress={() => openLink(url)}
-                        className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors"
-                    >
-                        {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
-
-                        <View className="flex flex-1 min-w-0 flex-col p-3 gap-2">
-                            {/* Author */}
-                            <View className="flex flex-col min-w-0">
-                                <Text className="text-xs text-discord-textMuted mb-0.5">
-                                    {t("linkPreview.xTwitter")}
-                                </Text>
-                                <Text className="text-sm font-semibold text-discord-accent leading-snug">
-                                    {tweetEmbed.authorName}{" "}
-                                    <Text className="text-sm font-normal text-discord-textMuted">
-                                        @{tweetEmbed.authorHandle}
-                                    </Text>
-                                </Text>
-                                {tweetEmbed.text ? (
-                                    <Text
-                                        numberOfLines={4}
-                                        className="text-xs text-discord-textSecondary mt-1 leading-relaxed"
-                                    >
-                                        {tweetEmbed.text}
-                                    </Text>
-                                ) : null}
-                            </View>
-
-                            {/* Media grid */}
-                            {allMedia.length > 0 ? (
-                                <View className="gap-1 rounded overflow-hidden">
-                                    {rows.map((row, ri) => (
-                                        <View
-                                            key={ri}
-                                            className="flex-row gap-1"
-                                        >
-                                            {row.map((item, ci) => {
-                                                // width/height reserve the box before load (from the
-                                                // fxtwitter media dims); w-full/h-auto keep it
-                                                // responsive within the grid cell.
-                                                const box = reservedMediaBox(
-                                                    item.width,
-                                                    item.height,
-                                                    512,
-                                                    512,
-                                                );
-                                                // Zami: a cell's shape: the box's, or 16:9
-                                                // (h-auto has nothing to go on before load).
-                                                const cellStyle: ViewStyle = {
-                                                    aspectRatio: box
-                                                        ? box.width / box.height
-                                                        : 16 / 9,
-                                                    maxHeight: 288,
-                                                };
-                                                return (
-                                                    <View
-                                                        key={ci}
-                                                        className="flex-1 min-w-0"
-                                                    >
-                                                        {item.type ===
-                                                            "video" &&
-                                                        !tweetPlaying.has(
-                                                            item.url,
-                                                        ) ? (
-                                                            <Pressable
-                                                                accessibilityRole="button"
-                                                                accessibilityLabel={t(
-                                                                    "linkPreview.playVideo",
-                                                                )}
-                                                                className="group/media relative w-full min-w-0 rounded overflow-hidden bg-black"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                                onPress={() => {
-                                                                    // Zami: a nested Pressable doesn't follow
-                                                                    // the enclosing link.
-                                                                    setTweetPlaying(
-                                                                        (s) =>
-                                                                            new Set(
-                                                                                s,
-                                                                            ).add(
-                                                                                item.url,
-                                                                            ),
-                                                                    );
-                                                                }}
-                                                            >
-                                                                {item.thumbnail ? (
-                                                                    <Image
-                                                                        source={mediaSource(
-                                                                            item.thumbnail,
-                                                                        )}
-                                                                        accessible={
-                                                                            false
-                                                                        }
-                                                                        className="w-full h-full"
-                                                                        contentFit="contain"
-                                                                    />
-                                                                ) : null}
-                                                                <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
-                                                                    {playBadge()}
-                                                                </View>
-                                                            </Pressable>
-                                                        ) : item.type ===
-                                                          "video" ? (
-                                                            // Zami: not ported: pauseOffscreen and
-                                                            // parkOffscreen (IntersectionObserver).
-                                                            // The native controls pause and play it.
-                                                            <Video
-                                                                src={item.url}
-                                                                className="w-full min-w-0 rounded bg-black"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                                use={
-                                                                    rememberVolume
-                                                                }
-                                                                controls
-                                                                autoplay
-                                                                onLoadedMetadata={(
-                                                                    player,
-                                                                ) => {
-                                                                    const at =
-                                                                        tweetResumeAt.get(
-                                                                            item.url,
-                                                                        );
-                                                                    if (at) {
-                                                                        player.currentTime =
-                                                                            at;
-                                                                        tweetResumeAt.delete(
-                                                                            item.url,
-                                                                        );
-                                                                    }
-                                                                }}
-                                                            />
-                                                        ) : (
-                                                            <Pressable
-                                                                accessibilityRole="imagebutton"
-                                                                onPress={() =>
-                                                                    setLightboxTweetIndex(
-                                                                        item.photoIndex,
-                                                                    )
-                                                                }
-                                                                className="w-full min-w-0 rounded overflow-hidden bg-black/10"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                            >
-                                                                <Image
-                                                                    source={mediaSource(
-                                                                        item.url,
-                                                                    )}
-                                                                    accessible={
-                                                                        false
-                                                                    }
-                                                                    className="w-full h-full"
-                                                                    contentFit="contain"
-                                                                />
-                                                            </Pressable>
-                                                        )}
-                                                    </View>
-                                                );
-                                            })}
-                                            {row.length < columns ? (
-                                                <View className="flex-1" />
-                                            ) : null}
-                                        </View>
-                                    ))}
-                                </View>
-                            ) : null}
-                        </View>
-                    </Pressable>
-                    {lightbox}
-                </View>
-            );
-        }
+        if (tweetEmbed) return <TweetCard tweet={tweetEmbed} />;
         if (matchedEmbed)
             // Plugin custom embed: renders a nicer card for a matching URL. ADDITIVE
             // and host-sanitized — see src/lib/plugins/embeds.ts. Keyed so a change

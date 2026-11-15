@@ -270,6 +270,7 @@ import {
     type GalleryImage,
 } from "$lib/utils/messageBodyGallery";
 import { galleryPositionLabel } from "$lib/utils/mediaGallery";
+import { isSpoilerMedia } from "$lib/utils/spoilerAttachment";
 import { siblingUploadIndices } from "$lib/utils/uploadSiblings";
 import { motionOK } from "$lib/utils/motionPreference";
 import { audioPlaybackMode, audioStatusLabel } from "$lib/utils/audioPlayback";
@@ -815,6 +816,8 @@ function MessageItem({
     }
 
     const [imageLightboxOpen, setImageLightboxOpen] = useState(false);
+    // A spoilered image (SPOILER_ filename) sits under a cover until clicked.
+    const [spoilerRevealed, setSpoilerRevealed] = useState(false);
     // Paged lightbox over a single message's OWN inline body images (rich/bridged
     // messages with several <img> in the formatted_body). Null = closed.
     const [bodyGallery, setBodyGallery] = useState<{
@@ -2984,6 +2987,7 @@ function MessageItem({
             const file = content?.file as EncryptedFile | undefined;
             const thumb = file ? encryptedImageThumbUrl : imageThumbUrl();
             const full = file ? encryptedImageFullUrl : imageFullUrl();
+            const spoilerHidden = !spoilerRevealed && isSpoilerMedia(content);
             let tile: ReactNode;
             if (file && imageDecrypting) {
                 // The canvas is always mounted (the effect paints into
@@ -3157,7 +3161,38 @@ function MessageItem({
             return (
                 <>
                     {mediaCaption()}
-                    {tile}
+                    <View
+                        className={`relative self-start max-w-full ${
+                            spoilerHidden ? "min-w-48 min-h-24" : ""
+                        }`}
+                    >
+                        {spoilerHidden ? (
+                            <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={t(
+                                    "messageItem.revealSpoiler",
+                                )}
+                                className="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center rounded-lg bg-discord-backgroundDark active:bg-discord-backgroundTertiary"
+                                onPress={() => setSpoilerRevealed(true)}
+                                onLongPress={rowLongPress}
+                                delayLongPress={500}
+                            >
+                                <Text className="text-sm font-bold uppercase tracking-wide text-discord-textPrimary">
+                                    {t("messageItem.spoiler")}
+                                </Text>
+                            </Pressable>
+                        ) : null}
+                        {/* Zami: `inert` → no touches, hidden from screen readers. */}
+                        <View
+                            pointerEvents={spoilerHidden ? "none" : "auto"}
+                            importantForAccessibility={
+                                spoilerHidden ? "no-hide-descendants" : "auto"
+                            }
+                            accessibilityElementsHidden={spoilerHidden}
+                        >
+                            {tile}
+                        </View>
+                    </View>
                     {/* Outside the branches above so an encrypted image's viewer,
                         opened on its thumbnail mid-decrypt, stays open when the
                         full image lands. */}
@@ -4251,6 +4286,8 @@ function isPageableImageUpload(e: MatrixEvent): boolean {
     };
     if (c?.msgtype !== "m.image") return false;
     if (c?.file) return false;
+    // Paging must never show a spoiler its reader hasn't revealed.
+    if (isSpoilerMedia(c)) return false;
     if (typeof c?.url !== "string" || (c.url as string).length === 0)
         return false;
     // Must resolve to a real http URL: a non-mxc/malformed url yields null
