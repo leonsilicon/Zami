@@ -19,6 +19,8 @@
     import FileOfferCard from "$lib/components/messages/FileOfferCard.svelte";
     import GameInviteCard from "$lib/components/messages/GameInviteCard.svelte";
     import MessageVideo from "$lib/components/messages/MessageVideo.svelte";
+    import GalleryBody from "$lib/components/messages/GalleryBody.svelte";
+    import { galleryItems, isGalleryMsgtype } from "$lib/utils/gallery";
     import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
     import { authedVideoSrc } from "$lib/actions/authedVideoSrc";
     import { rememberVolume } from "$lib/actions/rememberVolume";
@@ -270,6 +272,7 @@
     } from "$lib/utils/audioPlayback";
 
     import type { ReadReceiptInfo } from "$lib/matrix/client";
+    import { fullImage, type FullImageSource } from "$lib/actions/fullImage";
 
     type EncryptedFile = {
         url: string;
@@ -1347,7 +1350,16 @@
     // A media caption exists when `filename` is present and differs from `body`
     // (i.e. `body` is real caption text, not just the file name). We render it as
     // a normal message above the media rather than as a label on the media.
-    const hasCaption = $derived(() => hasMediaCaption(content));
+    // A gallery's body is its caption (no file name in it, no `filename`), so
+    // it is a caption whenever it is non-empty, whatever hasMediaCaption says.
+    const isGallery = $derived(isGalleryMsgtype(msgtype));
+    const hasCaption = $derived(
+        () =>
+            hasMediaCaption(content) ||
+            (isGallery &&
+                typeof content?.body === "string" &&
+                content.body.length > 0),
+    );
 
     // Strip a leading <mx-reply> fallback from formatted_body so we don't
     // double-render the quote (we render it from the referenced event). Uses the
@@ -1805,6 +1817,21 @@
         const server = imageThumbUrl();
         return [server !== imageFullUrl() ? server : null, senderThumbUrl];
     });
+
+    /** The original behind the image tile, for the desktop right-click
+     *  "Copy image" / "Save image as" (the tile shows a smaller copy). */
+    function imageOriginal(): FullImageSource | null {
+        const file = content?.file as EncryptedFile | undefined;
+        if (file) {
+            if (encryptedImageFullUrl)
+                return { kind: "url", url: encryptedImageFullUrl };
+            const mime = (content?.info as { mimetype?: string } | undefined)
+                ?.mimetype;
+            return { kind: "encrypted", file, mimetype: mime };
+        }
+        const url = imageFullUrl();
+        return url ? { kind: "url", url } : null;
+    }
 
     // Audio: lazy-load blob only after play is clicked
     let audioClicked = $state(false);
@@ -3043,6 +3070,14 @@
                         />
                     {/if}
                 {/if}
+            {:else if isGallery}
+                {@render mediaCaption()}
+                <GalleryBody
+                    items={galleryItems(content)}
+                    {eventId}
+                    sender={senderId}
+                    ts={timestamp}
+                />
             {:else if msgtype === "m.image"}
                 {@render mediaCaption()}
                 {@const file = content?.file as EncryptedFile | undefined}
@@ -3064,6 +3099,7 @@
                                 <img
                                     src={senderThumbUrl}
                                     alt={mediaFilename}
+                                    use:fullImage={imageOriginal}
                                     width={imageBox?.width}
                                     height={imageBox?.height}
                                     class="block rounded-lg {imageBox
@@ -3136,6 +3172,7 @@
                                     height={imageBox.height}
                                     class="max-w-full h-auto rounded-lg object-contain cursor-pointer block"
                                     loading="lazy"
+                                    use:fullImage={imageOriginal}
                                     data-own-retry
                                     onerror={mediaImgRetry.onError}
                                     style={imageTilePlaceholder}
@@ -3150,6 +3187,7 @@
                                         ? "w-96 max-w-full max-h-96 h-auto rounded-lg object-contain cursor-pointer block"
                                         : "max-w-lg w-full max-h-96 rounded-lg object-contain cursor-pointer block"}
                                     loading="lazy"
+                                    use:fullImage={imageOriginal}
                                     data-own-retry
                                     onerror={mediaImgRetry.onError}
                                     style={imageTilePlaceholder}

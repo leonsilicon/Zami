@@ -49,6 +49,7 @@ import {
     setSoundIntervalMs,
     setShowAllEvents,
     setOrderHints,
+    setDisableGallerySend,
     setStickyCallMembership,
     setUpdateNagDisabled,
     settingsState,
@@ -94,6 +95,7 @@ export default function DebugSettings() {
     const userId = useRune(() => auth.userId);
     const showAllEvents = useRune(() => settingsState.showAllEvents);
     const orderHints = useRune(() => settingsState.orderHints);
+    const disableGallerySend = useRune(() => settingsState.disableGallerySend);
     const stickyCallMembership = useRune(
         () => settingsState.stickyCallMembership,
     );
@@ -532,6 +534,21 @@ export default function DebugSettings() {
                         checked={orderHints}
                         onChange={setOrderHints}
                         label={t("debugSettings.orderHints")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("debugSettings.disableGallerySend")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t("debugSettings.disableGallerySendHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={disableGallerySend}
+                        onChange={setDisableGallerySend}
+                        label={t("debugSettings.disableGallerySend")}
                     />
                 </View>
                 <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">

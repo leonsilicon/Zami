@@ -160,7 +160,10 @@ export default function ProfileFieldsEditor({
     } = savedFields(extProfile);
 
     const allowed = (field: FieldKeys) =>
-        profileFieldAllowed(field.unstable ?? field.stable, capabilities);
+        profileFieldAllowed(
+            field.specced ? field.stable : (field.unstable ?? field.stable),
+            capabilities,
+        );
 
     const pronounsDirty = pronounsText.trim() !== pronounsToText(savedPronouns);
     const statusDirty =

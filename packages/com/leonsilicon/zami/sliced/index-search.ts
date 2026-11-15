@@ -18,6 +18,8 @@ export interface IndexedMessage {
   v?: 1;
   /** For an edit: the event it replaces. */
   o?: string;
+  /** For a gallery: the msgtypes of its items. Omitted when empty. */
+  g?: string[];
   /**
    * The body as search compares it (normalized), when that isn't simply the body in lower
    * case: written with the entry (`prepareEntry`), so a search doesn't normalize every
@@ -124,6 +126,20 @@ class Newest<E extends IndexedMessage> {
   }
 }
 
+/**
+ * An original with its latest edit applied, as resolveEntries merges them: the edit's text,
+ * and its msgtype when it has one, with that msgtype's gallery item types (a gallery edited
+ * to plain text, or the reverse, doesn't keep the other kind's `g`).
+ */
+function withEdit<E extends IndexedMessage>(original: E, edit: E): E {
+  const useEdit = !!edit.m;
+  const merged: E = { ...original, b: edit.b, m: useEdit ? edit.m : original.m };
+  const g = useEdit ? edit.g : original.g;
+  if (g) merged.g = g;
+  else delete merged.g;
+  return merged;
+}
+
 /** A search over a room's index, fed and run a slice of the event loop at a time. */
 export function createIndexSearch<E extends IndexedMessage>(
   options: IndexSearchOptions<E>,
@@ -158,7 +174,7 @@ export function createIndexSearch<E extends IndexedMessage>(
       for (const [id, original] of originals) {
         if (slicer.due) await slicer.pause();
         const edit = latestEdit.get(id);
-        const entry = edit ? { ...original, b: edit.b, m: edit.m || original.m } : original;
+        const entry = edit ? withEdit(original, edit) : original;
         if (matches(entry, searchBody(edit ?? original))) newest.add({ entry, order });
         order++;
       }
