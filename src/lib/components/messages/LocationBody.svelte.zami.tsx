@@ -26,7 +26,9 @@ export default function LocationBody({
     senderAvatarUrl,
     isSelf,
 }: Props) {
-    const loc = (content["org.matrix.msc3488.location"] ?? null) as {
+    const loc = (content["m.location"] ??
+        content["org.matrix.msc3488.location"] ??
+        null) as {
         uri?: string;
         description?: string;
     } | null;

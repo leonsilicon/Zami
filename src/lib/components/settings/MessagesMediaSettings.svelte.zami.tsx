@@ -18,6 +18,7 @@ import {
     setStripMetadata,
     setRandomizeFileNames,
     setGifsAsWebp,
+    setLightboxFitToScreen,
     setGifDefaultTab,
     setMidiSoundBank,
     settingsState,
@@ -60,6 +61,9 @@ export default function MessagesMediaSettings() {
     );
     const pauseVideoOnScrollOff = useRune(
         () => settingsState.pauseVideoOnScrollOff,
+    );
+    const lightboxFitToScreen = useRune(
+        () => settingsState.lightboxFitToScreen,
     );
     const faststartVideos = useRune(() => settingsState.faststartVideos);
     const progressiveJpegs = useRune(() => settingsState.progressiveJpegs);
@@ -304,6 +308,23 @@ export default function MessagesMediaSettings() {
                         checked={pauseVideoOnScrollOff}
                         onChange={setPauseVideoOnScrollOff}
                         label={t("messagesMediaSettings.pauseVideosOffScreen")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-discord-textPrimary">
+                            {t("messagesMediaSettings.fitImagesToScreen")}
+                        </Text>
+                        <Text className="text-xs text-discord-textMuted">
+                            {t(
+                                "messagesMediaSettings.fitImagesToScreenDescription",
+                            )}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={lightboxFitToScreen}
+                        onChange={setLightboxFitToScreen}
+                        label={t("messagesMediaSettings.fitImagesToScreen")}
                     />
                 </View>
                 <View className="flex-row items-center gap-3 py-2">

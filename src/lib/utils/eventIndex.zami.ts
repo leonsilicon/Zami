@@ -14,6 +14,7 @@ import {
     matchesParsedQuery,
     type ParsedSearchQuery,
 } from "$lib/utils/messageSearch";
+import { galleryItems, isGalleryContent } from "$lib/utils/gallery";
 
 /** One indexed message. Short keys: there are a lot of these. */
 export interface IndexEntry {
@@ -34,6 +35,8 @@ export interface IndexEntry {
     /** Zami: the body as search compares it, when that isn't the body in lower
      *  case; written with the entry (matrix/eventIndex.ts). */
     n?: string;
+    /** For a gallery: the msgtypes of its items. Omitted when empty. */
+    g?: string[];
 }
 
 /** The minimum an event has to expose: raw JSON or an unwrapped MatrixEvent. */
@@ -75,6 +78,10 @@ export function entryFromEvent(ev: IndexSourceEvent): IndexEntry | null {
     if ("org.matrix.msc3245.voice" in source || "m.voice" in source)
         entry.v = 1;
     if (isEdit) entry.o = rel!.event_id as string;
+    if (isGalleryContent(source!)) {
+        const g = galleryItems(source!).map((i) => i.msgtype);
+        if (g.length) entry.g = g;
+    }
     return entry;
 }
 
@@ -163,11 +170,23 @@ export function resolveEntries(
     const out: IndexEntry[] = [];
     for (const [id, original] of originals) {
         const edit = latestEdit.get(id);
-        out.push(
-            edit
-                ? { ...original, b: edit.b, m: edit.m || original.m }
-                : original,
-        );
+        if (!edit) {
+            out.push(original);
+        } else {
+            // The edit's msgtype wins when it has one, and then its gallery
+            // item types go with it (a gallery edited to plain text, or the
+            // reverse, must not keep the other kind's `g`).
+            const useEdit = !!edit.m;
+            const merged: IndexEntry = {
+                ...original,
+                b: edit.b,
+                m: useEdit ? edit.m : original.m,
+            };
+            const g = useEdit ? edit.g : original.g;
+            if (g) merged.g = g;
+            else delete merged.g;
+            out.push(merged);
+        }
         latestEdit.delete(id);
     }
     for (const [target, edit] of latestEdit) {
@@ -194,6 +213,7 @@ export function entryMatches(
             msgtype: entry.m,
             body: entry.b,
             isVoice: !!entry.v,
+            itemtypes: entry.g,
         },
         parsed,
     );

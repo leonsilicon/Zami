@@ -33,6 +33,7 @@ import {
     type ParsedSearchQuery,
     type SearchEventMeta,
 } from "$lib/utils/messageSearch";
+import { galleryItems } from "$lib/utils/gallery";
 import {
     activeSearchToken,
     filterMemberSuggestions,
@@ -233,6 +234,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
             body: content.body ?? "",
             isVoice:
                 "org.matrix.msc3245.voice" in content || "m.voice" in content,
+            itemtypes: galleryItems(content).map((i) => i.msgtype),
         };
     }
 

@@ -28,6 +28,7 @@ import {
     mediaThumbnailMxc,
     mediaTileSource,
     mediaViewerItem,
+    mediaItemKey,
     type RoomMediaItem,
 } from "$lib/utils/roomMedia";
 import { galleryPositionLabel } from "$lib/utils/mediaGallery";
@@ -82,10 +83,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     // video, so this is the ORDINARY path for them, not an error case: the tile
     // swaps to a placeholder instead of showing a broken-image glyph.
     const [thumbFailed, setThumbFailed] = useState<Record<string, boolean>>({});
-    // Decrypted encrypted thumbnails, keyed by eventId.
+    // Decrypted encrypted thumbnails, keyed by mediaItemKey.
     const [decryptedThumbs, decryptedThumbsRef, setDecryptedThumbs] =
         useLatestState<Record<string, string>>({});
-    // Decrypted full media for the lightbox viewer, keyed by eventId.
+    // Decrypted full media for the lightbox viewer, keyed by mediaItemKey.
     const [decryptedFull, decryptedFullRef, setDecryptedFull] = useLatestState<
         Record<string, string>
     >({});
@@ -243,7 +244,8 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     }, [room.roomId]);
 
     function openViewer(item: RoomMediaItem): void {
-        const index = gallery.findIndex((i) => i.eventId === item.eventId);
+        const key = mediaItemKey(item);
+        const index = gallery.findIndex((i) => mediaItemKey(i) === key);
         if (index === -1) return;
         setViewerIndex(index);
     }
@@ -303,7 +305,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     // every "Load more", so it skips anything already decrypted or in flight.
     useEffect(() => {
         const wanted = split.visual
-            .map((m) => ({ id: m.eventId, source: mediaTileSource(m) }))
+            .map((m) => ({ id: mediaItemKey(m), source: mediaTileSource(m) }))
             .filter((x) => x.source?.kind === "encrypted");
         const gen = blobGen.current;
         for (const { id, source } of wanted) {
@@ -348,7 +350,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         // An encrypted video is decrypted by the viewer itself, which can
         // start playing while it is still downloading.
         if (item.kind === "video") return;
-        const id = item.eventId;
+        const id = mediaItemKey(item);
         if (decryptedFullRef.current[id]) return; // Already decrypted
         const gen = blobGen.current;
         let cancelled = false;
@@ -394,10 +396,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
 
     function mediaTile(media: RoomMediaItem) {
         const thumbMxc = mediaThumbnailMxc(media);
-        const thumb = thumbFailed[media.eventId]
+        const thumb = thumbFailed[mediaItemKey(media)]
             ? null
             : media.encrypted
-              ? (decryptedThumbs[media.eventId] ?? null)
+              ? (decryptedThumbs[mediaItemKey(media)] ?? null)
               : mxcToHttp(thumbMxc, 160, 160);
         const duration = formatMediaDuration(media.durationMs);
         return (
@@ -422,7 +424,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         onError={() =>
                             setThumbFailed((f) => ({
                                 ...f,
-                                [media.eventId]: true,
+                                [mediaItemKey(media)]: true,
                             }))
                         }
                     />
@@ -488,13 +490,13 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
             // ciphertext, which the viewer would download and fail to show.
             full: (mxc) =>
                 item.encrypted && item.kind !== "video"
-                    ? (decryptedFull[item.eventId] ?? null)
+                    ? (decryptedFull[mediaItemKey(item)] ?? null)
                     : mxcToHttp(mxc),
             // "scale" rather than the default crop: a poster must match the video's
             // own aspect ratio or the player letterboxes a distorted still.
             poster: (mxc) =>
-                item.encrypted && decryptedThumbs[item.eventId]
-                    ? decryptedThumbs[item.eventId]
+                item.encrypted && decryptedThumbs[mediaItemKey(item)]
+                    ? decryptedThumbs[mediaItemKey(item)]
                     : mxcToHttp(mxc, 800, 600, "scale"),
         });
         if (viewerDecrypting)
@@ -526,7 +528,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                             ? // An encrypted video has no thumbnail_url, so mediaViewerItem
                               // never asks for one: use the decrypted thumbnail_file tile.
                               view.kind === "video"
-                                ? (decryptedThumbs[item.eventId] ?? null)
+                                ? (decryptedThumbs[mediaItemKey(item)] ?? null)
                                 : null
                             : view.poster
                     }
@@ -673,7 +675,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     className="flex-1"
                     onLayout={(e) => setListWidth(e.nativeEvent.layout.width)}
                     data={listed ? visible : []}
-                    keyExtractor={(media) => media.eventId}
+                    keyExtractor={(media) => mediaItemKey(media)}
                     numColumns={tab === "media" ? COLUMNS : 1}
                     // `p-2` around the grid (and the files), `gap-1` (and
                     // `space-y-1`) between them.

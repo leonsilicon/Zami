@@ -2,6 +2,7 @@ import { Minus, Plus } from "lucide-svelte";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
     AccessibilityInfo,
+    I18nManager,
     Pressable,
     StyleSheet,
     Text,
@@ -26,6 +27,7 @@ import Animated, {
     useAnimatedReaction,
     type SharedValue,
     useSharedValue,
+    withSequence,
     withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -45,6 +47,7 @@ import {
     openModal,
     clearModalIfOwner,
 } from "$lib/stores/interface.svelte";
+import { settingsState } from "$lib/stores/settings.svelte";
 import {
     isFavouriteGif,
     addFavouriteGif,
@@ -145,6 +148,11 @@ const DOUBLE_TAP_DIST = 40;
 // video) follows a downward drag, the backdrop fading with it, and closes past
 // this fraction of the screen or on a flick (sheetDrag's flick speed, px/ms).
 const DISMISS_FRACTION = 0.15;
+
+// Swipe between gallery items (see the pan gesture below).
+const SWIPE_LOCK = 10; // px before the drag picks an axis
+const SWIPE_FLICK_SPEED = 0.4; // px/ms: a quick flick steps on its own
+const SWIPE_FLICK_MIN = 30; // ...once it has gone at least this far
 
 // `transition: transform 0.2s ease`
 const ZOOM_TIMING = { duration: 200, easing: Easing.ease };
@@ -341,18 +349,35 @@ export default function Lightbox({
     const viewH = useSharedValue(viewport.height);
     const imgW = useSharedValue(0);
     const imgH = useSharedValue(0);
+    // How far the item follows the finger in a swipe between gallery items.
+    const swipeDx = useSharedValue(0);
+    // Where the next item starts its slide in from, set when a swipe steps.
+    const pendingEnter = useRef(0);
 
     // Gallery stepping swaps `src` on the SAME instance, so without this the
     // next image opens at the previous one's zoom, panned to coordinates
     // clamped against the previous one's dimensions.
     useEffect(() => {
         void src;
-        for (const v of [scale, tx, ty, dismiss]) cancelAnimation(v);
+        for (const v of [scale, tx, ty, dismiss, swipeDx]) cancelAnimation(v);
         scale.value = 1;
         tx.value = 0;
         ty.value = 0;
         dismiss.value = 0;
-    }, [src, scale, tx, ty, dismiss]);
+        // A swipe that stepped here slides the new item in from the side
+        // it was pulled from: placed there with no transition, then let
+        // go to the centre with one.
+        const enter = pendingEnter.current;
+        pendingEnter.current = 0;
+        if (enter && motionOK()) {
+            swipeDx.value = withSequence(
+                withTiming(enter, { duration: 0 }),
+                withTiming(0, ZOOM_TIMING),
+            );
+        } else {
+            swipeDx.value = 0;
+        }
+    }, [src, scale, tx, ty, dismiss, swipeDx]);
 
     // ── Progressive stand-ins ──────────────────────────────────────────────
     // Until `src` loads, the <img> shows `placeholders` as background layers
@@ -366,6 +391,17 @@ export default function Lightbox({
         height: number;
     } | null>(null);
     const imgLoaded = !!src && loaded?.url === src;
+    // Fit mode: an image smaller than the screen is enlarged to fill it,
+    // like a vector, instead of shown at its own size. Starts from the
+    // setting; the fit button flips it for as long as this viewer is open
+    // (stepping through a gallery keeps it).
+    const [fitToScreen, setFitToScreen] = useState(
+        () => settingsState.lightboxFitToScreen,
+    );
+    function toggleFit() {
+        setFitToScreen((f) => !f);
+        resetZoom();
+    }
     const viewGutter = isMobile ? 96 : 32; // 6em / 2em
     const maxW = Math.max(0, viewport.width - viewGutter);
     const maxH = Math.max(0, viewport.height - viewGutter);
@@ -375,7 +411,8 @@ export default function Lightbox({
         if (w === null || h === null) return null;
         // What the loaded image would get from the max-width/max-height caps
         // below: never past its own size, never past the viewport.
-        return vector
+        // Zami: a fitted image fills the viewport by its ratio, as a vector.
+        return vector || fitToScreen
             ? vectorMediaBox(w, h, maxW, maxH)
             : fitBox(w, h, maxW, maxH);
     })();
@@ -395,7 +432,7 @@ export default function Lightbox({
     // needs one, so until it loads it gets the whole viewport.
     const naturalBox =
         loaded && loaded.url === shownSrc && loaded.width > 0
-            ? vector
+            ? vector || fitToScreen
                 ? vectorMediaBox(loaded.width, loaded.height, maxW, maxH)
                 : fitBox(loaded.width, loaded.height, maxW, maxH)
             : null;
@@ -410,6 +447,19 @@ export default function Lightbox({
         imgH.value = imageH;
     }, [imageW, imageH, imgW, imgH]);
 
+    // The image's laid-out width (before the zoom transform) against its
+    // natural width, so the zoom label can show the real pixel scale: a large
+    // image shrunk to fit is below 100%, a small one enlarged by fit mode
+    // above it. Zami: the laid-out width is the box computed above (what
+    // the image's onLayout would report), the natural one expo-image's
+    // onLoad.
+    const zoomRatio = (() => {
+        const natural = imgLoaded ? (loaded?.width ?? 0) : 0;
+        // A vector has no pixel size: its zoom is relative to its fit.
+        if (vector || !natural || !imageW) return 1;
+        return imageW / natural;
+    })();
+
     // ── Sharp vectors ───────────────────────────────────────────────────────
     // Zami: not ported: re-laying out a zoomed SVG at its zoom (and scaling
     // the transform down by as much) so it is drawn again sharp. expo-image
@@ -417,6 +467,12 @@ export default function Lightbox({
     // again has not been checked on a device; a zoomed SVG may stay blurry.
     // A vector without a size already takes its ratio from the loaded file
     // (`naturalBox` above), upstream's `loadedRatio`.
+
+    function resetZoom() {
+        scale.value = 1;
+        tx.value = 0;
+        ty.value = 0;
+    }
 
     // Clamp the pan so the image can't be dragged past its visible edges.
     function maxPan(s: number) {
@@ -497,6 +553,105 @@ export default function Lightbox({
         );
     }
 
+    // ── Swipe between gallery items ─────────────────────────────────────────
+    // A one-finger horizontal drag steps to the neighbouring item, as long as
+    // the image has no room to pan that way: it is not zoomed wider than the
+    // screen, or it is already panned to the edge the drag pulls away from.
+    // A drag that pans up to an edge stops there; the next drag swipes.
+    // Zami: the state lives in shared values for the UI-thread gestures.
+    const hasPrev = useSharedValue(!!onPrev);
+    const hasNext = useSharedValue(!!onNext);
+    useEffect(() => {
+        hasPrev.value = !!onPrev;
+        hasNext.value = !!onNext;
+    }, [onPrev, onNext, hasPrev, hasNext]);
+    const galleryRef = useRef({ onPrev, onNext });
+    useEffect(() => {
+        galleryRef.current = { onPrev, onNext };
+    });
+    const swipeEligible = useSharedValue(false); // may still become a swipe
+    // Which way this gesture's finger may swipe (the image can't pan there).
+    const swipeLeftOK = useSharedValue(false);
+    const swipeRightOK = useSharedValue(false);
+    const swiping = useSharedValue(false); // this gesture is a swipe
+    // Zami: `I18nManager.isRTL` for the viewer's computed direction.
+    const rtl = I18nManager.isRTL;
+
+    /** A leftward drag goes forwards, mirrored in a right-to-left layout.
+     *  Zami: whether there's an item that way, for the worklets. */
+    function swipeHasTarget(dx: number) {
+        "worklet";
+        return dx < 0 !== rtl ? hasNext.value : hasPrev.value;
+    }
+
+    /** Zami: upstream's `swipeTarget(dx)()`, on the JS thread. */
+    function swipeStep(dx: number) {
+        const { onPrev, onNext } = galleryRef.current;
+        const target = dx < 0 !== rtl ? onNext : onPrev;
+        if (!target) return;
+        pendingEnter.current = -Math.sign(dx) * viewW.value * 0.3;
+        target();
+    }
+
+    /** At a one-finger touch: whether it may swipe, and which ways.
+     *  `maxX` is how far the image may pan sideways (0 for a video). */
+    function swipeBegin(maxX: number) {
+        "worklet";
+        swiping.value = false;
+        // A finger moving left pans the image left (tx falls), so it may
+        // swipe only once the image's right edge is already in view.
+        swipeLeftOK.value = tx.value <= -maxX + 1;
+        swipeRightOK.value = tx.value >= maxX - 1;
+        swipeEligible.value =
+            (hasPrev.value || hasNext.value) &&
+            (swipeLeftOK.value || swipeRightOK.value);
+    }
+
+    /** Picks the drag's axis once it has gone far enough, and moves the
+     *  item with a swipe. True while the drag is (or may still be) a swipe. */
+    function swipeUpdate(dx: number, dy: number) {
+        "worklet";
+        if (swipeEligible.value && !swiping.value) {
+            if (Math.abs(dx) > SWIPE_LOCK && Math.abs(dx) > Math.abs(dy)) {
+                // Towards a side the image can still pan to: pan instead.
+                if (dx < 0 ? swipeLeftOK.value : swipeRightOK.value)
+                    swiping.value = true;
+                else swipeEligible.value = false;
+            } else if (Math.abs(dy) > SWIPE_LOCK) swipeEligible.value = false;
+        }
+        if (swiping.value) {
+            // Pulling towards a side with nothing there only gives a little.
+            swipeDx.value = swipeHasTarget(dx) ? dx : dx * 0.3;
+        }
+        return swipeEligible.value;
+    }
+
+    /** A second finger turns a swipe into a pinch. */
+    function swipeCancel() {
+        "worklet";
+        swipeEligible.value = false;
+        if (!swiping.value) return;
+        swiping.value = false;
+        swipeDx.value = animateOut ? withTiming(0, ZOOM_TIMING) : 0;
+    }
+
+    /** At release: a swipe released far or flicked steps. True when the
+     *  gesture was a swipe. Zami: the flick is the release velocity (px/s),
+     *  where upstream averages the speed over the whole drag. */
+    function swipeEnd(dx: number, velocityX: number, canceled: boolean) {
+        "worklet";
+        swipeEligible.value = false;
+        if (!swiping.value) return false;
+        swiping.value = false;
+        const speed = Math.abs(velocityX) / 1000;
+        const far =
+            Math.abs(dx) > Math.min(100, viewW.value * 0.2) ||
+            (Math.abs(dx) > SWIPE_FLICK_MIN && speed > SWIPE_FLICK_SPEED);
+        swipeDx.value = animateOut ? withTiming(0, ZOOM_TIMING) : 0;
+        if (!canceled && far && swipeHasTarget(dx)) scheduleOnRN(swipeStep, dx);
+        return true;
+    }
+
     // Pinch: two fingers zoom about their midpoint.
     const pinchPrev = useSharedValue(1);
     const pinch = usePinchGesture({
@@ -515,8 +670,9 @@ export default function Lightbox({
         },
     });
 
-    // Single pointer: pan only when zoomed in. Zami: unzoomed, a drag pulls
-    // the image down to close it.
+    // Single pointer: a sideways swipe steps the gallery, otherwise pan
+    // when zoomed in. Zami: unzoomed, a vertical drag pulls the image down
+    // to close it.
     const panPointers = useSharedValue(0);
     const panDismiss = useSharedValue(false);
     const pan = usePanGesture({
@@ -527,6 +683,8 @@ export default function Lightbox({
             cancelAnimation(dismiss);
             panPointers.value = e.numberOfPointers;
             panDismiss.value = scale.value <= 1;
+            if (e.numberOfPointers === 1) swipeBegin(maxPan(scale.value).x);
+            else swipeEligible.value = false;
         },
         onUpdate: (e) => {
             "worklet";
@@ -534,10 +692,13 @@ export default function Lightbox({
             // deltas are measured from jumps, so resume from the next event.
             if (e.numberOfPointers !== panPointers.value) {
                 panPointers.value = e.numberOfPointers;
+                if (e.numberOfPointers >= 2) swipeCancel();
                 return;
             }
             // Two fingers are the pinch's.
             if (e.numberOfPointers >= 2) return;
+            // Zami: until the drag picks an axis it neither pans nor pulls.
+            if (swipeUpdate(e.translationX, e.translationY)) return;
             if (scale.value > 1) {
                 tx.value += e.changeX;
                 ty.value += e.changeY;
@@ -548,6 +709,7 @@ export default function Lightbox({
         },
         onDeactivate: (e) => {
             "worklet";
+            if (swipeEnd(e.translationX, e.velocityX, e.canceled)) return;
             settleDismiss(e.velocityY, e.canceled);
         },
     });
@@ -592,35 +754,43 @@ export default function Lightbox({
         backdropTap,
     );
 
-    // Zami: the video keeps its native controls; only a mostly vertical,
-    // downward drag on it is the swipe to close.
+    // Zami: the video keeps its native controls; only a downward drag on it
+    // (the swipe to close) or a sideways one (the swipe between gallery
+    // items, which a video never pans against) is taken from them.
     const videoDismiss: PanGesture = usePanGesture({
         activeOffsetY: ENGAGE_PX,
+        activeOffsetX: [-ENGAGE_PX, ENGAGE_PX],
         failOffsetY: -ENGAGE_PX,
-        failOffsetX: [-ENGAGE_PX, ENGAGE_PX],
         onActivate: () => {
             "worklet";
             cancelAnimation(dismiss);
+            cancelAnimation(swipeDx);
+            swipeBegin(0);
         },
         onUpdate: (e) => {
             "worklet";
+            if (swipeUpdate(e.translationX, e.translationY)) return;
             dismiss.value = Math.max(0, e.translationY);
         },
         onDeactivate: (e) => {
             "worklet";
+            if (swipeEnd(e.translationX, e.velocityX, e.canceled)) return;
             settleDismiss(e.velocityY, e.canceled);
         },
     });
 
     const imageStyle = useAnimatedStyle(() => ({
         transform: [
-            { translateX: tx.value },
+            { translateX: tx.value + swipeDx.value },
             { translateY: ty.value + dismiss.value },
             { scale: scale.value },
         ],
     }));
     const videoStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: dismiss.value }],
+        transform: [
+            { translateX: swipeDx.value },
+            { translateY: dismiss.value },
+        ],
     }));
     const backdropStyle = useAnimatedStyle(() => ({
         opacity: 1 - Math.min(1, Math.abs(dismiss.value) / (viewH.value || 1)),
@@ -870,15 +1040,14 @@ export default function Lightbox({
                     {!isVideo ? (
                         <ZoomControls
                             scale={scale}
+                            zoomRatio={zoomRatio}
                             bottom={Math.max(insets.bottom, 12)}
                             zoom={(factor) =>
                                 zoomAt(factor, viewW.value / 2, viewH.value / 2)
                             }
-                            reset={() => {
-                                scale.value = 1;
-                                tx.value = 0;
-                                ty.value = 0;
-                            }}
+                            reset={resetZoom}
+                            fitToScreen={fitToScreen}
+                            toggleFit={toggleFit}
                         />
                     ) : null}
 
@@ -934,14 +1103,21 @@ export default function Lightbox({
 /** Zami: touch-accessible zoom buttons, with the gesture's current scale. */
 function ZoomControls({
     scale,
+    zoomRatio,
     bottom,
     zoom,
     reset,
+    fitToScreen,
+    toggleFit,
 }: {
     scale: SharedValue<number>;
+    /** The image's laid-out width over its natural one (1 for a vector). */
+    zoomRatio: number;
     bottom: number;
     zoom: (factor: number) => void;
     reset: () => void;
+    fitToScreen: boolean;
+    toggleFit: () => void;
 }) {
     const [percent, setPercent] = useState(100);
     useAnimatedReaction(
@@ -949,6 +1125,17 @@ function ZoomControls({
         (next, previous) => {
             if (next !== previous) scheduleOnRN(setPercent, next);
         },
+    );
+    // The real pixel scale, for the label.
+    const [zoomPercent, setZoomPercent] = useState(() =>
+        Math.round(zoomRatio * 100),
+    );
+    useAnimatedReaction(
+        () => Math.round(scale.value * zoomRatio * 100),
+        (next, previous) => {
+            if (next !== previous) scheduleOnRN(setZoomPercent, next);
+        },
+        [zoomRatio],
     );
     return (
         <View
@@ -972,7 +1159,7 @@ function ZoomControls({
                 onPress={reset}
             >
                 <Text className="text-white text-sm tabular-nums text-center">
-                    {percent}%
+                    {zoomPercent}%
                 </Text>
             </Pressable>
             <Pressable
@@ -984,6 +1171,38 @@ function ZoomControls({
                 onPress={() => zoom(ZOOM_STEP)}
             >
                 <Plus size={20} className="text-white" />
+            </Pressable>
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("lightbox.fitToScreen")}
+                // aria-pressed
+                accessibilityState={{ selected: fitToScreen }}
+                className={`p-2 rounded-full ${fitToScreen ? "bg-white/20" : ""}`}
+                onPress={toggleFit}
+            >
+                {fitToScreen ? (
+                    // Arrows pointing in: back to actual size.
+                    <SvgIcon
+                        d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-5 h-5 text-white"
+                    />
+                ) : (
+                    // Arrows pointing out: fill the screen.
+                    <SvgIcon
+                        d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-5 h-5 text-white"
+                    />
+                )}
             </Pressable>
         </View>
     );

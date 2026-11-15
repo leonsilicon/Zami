@@ -132,7 +132,7 @@ export default function SessionSettings() {
     const [sessionsUrl, setSessionsUrl] = useState<string | null>(null);
     useEffect(() => {
         if (oauthSession)
-            void getAccountManagementUrl("org.matrix.sessions_list").then((u) =>
+            void getAccountManagementUrl("org.matrix.devices_list").then((u) =>
                 setSessionsUrl(u),
             );
     }, [oauthSession]);
