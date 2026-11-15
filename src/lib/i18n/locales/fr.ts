@@ -926,6 +926,18 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Le charger contacte le site qui l'héberge, ce qui révèle votre adresse IP",
     "linkPreview.loadPreviewMedia": "Charger le média de l'aperçu",
     "linkPreview.playVideo": "Lire la vidéo",
+    "linkPreview.replyingTo": "En réponse à",
+    "linkPreview.showMore": "Afficher plus",
+    "linkPreview.showLess": "Afficher moins",
+    "linkPreview.pollVotes":
+        "{count, plural, one {{votes} vote} other {{votes} votes}}",
+    "linkPreview.pollFinal": "Résultats finaux",
+    "linkPreview.pollEnds": "Se termine {date}",
+    "linkPreview.quoteUnavailable": "Ce post n'est pas disponible.",
+    "linkPreview.communityNote": "Des lecteurs ont ajouté du contexte",
+    "linkPreview.repostCount":
+        "{count, plural, one {# repost} other {# reposts}}",
+    "linkPreview.likeCount": "{count, plural, one {# j'aime} other {# j'aime}}",
 
     // src/lib/components/layout/LiveLocationBanner.svelte
     "liveLocationBanner.openMap": "Ouvrir la carte",
@@ -1270,6 +1282,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.decryptingImage": "Déchiffrement de l'image...",
     "messageItem.couldnTDecryptImage": "Impossible de déchiffrer l'image",
     "messageItem.imageUnavailable": "[Image indisponible]",
+    "messageItem.spoiler": "Spoiler",
+    "messageItem.revealSpoiler": "Afficher le spoiler",
     "messageItem.decryptingVideo": "Déchiffrement de la vidéo...",
     "messageItem.couldnTDecryptVideo": "Impossible de déchiffrer la vidéo",
     "messageItem.video": "Vidéo",
@@ -1846,6 +1860,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/components/messages/RenameAttachmentDialog.svelte
     "renameAttachmentDialog.editAttachment": "Modifier la pièce jointe",
     "renameAttachmentDialog.filename": "Nom du fichier",
+    "renameAttachmentDialog.markSpoiler": "Marquer comme spoiler",
+    "renameAttachmentDialog.markSpoilerHint":
+        "Masque l’image sous un cache jusqu’à ce qu’on clique dessus.",
     "renameThreadDialog.nameThread": "Nommer le fil",
     "renameThreadDialog.renameThread": "Renommer le fil",
     "renameThreadDialog.threadName": "Nom du fil",
