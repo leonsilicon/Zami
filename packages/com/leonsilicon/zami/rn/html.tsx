@@ -348,6 +348,9 @@ function Link({
   const style = useResolveClassNames(context.link);
   const decoration = decorate(context.decoration, style.textDecorationLine);
   const inner = decoration === context.decoration ? context : { ...context, decoration };
+  // Zami: not ported: the built-in message-link-pill plugin's pills (a matrix.to message
+  // link drawn as "#room" or the DM's avatar and name). The plugin decorates DOM anchors
+  // through `zam.dom.observe`, and these links aren't DOM, so they stay plain links.
   return (
     <Text
       accessibilityRole={href === undefined ? undefined : "link"}

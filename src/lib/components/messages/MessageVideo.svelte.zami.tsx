@@ -36,9 +36,13 @@ interface Props {
     content: Record<string, unknown>;
     /** The original file name (MSC2530), shown on the play card. */
     filename: string;
+    /** Extra control drawn over the video (the favourite star), told
+     *  whether it sits on the unplayed poster or the playing video. The
+     *  box it sits in is `relative group/vid`. */
+    overlay?: (where: "poster" | "player") => ReactNode;
 }
 
-export default function MessageVideo({ content, filename }: Props) {
+export default function MessageVideo({ content, filename, overlay }: Props) {
     // Video: nothing is requested until the user clicks play, and then the
     // <video> element streams the media URL itself rather than us buffering the
     // whole file into a blob first. The service worker (static/sw.js) injects
@@ -367,7 +371,9 @@ export default function MessageVideo({ content, filename }: Props) {
     // min-content width push past the column and overflow.
     function player(extraClass: string): ReactNode {
         return (
-            <View className={`relative max-w-lg w-full ${extraClass}`}>
+            <View
+                className={`relative group/vid max-w-lg w-full ${extraClass}`}
+            >
                 <AuthedVideo
                     src={
                         videoSrc?.kind === "plain"
@@ -410,6 +416,7 @@ export default function MessageVideo({ content, filename }: Props) {
                         className="w-4 h-4 text-white"
                     />
                 </Pressable>
+                {overlay?.("player")}
             </View>
         );
     }
@@ -476,7 +483,7 @@ export default function MessageVideo({ content, filename }: Props) {
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={filename || t("messageItem.video")}
-                className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden bg-black"
+                className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden group group/vid bg-black"
                 style={boxStyle}
                 onPress={playVideo}
             >
@@ -497,6 +504,8 @@ export default function MessageVideo({ content, filename }: Props) {
                         />
                     </View>
                 </View>
+                {/* Zami: after the poster, so it draws on top. */}
+                {overlay?.("poster")}
             </Pressable>
         );
     if (videoAttempt > 0 && !videoFailed)
@@ -531,7 +540,7 @@ export default function MessageVideo({ content, filename }: Props) {
         <Pressable
             accessibilityRole="button"
             accessibilityLabel={filename || t("messageItem.video")}
-            className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden bg-black"
+            className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden group group/vid bg-black"
             style={
                 videoThumbnailUrl && !videoThumbFailed ? boxStyle : undefined
             }
@@ -611,6 +620,8 @@ export default function MessageVideo({ content, filename }: Props) {
                     </View>
                 </View>
             )}
+            {/* Zami: after the poster, so it draws on top. */}
+            {overlay?.("poster")}
         </Pressable>
     );
 }

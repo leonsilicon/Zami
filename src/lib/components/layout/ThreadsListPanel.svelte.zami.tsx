@@ -388,7 +388,7 @@ export default function ThreadsListPanel({
                     );
                 }}
                 ListEmptyComponent={
-                    bridgedShown.length > 0 ? null : showSpinner ? (
+                    bridgedShown.length > 0 ? undefined : showSpinner ? (
                         <View className="flex-row justify-center mt-8">
                             <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
                         </View>

@@ -82,6 +82,7 @@ import {
     fetchSpaceHierarchy,
     getCachedHierarchy,
     getCachedHierarchyAge,
+    readSpaceChildCategories,
     patchCachedHierarchyEntry,
     getDMPartnerId,
     getRoomCallMemberships,
@@ -103,8 +104,6 @@ import {
     MicOff,
     HeadphoneOff,
     GripVertical,
-    Video,
-    Hash,
     Circle,
     Check,
 } from "lucide-svelte";
@@ -129,6 +128,21 @@ import {
     type RoomTagMap,
 } from "$lib/utils/roomOrdering";
 import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
+import { nestThreadRows } from "$lib/utils/bridgedThreads";
+import {
+    channelIconKind,
+    type BridgedChannelType,
+} from "$lib/utils/bridgedChannels";
+import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+import {
+    groupByCategory,
+    type BridgedCategory,
+} from "$lib/utils/bridgedCategories";
+import {
+    bridgedThreadParent,
+    bridgedThreadParentChannelId,
+} from "$lib/stores/bridgedThreads.svelte";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
 import { latestMessage, latestMessagePreview } from "$lib/utils/roomPreview";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
@@ -210,6 +224,20 @@ function dmPreviewFor(room: Room): string | undefined {
 // latestMessagePreview's SCAN_LIMIT.
 const PREVIEW_SCAN = 50;
 
+// ── Bridged Discord threads (ZDMB) ───────────────────────────────────
+// Like Discord: a joined thread sits under its channel; one we have not
+// joined is offered from the channel (message chip, Threads panel), not
+// as a channel of its own. Forum posts (parent is a space) are left as
+// they are: their forum already renders as a category.
+function isChannelThread(roomId: string): boolean {
+    return bridgedThreadParentChannelId(roomId) !== null;
+}
+
+function nestRooms(rooms: Room[]) {
+    void roomsState.roomsTick;
+    return nestThreadRows(rooms, (r) => r.roomId, bridgedThreadParentChannelId);
+}
+
 // ── Sub-spaces as tree categories ────────────────────────────────────
 type SubSpace = { id: string; name: string };
 
@@ -237,7 +265,7 @@ function spaceChildren(
         }
     }
     const unjoined = (hierarchy ?? []).filter(
-        (h) => !h.isSpace && !isJoinedNow(h),
+        (h) => !h.isSpace && !isJoinedNow(h) && !isChannelThread(h.roomId),
     );
     return { rooms, spaces, unjoined };
 }
@@ -578,6 +606,8 @@ function rowMetrics(fontScale: number) {
         channel: 12 + Math.max(20, sm),
         unjoined: 12 + Math.max(20, sm),
         category: 8 + Math.max(12, xs),
+        /** A Discord category's heading (`pt-3 pb-1`). */
+        bridgedCategory: 16 + Math.max(12, xs),
         emptyCategory: 8 + xs,
         browse: 8 + Math.max(12, xs),
         // The preview line is always allowed for, so every DM row is the same
@@ -1025,9 +1055,12 @@ function DropMarker({ at }: { at: "before" | "after" }) {
 const ChannelRow = memo(function ChannelRow({
     room,
     section,
+    depth = 0,
 }: {
     room: Room;
     section: Section | null;
+    /** 1 for a bridged thread nested under its channel (nestThreadRows). */
+    depth?: number;
 }) {
     // Zami: what changes on its own, read on its own (see roomIsActive).
     const isActive = useRune(() => roomIsActive(room.roomId), [room]);
@@ -1042,6 +1075,8 @@ const ChannelRow = memo(function ChannelRow({
                 // Tick dependency: names change by in-place Room
                 // mutation (late-seeded state, renames).
                 roomName: getRoomDisplayName(room),
+                isThread: bridgedThreadParent(room.roomId) !== null,
+                channelType: bridgedChannel(room.roomId)?.type,
             };
         },
         [room],
@@ -1051,6 +1086,7 @@ const ChannelRow = memo(function ChannelRow({
         <ChannelRowView
             room={room}
             section={section}
+            depth={depth}
             isActive={isActive}
             {...unreadState}
             {...label}
@@ -1061,21 +1097,27 @@ const ChannelRow = memo(function ChannelRow({
 const ChannelRowView = memo(function ChannelRowView({
     room,
     section,
+    depth,
     isActive,
     unread,
     highlight,
     loud,
     isVideo,
     roomName,
+    isThread,
+    channelType,
 }: {
     room: Room;
     section: Section | null;
+    depth: number;
     isActive: boolean;
     unread: boolean;
     highlight: number;
     loud: boolean;
     isVideo: boolean;
     roomName: string;
+    isThread: boolean;
+    channelType: BridgedChannelType | undefined;
 }) {
     const {
         reorderMode,
@@ -1088,6 +1130,7 @@ const ChannelRowView = memo(function ChannelRowView({
     } = useRowContext();
     const draggable =
         reorderMode &&
+        depth === 0 &&
         section !== null &&
         (section !== "channels" || canReorderChannels);
     const rowRef = useRef<ViewInstance>(null);
@@ -1128,11 +1171,16 @@ const ChannelRowView = memo(function ChannelRowView({
                         true,
                     );
                 }}
+                // Zami: `padding-inline-start: calc(0.5rem | 1.75rem [- 3px])`.
                 className={`flex-1 flex-row items-center gap-2 py-1.5 min-w-0 transition-colors ${
-                    isActive
-                        ? "ps-[5px]"
-                        : "ps-2 active:bg-discord-messageHover"
-                }`}
+                    depth > 0
+                        ? isActive
+                            ? "ps-[25px]"
+                            : "ps-7"
+                        : isActive
+                          ? "ps-[5px]"
+                          : "ps-2"
+                } ${isActive ? "" : "active:bg-discord-messageHover"}`}
             >
                 {/* Zami: `min-h-5`, so the unread dot's slot is as tall as the
                     icon's and the row keeps its height at small text sizes. */}
@@ -1145,17 +1193,15 @@ const ChannelRowView = memo(function ChannelRowView({
                                     : "bg-discord-textPrimary"
                             } flex-shrink-0`}
                         />
-                    ) : isVideo ? (
-                        <View
-                            className="opacity-70 flex-row items-center justify-center"
-                            accessibilityLabel={t("common.videoRoom")}
-                        >
-                            <Video size={14} className={color} />
-                        </View>
                     ) : (
-                        <View className="w-5 h-5 opacity-70 flex-row items-center justify-center">
-                            <Hash size={14} className={color} />
-                        </View>
+                        <ChannelTypeIcon
+                            kind={channelIconKind(channelType, {
+                                isThread,
+                                isVideo,
+                            })}
+                            class="w-5 h-5 opacity-70"
+                            iconClass={color}
+                        />
                     )}
                 </View>
                 <Text
@@ -1223,6 +1269,14 @@ const UnjoinedRow = memo(function UnjoinedRow({
     room: SpaceChildInfo;
 }) {
     const { actions, join, metrics } = useRowContext();
+    const tag = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return bridgedChannel(room.roomId);
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
     // Zami: this row's part of the join store (see createJoinStore).
     const isJoining = useSyncExternalStore(join.subscribe, () =>
         join.isJoining(room.roomId),
@@ -1246,18 +1300,17 @@ const UnjoinedRow = memo(function UnjoinedRow({
             >
                 <View className="flex-1 flex-row items-center gap-2 py-1.5 min-w-0 ps-2">
                     <View className="w-5 flex-shrink-0 flex-row items-center justify-center">
-                        <View className="w-5 h-5 opacity-70 flex-row items-center justify-center">
-                            <Hash
-                                size={14}
-                                className="text-discord-textPrimary"
-                            />
-                        </View>
+                        <ChannelTypeIcon
+                            kind={channelIconKind(tag?.type)}
+                            class="w-5 h-5 opacity-70"
+                            iconClass="text-discord-textPrimary"
+                        />
                     </View>
                     <Text
                         numberOfLines={1}
                         className="flex-1 text-sm text-discord-textSecondary transition-colors"
                     >
-                        {room.name ?? ""}
+                        {tag?.name || room.name || ""}
                     </Text>
                 </View>
 
@@ -1417,6 +1470,57 @@ const CategoryHeader = memo(function CategoryHeader({
                             : "bg-discord-textPrimary"
                     }`}
                 />
+            ) : null}
+        </Pressable>
+    );
+});
+
+// A Discord category (ZDMB). Collapsed like Discord: only the open channel
+// stays visible; the header shows hidden unread.
+const BridgedCategoryHeader = memo(function BridgedCategoryHeader({
+    toggleKey,
+    name,
+    expanded,
+    rooms,
+}: {
+    toggleKey: string;
+    name: string;
+    expanded: boolean;
+    rooms: Room[];
+}) {
+    const { actions, metrics } = useRowContext();
+    const hiddenUnread = useRune(
+        () =>
+            !expanded &&
+            rooms.some((r) => !roomIsActive(r.roomId) && roomUnread(r).unread),
+        [expanded, rooms],
+    );
+    const color = hiddenUnread
+        ? "text-discord-textPrimary"
+        : "text-discord-textMuted";
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={name}
+            onPress={() => actions.toggleSubspace(toggleKey)}
+            className="w-full flex-row items-center gap-1 px-2 pt-3 pb-1 transition-colors"
+            style={{ height: metrics.bridgedCategory }}
+        >
+            <SvgIcon
+                className={`w-3 h-3 flex-shrink-0 transition-transform ${
+                    expanded ? "" : "-rotate-90"
+                } ${color}`}
+                d={CHEVRON_PATH}
+            />
+            <Text
+                numberOfLines={1}
+                className={`flex-1 min-w-0 text-xs font-semibold uppercase tracking-wide ${color}`}
+            >
+                {name}
+            </Text>
+            {hiddenUnread ? (
+                <View className="w-2 h-2 flex-shrink-0 rounded-full bg-discord-textPrimary" />
             ) : null}
         </Pressable>
     );
@@ -1626,6 +1730,8 @@ type Row =
           room: Room;
           section: Section | null;
           depth: number;
+          /** A bridged thread under its channel (nestThreadRows). */
+          threadDepth: number;
       }
     | { kind: "unjoined"; key: string; room: SpaceChildInfo; depth: number }
     | {
@@ -1636,6 +1742,15 @@ type Row =
           depth: number;
           expanded: boolean;
           loading: boolean;
+      }
+    /** A Discord category's heading (ZDMB); its channels follow it. */
+    | {
+          kind: "bridgedCategory";
+          key: string;
+          toggleKey: string;
+          name: string;
+          expanded: boolean;
+          rooms: Room[];
       }
     | { kind: "emptyCategory"; key: string; depth: number }
     | { kind: "browse"; key: string; collapsed: boolean }
@@ -1675,6 +1790,8 @@ function rowHeight(
             );
         case "category":
             return m.category;
+        case "bridgedCategory":
+            return m.bridgedCategory;
         case "emptyCategory":
             return m.emptyCategory;
         case "browse":
@@ -2250,7 +2367,10 @@ export default function RoomList({
         () => {
             if (activeSpaceId === null) return NO_ROOMS;
             void roomsState.roomsTick;
-            return spaceHierarchy.filter((r) => !r.isSpace && !isJoinedNow(r));
+            return spaceHierarchy.filter(
+                (r) =>
+                    !r.isSpace && !isJoinedNow(r) && !isChannelThread(r.roomId),
+            );
         },
         [activeSpaceId, spaceHierarchy],
         { isEqual: shallowEqual },
@@ -2586,6 +2706,7 @@ export default function RoomList({
         const ids = rows.flatMap((r) =>
             (r.kind === "channel" &&
                 d.list === "main" &&
+                r.threadDepth === 0 &&
                 r.section === d.section) ||
             (r.kind === "dm" &&
                 d.list === "dm" &&
@@ -2673,15 +2794,19 @@ export default function RoomList({
     const hierarchyLoading = useRune(() => roomsState.hierarchyLoading);
 
     // Zami: the list's blocks, in upstream's order, as FlatList rows. Built in
-    // a rune selector: sub-space categories read their children live, so with
-    // any on screen it re-runs on each sync tick, but unchanged rows keep their
+    // a rune selector: sub-space categories and bridged threads and categories
+    // read their state live, so it re-runs on each sync tick, but unchanged rows keep their
     // objects and the list its array (`rowCache`), so such a tick re-renders
     // nothing.
     const [rowCache] = useState(() => createRowCache<Row>());
     const lastLoads = useRef<CategoryLoad[]>([]);
+    // Zami: each Discord category's rooms, the same array while they are, so
+    // its heading row stays the same object (see rowCache).
+    const categoryRooms = useRef(new Map<string, Room[]>());
     const flatRows = useRune(
         () => {
-            if (childSpaces.length > 0) void roomsState.roomsTick;
+            // Bridged threads and categories (nestRooms) read the tick too.
+            void roomsState.roomsTick;
             let loads: CategoryLoad[] = [];
             const rows = rowCache.build((row) => {
                 const out: Row[] = [];
@@ -2696,6 +2821,21 @@ export default function RoomList({
                     // context menus use other values on purpose: a heading's
                     // inset tracks the rows it labels, so don't collapse the
                     // three panels onto one number.
+                    const channelRows = (
+                        id: string,
+                        rows: ReturnType<typeof nestRooms>,
+                        section: Section | null,
+                    ) => {
+                        for (const row of rows)
+                            push({
+                                kind: "channel",
+                                key: `${id}:${row.item.roomId}`,
+                                room: row.item,
+                                section,
+                                depth: 0,
+                                threadDepth: row.depth,
+                            });
+                    };
                     const group = (
                         id: string,
                         label: string,
@@ -2704,14 +2844,7 @@ export default function RoomList({
                     ) => {
                         if (rooms.length === 0) return;
                         push({ kind: "heading", key: `heading:${id}`, label });
-                        for (const room of rooms)
-                            push({
-                                kind: "channel",
-                                key: `${id}:${room.roomId}`,
-                                room,
-                                section,
-                                depth: 0,
-                            });
+                        channelRows(id, nestRooms(rooms), section);
                     };
                     group(
                         "favourites",
@@ -2719,14 +2852,79 @@ export default function RoomList({
                         roomGroups.favourites,
                         "favourite",
                     );
-                    group(
-                        "normal",
-                        activeSpaceId
-                            ? t("roomList.channels")
-                            : t("roomList.rooms"),
-                        roomGroups.normal,
-                        activeSpaceId ? "channels" : null,
-                    );
+                    // Discord categories (ZDMB): the active space's channels
+                    // are grouped under their category, uncategorised ones
+                    // first, a thread under its channel's category. Reorder
+                    // mode keeps the flat list, since dragging writes the
+                    // space `order` across categories.
+                    const channelCategories = activeSpaceId
+                        ? readSpaceChildCategories(activeSpaceId)
+                        : new Map<string, BridgedCategory>();
+                    const categoryOf = (
+                        roomId: string,
+                    ): BridgedCategory | null => {
+                        const own = channelCategories.get(roomId);
+                        if (own) return own;
+                        const parent = bridgedThreadParentChannelId(roomId);
+                        return parent
+                            ? (channelCategories.get(parent) ?? null)
+                            : null;
+                    };
+                    const categoryKey = (category: BridgedCategory) =>
+                        `zdmb-category:${activeSpaceId}:${category.id}`;
+                    const categoryGroups =
+                        !activeSpaceId ||
+                        reorderMode ||
+                        channelCategories.size === 0
+                            ? null
+                            : groupByCategory(
+                                  roomGroups.normal,
+                                  (r) => r.roomId,
+                                  categoryOf,
+                              );
+                    if (categoryGroups) {
+                        for (const g of categoryGroups) {
+                            const rows = nestRooms(g.items);
+                            if (g.category) {
+                                const cat = g.category;
+                                const toggleKey = categoryKey(cat);
+                                const expanded =
+                                    !collapsedSubspaces.has(toggleKey);
+                                const prev =
+                                    categoryRooms.current.get(toggleKey);
+                                const items =
+                                    prev && shallowEqual(prev, g.items)
+                                        ? prev
+                                        : g.items;
+                                categoryRooms.current.set(toggleKey, items);
+                                push({
+                                    kind: "bridgedCategory",
+                                    key: `heading:${toggleKey}`,
+                                    toggleKey,
+                                    name: cat.name,
+                                    expanded,
+                                    rooms: items,
+                                });
+                                channelRows(
+                                    "normal",
+                                    expanded
+                                        ? rows
+                                        : rows.filter((r) =>
+                                              roomIsActive(r.item.roomId),
+                                          ),
+                                    "channels",
+                                );
+                            } else channelRows("normal", rows, "channels");
+                        }
+                    } else
+                        group(
+                            "normal",
+                            activeSpaceId
+                                ? t("roomList.channels")
+                                : t("roomList.rooms"),
+                            roomGroups.normal,
+                            activeSpaceId ? "channels" : null,
+                        );
                     group(
                         "lowPriority",
                         t("roomList.lowPriority"),
@@ -2769,13 +2967,14 @@ export default function RoomList({
                         loading,
                     });
                     if (expanded) {
-                        for (const room of kids.rooms)
+                        for (const row of nestRooms(kids.rooms))
                             push({
                                 kind: "channel",
-                                key: `${path}|room:${room.roomId}`,
-                                room,
+                                key: `${path}|room:${row.item.roomId}`,
+                                room: row.item,
                                 section: null,
                                 depth: indent + 1,
+                                threadDepth: row.depth,
                             });
                         for (const room of kids.unjoined)
                             push({
@@ -2896,6 +3095,7 @@ export default function RoomList({
             showDMs,
             sortedDirectRooms,
             hierarchyLoading,
+            reorderMode,
             rowCache,
         ],
         { isEqual: (a, b) => a.rows === b.rows && a.loads === b.loads },
@@ -3026,6 +3226,7 @@ export default function RoomList({
                             <ChannelRow
                                 room={item.room}
                                 section={item.section}
+                                depth={item.threadDepth}
                             />
                         </Indent>
                     );
@@ -3045,6 +3246,15 @@ export default function RoomList({
                                 loading={item.loading}
                             />
                         </Indent>
+                    );
+                case "bridgedCategory":
+                    return (
+                        <BridgedCategoryHeader
+                            toggleKey={item.toggleKey}
+                            name={item.name}
+                            expanded={item.expanded}
+                            rooms={item.rooms}
+                        />
                     );
                 case "emptyCategory":
                     return (

@@ -240,6 +240,7 @@
     "src/lib/components/layout/ScreenShareQualityPopover.svelte",
     "src/lib/components/layout/SoundboardButton.svelte",
     "src/lib/components/layout/SoundboardPopover.svelte",
+    "src/lib/components/layout/SpaceHoverCard.svelte",
     "src/lib/components/layout/SpaceLandingPanel.svelte",
     "src/lib/components/layout/SpaceSidebar.svelte",
     "src/lib/components/layout/Splash.svelte",

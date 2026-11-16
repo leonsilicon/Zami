@@ -90,6 +90,12 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     const [decryptedFull, decryptedFullRef, setDecryptedFull] = useLatestState<
         Record<string, string>
     >({});
+    // Encrypted images either side of the viewed one, decrypted ahead so a
+    // swipe lands on a loaded image. Handed over to decryptedFull when the
+    // viewer steps onto one; revoked once they are no longer neighbours.
+    const [prefetchedFull, prefetchedFullRef, setPrefetchedFull] =
+        useLatestState<Record<string, string>>({});
+    const [prefetchPending] = useState(() => new Set<string>());
     const [viewerDecrypting, setViewerDecrypting] = useState(false);
     const [viewerProgress, setViewerProgress] =
         useState<DownloadProgress | null>(null);
@@ -286,12 +292,16 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     function releaseDecryptedBlobs(): void {
         blobGen.current++;
         thumbPending.clear();
+        prefetchPending.clear();
         for (const url of Object.values(decryptedThumbsRef.current))
             URL.revokeObjectURL(url);
         for (const url of Object.values(decryptedFullRef.current))
             URL.revokeObjectURL(url);
+        for (const url of Object.values(prefetchedFullRef.current))
+            URL.revokeObjectURL(url);
         setDecryptedThumbs({});
         setDecryptedFull({});
+        setPrefetchedFull({});
         setViewerDecrypting(false);
     }
     useEffect(
@@ -352,6 +362,15 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         if (item.kind === "video") return;
         const id = mediaItemKey(item);
         if (decryptedFullRef.current[id]) return; // Already decrypted
+        // Already decrypted ahead as a neighbour: take that copy over.
+        const ahead = prefetchedFullRef.current[id];
+        if (ahead) {
+            setDecryptedFull({ ...decryptedFullRef.current, [id]: ahead });
+            const rest = { ...prefetchedFullRef.current };
+            delete rest[id];
+            setPrefetchedFull(rest);
+            return;
+        }
         const gen = blobGen.current;
         let cancelled = false;
         setViewerDecrypting(true);
@@ -386,6 +405,105 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         };
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream untracks decryptedFull.
     }, [viewerIndex, viewerItem]);
+
+    // Decrypt the encrypted images either side of the viewed one, through the
+    // same helper the viewer uses, and release any blob that no longer belongs
+    // to a neighbour. Closing the viewer empties `wanted`, which releases all.
+    useEffect(() => {
+        const idx = viewerIndex;
+        const wanted =
+            idx === null
+                ? []
+                : [gallery[idx - 1], gallery[idx + 1]].filter(
+                      (m): m is RoomMediaItem =>
+                          !!m &&
+                          m.kind === "image" &&
+                          !!m.encrypted &&
+                          !!m.encryptedFile,
+                  );
+        const keep = new Set(wanted.map((m) => mediaItemKey(m)));
+        const kept: Record<string, string> = {};
+        let released = false;
+        for (const [key, url] of Object.entries(prefetchedFullRef.current)) {
+            if (keep.has(key)) {
+                kept[key] = url;
+                continue;
+            }
+            URL.revokeObjectURL(url);
+            released = true;
+        }
+        if (released) setPrefetchedFull(kept);
+        const gen = blobGen.current;
+        for (const media of wanted) {
+            const id = mediaItemKey(media);
+            if (
+                decryptedFullRef.current[id] ||
+                prefetchedFullRef.current[id] ||
+                prefetchPending.has(id)
+            )
+                continue;
+            prefetchPending.add(id);
+            fetchDecryptedAttachmentBlob(
+                media.encryptedFile!,
+                media.mimetype ?? undefined,
+                { expectedSize: media.size },
+            )
+                .then((url) => {
+                    // Stale (torn down, or the viewer has since decrypted
+                    // it itself): nothing will own this URL, so release it.
+                    if (
+                        gen !== blobGen.current ||
+                        decryptedFullRef.current[id]
+                    ) {
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+                    setPrefetchedFull({
+                        ...prefetchedFullRef.current,
+                        [id]: url,
+                    });
+                })
+                .catch(() => {
+                    /* a failed prefetch just means no warm copy */
+                })
+                .finally(() => {
+                    if (gen === blobGen.current) prefetchPending.delete(id);
+                });
+        }
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream tracks the viewer index and the gallery (from items).
+    }, [viewerIndex, items]);
+
+    /** The tile thumbnail the grid shows for an item: the same URL, so the
+     *  viewer's stand-in comes from the image cache. */
+    function tileThumb(item: RoomMediaItem): string | null {
+        const id = mediaItemKey(item);
+        if (thumbFailed[id]) return null;
+        return item.encrypted
+            ? (decryptedThumbs[id] ?? null)
+            : mxcToHttp(mediaThumbnailMxc(item), 160, 160);
+    }
+
+    /** A swipe neighbour: its full src ("" while not ready, or for a video,
+     *  which the viewer does not preload), plus its tile thumbnail. */
+    function neighbourOf(item: RoomMediaItem | undefined) {
+        if (!item) return null;
+        const id = mediaItemKey(item);
+        const src =
+            item.kind !== "image"
+                ? ""
+                : item.encrypted
+                  ? (decryptedFull[id] ?? prefetchedFull[id] ?? "")
+                  : (mxcToHttp(item.url) ?? "");
+        return { src, placeholders: [tileThumb(item)] };
+    }
+
+    const viewerNeighbours =
+        viewerIndex === null
+            ? undefined
+            : {
+                  prev: neighbourOf(gallery[viewerIndex - 1]),
+                  next: neighbourOf(gallery[viewerIndex + 1]),
+              };
 
     // Zami: the grid cell's width, from the list's (`grid-cols-3 gap-1 p-2`).
     const [listWidth, setListWidth] = useState(0);
@@ -552,6 +670,8 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         viewerIndex,
                         hasMore,
                     )}
+                    placeholders={[tileThumb(item)]}
+                    neighbours={viewerNeighbours}
                 />
             );
         // mediaViewerItem resolved to nothing (bad mxc / signed-out media

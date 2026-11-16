@@ -7,7 +7,7 @@ import {
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { Circle } from "lucide-svelte";
+import { Circle, Volume2 } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
 import {
     memo,
@@ -53,9 +53,13 @@ import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
 import ModalDialog from "$lib/components/ui/ModalDialog.svelte";
 import RoomDirectory from "$lib/components/layout/RoomDirectory.svelte";
 import QuickActions from "$lib/components/layout/QuickActions.svelte";
+import SpaceHoverCard from "$lib/components/layout/SpaceHoverCard.svelte";
 import {
     getRoomAvatar,
     getRoomDisplayName,
+    getRoomCallMemberships,
+    getMemberName,
+    getMemberAvatar,
     leaveRoom,
     setSpaceLayout,
     getHomeUnreadGroup,
@@ -94,10 +98,18 @@ import {
 } from "$lib/stores/notifications.svelte";
 import { openModal, closeModal } from "$lib/stores/interface.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { voiceCallState } from "$lib/stores/voiceCall.svelte";
 // Zami: no focusTrap/activeFocusTrap or dismissOnOutsidePointer: a press outside
 // is a backdrop, and Escape is VoiceOver's escape gesture.
 import { mapWithConcurrency } from "$lib/utils/async";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
+import { dedupeParticipants } from "$lib/utils/voiceCall";
+import {
+    summarizeVoice,
+    type LiveShareInfo,
+    type SpaceVoiceSummary,
+    type VoiceRoomInput,
+} from "$lib/utils/spaceVoice";
 import type { RoomFollowUp } from "$lib/utils/roomCreationOutcome";
 import { setNavSpaces } from "$lib/keybinds/runner";
 
@@ -195,6 +207,137 @@ function WithNotifs({
         loud: (bits & 4) !== 0,
     });
 }
+
+// ── Voice presence: who is in a call, and who we know is screen sharing ──
+
+/** Joined rooms under these spaces (sub-spaces included), no containers. */
+function roomsForSpaces(spaceIds: string[]): Room[] {
+    const seen = new Set<string>();
+    const out: Room[] = [];
+    for (const spaceId of spaceIds) {
+        const ids = collectSpaceAndDescendantRoomIds(spaceId, {
+            roomsInSpace: (id) => getRoomsInSpace(id).map((r) => r.roomId),
+            childSpaceIds: (id) =>
+                getSpaceChildIds(id).filter(
+                    (cid) => getRoom(cid)?.isSpaceRoom() ?? false,
+                ),
+        });
+        for (const id of ids) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const room = getRoom(id);
+            if (room && !room.isSpaceRoom()) out.push(room);
+        }
+    }
+    return out;
+}
+
+/** Rooms that currently have call members, with resolved names/avatars. */
+function voiceRoomsOf(rooms: Room[]): VoiceRoomInput[] {
+    void roomsState.roomsTick; // member names/avatars mutate in place
+    void voiceCallState.voiceTick; // call membership is an SDK mutation
+    const out: VoiceRoomInput[] = [];
+    for (const room of rooms) {
+        const participants = dedupeParticipants(getRoomCallMemberships(room));
+        if (participants.length === 0) continue;
+        out.push({
+            roomId: room.roomId,
+            name: getRoomDisplayName(room),
+            participants: participants.map((p) => ({
+                userId: p.userId,
+                name: getMemberName(room, p.userId),
+                avatar: getMemberAvatar(room, p.userId),
+            })),
+        });
+    }
+    return out;
+}
+
+/** Screen shares are only known in the call THIS device is in. */
+function currentLiveShare(): LiveShareInfo {
+    return {
+        roomId: voiceCallState.roomId,
+        userIds: new Set(
+            voiceCallState.videoTiles
+                .filter((tile) => tile.source === "screenshare")
+                .map((tile) => tile.userId),
+        ),
+    };
+}
+
+function getSpaceVoice(spaceIds: string[]): SpaceVoiceSummary {
+    return summarizeVoice(
+        voiceRoomsOf(roomsForSpaces(spaceIds)),
+        currentLiveShare(),
+    );
+}
+
+function getHomeVoice(): SpaceVoiceSummary {
+    return summarizeVoice(
+        voiceRoomsOf([...getOrphanRooms(), ...getDirectRooms()]),
+        currentLiveShare(),
+    );
+}
+
+// Voice badge at the icon's bottom-right corner (the unread/mention pill sits
+// on the left edge, so the two never overlap). A live screen share swaps the
+// speaker glyph for a red LIVE pill. `ring` matches the rail background so
+// the badge reads as a cut-out.
+// Zami: upstream's `voiceBadge` snippet, reading the summary itself (as
+// WithNotifs does) down to the two flags it renders. The 3px ring, which
+// takes no room on the web, is a padded wrapper in the rail's color, 3px
+// further out.
+function VoiceBadge({
+    read,
+    deps = [],
+    small,
+}: {
+    read: () => SpaceVoiceSummary;
+    deps?: readonly unknown[];
+    small: boolean;
+}) {
+    const bits = useRune(() => {
+        const v = read();
+        return (v.active ? 1 : 0) | (v.live ? 2 : 0);
+    }, deps);
+    if (!(bits & 1)) return null;
+    return (
+        <View
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            className={`absolute -end-[9px] -bottom-[9px] p-[3px] bg-discord-backgroundTertiary ${
+                bits & 2 ? "rounded-[7px]" : "rounded-full"
+            }`}
+        >
+            {bits & 2 ? (
+                <View className="h-4 px-1 rounded bg-discord-danger justify-center">
+                    <Text className="text-white text-[9px] font-bold leading-4 tracking-wide">
+                        {t("spaceSidebar.liveBadge")}
+                    </Text>
+                </View>
+            ) : (
+                <View
+                    className={`rounded-full bg-discord-textPositive flex-row items-center justify-center ${
+                        small ? "w-4 h-4" : "w-[18px] h-[18px]"
+                    }`}
+                >
+                    <Volume2 size={small ? 10 : 11} className="text-white" />
+                </View>
+            )}
+        </View>
+    );
+}
+
+// ── Hover card: replaces the native title= tooltip on rail icons ─────────
+
+const HOVER_CARD_DELAY_MS = 100;
+
+type HoverCard = {
+    anchor: HTMLElement;
+    name: string;
+    getVoice: () => SpaceVoiceSummary;
+};
 
 interface Props {
     onHomeClick: () => void;
@@ -677,6 +820,50 @@ export default function SpaceSidebar({
     const spaceLayout = useRune(() => roomsState.spaceLayout);
 
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+
+    // Zami: the hover card shows for a pointer (`onHoverIn`, an iPad trackpad
+    // or mouse); a touch has no hover, so it never shows there, as upstream
+    // skips `pointerType === "touch"`. Not ported: showing it on keyboard
+    // focus (`:focus-visible`).
+    const [hoverCard, setHoverCard] = useState<HoverCard | null>(null);
+    const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Zami: the anchor is measured after the delay; a hide meanwhile wins.
+    const hoverGen = useRef(0);
+
+    function hideHoverCard() {
+        hoverGen.current++;
+        if (hoverTimer.current) {
+            clearTimeout(hoverTimer.current);
+            hoverTimer.current = null;
+        }
+        setHoverCard(null);
+    }
+
+    function scheduleHoverCard(
+        anchor: HostInstance | null | undefined,
+        name: string,
+        getVoice: () => SpaceVoiceSummary,
+    ) {
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
+        const gen = ++hoverGen.current;
+        hoverTimer.current = setTimeout(() => {
+            hoverTimer.current = null;
+            void anchorElement(anchor ?? null).then((el) => {
+                if (hoverGen.current === gen)
+                    setHoverCard({ anchor: el, name, getVoice });
+            });
+        }, HOVER_CARD_DELAY_MS);
+    }
+
+    // Clear a pending show timer when the rail unmounts.
+    useEffect(
+        () => () => {
+            hoverGen.current++;
+            if (hoverTimer.current) clearTimeout(hoverTimer.current);
+        },
+        [],
+    );
+    const homeButton = useRef<HostInstance>(null);
     const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
     // Zami: the picker's own state is FolderColorPicker's; this is the folder
     // it colors and the color it opened with.
@@ -986,6 +1173,7 @@ export default function SpaceSidebar({
         spaceId: string,
         folderId: string | null = null,
     ) {
+        hideHoverCard();
         // Claim first — a same-id handover runs the outgoing close.
         openModal("space-menu", () => setContextMenu(null));
         setContextMenu({
@@ -1002,6 +1190,7 @@ export default function SpaceSidebar({
         e: { clientX: number; clientY: number; touch: boolean },
         folderId: string,
     ) {
+        hideHoverCard();
         // Claim first — a same-id handover runs the outgoing close.
         openModal("space-menu", () => setContextMenu(null));
         setContextMenu({
@@ -1328,6 +1517,7 @@ export default function SpaceSidebar({
         fromFolderId: string | null,
     ) {
         if (touchStart.current.hasMoved) return;
+        hideHoverCard();
         setTouchDragActive(true);
         setTouchGhostId(id);
         setDragState({ id, fromFolderId });
@@ -1654,6 +1844,8 @@ export default function SpaceSidebar({
         const avatarSrc = getRoomAvatar(item.space);
         const isMergeTarget =
             dropTarget?.id === item.id && dropTarget.position === "into";
+        const spaceName = item.space.name || item.space.roomId;
+        const spaceVoice = () => getSpaceVoice([item.space.roomId]);
         return (
             <TouchDrag
                 key={item.id}
@@ -1681,8 +1873,16 @@ export default function SpaceSidebar({
                         };
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel={item.space.name || item.space.roomId}
+                    accessibilityLabel={spaceName}
                     accessibilityState={{ selected: isActive }}
+                    onHoverIn={() =>
+                        scheduleHoverCard(
+                            dragEls.current.get(item.space.roomId)?.view,
+                            spaceName,
+                            spaceVoice,
+                        )
+                    }
+                    onHoverOut={hideHoverCard}
                     onPress={() =>
                         roomsState.activeSpaceId === item.space.roomId &&
                         roomsState.spaceDrillParentId === null
@@ -1707,6 +1907,11 @@ export default function SpaceSidebar({
                                   ? "rounded-xl"
                                   : "rounded-2xl group-hover:rounded-xl"
                         } transition-all duration-200`}
+                    />
+                    <VoiceBadge
+                        read={spaceVoice}
+                        deps={[item.space.roomId]}
+                        small={false}
                     />
                     <WithNotifs
                         read={() => getSpaceNotifs(item.space.roomId)}
@@ -1754,6 +1959,10 @@ export default function SpaceSidebar({
         const folderColor = spaceLayout.folders[item.id]?.color;
         const isIntoTarget =
             dropTarget?.id === item.id && dropTarget.position === "into";
+        const folderSpaceIds = item.spaces.map((s) => s.roomId);
+        const folderVoice = () => getSpaceVoice(folderSpaceIds);
+        const folderName =
+            spaceLayout.folders[item.id]?.name || t("spaceSidebar.folder");
         // Zami: the folder icon's `display: grid` (up to 2×2 cells, 2px gaps,
         // 6px padding in its 44px box) as wrapped rows of sized cells. Each
         // avatar fills its cell, as `w-full h-full` does on the web.
@@ -1801,9 +2010,15 @@ export default function SpaceSidebar({
                         }
                         accessibilityRole="button"
                         accessibilityState={{ expanded: isExpanded }}
-                        accessibilityLabel={item.spaces
-                            .map((s) => s.name || s.roomId)
-                            .join(", ")}
+                        accessibilityLabel={folderName}
+                        onHoverIn={() =>
+                            scheduleHoverCard(
+                                dragEls.current.get(item.id)?.view,
+                                folderName,
+                                folderVoice,
+                            )
+                        }
+                        onHoverOut={hideHoverCard}
                         onPress={() => toggleFolder(item.id)}
                         className={`group relative w-12 h-12 flex-row items-center justify-center flex-shrink-0 ${
                             isIntoTarget
@@ -1853,6 +2068,13 @@ export default function SpaceSidebar({
                                 </View>
                             )}
                         </View>
+                        {!isExpanded && (
+                            <VoiceBadge
+                                read={folderVoice}
+                                deps={[folderSpaceIds.join("\n")]}
+                                small={false}
+                            />
+                        )}
                         <WithNotifs
                             read={() => getFolderNotifs(item.spaces)}
                             deps={[item]}
@@ -1905,6 +2127,8 @@ export default function SpaceSidebar({
         space: Room,
     ) {
         const isActive = activeSpaceId === space.roomId;
+        const childName = space.name || space.roomId;
+        const childVoice = () => getSpaceVoice([space.roomId]);
         return (
             <TouchDrag
                 key={space.roomId}
@@ -1923,8 +2147,16 @@ export default function SpaceSidebar({
                             : undefined
                     }
                     accessibilityRole="button"
-                    accessibilityLabel={space.name || space.roomId}
+                    accessibilityLabel={childName}
                     accessibilityState={{ selected: isActive }}
+                    onHoverIn={() =>
+                        scheduleHoverCard(
+                            dragEls.current.get(space.roomId)?.view,
+                            childName,
+                            childVoice,
+                        )
+                    }
+                    onHoverOut={hideHoverCard}
                     onPress={() => setActiveSpace(space.roomId)}
                     className={`group relative w-9 h-9 flex-row items-center justify-center transition-all duration-200 flex-shrink-0 ${
                         dragState?.id === space.roomId ? "opacity-40" : ""
@@ -1941,6 +2173,7 @@ export default function SpaceSidebar({
                                 : "rounded-2xl group-hover:rounded-lg"
                         } transition-all duration-200`}
                     />
+                    <VoiceBadge read={childVoice} deps={[space.roomId]} small />
                     <WithNotifs
                         read={() => getSpaceNotifs(space.roomId)}
                         deps={[space.roomId]}
@@ -1990,6 +2223,9 @@ export default function SpaceSidebar({
                 ref={navEl}
                 scrollEnabled={!touchDragActive}
                 showsVerticalScrollIndicator={false}
+                onScroll={hideHoverCard}
+                onTouchStart={hideHoverCard}
+                scrollEventThrottle={100}
                 className={`space-rail w-[4.5rem] grow-0 bg-discord-backgroundTertiary flex-shrink-0 ${
                     theme === "amoled" ? "border-e border-white/15" : ""
                 }`}
@@ -1999,9 +2235,18 @@ export default function SpaceSidebar({
                 {/* Zami: not ported: `data-nav-space`, for the keyboard shortcuts
                     that move between spaces. */}
                 <Pressable
+                    ref={homeButton}
                     accessibilityRole="button"
                     accessibilityLabel={t("spaceSidebar.home")}
                     accessibilityState={{ selected: activeSpaceId === null }}
+                    onHoverIn={() =>
+                        scheduleHoverCard(
+                            homeButton.current,
+                            t("spaceSidebar.home"),
+                            getHomeVoice,
+                        )
+                    }
+                    onHoverOut={hideHoverCard}
                     onPress={onHomeClick}
                     className={`group relative w-12 h-12 flex-row items-center justify-center transition-all duration-200 flex-shrink-0 ${
                         activeSpaceId === null
@@ -2033,6 +2278,7 @@ export default function SpaceSidebar({
                             ) : null
                         }
                     </WithNotifs>
+                    <VoiceBadge read={getHomeVoice} small={false} />
                 </Pressable>
 
                 {/* Separator */}
@@ -2108,6 +2354,14 @@ export default function SpaceSidebar({
             </ScrollView>
 
             <Portal>
+                {hoverCard && (
+                    <SpaceHoverCard
+                        anchor={hoverCard.anchor}
+                        name={hoverCard.name}
+                        getVoice={hoverCard.getVoice}
+                    />
+                )}
+
                 {/* Space-rail "+" flyout: compact Create-space / Join chooser. Kept
                     MOUNTED (class-toggled, not `{#if}`) so QuickActions' own Portaled form
                     modal survives this flyout closing when picking an action supersedes

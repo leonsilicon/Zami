@@ -1,4 +1,4 @@
-import { Range } from "@-/com.leonsilicon.zami.rn";
+import { DomMount, Range } from "@-/com.leonsilicon.zami.rn";
 import {
     formatSessionStalls,
     formatStartup,
@@ -8,12 +8,14 @@ import {
 } from "@-/com.leonsilicon.zami.startup";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import ExtendedProfileDebug from "$lib/components/settings/ExtendedProfileDebug.svelte";
 import GpuDebug from "$lib/components/settings/GpuDebug.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import { auth } from "$lib/stores/auth.svelte";
 import {
     isSlidingSyncEnabled,
@@ -93,6 +95,11 @@ export default function DebugSettings() {
     );
 
     const userId = useRune(() => auth.userId);
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const debugSections = useMemo(() => {
+        void pluginTick;
+        return [...pluginRegistry.debugSections];
+    }, [pluginTick]);
     const showAllEvents = useRune(() => settingsState.showAllEvents);
     const orderHints = useRune(() => settingsState.orderHints);
     const disableGallerySend = useRune(() => settingsState.disableGallerySend);
@@ -823,6 +830,26 @@ export default function DebugSettings() {
             <GpuDebug />
 
             <ExtendedProfileDebug />
+
+            {/* Plugin debug tools (zam.ui.addDebugSection).
+                Zami: the plugin builds DOM into the element (pluginMount),
+                which DomMount shows. */}
+            {debugSections.map((entry) => (
+                <View key={entry.entryId}>
+                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                        {String(entry.value.title)}
+                    </Text>
+                    <DomMount
+                        document={document}
+                        mount={(el) => {
+                            el.setAttribute("data-zam-plugin", entry.pluginId);
+                            return pluginMount(el, (el) =>
+                                entry.value.render(el),
+                            ).destroy;
+                        }}
+                    />
+                </View>
+            ))}
 
             <View>
                 <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">

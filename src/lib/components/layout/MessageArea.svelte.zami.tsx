@@ -1,5 +1,9 @@
 import { DomMount, Pulse, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
-import { sameObject, useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    sameObject,
+    shallowEqual,
+    useRune,
+} from "@-/com.leonsilicon.zami.svelte-react";
 import {
     createCoalescer,
     movesOthersReceipts,
@@ -202,11 +206,16 @@ import {
     Maximize2,
     Lock,
     Users,
-    Hash,
     Image,
     MoreHorizontal,
     X,
+    ChevronRight,
 } from "lucide-svelte";
+import { bridgedThreadParent } from "$lib/stores/bridgedThreads.svelte";
+import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+import { channelIconKind } from "$lib/utils/bridgedChannels";
+import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+import { navigateToRoom } from "$lib/stores/rooms.svelte";
 import RoomHeaderOverflowMenu from "$lib/components/layout/RoomHeaderOverflowMenu.svelte";
 import RoomTopicSheet from "$lib/components/layout/RoomTopicSheet.svelte";
 import {
@@ -1175,6 +1184,40 @@ export default function MessageArea({
     const roomName = useRune(
         () => (void roomsState.roomsTick, getRoomDisplayName(room)),
         [room],
+    );
+    // A Discord thread bridged by ZDMB: the header leads with its channel,
+    // like Discord's "#channel > thread". Only a joined channel (not a forum,
+    // which is a space) gets the link.
+    const threadParentRoom = useRune(
+        () => {
+            void roomsState.roomsTick;
+            const parent = bridgedThreadParent(room.roomId);
+            const r = parent ? getRoom(parent.roomId) : null;
+            return r && !r.isSpaceRoom() && r.getMyMembership() === "join"
+                ? { roomId: r.roomId, name: getRoomDisplayName(r) }
+                : null;
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
+    // Discord-style channel icon from ZDMB's channel tag; other rooms keep #.
+    const headerIconKind = useRune(() => {
+        void roomsState.roomsTick;
+        return channelIconKind(bridgedChannel(room.roomId)?.type, {
+            isThread: bridgedThreadParent(room.roomId) !== null,
+        });
+    }, [room]);
+    // Zami: the parent channel's icon, read here: the header is no block for
+    // an {@const}.
+    const threadParentIconKind = useRune(
+        () =>
+            threadParentRoom
+                ? channelIconKind(
+                      (void roomsState.roomsTick,
+                      bridgedChannel(threadParentRoom.roomId))?.type,
+                  )
+                : null,
+        [threadParentRoom?.roomId],
     );
     // Re-reads the live Room's state; depends on roomsTick to refresh when the
     // m.room.encryption state event lands (the Room mutates in place).
@@ -3107,10 +3150,12 @@ export default function MessageArea({
                         {/* Drop overlay */}
                         {/* Zami: not ported (see dragging files above). */}
 
-                        {/* Main chat area */}
+                        {/* Main chat area. `relative` makes it the containing block for the
+                            absolute overlays below (unread bar, jump pills), so they span only
+                            the chat column and not the side panels beside it. */}
                         <View
                             style={{ direction: uiDir }}
-                            className="flex-1 flex-col min-w-0 overflow-hidden"
+                            className="flex-1 flex-col min-w-0 overflow-hidden relative"
                         >
                             {/* Room header */}
                             {/* Zami: not ported: `data-zam-region="room-header"`,
@@ -3137,9 +3182,48 @@ export default function MessageArea({
                                         ) : null}
                                     </Pressable>
                                 ) : null}
-                                <Hash
+                                {threadParentRoom ? (
+                                    <>
+                                        {/* Zami: `title` has no equivalent; it names
+                                            the button for accessibility. */}
+                                        <Pressable
+                                            accessibilityRole="button"
+                                            accessibilityLabel={t(
+                                                "bridgedThreads.goToParent",
+                                                { name: threadParentRoom.name },
+                                            )}
+                                            onPress={() =>
+                                                navigateToRoom(
+                                                    threadParentRoom.roomId,
+                                                )
+                                            }
+                                            className="hidden sm:flex flex-row items-center gap-1 min-w-0 max-w-[30%] transition-colors"
+                                        >
+                                            <ChannelTypeIcon
+                                                kind={
+                                                    threadParentIconKind ??
+                                                    "text"
+                                                }
+                                                size={20}
+                                                class="flex-shrink-0 text-discord-textMuted"
+                                            />
+                                            <Text
+                                                numberOfLines={1}
+                                                className="flex-shrink font-semibold text-discord-textMuted"
+                                            >
+                                                {threadParentRoom.name}
+                                            </Text>
+                                        </Pressable>
+                                        <ChevronRight
+                                            size={16}
+                                            className="hidden sm:flex text-discord-textMuted flex-shrink-0 rtl:-scale-x-100"
+                                        />
+                                    </>
+                                ) : null}
+                                <ChannelTypeIcon
+                                    kind={headerIconKind}
                                     size={20}
-                                    className="text-discord-textMuted flex-shrink-0"
+                                    class="text-discord-textMuted flex-shrink-0"
                                 />
                                 {/* 5rem floor below md only: the header's buttons cannot shrink, so
                                     without a floor the name and topic each get a proportional share of

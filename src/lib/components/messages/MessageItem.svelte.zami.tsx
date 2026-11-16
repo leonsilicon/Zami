@@ -3203,6 +3203,16 @@ function MessageItem({
                                 placeholders={ucur.placeholders}
                                 dims={ucur.dims}
                                 mimetype={ucur.mimetype}
+                                neighbours={{
+                                    prev:
+                                        uprev !== null
+                                            ? ug.images[uprev]
+                                            : null,
+                                    next:
+                                        unext !== null
+                                            ? ug.images[unext]
+                                            : null,
+                                }}
                                 onClose={() => setUploadGallery(null)}
                                 onPrev={
                                     uprev !== null
@@ -3378,10 +3388,33 @@ function MessageItem({
             return (
                 <>
                     {mediaCaption()}
-                    {/* Zami: not ported: the video's favourite star
-                        (MessageVideo's `overlay` snippet, which its
-                        translation doesn't take yet). */}
-                    <MessageVideo content={content} filename={mediaFilename} />
+                    {/* Zami: the star shows on hover, which touch doesn't
+                        have, as on an image. */}
+                    <MessageVideo
+                        content={content}
+                        filename={mediaFilename}
+                        overlay={
+                            isTouchscreen
+                                ? undefined
+                                : (where: "poster" | "player") => (
+                                      <GifFavouriteStar
+                                          favouriteKey={
+                                              mediaFullUrl ??
+                                              eventFavouriteKey(
+                                                  encryptedFavouriteSource,
+                                              )
+                                          }
+                                          mediaMxc={imageMediaMxc}
+                                          onPress={toggleMediaFavourite}
+                                          position={
+                                              where === "player"
+                                                  ? "top-2 end-11"
+                                                  : "top-1.5 end-1.5"
+                                          }
+                                      />
+                                  )
+                        }
+                    />
                 </>
             );
         }
@@ -3559,6 +3592,44 @@ function MessageItem({
                       ))
                     : null}
             </>
+        );
+    }
+
+    // Where a forward came from: the room and the original's time, a link to
+    // the original when its room is one a permalink can open.
+    // Zami: the end of upstream's forward block, as a function the block
+    // calls after messageBody.
+    function forwardSource(): ReactNode {
+        if (!forward || !(forwardRoomName || forward.ts)) return null;
+        const fwdTs = forward.ts;
+        const footer = [forwardRoomName, fwdTs ? messageTimestamp(fwdTs) : null]
+            .filter(Boolean)
+            .join(" · ");
+        if (forwardLink) {
+            const link = forwardLink;
+            return (
+                <Pressable
+                    accessibilityRole="link"
+                    accessibilityHint={fwdTs ? fullTimestamp(fwdTs) : undefined}
+                    onPress={() => openMatrixTarget(link)}
+                    className="forward-source mt-1 self-start max-w-full"
+                >
+                    <Text
+                        numberOfLines={1}
+                        className="text-xs text-discord-textMuted"
+                    >
+                        {footer}
+                    </Text>
+                </Pressable>
+            );
+        }
+        return (
+            <Text
+                numberOfLines={1}
+                className="forward-source mt-1 text-xs text-discord-textMuted"
+            >
+                {footer}
+            </Text>
         );
     }
 
@@ -3766,7 +3837,35 @@ function MessageItem({
                         />
                     ) : null}
 
-                    {messageBody()}
+                    {/* MSC4553 forward: a label, the original in a quoted block, and
+                        where it came from. `contents` leaves a plain message's layout
+                        untouched. */}
+                    {forward ? (
+                        <View className="forward-label flex-row min-w-0 items-center gap-1">
+                            <CornerUpRight
+                                size={12}
+                                className="flex-shrink-0 text-discord-textMuted"
+                            />
+                            <Text
+                                numberOfLines={1}
+                                className="shrink text-xs italic text-discord-textMuted"
+                            >
+                                {forwardSenderName
+                                    ? t("messageItem.forwardedFrom", {
+                                          name: forwardSenderName,
+                                      })
+                                    : t("messageItem.forwarded")}
+                            </Text>
+                        </View>
+                    ) : null}
+                    {forward ? (
+                        <View className="forward-block mt-0.5 border-s-[3px] border-discord-divider ps-3 min-w-0">
+                            {messageBody()}
+                            {forwardSource()}
+                        </View>
+                    ) : (
+                        messageBody()
+                    )}
 
                     {/* Paged lightbox for this message's OWN inline body images. A single
                         media image opens with no dead nav; ≥2 page with the chevrons /
@@ -3784,6 +3883,18 @@ function MessageItem({
                                   <Lightbox
                                       src={cur.src}
                                       alt={cur.alt}
+                                      placeholders={cur.placeholders}
+                                      dims={cur.dims}
+                                      neighbours={{
+                                          prev:
+                                              prev !== null
+                                                  ? g.images[prev]
+                                                  : null,
+                                          next:
+                                              next !== null
+                                                  ? g.images[next]
+                                                  : null,
+                                      }}
                                       onClose={() => setBodyGallery(null)}
                                       onPrev={
                                           prev !== null
@@ -3851,6 +3962,80 @@ function MessageItem({
                             ) : null}
                         </Pressable>
                     ) : null}
+
+                    {/* Discord thread bridged by ZDMB from this message: opens (or
+                        joins, then opens) the thread's own room. */}
+                    {bridgedChip
+                        ? (() => {
+                              const chip = bridgedChip;
+                              return (
+                                  <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityHint={
+                                          chip.joined
+                                              ? t("messageItem.openThread")
+                                              : t("bridgedThreads.joinThread")
+                                      }
+                                      onPress={() =>
+                                          void openBridgedThread(chip.roomId)
+                                      }
+                                      className="flex-row self-start items-center gap-1.5 mt-0.5 max-w-full px-1.5 py-0.5 rounded bg-discord-backgroundSecondary border border-discord-divider transition-colors"
+                                  >
+                                      <MessagesSquare
+                                          size={12}
+                                          className="flex-shrink-0 text-discord-textMuted"
+                                      />
+                                      <Text
+                                          numberOfLines={1}
+                                          className="text-xs font-semibold text-discord-textPrimary shrink max-w-48"
+                                      >
+                                          {chip.name}
+                                      </Text>
+                                      {chip.numMembers !== null ? (
+                                          <>
+                                              <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                                                  &middot;
+                                              </Text>
+                                              <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                                                  {t(
+                                                      "bridgedThreads.memberCount",
+                                                      {
+                                                          count: chip.numMembers,
+                                                      },
+                                                  )}
+                                              </Text>
+                                          </>
+                                      ) : null}
+                                      {!chip.joined ? (
+                                          <>
+                                              <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                                                  &middot;
+                                              </Text>
+                                              <Text className="flex-shrink-0 text-xs text-discord-accent">
+                                                  {t(
+                                                      "bridgedThreads.joinThread",
+                                                  )}
+                                              </Text>
+                                          </>
+                                      ) : chip.highlight > 0 ? (
+                                          <View className="flex-shrink-0 bg-discord-danger rounded-full px-1.5 min-w-[1.2rem] items-center">
+                                              <Text className="text-xs text-white font-bold text-center">
+                                                  {chip.highlight > 99
+                                                      ? "99+"
+                                                      : chip.highlight}
+                                              </Text>
+                                          </View>
+                                      ) : chip.unread ? (
+                                          <View className="flex-shrink-0 w-2 h-2 rounded-full bg-discord-textPrimary" />
+                                      ) : null}
+                                      <ChevronRight
+                                          size={12}
+                                          className="flex-shrink-0 text-discord-textMuted"
+                                      />
+                                  </Pressable>
+                              );
+                          })()
+                        : null}
 
                     {/* Reactions (reserve right clearance on touch so the wrapped reaction
                         row never runs under the out-of-flow read-receipt overlay; not needed
@@ -4589,11 +4774,15 @@ function GifFavouriteStar({
     favouriteKey,
     mediaMxc,
     onPress,
+    position = "top-1.5 end-1.5",
 }: {
     favouriteKey: string | null;
     /** The media's mxc: a message reusing a favourite's media matches it. */
     mediaMxc: string | undefined;
     onPress: () => void;
+    /** Where it sits on the media (upstream's `favouriteStar` snippet's
+     *  `position`, less its hover classes). */
+    position?: string;
 }) {
     const imageIsFavourited = useRune(() => {
         void favouritesState.gifs; // track
@@ -4609,7 +4798,8 @@ function GifFavouriteStar({
                     : t("common.addToFavourites")
             }
             onPress={onPress}
-            className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity"
+            accessibilityState={{ selected: imageIsFavourited }}
+            className={`absolute z-10 p-1 rounded-full bg-black/50 transition-opacity ${position}`}
         >
             {imageIsFavourited ? (
                 <SvgIcon
