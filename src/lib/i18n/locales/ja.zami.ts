@@ -723,6 +723,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "直接接続は行わず、通話サーバーに IP アドレスも見えません。通話はプロキシ経由で、通話サーバーの TURN リレーに TCP または TLS で送られます。サーバーが TURN リレーを提供しない場合、通話は接続できません。遅延が増える見込みです。",
     "proxySettings.callsDirectUnavailable":
         "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動または PAC）を設定してください。",
+    "proxySettings.callsDirectUnavailableManual":
+        "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動）を設定してください。",
+    "proxySettings.androidBackgroundHint":
+        "通知とクイック返信は WebView の外で取得され、socks5:// または http:// プロキシ経由でのみ動作します。",
+    "proxySettings.unsupported":
+        "このバージョンの Android System WebView ではプロキシを設定できません。Play ストアから更新してください。",
     "proxySettings.callsDirectAddresses": "直接送信:",
     "proxySettings.save": "保存",
     "proxySettings.saved": "保存しました",
@@ -1182,6 +1188,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "元のメッセージは削除されました",
     "messageItem.originalMessageUnavailable": "元のメッセージは利用できません",
     "messageItem.replyPreviewSticker": "ステッカー",
+    "messageItem.forwarded": "転送済み",
+    "messageItem.forwardedFrom": "{name} から転送",
+    "messageItem.forwardedEmoteActor": "送信者",
     "messageItem.requestKeys": "鍵をリクエスト",
     "messageItem.keysRequested": "鍵をリクエストしました",
     "messageItem.requestKeysHelp":
@@ -2254,6 +2263,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "色を設定",
     "spaceSidebar.dissolveFolder": "フォルダを解散",
     "spaceSidebar.somethingWentWrong": "問題が発生しました",
+    "spaceSidebar.folder": "フォルダー",
+    "spaceSidebar.liveBadge": "ライブ",
+    "spaceSidebar.inVoiceCount": "通話中 {count} 人",
+    "spaceSidebar.moreParticipants": "+{count} 人",
     "splash.restoringSession": "セッションを復元中…",
     "stickerPicker.searchStickers": "ステッカーを検索…",
     "stickerPicker.searchStickers2": "ステッカーを検索",
@@ -2312,6 +2325,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.noRepliesYetStartTheThread":
         "まだ返信はありません。下からスレッドを始めてください。",
     "threadPanel.loadOlderReplies": "古い返信を読み込む",
+    "bridgedChannels.voice": "ボイスチャンネル",
+    "bridgedChannels.stage": "ステージチャンネル",
+    "bridgedChannels.announcement": "アナウンスチャンネル",
+    "bridgedChannels.forum": "フォーラム",
+    "bridgedChannels.media": "メディアチャンネル",
+    "bridgedChannels.privateThread": "プライベートスレッド",
+    "bridgedThreads.joinFailed": "スレッドに参加できませんでした。",
+    "bridgedThreads.joinThread": "スレッドに参加",
+    "bridgedThreads.threadRooms": "スレッドルーム",
+    "bridgedThreads.thread": "スレッド",
+    "bridgedThreads.goToParent": "{name} に移動",
+    "bridgedThreads.memberCount": "{count, plural, other {# 人のメンバー}}",
     "threadsListPanel.threads": "スレッド",
     "threadsListPanel.closeThreadsPanel": "スレッドパネルを閉じる",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2539,6 +2564,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "ダイレクトメッセージは鳴ります。ルームは鳴りません - ルームはルーム自体から参加します。",
     "voiceAudioSettings.ringtoneVolume": "着信音の音量",
+    "voiceAudioSettings.ringtone": "着信音",
+    "voiceAudioSettings.ringtoneDefault": "デフォルト",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "プラグインの着信音（プラグインが読み込まれていません）",
     "voiceAudioSettings.fullScreenCalls": "ロック画面に通話を表示",
     "voiceAudioSettings.fullScreenCallsHint":
         "着信DM通話で画面を点灯し、電話のように全画面で鳴らせるようにします。Androidでは別途許可が必要です。",
@@ -2956,6 +2986,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "書き換えルール",
     "previewRewriter.rulesDescription":
         "プレビューの取得先アドレスに順番に適用されます。リンク自体は変更されません。",
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "メッセージリンクのピル",
+    "messageLinkPill.description":
+        "貼り付けたメッセージリンクを、リンク先のルームまたはDMの名前を示すコンパクトなピルとして表示します。ピルにカーソルを合わせると、対応するプレビューがハイライトされます。",
+    "messageLinkPill.viewMessage": "メッセージを表示",
+    "messageLinkPill.viewMessageIn": "{room} の引用メッセージを表示",
+    "messageLinkPill.viewQuotedMessage": "引用メッセージを表示",
+
     "pluginBoot.noPluginSyncDataOnYour":
         "アカウントにまだプラグインの同期データがありません。",
     "pluginBoot.theSyncDataOnYourAccount":

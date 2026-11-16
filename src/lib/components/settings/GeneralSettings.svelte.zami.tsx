@@ -4,6 +4,7 @@ import { Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import ProxySettings from "./ProxySettings.svelte";
+import { proxyBridge } from "$lib/proxyBridge";
 import {
     setMinimizeToTrayOnClose,
     settingsState,
@@ -13,7 +14,9 @@ import { isDesktopTray, setMinimizeToTray } from "$lib/desktopTray";
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. `data-setting-anchor` (settings search scrolls to it)
 // is not ported. The desktop section is Electron's (`window.desktop`), which the
-// Expo app never has, so the app shows the "no general settings" line.
+// Expo app never has, and `proxyBridge()` is null here too (no `window.desktop`, and
+// the Capacitor stand-in isn't Android), so the app shows the "no general settings"
+// line.
 export default function GeneralSettings() {
     const autostart =
         typeof window !== "undefined" ? window.desktop?.autostart : undefined;
@@ -108,13 +111,15 @@ export default function GeneralSettings() {
                             />
                         </View>
                     </View>
-                    <ProxySettings />
                 </>
-            ) : (
+            ) : null}
+            {proxyBridge() ? (
+                <ProxySettings />
+            ) : !isDesktopTray() ? (
                 <Text className="text-sm text-discord-textMuted">
                     {t("generalSettings.noGeneralSettingsAreAvailableOn")}
                 </Text>
-            )}
+            ) : null}
         </View>
     );
 }

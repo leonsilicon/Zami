@@ -59,6 +59,16 @@ export default function TweetCard({ tweet, nested = false }: Props) {
 
     const photos = tweet.media.filter((m) => m.kind === "photo");
 
+    /** A photo as the viewer wants it: the original, the grid's thumb as its
+     *  stand-in, and its size so the box is laid out before either loads. */
+    function viewerItem(p: (typeof photos)[number]) {
+        return {
+            src: p.url,
+            placeholders: [tweetPhotoThumb(p.url)],
+            dims: p.width && p.height ? { w: p.width, h: p.height } : null,
+        };
+    }
+
     const pollEnded =
         tweet.poll?.endsAt != null && tweet.poll.endsAt <= Date.now();
     const pollLeader = tweet.poll
@@ -122,8 +132,10 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         };
         if (item.kind === "gif")
             // Played like a GIF: muted, looped, no controls.
-            // Zami: not ported: unloadOffscreen, which drops its src once the
-            // row is well out of view; the FlatList unmounts far-off rows.
+            // Zami: not ported: gifTileVideo, which gives it a src only while
+            // it is near the viewport (an IntersectionObserver), so a post's
+            // many GIFs don't each hold a hardware decoder; the FlatList
+            // unmounts far-off rows, which releases the player.
             return (
                 <View
                     accessibilityLabel={item.alt}
@@ -438,10 +450,16 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         const prev = nav.prevIndex;
         const next = nav.nextIndex;
         if (!photo) return null;
+        // The grid's medium thumb (already loaded) stands in, in a box
+        // sized from the media dims, until the original arrives; the
+        // neighbours carry the same so a step or swipe lands on a sized,
+        // painted image instead of an empty 0x0 one.
         return (
             <Lightbox
                 src={photo.url}
                 alt={photo.alt ?? ""}
+                placeholders={viewerItem(photo).placeholders}
+                dims={viewerItem(photo).dims}
                 onClose={() => setLightboxIndex(null)}
                 onPrev={
                     prev !== null ? () => setLightboxIndex(prev) : undefined
@@ -449,6 +467,10 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                 onNext={
                     next !== null ? () => setLightboxIndex(next) : undefined
                 }
+                neighbours={{
+                    prev: prev !== null ? viewerItem(photos[prev]) : null,
+                    next: next !== null ? viewerItem(photos[next]) : null,
+                }}
                 position={galleryPositionLabel(photos.length, lightboxIndex)}
             />
         );

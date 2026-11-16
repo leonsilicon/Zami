@@ -788,6 +788,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aucune connexion directe, et les serveurs d'appel ne voient jamais votre adresse IP : les appels passent par le proxy vers le relais TURN du serveur d'appel en TCP ou TLS. Si le serveur ne propose pas de relais TURN, les appels ne se connecteront pas. Attendez-vous à plus de latence.",
     "proxySettings.callsDirectUnavailable":
         "Les appels ne peuvent pas contourner les paramètres de proxy du système. Réglez le proxy ici (Manuel ou PAC) pour que cela fonctionne.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Les appels ne peuvent pas contourner les paramètres de proxy du système. Réglez le proxy ici (Manuel) pour que cela fonctionne.",
+    "proxySettings.androidBackgroundHint":
+        "Les notifications et réponses rapides sont récupérées hors de la WebView et ne fonctionnent qu'avec des proxys socks5:// ou http://.",
+    "proxySettings.unsupported":
+        "Cette version d'Android System WebView ne peut pas définir de proxy. Mettez-la à jour depuis le Play Store.",
     "proxySettings.callsDirectAddresses": "Envoyé en direct :",
     "proxySettings.save": "Enregistrer",
     "proxySettings.saved": "Enregistré",
@@ -1262,6 +1268,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "Message d'origine supprimé",
     "messageItem.originalMessageUnavailable": "Message d'origine indisponible",
     "messageItem.replyPreviewSticker": "Autocollant",
+    "messageItem.forwarded": "Transféré",
+    "messageItem.forwardedFrom": "Transféré de {name}",
+    "messageItem.forwardedEmoteActor": "Expéditeur",
     "messageItem.requestKeys": "Demander les clés",
     "messageItem.keysRequested": "Clés demandées",
     "messageItem.requestKeysHelp":
@@ -2524,6 +2533,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Définir la couleur",
     "spaceSidebar.dissolveFolder": "Dissoudre le dossier",
     "spaceSidebar.somethingWentWrong": "Une erreur s'est produite",
+    "spaceSidebar.folder": "Dossier",
+    "spaceSidebar.liveBadge": "EN DIRECT",
+    "spaceSidebar.inVoiceCount": "{count} en vocal",
+    "spaceSidebar.moreParticipants": "+{count} de plus",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restauration de la session…",
@@ -2596,6 +2609,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Charger les réponses plus anciennes",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Salon vocal",
+    "bridgedChannels.stage": "Salon de conférence",
+    "bridgedChannels.announcement": "Salon d'annonces",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Salon multimédia",
+    "bridgedChannels.privateThread": "Fil privé",
+    "bridgedThreads.joinFailed": "Impossible de rejoindre le fil.",
+    "bridgedThreads.joinThread": "Rejoindre le fil",
+    "bridgedThreads.threadRooms": "Salons de fils",
+    "bridgedThreads.thread": "Fil",
+    "bridgedThreads.goToParent": "Aller à {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# membre} other {# membres}}",
     "threadsListPanel.threads": "Fils",
     "threadsListPanel.closeThreadsPanel": "Fermer le panneau des fils",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2846,6 +2872,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Les messages directs sonnent. Les salons jamais - vous les rejoignez depuis le salon lui-même.",
     "voiceAudioSettings.ringtoneVolume": "Volume de la sonnerie",
+    "voiceAudioSettings.ringtone": "Sonnerie",
+    "voiceAudioSettings.ringtoneDefault": "Par défaut",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Sonnerie du module (module non chargé)",
     "voiceAudioSettings.fullScreenCalls":
         "Afficher les appels sur l'écran de verrouillage",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3355,6 +3386,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Règles de réécriture",
     "previewRewriter.rulesDescription":
         "Appliquées dans l’ordre à l’adresse depuis laquelle un aperçu est chargé. Le lien lui-même n’est pas modifié.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Pastilles de liens de message",
+    "messageLinkPill.description":
+        "Affiche les liens de message collés sous forme de pastille compacte indiquant le salon ou le message direct visé, et met en surbrillance l’aperçu correspondant lorsque vous survolez une pastille.",
+    "messageLinkPill.viewMessage": "Voir le message",
+    "messageLinkPill.viewMessageIn": "Voir le message cité dans {room}",
+    "messageLinkPill.viewQuotedMessage": "Voir le message cité",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

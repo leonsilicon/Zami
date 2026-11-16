@@ -82,6 +82,7 @@ import {
 } from "$lib/matrix/progressiveImage";
 import { createFrameRelay } from "$lib/utils/frameRelay";
 import { createTileImage } from "$lib/utils/tileImage";
+import { isAnimatedImageInfo } from "$lib/utils/imageThumbnail";
 import {
     cacheDecryptedImage,
     cachedDecryptedImage,
@@ -109,7 +110,22 @@ import {
 } from "$lib/utils/messageActionsMenu";
 import EventShield from "./EventShield.svelte";
 import MessageDecorations from "$lib/components/messages/MessageDecorations.svelte";
-import { Check, Code, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
+import {
+    Check,
+    Code,
+    Forward,
+    CornerUpRight,
+    Link,
+    Lock,
+    Reply,
+    Pencil,
+    ChevronRight,
+    MessagesSquare,
+} from "lucide-svelte";
+import {
+    bridgedThreadForEvent,
+    openBridgedThread,
+} from "$lib/stores/bridgedThreads.svelte";
 import Reactions from "$lib/components/messages/Reactions.svelte";
 import ReactorPopover from "./ReactorPopover.svelte";
 import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
@@ -143,10 +159,13 @@ import {
     seedRoomStateIfMissing,
     getRoomIdForAlias,
     getThreadSummary,
+    getRoomUnreadInfo,
     getThreadName,
     getHomeserverBaseUrl,
+    getRoomDisplayName,
     EventStatus,
 } from "$lib/matrix/client";
+import { forwardEventPermalink, readForward } from "$lib/utils/forwarded";
 import MessageEditBox from "$lib/components/messages/MessageEditBox.svelte";
 import { emoticonsFromHtml } from "$lib/utils/messageBody";
 import { saveObjectUrl, revokeLater } from "$lib/utils/saveFile";
@@ -155,6 +174,7 @@ import {
     isEmptyEdit,
     sendMessageEdit,
 } from "$lib/matrix/editMessage";
+import { displayContent } from "$lib/utils/displayContent";
 import { resolveBubbleLayout } from "$lib/utils/bubbleLayout";
 import {
     parseMatrixLink,
@@ -318,6 +338,15 @@ interface Props {
     timelineEvents?: MatrixEvent[];
     timelineIndex?: number;
 }
+
+type BridgedChip = {
+    roomId: string;
+    name: string;
+    joined: boolean;
+    numMembers: number | null;
+    unread: boolean;
+    highlight: number;
+};
 
 // Zami: the default `receipts`, one array for every row, so it doesn't change
 // on every render.
@@ -946,13 +975,6 @@ function MessageItem({
                 : 0;
         return avatars + overflow + 4;
     })();
-    // An encrypted edit is applied once it decrypts; content re-reads on
-    // this event's revision then, so the indicator must too or the edited
-    // text shows without it.
-    // Zami: this and the event's other fields below are read as the row
-    // renders, which `rowState` makes it do whenever the event changes.
-    const isEdited = !!event.replacingEvent();
-
     // A failed (NOT_SENT) local echo: the send errored and the SDK is blocking
     // further sends in this room until it's retried or removed.
     // Zami: the status is read once, for this and the shield's key below.
@@ -1020,9 +1042,11 @@ function MessageItem({
         // so depend on its revision — moved on MatrixEventEvent.Decrypted —
         // or the encrypted envelope's (empty) content sticks after decryption.
         void revision;
+        // displayContent, not getContent(): an applied edit that is still
+        // encrypted (or failed to decrypt) leaves getContent() empty.
         // Zami: a redaction empties the content in place, so a redacted
         // event's is a copy, for the memos below that key on it.
-        const value = event.getContent();
+        const value = displayContent(event);
         return event.isRedacted() ? { ...value } : value;
     }, [event, revision]);
     // Likewise revision-dependent: getType() flips "m.room.encrypted" → the
@@ -1030,6 +1054,67 @@ function MessageItem({
     // a plain $derived(event.getType()) would keep the UTD placeholder up
     // forever.
     const eventType = event.getType();
+
+    // MSC4553 forward: `content` above is already the forwarded original
+    // (displayContent); this is the attribution drawn around it. All of it is
+    // the forwarder's claim, so names resolve from rooms we can see when we
+    // can, and the claimed room name is only a fallback.
+    const forward = useMemo(() => {
+        void revision;
+        if (event.isRedacted()) return null;
+        return readForward(event.getOriginalContent(), eventType);
+    }, [event, revision, eventType]);
+    function knownUserName(userId: string, roomId?: string): string {
+        if (room.getMember(userId)) return getMemberName(room, userId);
+        const source = roomId ? getRoom(roomId) : null;
+        if (source?.getMember(userId)) return getMemberName(source, userId);
+        return userId;
+    }
+    // Zami: both names read on roomsTick in one rune, as upstream's two
+    // deriveds do.
+    const forwardNames = useRune(
+        () => {
+            if (!forward) return { sender: null, room: null };
+            void roomsState.roomsTick;
+            const joined = forward.roomId ? getRoom(forward.roomId) : null;
+            return {
+                sender: forward.sender
+                    ? knownUserName(forward.sender, forward.roomId)
+                    : null,
+                room: joined
+                    ? getRoomDisplayName(joined)
+                    : (forward.roomName ?? null),
+            };
+        },
+        [forward, room],
+        { isEqual: shallowEqual },
+    );
+    const forwardSenderName = forwardNames.sender;
+    const forwardRoomName = forwardNames.room;
+    const forwardLink = useMemo(() => {
+        if (!forward?.roomId || !forward.eventId) return null;
+        const servers = forward.roomId.split(":").slice(1).join(":");
+        const target = parseMatrixLink(
+            forwardEventPermalink(
+                forward.roomId,
+                forward.eventId,
+                servers ? [servers] : [],
+            ),
+        );
+        return target && target.kind !== "user" ? target : null;
+    }, [forward]);
+    // An emote's actor: never the forwarder (MSC4553).
+    const emoteActor = forward
+        ? (forwardSenderName ?? t("messageItem.forwardedEmoteActor"))
+        : displayName;
+    // An encrypted edit is applied once it decrypts; content re-reads on
+    // this event's revision then, so the indicator must too or the edited
+    // text shows without it.
+    // Zami: declared here, after `forward`, which it reads. This and the
+    // event's other fields below are read as the row renders, which
+    // `rowState` makes it do whenever the event changes.
+    // Edits targeting a forward are ignored (MSC4553).
+    const isEdited = !forward && !!event.replacingEvent();
 
     const msgtype: string = content?.msgtype ?? "";
 
@@ -1062,6 +1147,7 @@ function MessageItem({
     const canEditMessage =
         isOwnMessage &&
         eventType === "m.room.message" &&
+        !forward &&
         isEditableContent(content);
 
     // Swipe reveal icon: "none" | "reply" | "edit" (depends on canEditMessage).
@@ -1635,9 +1721,11 @@ function MessageItem({
     const imageThumbUrl = useMemo(() => {
         const value = (() => {
             if (msgtype !== "m.image") return null;
-            // GIFs are served full-res in chat so they keep animating; the server
-            // thumbnail would (depending on homeserver) drop the animation.
-            if (isGif || isSvgImage) return mxcToHttp(content?.url as string);
+            // GIFs, and anything flagged animated (MSC4230 / APNG), are served
+            // full-res in chat so they keep animating; the server thumbnail would
+            // (depending on homeserver) drop the animation.
+            if (isGif || isSvgImage || isAnimatedImageInfo(content?.info))
+                return mxcToHttp(content?.url as string);
             // Homeservers generally can't thumbnail JPEG XL, so ask for the
             // original; utils/jxl transcodes it where the engine can't decode it.
             if (
@@ -2188,7 +2276,7 @@ function MessageItem({
         audioIsTracker,
     ]);
 
-    // Reactively track whether the current image URL is favourited. The
+    // Reactively track whether this image or video is favourited. The
     // full-resolution URL is the favourite key (so the picker sends full quality).
     // An encrypted GIF has no usable URL, so it is keyed by a pointer to this
     // message instead (see favouriteFile.ts).
@@ -2207,14 +2295,28 @@ function MessageItem({
         (content?.file as { url?: unknown } | undefined)?.url,
     );
     const imageMediaMxc = validMxc(content?.url) ?? encryptedMxc;
+    // A video's full URL: the favourite key of a starred plaintext video.
+    const videoFullUrl =
+        msgtype === "m.video" ? mxcToHttp(content?.url as string) : null;
+    // The full URL of this message's media, whichever kind it is.
+    const mediaFullUrl = msgtype === "m.video" ? videoFullUrl : imageFullUrl();
     // Zami: only a GIF or WebP can be a favourite, and only the tile's hover
     // star shows whether it is one, so that star (GifFavouriteStar) reads the
     // list, and no other row does.
     const imageFavouriteKey = canFavouriteImage
-        ? (imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource))
+        ? (mediaFullUrl ?? eventFavouriteKey(encryptedFavouriteSource))
         : null;
 
-    function toggleImageFavourite() {
+    // A starred video's poster, for its picker tile and the resent event.
+    // Plaintext only: an encrypted video's poster is read from its event.
+    const videoPosterUrl = (() => {
+        if (msgtype !== "m.video") return null;
+        const poster = videoPoster(content as Record<string, unknown>);
+        return poster?.kind === "plain" ? mxcToHttp(poster.mxc) : null;
+    })();
+
+    function toggleMediaFavourite() {
+        const isVideo = msgtype === "m.video";
         // Remove the favourite of this media first, whichever message starred it.
         const byMedia = imageMediaMxc
             ? favouriteUrlForMxc(imageMediaMxc)
@@ -2223,7 +2325,7 @@ function MessageItem({
             removeFavouriteGif(byMedia);
             return;
         }
-        const full = imageFullUrl();
+        const full = mediaFullUrl;
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
             if (isFavouriteGif(key)) removeFavouriteGif(key);
@@ -2233,6 +2335,7 @@ function MessageItem({
                     previewUrl: key,
                     source: encryptedFavouriteSource,
                     ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...(isVideo ? { video: true } : {}),
                     ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
@@ -2242,7 +2345,10 @@ function MessageItem({
         } else {
             addFavouriteGif({
                 url: full,
-                previewUrl: imageThumbUrl() ?? full,
+                previewUrl: isVideo
+                    ? (videoPosterUrl ?? "")
+                    : (imageThumbUrl() ?? full),
+                ...(isVideo ? { video: true } : {}),
                 // Kept so a GIF sent from the picker goes out under its name.
                 ...(typeof mediaFilename === "string" && mediaFilename
                     ? { name: mediaFilename }
@@ -2344,6 +2450,34 @@ function MessageItem({
     const threadSummary = roomView.threadSummary;
     const isThreadRoot = !isThreadReply && threadSummary.count > 0;
     const threadName = isThreadRoot ? roomView.threadName : null;
+
+    // A Discord thread bridged by ZDMB that was started from this message
+    // (stores/bridgedThreads.svelte.ts). Memoised like threadSummary: one per
+    // row, and the lookup mints a fresh object on every roomsTick.
+    // Zami: the memo is useRune's shallow comparison.
+    const bridgedChip = useRune(
+        (): BridgedChip | null => {
+            void roomsState.roomsTick;
+            void roomsState.unreadTick;
+            const info = isThreadReply
+                ? null
+                : bridgedThreadForEvent(room.roomId, eventId);
+            if (!info) return null;
+            const counts = info.room
+                ? getRoomUnreadInfo(info.room)
+                : { unread: false, highlight: 0 };
+            return {
+                roomId: info.roomId,
+                name: info.name,
+                joined: info.joined,
+                numMembers: info.numMembers,
+                unread: counts.unread,
+                highlight: counts.highlight,
+            };
+        },
+        [room.roomId, eventId, isThreadReply],
+        { isEqual: shallowEqual },
+    );
 
     // Links to other messages render as an embed of that message instead of
     // a homeserver URL preview (which would only show matrix.to's own page).
@@ -3144,7 +3278,7 @@ function MessageItem({
                                 <GifFavouriteStar
                                     favouriteKey={imageFavouriteKey}
                                     mediaMxc={imageMediaMxc}
-                                    onPress={toggleImageFavourite}
+                                    onPress={toggleMediaFavourite}
                                 />
                             ) : null}
                         </View>
@@ -3244,6 +3378,9 @@ function MessageItem({
             return (
                 <>
                     {mediaCaption()}
+                    {/* Zami: not ported: the video's favourite star
+                        (MessageVideo's `overlay` snippet, which its
+                        translation doesn't take yet). */}
                     <MessageVideo content={content} filename={mediaFilename} />
                 </>
             );
@@ -3395,7 +3532,7 @@ function MessageItem({
         // can only ever be text.
         const html =
             msgtype === "m.emote"
-                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                ? `<span>* ${escapeHtml(emoteActor)} </span>${bodyHtml}`
                 : bodyHtml;
         return (
             <>
@@ -3435,7 +3572,7 @@ function MessageItem({
     function sheetPreviewBody(): ReactNode {
         const html =
             msgtype === "m.emote"
-                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                ? `<span>* ${escapeHtml(emoteActor)} </span>${bodyHtml}`
                 : bodyHtml;
         return (
             <View className="flex-row flex-wrap items-end">
@@ -3943,6 +4080,7 @@ function MessageItem({
                                             room.roomId,
                                             eventId,
                                             emoji.mxcUrl,
+                                            emoji.shortcode,
                                         );
                                         closeModal();
                                     }}
@@ -4170,6 +4308,7 @@ function MessageItem({
                                         room.roomId,
                                         eventId,
                                         emoji.mxcUrl,
+                                        emoji.shortcode,
                                     );
                                     closeModal();
                                 }}
@@ -4279,7 +4418,7 @@ export default memo(MessageItem, sameProps);
 // an async per-event decrypt, so an encrypted room keeps single-image opens.
 function isPageableImageUpload(e: MatrixEvent): boolean {
     if (e.getType() !== "m.room.message") return false;
-    const c = e.getContent() as {
+    const c = displayContent(e) as {
         msgtype?: string;
         url?: unknown;
         file?: unknown;
@@ -4296,14 +4435,15 @@ function isPageableImageUpload(e: MatrixEvent): boolean {
 }
 
 function uploadImageOf(e: MatrixEvent): GalleryImage {
-    const c = e.getContent() as {
+    const c = displayContent(e) as {
         url?: string;
         filename?: string;
         body?: string;
         info?: { w?: unknown; h?: unknown; mimetype?: string };
     };
     const sender = videoPoster(c as Record<string, unknown>);
-    const isGifUpload = c.info?.mimetype === "image/gif";
+    const isGifUpload =
+        c.info?.mimetype === "image/gif" || isAnimatedImageInfo(c.info);
     const isVectorUpload = isSvg(c.info?.mimetype, c.filename ?? c.body);
     return {
         src: mxcToHttp(c.url as string) ?? "",

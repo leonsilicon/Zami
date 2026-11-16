@@ -219,6 +219,7 @@ import {
     type TurnCredentials,
 } from "./call/fullMesh/meshPolicy";
 import { advertiseMeshSubscribe } from "./call/fullMesh/sdkMembership";
+import { proxyBridge } from "$lib/proxyBridge";
 
 /** Zami: not ported: Zam's mic chain (its noise filters and gain stages). It
  *  runs in an AudioWorklet, most stages in WebAssembly, and LiveKit hangs it on
@@ -3185,14 +3186,14 @@ function trackOwners(lkRoom: LivekitRoom): Record<string, StreamOwner> {
     return owners;
 }
 
-/** Desktop, when calls are set to go direct (electron/proxy.cjs): name a
- *  call server (token service or SFU) before connecting to it, so its
- *  host skips the proxy. Media needs nothing: every IP address goes direct
+/** Desktop and Android, when calls are set to go direct (electron/proxy.cjs,
+ *  ZamProxy.java): name a call server (token service or SFU) before
+ *  connecting to it, so its host skips the proxy. Media needs nothing: every IP address goes direct
  *  in that mode. The homeserver's own host is never named, so a call
  *  server sharing it keeps the homeserver on the proxy. Resolves once the
  *  rules apply; never throws. */
 async function bypassProxyFor(url: string): Promise<void> {
-    const proxy = window.desktop?.proxy;
+    const proxy = proxyBridge();
     if (!proxy) return;
     try {
         const host = new URL(url).hostname;

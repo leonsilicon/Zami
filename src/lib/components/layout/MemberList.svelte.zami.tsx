@@ -34,6 +34,7 @@ import {
 import { interfaceState } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
 import { presenceFor } from "$lib/stores/presence.svelte";
+import { cachedNameColourFor } from "$lib/stores/profileFields.svelte";
 import {
     presenceDot,
     presenceDotClass,
@@ -483,6 +484,10 @@ const MemberRow = memo(function MemberRow({
     // Follows the Show Matrix IDs setting too.
     const name = useRune(() => memberDisplayName(member), [member, rev]);
     const deco = useRune(() => decorationsOf(member), [member, rev]);
+    const nameColour = useRune(
+        () => cachedNameColourFor(member.userId),
+        [member],
+    );
     const secondLine = [roleLabel, deco?.subtitle].filter(Boolean).join(" · ");
     // Zami: `w-[calc(100%-1rem)]` is the stretched row's
     // width less its `mx-2`, which a column gives it. The row's `title`
@@ -515,10 +520,15 @@ const MemberRow = memo(function MemberRow({
                 <View className="flex-row items-center gap-1 min-w-0">
                     <Text
                         numberOfLines={1}
+                        style={nameColour ? { color: nameColour } : undefined}
                         className={`flex-shrink text-sm leading-5 font-medium ${
                             muted
                                 ? "text-discord-textMuted"
                                 : "text-discord-textPrimary"
+                        } ${
+                            muted && nameColour
+                                ? "opacity-60 group-hover:opacity-100"
+                                : ""
                         } transition-colors`}
                     >
                         {name}

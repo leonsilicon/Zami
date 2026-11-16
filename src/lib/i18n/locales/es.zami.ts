@@ -791,6 +791,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Sin conexiones directas, y los servidores de llamadas nunca ven tu dirección IP: las llamadas van por el proxy al relé TURN del servidor de llamadas por TCP o TLS. Si el servidor no ofrece relé TURN, las llamadas no se conectarán. Habrá más retraso.",
     "proxySettings.callsDirectUnavailable":
         "Las llamadas no pueden evitar la configuración de proxy del sistema. Configura el proxy aquí (Manual o PAC) para que funcione.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Las llamadas no pueden evitar la configuración de proxy del sistema. Configura el proxy aquí (Manual) para que funcione.",
+    "proxySettings.androidBackgroundHint":
+        "Las notificaciones y respuestas rápidas se obtienen fuera del WebView y solo funcionan a través de proxies socks5:// o http://.",
+    "proxySettings.unsupported":
+        "Esta versión de Android System WebView no puede configurar un proxy. Actualízala desde Play Store.",
     "proxySettings.callsDirectAddresses": "Enviado directo:",
     "proxySettings.save": "Guardar",
     "proxySettings.saved": "Guardado",
@@ -1297,6 +1303,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "Mensaje original eliminado",
     "messageItem.originalMessageUnavailable": "Mensaje original no disponible",
     "messageItem.replyPreviewSticker": "Sticker",
+    "messageItem.forwarded": "Reenviado",
+    "messageItem.forwardedFrom": "Reenviado de {name}",
+    "messageItem.forwardedEmoteActor": "Remitente",
     "messageItem.requestKeys": "Solicitar claves",
     "messageItem.keysRequested": "Claves solicitadas",
     "messageItem.requestKeysHelp":
@@ -2572,6 +2581,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Establecer color",
     "spaceSidebar.dissolveFolder": "Deshacer la carpeta",
     "spaceSidebar.somethingWentWrong": "Algo ha salido mal",
+    "spaceSidebar.folder": "Carpeta",
+    "spaceSidebar.liveBadge": "EN VIVO",
+    "spaceSidebar.inVoiceCount": "{count} en voz",
+    "spaceSidebar.moreParticipants": "+{count} más",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restaurando la sesión…",
@@ -2643,6 +2656,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Cargar respuestas anteriores",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Canal de voz",
+    "bridgedChannels.stage": "Canal de escenario",
+    "bridgedChannels.announcement": "Canal de anuncios",
+    "bridgedChannels.forum": "Foro",
+    "bridgedChannels.media": "Canal multimedia",
+    "bridgedChannels.privateThread": "Hilo privado",
+    "bridgedThreads.joinFailed": "No se pudo unir al hilo.",
+    "bridgedThreads.joinThread": "Unirse al hilo",
+    "bridgedThreads.threadRooms": "Salas de hilos",
+    "bridgedThreads.thread": "Hilo",
+    "bridgedThreads.goToParent": "Ir a {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# miembro} other {# miembros}}",
     "threadsListPanel.threads": "Hilos",
     "threadsListPanel.closeThreadsPanel": "Cerrar el panel de hilos",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2890,6 +2916,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Los mensajes directos suenan. Las salas nunca: a esas te unes desde la propia sala.",
     "voiceAudioSettings.ringtoneVolume": "Volumen del tono de llamada",
+    "voiceAudioSettings.ringtone": "Tono de llamada",
+    "voiceAudioSettings.ringtoneDefault": "Predeterminado",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Tono del complemento (complemento no cargado)",
     "voiceAudioSettings.fullScreenCalls":
         "Mostrar las llamadas en la pantalla de bloqueo",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3396,6 +3427,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Reglas de reescritura",
     "previewRewriter.rulesDescription":
         "Se aplican en orden a la dirección desde la que se obtiene una vista previa. El enlace en sí no cambia.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Pastillas de enlaces a mensajes",
+    "messageLinkPill.description":
+        "Muestra los enlaces a mensajes que pegues como una pastilla compacta con el nombre de la sala o del mensaje directo al que apuntan, y resalta la vista previa correspondiente cuando pasas el cursor sobre una.",
+    "messageLinkPill.viewMessage": "Ver mensaje",
+    "messageLinkPill.viewMessageIn": "Ver mensaje citado en {room}",
+    "messageLinkPill.viewQuotedMessage": "Ver mensaje citado",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

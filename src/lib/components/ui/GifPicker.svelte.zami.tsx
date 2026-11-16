@@ -12,12 +12,13 @@ import {
     type ListViewToken,
 } from "react-native";
 import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
-import { Image, SvgIcon, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, SvgIcon, Video, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import FavouriteFileImg from "$lib/components/ui/FavouriteFileImg.svelte";
 import {
     eventFavouriteFile,
+    favouriteMediaHttpUrl,
     isMatrixMediaUrl,
     mediaUrlFavouriteFile,
     parseEventFavouriteSource,
@@ -45,7 +46,7 @@ import {
 } from "$lib/stores/gifSearch.svelte";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { normalizeProviderPage } from "$lib/plugins/pluginGifs";
-import { Star } from "lucide-svelte";
+import { Film, Star } from "lucide-svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { safeAspectRatio } from "$lib/utils/mediaDimensions";
 import {
@@ -297,6 +298,7 @@ export default function GifPicker({
                 gif.width,
                 gif.height,
                 gif.name,
+                gif.video ? gif.previewUrl : undefined,
             ).catch(() => null);
             if (file) {
                 onSelectFile(file);
@@ -817,15 +819,30 @@ function FavouriteTile({
                         : t("gifPicker.favouriteGif", { value: idx + 1 })
                 }
                 accessibilityState={{ selected }}
-                className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
+                className={`relative w-full rounded overflow-hidden active:opacity-80 transition-opacity${
                     selected ? " border-2 border-discord-accent" : ""
                 }`}
             >
                 {source ? (
                     <FavouriteFileImg
                         source={source}
-                        class="w-full rounded bg-discord-backgroundTertiary"
+                        video={!!gif.video}
+                        class="w-full rounded bg-discord-backgroundTertiary pointer-events-none"
                         style={aspectStyle}
+                    />
+                ) : gif.video ? (
+                    // A starred plaintext video: streamed with the session's
+                    // token, its poster shown until the first frame.
+                    <Video
+                        src={favouriteMediaHttpUrl(gif.url)}
+                        poster={gif.previewUrl || undefined}
+                        className="w-full rounded bg-discord-backgroundTertiary"
+                        style={{
+                            aspectRatio: cssAspectRatio(aspectStyle) ?? 1,
+                        }}
+                        autoplay
+                        muted
+                        loop
                     />
                 ) : (
                     // Zami: the preview itself, which expo-image animates
@@ -847,6 +864,16 @@ function FavouriteTile({
                         }
                     />
                 )}
+                {gif.video ? (
+                    <View
+                        pointerEvents="none"
+                        accessible={false}
+                        importantForAccessibility="no-hide-descendants"
+                        className="absolute bottom-1 start-1 p-0.5 rounded bg-black/60"
+                    >
+                        <Film size={12} className="text-white" />
+                    </View>
+                ) : null}
             </Pressable>
             {/* Touchscreens have no hover, so the controls stay visible there
                 instead of revealing on hover. The selected tile reveals its

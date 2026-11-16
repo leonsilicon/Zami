@@ -38,6 +38,7 @@ import {
     setCallSoundsVolume,
     setRingEnabled,
     setRingVolume,
+    setRingtone,
     setMirrorCamera,
     setPushToTalk,
     setCallVideoCodec,
@@ -81,7 +82,11 @@ import {
     listMicFilters,
     micFilterUsable,
 } from "$lib/audio/micFilters";
-import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginRegistry, getPluginHost } from "$lib/stores/plugins.svelte";
+import {
+    pluginRingtoneOptions,
+    previewRingtone,
+} from "$lib/audio/ringtoneChoice";
 import { playSpeakerTestTone } from "$lib/audio/speakerTest";
 import {
     playCallSound,
@@ -153,6 +158,19 @@ export default function VoiceAudioSettings() {
     const [cameraError, setCameraError] = useState<string | null>(null);
     // Why incoming-call OS alerts stay silent (blocked/unsupported), or null.
     const [ringNotifyHint, setRingNotifyHint] = useState<string | null>(null);
+    // Plugin ringtones for the picker, labelled "name (Plugin Name)".
+    const ringtoneOptions = useRune(() => {
+        void pluginRegistry.tick;
+        return pluginRingtoneOptions(pluginRegistry.ringtones).map((o) => ({
+            ...o,
+            label: t("voiceAudioSettings.ringtonePluginOption", {
+                name: o.name,
+                plugin:
+                    getPluginHost(o.pluginId)?.zam.plugin.manifest.name ??
+                    o.pluginId,
+            }),
+        }));
+    });
     // Android 14+: whether an incoming DM call may ring full screen over the
     // lock screen. Re-checked when the user comes back from system settings.
     const [fullScreenCallsGranted, setFullScreenCallsGranted] = useState(true);
@@ -218,6 +236,7 @@ export default function VoiceAudioSettings() {
     const callSoundsVolume = useRune(() => settingsState.callSoundsVolume);
     const ringEnabled = useRune(() => settingsState.ringEnabled);
     const ringVolume = useRune(() => settingsState.ringVolume);
+    const ringtone = useRune(() => settingsState.ringtone);
     const connState = useRune(() => voiceCallState.connState);
 
     // Zami: not ported: output devices. React Native has no setSinkId, so the
@@ -1324,6 +1343,49 @@ export default function VoiceAudioSettings() {
                             configureRing({ volume: v });
                         }}
                         onChangeEnd={() => playRingPreview()}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 mt-3 border-t border-discord-divider">
+                    <Text className="flex-1 text-sm text-discord-textPrimary">
+                        {t("voiceAudioSettings.ringtone")}
+                    </Text>
+                    <Select
+                        accessibilityLabel={t("voiceAudioSettings.ringtone")}
+                        className="max-w-[60%] bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 border border-discord-divider focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                        value={ringtone}
+                        onChange={(key) => {
+                            setRingtone(key);
+                            previewRingtone(
+                                key,
+                                pluginRegistry.ringtones,
+                                {
+                                    enabled: settingsState.ringEnabled,
+                                    volume: settingsState.ringVolume,
+                                },
+                                playRingPreview,
+                            );
+                        }}
+                        options={[
+                            {
+                                value: "",
+                                label: t("voiceAudioSettings.ringtoneDefault"),
+                            },
+                            ...ringtoneOptions.map((o) => ({
+                                value: o.key,
+                                label: o.label,
+                            })),
+                            ...(ringtone &&
+                            !ringtoneOptions.some((o) => o.key === ringtone)
+                                ? [
+                                      {
+                                          value: ringtone,
+                                          label: t(
+                                              "voiceAudioSettings.ringtoneUnavailable",
+                                          ),
+                                      },
+                                  ]
+                                : []),
+                        ]}
                     />
                 </View>
             </View>

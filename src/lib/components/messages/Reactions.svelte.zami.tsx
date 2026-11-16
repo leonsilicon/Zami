@@ -8,6 +8,7 @@ import { t } from "$lib/i18n";
 import type { MatrixEvent, Room } from "matrix-js-sdk";
 import {
     getReactions,
+    getCustomEmojis,
     sendReaction,
     removeReaction,
     mxcToHttp,
@@ -20,6 +21,10 @@ import { isEmojiOnly } from "$lib/utils/twemoji";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { orderReactors } from "$lib/utils/reactionReactors";
+import {
+    reactionDisplayName,
+    resolveReactionShortcode,
+} from "$lib/utils/reactionLabel";
 import ReactorPopover from "./ReactorPopover.svelte";
 
 interface Props {
@@ -63,6 +68,29 @@ export default function Reactions({ eventId, room, event }: Props) {
         return getReactions(room, eventId);
     }, [reactionTick, room, eventId]);
 
+    // Known custom emoji, for naming mxc reactions that carry no shortcode.
+    // Only read when a custom reaction is actually on this message.
+    const hasCustom = reactions.some((g) => g.key.startsWith("mxc://"));
+    // Zami: only a message with a custom reaction subscribes to roomsTick.
+    const customTick = useRune(
+        () => (hasCustom ? roomsState.roomsTick : 0), // re-resolve as packs load
+        [hasCustom],
+    );
+    const customEmojis = useMemo(() => {
+        void customTick; // dependency
+        if (!hasCustom) return [];
+        return getCustomEmojis(room);
+    }, [customTick, hasCustom, room]);
+
+    function labelFor(g: { key: string; shortcode: string | null }): string {
+        return reactionDisplayName(
+            g.key,
+            g.shortcode,
+            customEmojis,
+            t("common.emoji"),
+        );
+    }
+
     // Clean up pendingRemovals once the specific reaction event ID is gone from server state
     useEffect(() => {
         const serverEventIds = new Set(
@@ -100,6 +128,7 @@ export default function Reactions({ eventId, room, event }: Props) {
         key: string,
         isMine: boolean,
         myEventId: string | null,
+        shortcode: string | null,
     ) {
         if (isMine) {
             if (!myEventId) return; // local echo still pending — ignore click
@@ -116,7 +145,12 @@ export default function Reactions({ eventId, room, event }: Props) {
             }
         } else {
             try {
-                await sendReaction(room.roomId, eventId, key);
+                await sendReaction(
+                    room.roomId,
+                    eventId,
+                    key,
+                    resolveReactionShortcode(key, shortcode, customEmojis),
+                );
             } catch (err) {
                 console.error("Failed to send reaction:", err);
                 showErrorToast(
@@ -168,7 +202,7 @@ export default function Reactions({ eventId, room, event }: Props) {
         if (!g) return null;
         const info = reactorsFor(g.reactorIds);
         if (info.reactors.length === 0 && info.overflow === 0) return null;
-        return { key: g.key, ...info };
+        return { key: g.key, label: labelFor(g), ...info };
     }
     const active = activeReactors();
 
@@ -192,6 +226,7 @@ export default function Reactions({ eventId, room, event }: Props) {
                 const imgSrc = group.key.startsWith("mxc://")
                     ? mxcToHttp(group.key)
                     : null;
+                const name = labelFor(group);
                 // Zami: the pill's text size, weight and color, on each text
                 // inside (they don't inherit).
                 const textClass = `text-xs font-medium ${
@@ -207,6 +242,7 @@ export default function Reactions({ eventId, room, event }: Props) {
                                 group.key,
                                 group.isMine,
                                 group.myEventId,
+                                group.shortcode,
                             )
                         }
                         // Zami: the `longPress` action (500 ms, a 50 ms vibrate).
@@ -226,7 +262,7 @@ export default function Reactions({ eventId, room, event }: Props) {
                         {imgSrc ? (
                             <Image
                                 source={mediaSource(imgSrc)}
-                                accessibilityLabel={group.key}
+                                accessibilityLabel={name}
                                 contentFit="contain"
                                 className="w-4 h-4"
                             />
@@ -250,7 +286,7 @@ export default function Reactions({ eventId, room, event }: Props) {
                     key={String(openTouch)}
                     reactors={active.reactors}
                     overflow={active.overflow}
-                    label={active.key}
+                    label={active.label}
                     touch={openTouch}
                     x={anchorX}
                     y={anchorY}

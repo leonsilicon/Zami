@@ -805,6 +805,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Sem conexões diretas, e os servidores de chamada nunca veem seu endereço IP: as chamadas passam pelo proxy até o relay TURN do servidor de chamada por TCP ou TLS. Se o servidor não oferecer relay TURN, as chamadas não conectam. Espere mais atraso.",
     "proxySettings.callsDirectUnavailable":
         "As chamadas não podem ignorar as configurações de proxy do sistema. Defina o proxy aqui (Manual ou PAC) para isso funcionar.",
+    "proxySettings.callsDirectUnavailableManual":
+        "As chamadas não podem ignorar as configurações de proxy do sistema. Defina o proxy aqui (Manual) para isso funcionar.",
+    "proxySettings.androidBackgroundHint":
+        "Notificações e respostas rápidas são buscadas fora do WebView e só funcionam por proxies socks5:// ou http://.",
+    "proxySettings.unsupported":
+        "Esta versão do Android System WebView não consegue definir um proxy. Atualize-a pela Play Store.",
     "proxySettings.callsDirectAddresses": "Enviado diretamente:",
     "proxySettings.save": "Salvar",
     "proxySettings.saved": "Salvo",
@@ -1402,6 +1408,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "Mensagem original excluída",
     "messageItem.originalMessageUnavailable": "Mensagem original indisponível",
     "messageItem.replyPreviewSticker": "Figurinha",
+    "messageItem.forwarded": "Encaminhada",
+    "messageItem.forwardedFrom": "Encaminhada de {name}",
+    "messageItem.forwardedEmoteActor": "Remetente",
     "messageItem.requestKeys": "Solicitar chaves",
     "messageItem.keysRequested": "Chaves solicitadas",
     "messageItem.requestKeysHelp":
@@ -2594,6 +2603,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Definir cor",
     "spaceSidebar.dissolveFolder": "Desfazer pasta",
     "spaceSidebar.somethingWentWrong": "Algo deu errado",
+    "spaceSidebar.folder": "Pasta",
+    "spaceSidebar.liveBadge": "AO VIVO",
+    "spaceSidebar.inVoiceCount": "{count} em voz",
+    "spaceSidebar.moreParticipants": "+{count} mais",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restaurando sessão…",
@@ -2665,6 +2678,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Carregar respostas mais antigas",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Canal de voz",
+    "bridgedChannels.stage": "Canal de palco",
+    "bridgedChannels.announcement": "Canal de anúncios",
+    "bridgedChannels.forum": "Fórum",
+    "bridgedChannels.media": "Canal de mídia",
+    "bridgedChannels.privateThread": "Tópico privado",
+    "bridgedThreads.joinFailed": "Não foi possível entrar no tópico.",
+    "bridgedThreads.joinThread": "Entrar no tópico",
+    "bridgedThreads.threadRooms": "Salas de tópicos",
+    "bridgedThreads.thread": "Tópico",
+    "bridgedThreads.goToParent": "Ir para {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# membro} other {# membros}}",
     "threadsListPanel.threads": "Tópicos",
     "threadsListPanel.closeThreadsPanel": "Fechar painel de tópicos",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2919,6 +2945,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Mensagens diretas tocam. Salas nunca tocam - você entra nelas pela própria sala.",
     "voiceAudioSettings.ringtoneVolume": "Volume do toque",
+    "voiceAudioSettings.ringtone": "Toque",
+    "voiceAudioSettings.ringtoneDefault": "Padrão",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Toque do plugin (plugin não carregado)",
     "voiceAudioSettings.fullScreenCalls":
         "Mostrar chamadas na tela de bloqueio",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3392,6 +3423,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Regras de reescrita",
     "previewRewriter.rulesDescription":
         "Aplicadas em ordem ao endereço de onde uma prévia é buscada. O link em si não é alterado.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Pílulas de link de mensagem",
+    "messageLinkPill.description":
+        "Mostra links de mensagens colados como uma pílula compacta com o nome da sala ou da mensagem direta para onde apontam, e destaca a prévia correspondente quando você passa o cursor sobre uma delas.",
+    "messageLinkPill.viewMessage": "Ver mensagem",
+    "messageLinkPill.viewMessageIn": "Ver mensagem citada em {room}",
+    "messageLinkPill.viewQuotedMessage": "Ver mensagem citada",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

@@ -52,6 +52,7 @@ import { VerificationMethod } from "matrix-js-sdk/lib/types";
 import { readScoped, writeScoped } from "$lib/utils/scopedStorage";
 import { createSlicedQueue } from "@-/com.leonsilicon.zami.scheduler";
 import { finishStartup, markStartup } from "@-/com.leonsilicon.zami.startup";
+import { DecryptionFailureCode } from "matrix-js-sdk/lib/crypto-api";
 import {
     shouldKickSync,
     watchdogOverdueMs,
@@ -151,6 +152,25 @@ import {
 import { resolveDisplayName } from "$lib/utils/displayName";
 import { nestedSpaceIds, topLevelSpaceOf } from "$lib/utils/spaceTree";
 import {
+    CHANNEL_KEY,
+    parseBridgedChannel,
+    parseSpaceChildChannel,
+    type BridgedChannel,
+} from "$lib/utils/bridgedChannels";
+import {
+    parseSpaceChildCategory,
+    type BridgedCategory,
+} from "$lib/utils/bridgedCategories";
+import {
+    THREAD_PARENT_TYPE,
+    buildBridgedThreadIndex,
+    parseSpaceChildThreadParent,
+    parseThreadParent,
+    stripThreadNamePrefix,
+    type BridgedThreadIndex,
+    type BridgedThreadParent,
+} from "$lib/utils/bridgedThreads";
+import {
     deleteSnapshot,
     deleteHierarchies,
     loadHierarchies,
@@ -203,6 +223,12 @@ import {
     countReactions,
     type ReactionAnnotation,
 } from "$lib/utils/reactionCounts";
+import {
+    REACTION_SHORTCODE_KEY,
+    isMxcReactionKey,
+    normalizeReactionShortcode,
+    reactionShortcodeFromContent,
+} from "$lib/utils/reactionLabel";
 import {
     buildThreadReplyContent,
     isThreadReplyContent,
@@ -298,6 +324,7 @@ import {
     isFileOfferEventType,
 } from "$lib/utils/fileTransfer";
 import { hasUnreadMessages } from "$lib/utils/roomUnread";
+import { localReadVerdict, type LocalReadMark } from "$lib/utils/localRead";
 import { callMemberSendersMissingMembership } from "$lib/utils/callMemberSenders";
 import {
     isPollStartEventType,
@@ -316,7 +343,8 @@ import {
     buildPollEnd,
     affectsPollView,
 } from "$lib/utils/pollContent";
-import { buildForwardContent } from "$lib/utils/forwardContent";
+import { buildForwardContent, readForward } from "$lib/utils/forwarded";
+import { displayContent } from "$lib/utils/displayContent";
 import { buildCallNotifyPushRules } from "$lib/utils/callPushRule";
 import { buildLocationContent } from "$lib/utils/location";
 import { shouldWriteStopBeacon } from "$lib/utils/liveLocation";
@@ -1441,9 +1469,65 @@ export async function restartAfterBackgroundRelease(): Promise<boolean> {
     if (!userId || !deviceId) return false;
     if (!(await restartCrypto(client, userId, deviceId))) return false;
     backgroundReleased = false;
+    retryEngineLostDecryptions(client);
     await syncRestarter();
     logSync("restarted after the background release");
     return true;
+}
+
+const decryptGuarded = new WeakSet<MatrixClient>();
+
+/**
+ * While the client is released the OlmMachine is closed, and a decryption
+ * attempted then (a push decrypt on resume, a timeline read, the SDK mapping
+ * a bundled edit) fails with UNKNOWN_ERROR and is never retried: the event
+ * keeps the m.bad.encrypted placeholder for good. Skip such attempts instead,
+ * leaving the event encrypted so it is decrypted once the new engine is up.
+ * Patched on the instance because the SDK's own mapper calls it there.
+ */
+function guardDecryptWhileReleased(client: MatrixClient): void {
+    if (decryptGuarded.has(client)) return;
+    decryptGuarded.add(client);
+    const decrypt = client.decryptEventIfNeeded.bind(client);
+    client.decryptEventIfNeeded = (event, options) => {
+        if (backgroundReleased && matrixClient === client)
+            return event.getDecryptionPromise() ?? Promise.resolve();
+        return decrypt(event, options);
+    };
+}
+
+/**
+ * After restartAfterBackgroundRelease: retry what failed while the old
+ * engine was closing (attempts already in flight when it closed, and direct
+ * attemptDecryption calls the guard does not see). A failed event no longer
+ * passes shouldAttemptDecryption, so it needs an explicit retry; bundled
+ * edits are on no timeline, so they are walked through their originals.
+ */
+function retryEngineLostDecryptions(client: MatrixClient): void {
+    const backend = (
+        client as unknown as {
+            cryptoBackend?: Parameters<MatrixEvent["attemptDecryption"]>[0];
+        }
+    ).cryptoBackend;
+    if (!backend) return;
+    for (const room of client.getRooms()) {
+        const events = [
+            ...liveChainEvents(room),
+            ...room.getThreads().flatMap((thread) => thread.events),
+        ];
+        for (const event of events) {
+            for (const ev of [event, event.replacingEvent()]) {
+                if (
+                    ev?.isDecryptionFailure() &&
+                    ev.decryptionFailureReason ===
+                        DecryptionFailureCode.UNKNOWN_ERROR
+                )
+                    void ev
+                        .attemptDecryption(backend, { isRetry: true })
+                        .catch(() => {});
+            }
+        }
+    }
 }
 
 /** Whether an upload, or a send the server hasn't confirmed, is in flight. */
@@ -1479,6 +1563,9 @@ export async function releaseClientForBackground(): Promise<boolean> {
     backgroundReleased = true;
     const client = matrixClient;
     if (client) {
+        // Before the engine closes: from here on a decryption would fail for
+        // good (see guardDecryptWhileReleased).
+        guardDecryptWhileReleased(client);
         // Stops sync and closes the OlmMachine (RustCrypto.stop): no new
         // engine work from here on.
         client.stopClient();
@@ -1897,6 +1984,11 @@ export interface FavouriteGif {
      *  data): favouriteFile.ts cleans it before use. */
     name?: string;
     tags?: string[];
+    /** Set for a starred video: the picker plays it as a muted looping tile
+     *  and it is sent back as m.video. `previewUrl` is then its poster's
+     *  download URL, or empty when it has none. Untrusted on read: only ever
+     *  tested for truthiness. */
+    video?: boolean;
     /** Natural size of the GIF, when known at the time it was starred. Lets
      *  the picker reserve the tile before the preview loads. Untrusted on
      *  read (account data): only ever used through safeAspectRatio. */
@@ -2178,6 +2270,9 @@ export function stopClient(): void {
     resetRoomListCache();
     resetHierarchyCache();
     slidingPresenceFetchedAt.clear();
+    // Read marks and local unread overrides belong to the session that set them.
+    localReadMarks.clear();
+    locallyClearedUnread.clear();
 }
 
 const pendingLeaves = new Set<string>();
@@ -3105,6 +3200,89 @@ export function getRoomsInSpace(spaceId: string): Room[] {
     return rooms;
 }
 
+// ── Bridged Discord threads (ZDMB; rules in utils/bridgedThreads.ts) ─────
+
+/**
+ * Every thread room known locally: joined thread rooms by their own
+ * `moe.crafty.zdmb.thread_parent` state, unjoined ones from the copy on their
+ * m.space.child event in a joined space. Callers cache it (stores/
+ * bridgedThreads.svelte.ts), since it walks every room and space.
+ */
+export function readBridgedThreadIndex(): BridgedThreadIndex {
+    const sources: { threadRoomId: string; parent: BridgedThreadParent }[] = [];
+    const fromSpaces: typeof sources = [];
+    for (const room of getRooms()) {
+        const state = room.getLiveTimeline().getState(EventTimeline.FORWARDS);
+        if (room.isSpaceRoom()) {
+            if (room.getMyMembership() !== "join") continue;
+            for (const ev of spaceChildEvents(room.roomId) ?? []) {
+                const childId = ev.getStateKey();
+                const parent = parseSpaceChildThreadParent(ev.getContent());
+                if (childId && parent)
+                    fromSpaces.push({ threadRoomId: childId, parent });
+            }
+            continue;
+        }
+        const ev = state?.getStateEvents(THREAD_PARENT_TYPE, "");
+        const parent = ev ? parseThreadParent(ev.getContent()) : null;
+        if (parent) sources.push({ threadRoomId: room.roomId, parent });
+    }
+    return buildBridgedThreadIndex([...sources, ...fromSpaces]);
+}
+
+/**
+ * The ZDMB channel tag of every room known locally: a joined room's own
+ * `moe.crafty.zdmb.channel` state, else the copy on its m.space.child event in
+ * a joined space (rooms we have not joined). Cached per roomsTick by
+ * stores/bridgedChannels.svelte.ts.
+ */
+export function readBridgedChannelIndex(): Map<string, BridgedChannel> {
+    const own = new Map<string, BridgedChannel>();
+    const fromSpaces = new Map<string, BridgedChannel>();
+    for (const room of getRooms()) {
+        if (room.isSpaceRoom() && room.getMyMembership() === "join") {
+            for (const ev of spaceChildEvents(room.roomId) ?? []) {
+                const childId = ev.getStateKey();
+                const tag = parseSpaceChildChannel(ev.getContent());
+                if (childId && tag && !fromSpaces.has(childId))
+                    fromSpaces.set(childId, tag);
+            }
+        }
+        const tag = parseBridgedChannel(
+            room.currentState.getStateEvents(CHANNEL_KEY, "")?.getContent(),
+        );
+        if (tag) own.set(room.roomId, tag);
+    }
+    for (const [id, tag] of fromSpaces) if (!own.has(id)) own.set(id, tag);
+    return own;
+}
+
+/** The Discord category (ZDMB) of each child of a joined space, from the
+ *  `moe.crafty.zdmb.category` key on its m.space.child event. */
+export function readSpaceChildCategories(
+    spaceId: string,
+): Map<string, BridgedCategory> {
+    const out = new Map<string, BridgedCategory>();
+    for (const ev of spaceChildEvents(spaceId) ?? []) {
+        const childId = ev.getStateKey();
+        const cat = parseSpaceChildCategory(ev.getContent());
+        if (childId && cat) out.set(childId, cat);
+    }
+    return out;
+}
+
+/** A /hierarchy entry for `roomId` from any cached space listing (name,
+ *  member count and via for a room we have not joined). */
+export function findCachedHierarchyEntry(
+    roomId: string,
+): SpaceChildInfo | undefined {
+    for (const list of hierarchyCache.values()) {
+        const hit = list.find((r) => r.roomId === roomId);
+        if (hit) return hit;
+    }
+    return undefined;
+}
+
 export function getDirectRoomIds(): Set<string> {
     const directEvent = lookupAccountData(EventType.Direct);
     if (!directEvent) return new Set();
@@ -3547,6 +3725,12 @@ function decryptForDisplay(
             : client.decryptEventIfNeeded.bind(client);
     const from = events.length - newest;
     for (const [i, e] of events.entries()) {
+        // A bundled edit (MSC3925) is a second event that supplies the
+        // content and is on no timeline, so nothing else retries it; until it
+        // decrypts the row draws the pre-edit content (displayContent).
+        const replacement = e.replacingEvent();
+        if (replacement?.shouldAttemptDecryption())
+            void client.decryptEventIfNeeded(replacement);
         if (!e.shouldAttemptDecryption()) continue;
         const decrypted =
             i >= from
@@ -4426,6 +4610,27 @@ const confirmedReceipts = new Map<string, string>();
  *  receipt-listener calls the SDK makes synchronously, without waiting for the server. */
 const inFlightReceipts = new Map<string, string>();
 const readReceiptConfirmedListeners = new Set<(roomId: string) => void>();
+/**
+ * Per-room read marks (see localRead.ts). Recorded when a receipt goes out, with
+ * the server's unread and highlight counts at that moment. getRoomUnreadInfo
+ * ignores those counts while they are still the stale ones, because the server
+ * only lowers them after the receipt lands and a later sync reports it.
+ */
+const localReadMarks = new Map<string, LocalReadMark>();
+/**
+ * Rooms whose "marked unread" flag we cleared locally before the account-data
+ * PUT was echoed back. Cleared on success by the echo, and on failure by the
+ * rollback in clearMarkedUnread. Without it, the flag stays set for the whole
+ * round-trip after the user has already read the room.
+ */
+const locallyClearedUnread = new Set<string>();
+/** Local listeners for changes that do not come through an SDK event (the
+ *  optimistic clear and its rollback). Subscribed via onMarkedUnreadChange. */
+const localUnreadListeners = new Set<(roomId: string) => void>();
+
+function notifyLocalUnreadChange(roomId: string): void {
+    for (const listener of localUnreadListeners) listener(roomId);
+}
 
 /** Subscribe to room read receipts the server confirmed (or that were already
  *  confirmed when asked again). Used to clear the room's loud notifications. */
@@ -4945,11 +5150,43 @@ export async function forwardMessage(
     if (eventType !== "m.room.message" && eventType !== "m.sticker") {
         throw new Error(t("client.thisEventTypeCannotBeForwarded"));
     }
-    await matrixClient.sendEvent(
-        roomId,
-        eventType as never,
-        buildForwardContent(event.getContent()) as never,
+    // MSC4553: attribution plus a copy of the original. Forwards are never
+    // edited, so a forward's own pre-edit content is the one to copy.
+    const original = event.getOriginalContent();
+    const isForward = readForward(original, eventType) !== null;
+    const sourceRoomId = event.getRoomId();
+    const sourceRoom = sourceRoomId ? matrixClient.getRoom(sourceRoomId) : null;
+    // A DM's name is the other person's; it should not travel with the
+    // message, and neither should its avatar.
+    const shareRoomName =
+        !!sourceRoom && !getDirectRoomIds().has(sourceRoom.roomId);
+    const content = buildForwardContent(
+        {
+            type: eventType,
+            content: isForward ? original : displayContent(event),
+            originalContent: original,
+            eventId: event.getId()?.startsWith("$") ? event.getId() : undefined,
+            roomId: sourceRoomId,
+            roomName: shareRoomName
+                ? getRoomDisplayName(sourceRoom!)
+                : undefined,
+            roomAvatarUrl: shareRoomName
+                ? (sourceRoom!.getMxcAvatarUrl() ?? undefined)
+                : undefined,
+            sender: event.getSender(),
+            ts: event.getTs() || undefined,
+        },
+        {
+            displayName: (userId) =>
+                sourceRoom ? getMemberName(sourceRoom, userId) : undefined,
+            via: (id) => {
+                const servers = roomViaServers(matrixClient?.getRoom(id));
+                const own = id.split(":").slice(1).join(":");
+                return own ? [...servers, own] : servers;
+            },
+        },
     );
+    await matrixClient.sendEvent(roomId, eventType as never, content as never);
 }
 
 /**
@@ -5757,6 +5994,14 @@ export function getRoomDisplayName(room: Room): string {
         const inviter = getInviteSender(room);
         if (inviter) return room.getMember(inviter)?.name ?? inviter;
     }
+    // A room bridged by ZDMB names itself without the bridge's "[🔊] " /
+    // "[⛓️] " prefix. Older bridges only tag threads, so strip that one.
+    const tag = parseBridgedChannel(
+        room.currentState.getStateEvents(CHANNEL_KEY, "")?.getContent(),
+    );
+    if (tag?.name) return tag.name;
+    if (room.name && room.currentState.getStateEvents(THREAD_PARENT_TYPE, ""))
+        return stripThreadNamePrefix(room.name);
     return room.name || room.roomId;
 }
 
@@ -5958,16 +6203,45 @@ function isNotificationEvent(event: MatrixEvent): boolean {
     return true;
 }
 
+/** Timestamp of the newest notification event from someone else, or null. */
+function newestOtherNotificationTs(room: Room, userId: string): number | null {
+    const events = room.getLiveTimeline().getEvents();
+    for (let i = events.length - 1; i >= 0; i--) {
+        const event = events[i];
+        if (isNotificationEvent(event) && event.getSender() !== userId)
+            return event.getTs();
+    }
+    return null;
+}
+
 /** Returns whether the room has any unread messages and whether any are highlights (mentions). */
 export function getRoomUnreadInfo(room: Room): {
     unread: boolean;
     highlight: number;
 } {
-    const highlight = getHighlightCount(room);
+    let highlight = getHighlightCount(room);
+    let total = getUnreadCount(room);
     const userId = matrixClient?.getUserId();
     if (!userId) return { unread: false, highlight };
 
-    if (getUnreadCount(room) >= 1) return { unread: true, highlight };
+    // The server's counts lag our own receipt by a round-trip (see
+    // localReadMarks). While they still match what we saw when we read the
+    // room, they describe messages we have already read, so ignore them.
+    const mark = localReadMarks.get(room.roomId);
+    if (mark) {
+        const verdict = localReadVerdict(
+            mark,
+            { total, highlight },
+            newestOtherNotificationTs(room, userId),
+        );
+        if (verdict === "settled") localReadMarks.delete(room.roomId);
+        else {
+            total = 0;
+            highlight = 0;
+        }
+    }
+
+    if (total >= 1) return { unread: true, highlight };
     if (getMarkedUnread(room)) return { unread: true, highlight };
 
     // Zami: the timeline's answer is kept per room until the room changes
@@ -6775,6 +7049,18 @@ export interface UnreadFrom {
 export function getMarkedUnread(
     room: Room,
 ): { from: UnreadFrom | null } | null {
+    if (locallyClearedUnread.has(room.roomId)) {
+        // Still null until the account-data echo of our clear arrives; once it
+        // does, the server agrees and the local override can go.
+        const stillMarked = [
+            MARKED_UNREAD_TYPE,
+            LEGACY_MARKED_UNREAD_TYPE,
+        ].some(
+            (type) => room.getAccountData(type)?.getContent()?.unread === true,
+        );
+        if (!stillMarked) locallyClearedUnread.delete(room.roomId);
+        return null;
+    }
     for (const type of [MARKED_UNREAD_TYPE, LEGACY_MARKED_UNREAD_TYPE]) {
         const content = room.getAccountData(type)?.getContent();
         if (!content || typeof content.unread !== "boolean") continue;
@@ -6798,6 +7084,8 @@ export async function markRoomUnread(
     from: UnreadFrom | null,
 ): Promise<void> {
     if (!matrixClient) return;
+    // The user re-marked the room: an earlier local clear no longer applies.
+    locallyClearedUnread.delete(roomId);
     await matrixClient.setRoomAccountData(
         roomId,
         MARKED_UNREAD_TYPE as never,
@@ -6840,6 +7128,10 @@ export async function clearMarkedUnread(roomId: string): Promise<void> {
     if (!matrixClient || clearingMarkedUnread.has(roomId)) return;
     const room = matrixClient.getRoom(roomId);
     if (!room) return;
+    // Clear it locally first so the room reads as read for the whole PUT
+    // round-trip, which can be seconds on a slow proxy. Rolled back below on failure.
+    locallyClearedUnread.add(roomId);
+    notifyLocalUnreadChange(roomId);
     clearingMarkedUnread.add(roomId);
     try {
         for (const type of [MARKED_UNREAD_TYPE, LEGACY_MARKED_UNREAD_TYPE]) {
@@ -6854,24 +7146,35 @@ export async function clearMarkedUnread(roomId: string): Promise<void> {
         }
     } catch (err) {
         console.warn("Clearing marked-unread failed:", err);
+        // The server still says unread: drop the override so the flag shows again.
+        locallyClearedUnread.delete(roomId);
+        notifyLocalUnreadChange(roomId);
     } finally {
         clearingMarkedUnread.delete(roomId);
     }
 }
 
-/** Calls back with the room id whenever a room's marked-unread flag changes. */
+/** Calls back with the room id whenever a room's marked-unread flag changes,
+ *  including the optimistic local clear and its rollback. */
 export function onMarkedUnreadChange(
     callback: (roomId: string) => void,
 ): () => void {
-    if (!matrixClient) return () => {};
+    localUnreadListeners.add(callback);
+    if (!matrixClient) {
+        return () => {
+            localUnreadListeners.delete(callback);
+        };
+    }
     const handler = (event: MatrixEvent, room: Room) => {
         const type = event.getType();
         if (type === MARKED_UNREAD_TYPE || type === LEGACY_MARKED_UNREAD_TYPE)
             callback(room.roomId);
     };
     matrixClient.on(RoomEvent.AccountData as never, handler as never);
-    return () =>
+    return () => {
+        localUnreadListeners.delete(callback);
         matrixClient?.off(RoomEvent.AccountData as never, handler as never);
+    };
 }
 
 export function onAnyReceiptEvent(callback: () => void): () => void {
@@ -7295,10 +7598,30 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
     const receiptType = receiptTypeForSetting(
         receiptsPrivateFor(roomId),
     ) as ReceiptType;
+    // Record the server counts we are reading past, before the SDK call: its
+    // synchronous local receipt re-renders rows, and they must already read as
+    // read. Only when a receipt really goes out (the guard above returned early otherwise).
+    let mark: LocalReadMark | null = null;
+    if (room) {
+        const total = getUnreadCount(room);
+        const highlight = getHighlightCount(room);
+        if (total + highlight > 0) {
+            mark = { total, highlight, ts: event.getTs() };
+            localReadMarks.set(roomId, mark);
+        } else localReadMarks.delete(roomId);
+    }
     inFlightReceipts.set(roomId, eventId);
     try {
         await matrixClient.sendReadReceipt(event, receiptType);
         confirmedReceipts.set(roomId, eventId);
+    } catch (err) {
+        // The receipt never reached the server, so the room is not read: drop
+        // the mark and let the UI show the server counts again.
+        if (mark && localReadMarks.get(roomId) === mark) {
+            localReadMarks.delete(roomId);
+            notifyLocalUnreadChange(roomId);
+        }
+        throw err;
     } finally {
         if (inFlightReceipts.get(roomId) === eventId)
             inFlightReceipts.delete(roomId);
@@ -8852,6 +9175,8 @@ export interface ReactionGroup {
     isMine: boolean; // true even while local echo is pending
     myEventId: string | null; // only set once server-confirmed (used for removal)
     reactorIds: string[]; // deduped non-null senders for this key
+    /** MSC4027 shortcode carried by a custom reaction, if any (no colons). */
+    shortcode: string | null;
 }
 
 export function getReactions(room: Room, eventId: string): ReactionGroup[] {
@@ -8875,7 +9200,19 @@ export function getReactions(room: Room, eventId: string): ReactionGroup[] {
                 status: e.status,
                 isRedacted: e.isRedacted(),
             }));
-        return countReactions(annotations, ownUserId);
+        const shortcodeByKey = new Map<string, string>();
+        for (const e of relations.getRelations()) {
+            if (e.isRedacted()) continue;
+            const key = e.getContent()?.["m.relates_to"]?.key;
+            const name = reactionShortcodeFromContent(e.getContent());
+            if (typeof key === "string" && name && !shortcodeByKey.has(key)) {
+                shortcodeByKey.set(key, name);
+            }
+        }
+        return countReactions(annotations, ownUserId).map((g) => ({
+            ...g,
+            shortcode: shortcodeByKey.get(g.key) ?? null,
+        }));
     } catch {
         return [];
     }
@@ -8885,6 +9222,7 @@ export async function sendReaction(
     roomId: string,
     eventId: string,
     key: string,
+    shortcode?: string | null,
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     // Deduplicate: don't send if user already has this reaction (including local echoes)
@@ -8893,6 +9231,11 @@ export async function sendReaction(
         const existing = getReactions(room, eventId);
         if (existing.some((g) => g.key === key && g.isMine)) return;
     }
+    // Custom (mxc) reactions also carry their emote name (MSC4027) so other
+    // clients and our own hover text can show `:name:` rather than the URI.
+    const name = isMxcReactionKey(key)
+        ? normalizeReactionShortcode(shortcode)
+        : null;
     await matrixClient.sendEvent(
         roomId,
         "m.reaction" as never,
@@ -8902,6 +9245,7 @@ export async function sendReaction(
                 event_id: eventId,
                 key,
             },
+            ...(name ? { [REACTION_SHORTCODE_KEY]: name } : {}),
         } as never,
     );
 }
