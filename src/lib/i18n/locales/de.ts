@@ -796,6 +796,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Keine direkten Verbindungen, und Anrufserver sehen deine IP-Adresse nie: Anrufe laufen über den Proxy zum TURN-Relay des Anrufservers per TCP oder TLS. Bietet der Server kein TURN-Relay an, kommen Anrufe nicht zustande. Rechne mit mehr Verzögerung.",
     "proxySettings.callsDirectUnavailable":
         "Anrufe können die System-Proxy-Einstellungen nicht umgehen. Stelle den Proxy hier ein (Manuell oder PAC), damit das funktioniert.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Anrufe können die System-Proxy-Einstellungen nicht umgehen. Stelle den Proxy hier ein (Manuell), damit das funktioniert.",
+    "proxySettings.androidBackgroundHint":
+        "Benachrichtigungen und Schnellantworten werden außerhalb der WebView abgerufen und funktionieren nur über socks5://- oder http://-Proxys.",
+    "proxySettings.unsupported":
+        "Diese Version von Android System WebView kann keinen Proxy setzen. Aktualisiere sie im Play Store.",
     "proxySettings.callsDirectAddresses": "Direkt gesendet:",
     "proxySettings.save": "Speichern",
     "proxySettings.saved": "Gespeichert",
@@ -1278,6 +1284,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageUnavailable":
         "Ursprüngliche Nachricht nicht verfügbar",
     "messageItem.replyPreviewSticker": "Sticker",
+    "messageItem.forwarded": "Weitergeleitet",
+    "messageItem.forwardedFrom": "Weitergeleitet von {name}",
+    "messageItem.forwardedEmoteActor": "Absender",
     "messageItem.requestKeys": "Schlüssel anfordern",
     "messageItem.keysRequested": "Schlüssel angefordert",
     "messageItem.requestKeysHelp":
@@ -2552,6 +2561,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Farbe festlegen",
     "spaceSidebar.dissolveFolder": "Ordner auflösen",
     "spaceSidebar.somethingWentWrong": "Etwas ist schiefgelaufen",
+    "spaceSidebar.folder": "Ordner",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} im Sprachkanal",
+    "spaceSidebar.moreParticipants": "+{count} weitere",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Sitzung wird wiederhergestellt…",
@@ -2623,6 +2636,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Ältere Antworten laden",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Sprachkanal",
+    "bridgedChannels.stage": "Bühnenkanal",
+    "bridgedChannels.announcement": "Ankündigungskanal",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Medienkanal",
+    "bridgedChannels.privateThread": "Privater Thread",
+    "bridgedThreads.joinFailed": "Dem Thread konnte nicht beigetreten werden.",
+    "bridgedThreads.joinThread": "Thread beitreten",
+    "bridgedThreads.threadRooms": "Thread-Räume",
+    "bridgedThreads.thread": "Thread",
+    "bridgedThreads.goToParent": "Zu {name} wechseln",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# Mitglied} other {# Mitglieder}}",
     "threadsListPanel.threads": "Threads",
     "threadsListPanel.closeThreadsPanel": "Threadbereich schließen",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2869,6 +2895,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Direktnachrichten klingeln. Räume nie - denen trittst du im Raum selbst bei.",
     "voiceAudioSettings.ringtoneVolume": "Klingeltonlautstärke",
+    "voiceAudioSettings.ringtone": "Klingelton",
+    "voiceAudioSettings.ringtoneDefault": "Standard",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Klingelton des Plugins (Plugin nicht geladen)",
     "voiceAudioSettings.fullScreenCalls":
         "Anrufe auf dem Sperrbildschirm anzeigen",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3383,6 +3414,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Umleitungsregeln",
     "previewRewriter.rulesDescription":
         "Der Reihe nach auf die Adresse angewendet, von der eine Vorschau geladen wird. Der Link selbst bleibt unverändert.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Nachrichtenlink-Pillen",
+    "messageLinkPill.description":
+        "Zeigt eingefügte Nachrichtenlinks als kompakte Pille mit dem Namen des Raums oder der Direktnachricht, auf die sie verweisen. Wenn du eine davon mit der Maus überfährst, wird die passende Vorschau hervorgehoben.",
+    "messageLinkPill.viewMessage": "Nachricht anzeigen",
+    "messageLinkPill.viewMessageIn": "Zitierte Nachricht in {room} anzeigen",
+    "messageLinkPill.viewQuotedMessage": "Zitierte Nachricht anzeigen",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

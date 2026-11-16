@@ -789,6 +789,12 @@ export const en = {
         "No direct connections, and call servers never see your IP address: calls go through the proxy to the call server's TURN relay over TCP or TLS. If the server offers no TURN relay, calls won't connect. Expect more delay.",
     "proxySettings.callsDirectUnavailable":
         "Calls can't bypass the system proxy settings. Set the proxy here (Manual or PAC) for this to work.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Calls can't bypass the system proxy settings. Set the proxy here (Manual) for this to work.",
+    "proxySettings.androidBackgroundHint":
+        "Notifications and quick replies are fetched outside the WebView and only work through socks5:// or http:// proxies.",
+    "proxySettings.unsupported":
+        "This version of Android System WebView can't set a proxy. Update it from the Play Store.",
     "proxySettings.callsDirectAddresses": "Sent direct:",
     "proxySettings.save": "Save",
     "proxySettings.saved": "Saved",
@@ -1362,6 +1368,9 @@ export const en = {
     "messageItem.originalMessageDeleted": "Original message deleted",
     "messageItem.originalMessageUnavailable": "Original message unavailable",
     "messageItem.replyPreviewSticker": "Sticker",
+    "messageItem.forwarded": "Forwarded",
+    "messageItem.forwardedFrom": "Forwarded from {name}",
+    "messageItem.forwardedEmoteActor": "Sender",
     "messageItem.requestKeys": "Request keys",
     "messageItem.keysRequested": "Keys requested",
     "messageItem.requestKeysHelp":
@@ -2504,6 +2513,10 @@ export const en = {
     "spaceSidebar.setColor": "Set Color",
     "spaceSidebar.dissolveFolder": "Dissolve Folder",
     "spaceSidebar.somethingWentWrong": "Something went wrong",
+    "spaceSidebar.folder": "Folder",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} in voice",
+    "spaceSidebar.moreParticipants": "+{count} more",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restoring session…",
@@ -2573,6 +2586,21 @@ export const en = {
     "threadPanel.loadOlderReplies": "Load older replies",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    // src/lib/components/ui/ChannelTypeIcon.svelte (ZDMB channel types)
+    "bridgedChannels.voice": "Voice channel",
+    "bridgedChannels.stage": "Stage channel",
+    "bridgedChannels.announcement": "Announcement channel",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Media channel",
+    "bridgedChannels.privateThread": "Private thread",
+    // src/lib/stores/bridgedThreads.svelte.ts (ZDMB Discord threads)
+    "bridgedThreads.joinFailed": "Couldn't join the thread.",
+    "bridgedThreads.joinThread": "Join thread",
+    "bridgedThreads.threadRooms": "Thread rooms",
+    "bridgedThreads.thread": "Thread",
+    "bridgedThreads.goToParent": "Go to {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# member} other {# members}}",
     "threadsListPanel.threads": "Threads",
     "threadsListPanel.closeThreadsPanel": "Close threads panel",
     "threadsListPanel.noThreadsInThisRoomYet": "No threads in this room yet.",
@@ -2812,6 +2840,11 @@ export const en = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Direct messages ring. Rooms never do - you join those from the room itself.",
     "voiceAudioSettings.ringtoneVolume": "Ringtone volume",
+    "voiceAudioSettings.ringtone": "Ringtone",
+    "voiceAudioSettings.ringtoneDefault": "Default",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Plugin ringtone (plugin not loaded)",
     "voiceAudioSettings.fullScreenCalls": "Show calls on the lock screen",
     "voiceAudioSettings.fullScreenCallsHint":
         "Lets an incoming DM call wake the screen and ring full screen, like a phone call. Android asks for this separately.",
@@ -3265,6 +3298,14 @@ export const en = {
     "previewRewriter.rules": "Rewrite rules",
     "previewRewriter.rulesDescription":
         "Applied in order to the address a preview is fetched from. The link itself is not changed.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Message link pills",
+    "messageLinkPill.description":
+        "Shows pasted message links as a compact pill naming the room or DM they point to, and highlights the matching preview when you hover one.",
+    "messageLinkPill.viewMessage": "View message",
+    "messageLinkPill.viewMessageIn": "View quoted message in {room}",
+    "messageLinkPill.viewQuotedMessage": "View quoted message",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

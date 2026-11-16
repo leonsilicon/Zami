@@ -160,7 +160,13 @@
         Image,
         MoreHorizontal,
         X,
+        ChevronRight,
     } from "lucide-svelte";
+    import { bridgedThreadParent } from "$lib/stores/bridgedThreads.svelte";
+    import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+    import { channelIconKind } from "$lib/utils/bridgedChannels";
+    import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+    import { navigateToRoom } from "$lib/stores/rooms.svelte";
     import RoomHeaderOverflowMenu from "$lib/components/layout/RoomHeaderOverflowMenu.svelte";
     import RoomTopicSheet from "$lib/components/layout/RoomTopicSheet.svelte";
     import {
@@ -999,6 +1005,24 @@
     const roomName = $derived(
         (void roomsState.roomsTick, getRoomDisplayName(room)),
     );
+    // A Discord thread bridged by ZDMB: the header leads with its channel,
+    // like Discord's "#channel > thread". Only a joined channel (not a forum,
+    // which is a space) gets the link.
+    const threadParentRoom = $derived.by(() => {
+        void roomsState.roomsTick;
+        const parent = bridgedThreadParent(room.roomId);
+        const r = parent ? getRoom(parent.roomId) : null;
+        return r && !r.isSpaceRoom() && r.getMyMembership() === "join"
+            ? { roomId: r.roomId, name: getRoomDisplayName(r) }
+            : null;
+    });
+    // Discord-style channel icon from ZDMB's channel tag; other rooms keep #.
+    const headerIconKind = $derived.by(() => {
+        void roomsState.roomsTick;
+        return channelIconKind(bridgedChannel(room.roomId)?.type, {
+            isThread: bridgedThreadParent(room.roomId) !== null,
+        });
+    });
     // Re-reads the live Room's state; depends on roomsTick to refresh when the
     // m.room.encryption state event lands (the Room mutates in place).
     const roomEncrypted = $derived(
@@ -2958,10 +2982,12 @@
         </div>
     {/if}
 
-    <!-- Main chat area -->
+    <!-- Main chat area. `relative` makes it the containing block for the
+         absolute overlays below (unread bar, jump pills), so they span only
+         the chat column and not the side panels beside it. -->
     <div
         dir={uiDir}
-        class="flex-1 flex flex-col min-w-0 overflow-hidden"
+        class="flex-1 flex flex-col min-w-0 overflow-hidden relative"
         data-chat-area
     >
         <!-- Room header -->
@@ -2992,7 +3018,37 @@
                     {/if}
                 </button>
             {/if}
-            <Hash size={20} class="text-discord-textMuted flex-shrink-0" />
+            {#if threadParentRoom}
+                {@const parent = threadParentRoom}
+                <button
+                    onclick={() => navigateToRoom(parent.roomId)}
+                    class="hidden sm:flex items-center gap-1 min-w-0 max-w-[30%] text-discord-textMuted hover:text-discord-textPrimary transition-colors"
+                    title={t("bridgedThreads.goToParent", {
+                        name: parent.name,
+                    })}
+                >
+                    <ChannelTypeIcon
+                        kind={channelIconKind(
+                            (void roomsState.roomsTick,
+                            bridgedChannel(parent.roomId))?.type,
+                        )}
+                        size={20}
+                        class="flex-shrink-0"
+                    />
+                    <span class="font-semibold truncate"
+                        >{@html renderPlainTextWithTwemoji(parent.name)}</span
+                    >
+                </button>
+                <ChevronRight
+                    size={16}
+                    class="hidden sm:block text-discord-textMuted flex-shrink-0 rtl:-scale-x-100"
+                />
+            {/if}
+            <ChannelTypeIcon
+                kind={headerIconKind}
+                size={20}
+                class="text-discord-textMuted flex-shrink-0"
+            />
             <!-- 5rem floor below md only: the header's buttons cannot shrink, so
                  without a floor the name and topic each get a proportional share of
                  the deficit at 412px and neither renders even an ellipsis. Above md

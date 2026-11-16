@@ -42,6 +42,7 @@
         fetchSpaceHierarchy,
         getCachedHierarchy,
         getCachedHierarchyAge,
+        readSpaceChildCategories,
         patchCachedHierarchyEntry,
         getDMPartnerId,
         getRoomCallMemberships,
@@ -59,8 +60,6 @@
         MicOff,
         HeadphoneOff,
         GripVertical,
-        Video,
-        Hash,
         Circle,
         Check,
     } from "lucide-svelte";
@@ -83,6 +82,18 @@
         TAG_LOWPRIORITY,
     } from "$lib/utils/roomOrdering";
     import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
+    import { nestThreadRows } from "$lib/utils/bridgedThreads";
+    import { channelIconKind } from "$lib/utils/bridgedChannels";
+    import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+    import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+    import {
+        groupByCategory,
+        type BridgedCategory,
+    } from "$lib/utils/bridgedCategories";
+    import {
+        bridgedThreadParent,
+        bridgedThreadParentChannelId,
+    } from "$lib/stores/bridgedThreads.svelte";
     import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
     import { renderPlainTextWithTwemoji } from "$lib/utils/twemojiText";
     import {
@@ -480,9 +491,52 @@
         if (roomsState.activeSpaceId === null) return [];
         void roomsState.roomsTick;
         return roomsState.spaceHierarchy.filter(
-            (r) => !r.isSpace && !isJoinedNow(r),
+            (r) => !r.isSpace && !isJoinedNow(r) && !isChannelThread(r.roomId),
         );
     });
+
+    // ── Bridged Discord threads (ZDMB) ───────────────────────────────────
+    // Like Discord: a joined thread sits under its channel; one we have not
+    // joined is offered from the channel (message chip, Threads panel), not
+    // as a channel of its own. Forum posts (parent is a space) are left as
+    // they are: their forum already renders as a category.
+    function isChannelThread(roomId: string): boolean {
+        return bridgedThreadParentChannelId(roomId) !== null;
+    }
+    // Discord categories (ZDMB): the active space's channels are grouped
+    // under their category, uncategorised ones first, a thread under its
+    // channel's category. Reorder mode keeps the flat list, since dragging
+    // writes the space `order` across categories.
+    const channelCategories = $derived.by(() => {
+        void roomsState.roomsTick;
+        const spaceId = roomsState.activeSpaceId;
+        return spaceId
+            ? readSpaceChildCategories(spaceId)
+            : new Map<string, BridgedCategory>();
+    });
+    function categoryOf(roomId: string): BridgedCategory | null {
+        const own = channelCategories.get(roomId);
+        if (own) return own;
+        const parent = bridgedThreadParentChannelId(roomId);
+        return parent ? (channelCategories.get(parent) ?? null) : null;
+    }
+    function categoryKey(category: BridgedCategory): string {
+        return `zdmb-category:${roomsState.activeSpaceId}:${category.id}`;
+    }
+    const categoryGroups = $derived.by(() => {
+        if (!roomsState.activeSpaceId || reorderMode) return null;
+        if (channelCategories.size === 0) return null;
+        return groupByCategory(roomGroups.normal, (r) => r.roomId, categoryOf);
+    });
+
+    function nestRooms(rooms: Room[]) {
+        void roomsState.roomsTick;
+        return nestThreadRows(
+            rooms,
+            (r) => r.roomId,
+            bridgedThreadParentChannelId,
+        );
+    }
 
     // ── Sub-spaces as tree categories ────────────────────────────────────
     type SubSpace = { id: string; name: string };
@@ -511,7 +565,7 @@
             }
         }
         const unjoined = (hierarchy ?? []).filter(
-            (h) => !h.isSpace && !isJoinedNow(h),
+            (h) => !h.isSpace && !isJoinedNow(h) && !isChannelThread(h.roomId),
         );
         return { rooms, spaces, unjoined };
     }
@@ -1319,13 +1373,21 @@
         {/snippet}
 
         <!-- Joined rooms / channels -->
-        {#snippet channelRow(room: Room, section: Section | null)}
+        {#snippet channelRow(
+            room: Room,
+            section: Section | null,
+            depth: number = 0,
+        )}
             {@const { isActive, unread, highlight, loud } = roomButton(room)}
             {@const isVideo = (void roomsState.roomsTick, isVideoRoom(room))}
             {@const roomName =
                 (void roomsState.roomsTick, getRoomDisplayName(room))}
+            {@const isThread =
+                (void roomsState.roomsTick,
+                bridgedThreadParent(room.roomId)) !== null}
             {@const draggable =
                 reorderMode &&
+                depth === 0 &&
                 section !== null &&
                 (section !== "channels" || canReorderChannels)}
             {#if draggable && drag?.overId === room.roomId && drag.before}
@@ -1381,9 +1443,9 @@
                     class:text-discord-textSecondary={!isActive && !unread}
                     class:hover:text-discord-textPrimary={!isActive}
                     class:font-semibold={unread}
-                    style={isActive
-                        ? "padding-inline-start: calc(0.5rem - 3px);"
-                        : "padding-inline-start: 0.5rem;"}
+                    style="padding-inline-start: calc({depth > 0
+                        ? '1.75rem'
+                        : '0.5rem'}{isActive ? ' - 3px' : ''});"
                 >
                     <div
                         class="w-5 flex-shrink-0 flex items-center justify-center"
@@ -1394,19 +1456,15 @@
                                     ? 'bg-discord-danger'
                                     : 'bg-discord-textPrimary'} flex-shrink-0"
                             ></span>
-                        {:else if isVideo}
-                            <span
-                                class="opacity-70 flex items-center justify-center"
-                                aria-label={t("common.videoRoom")}
-                            >
-                                <Video size={14} />
-                            </span>
                         {:else}
-                            <span
-                                class="w-5 h-5 opacity-70 flex items-center justify-center"
-                            >
-                                <Hash size={14} />
-                            </span>
+                            <ChannelTypeIcon
+                                kind={channelIconKind(
+                                    (void roomsState.roomsTick,
+                                    bridgedChannel(room.roomId))?.type,
+                                    { isThread, isVideo },
+                                )}
+                                class="w-5 h-5 opacity-70"
+                            />
                         {/if}
                     </div>
                     <!-- Tick dependency: names change by in-place Room
@@ -1481,11 +1539,80 @@
                     >
                         {t("roomList.favourites")}
                     </p>
-                    {#each roomGroups.favourites as room (room.roomId)}
-                        {@render channelRow(room, "favourite")}
+                    {#each nestRooms(roomGroups.favourites) as row (row.item.roomId)}
+                        {@render channelRow(row.item, "favourite", row.depth)}
                     {/each}
                 {/if}
-                {#if roomGroups.normal.length > 0}
+                {#if categoryGroups}
+                    {#each categoryGroups as group (group.category?.id ?? "")}
+                        {@const rows = nestRooms(group.items)}
+                        {#if group.category}
+                            {@const cat = group.category}
+                            {@const expanded = !collapsedSubspaces.has(
+                                categoryKey(cat),
+                            )}
+                            <!-- Collapsed like Discord: only the open channel
+                                 stays visible; the header shows hidden unread. -->
+                            {@const shown = expanded
+                                ? rows
+                                : rows.filter(
+                                      (r) => roomButton(r.item).isActive,
+                                  )}
+                            {@const hiddenUnread =
+                                !expanded &&
+                                rows.some(
+                                    (r) =>
+                                        !roomButton(r.item).isActive &&
+                                        roomButton(r.item).unread,
+                                )}
+                            <button
+                                type="button"
+                                onclick={() => toggleSubspace(categoryKey(cat))}
+                                aria-expanded={expanded}
+                                title={cat.name}
+                                class="w-full flex items-center gap-1 px-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-start transition-colors {hiddenUnread
+                                    ? 'text-discord-textPrimary'
+                                    : 'text-discord-textMuted hover:text-discord-textSecondary'}"
+                            >
+                                <svg
+                                    class="w-3 h-3 flex-shrink-0 transition-transform {expanded
+                                        ? ''
+                                        : '-rotate-90'}"
+                                    fill="currentColor"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M7 10l5 5 5-5z" />
+                                </svg>
+                                <span class="flex-1 min-w-0 truncate"
+                                    >{@html renderPlainTextWithTwemoji(
+                                        cat.name,
+                                    )}</span
+                                >
+                                {#if hiddenUnread}
+                                    <span
+                                        class="w-2 h-2 flex-shrink-0 rounded-full bg-discord-textPrimary"
+                                    ></span>
+                                {/if}
+                            </button>
+                            {#each shown as row (row.item.roomId)}
+                                {@render channelRow(
+                                    row.item,
+                                    "channels",
+                                    row.depth,
+                                )}
+                            {/each}
+                        {:else}
+                            {#each rows as row (row.item.roomId)}
+                                {@render channelRow(
+                                    row.item,
+                                    "channels",
+                                    row.depth,
+                                )}
+                            {/each}
+                        {/if}
+                    {/each}
+                {:else if roomGroups.normal.length > 0}
                     <p
                         class="px-2 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
                     >
@@ -1493,10 +1620,11 @@
                             ? t("roomList.channels")
                             : t("roomList.rooms")}
                     </p>
-                    {#each roomGroups.normal as room (room.roomId)}
+                    {#each nestRooms(roomGroups.normal) as row (row.item.roomId)}
                         {@render channelRow(
-                            room,
+                            row.item,
                             roomsState.activeSpaceId ? "channels" : null,
+                            row.depth,
                         )}
                     {/each}
                 {/if}
@@ -1506,8 +1634,8 @@
                     >
                         {t("roomList.lowPriority")}
                     </p>
-                    {#each roomGroups.lowPriority as room (room.roomId)}
-                        {@render channelRow(room, "lowPriority")}
+                    {#each nestRooms(roomGroups.lowPriority) as row (row.item.roomId)}
+                        {@render channelRow(row.item, "lowPriority", row.depth)}
                     {/each}
                 {/if}
             </div>
@@ -1516,6 +1644,8 @@
         <!-- A space child we haven't joined: join / knock in place -->
         {#snippet unjoinedRow(room: SpaceChildInfo)}
             {@const isJoining = joiningIds.has(room.roomId)}
+            {@const tag =
+                (void roomsState.roomsTick, bridgedChannel(room.roomId))}
             <!-- Same row geometry as channelRow (flex, py-1.5, 0.5rem inset,
                  w-5 icon slot, single-line name) so joined and unjoined rows
                  share height, hover and spacing. The member count lives in
@@ -1535,16 +1665,15 @@
                     <div
                         class="w-5 flex-shrink-0 flex items-center justify-center"
                     >
-                        <span
-                            class="w-5 h-5 opacity-70 flex items-center justify-center"
-                        >
-                            <Hash size={14} />
-                        </span>
+                        <ChannelTypeIcon
+                            kind={channelIconKind(tag?.type)}
+                            class="w-5 h-5 opacity-70"
+                        />
                     </div>
                     <span
                         class="flex-1 text-sm text-discord-textSecondary group-hover:text-discord-textPrimary truncate transition-colors"
                         >{@html renderPlainTextWithTwemoji(
-                            room.name ?? "",
+                            tag?.name || room.name || "",
                         )}</span
                     >
                 </div>
@@ -1672,8 +1801,8 @@
                 </button>
                 {#if expanded}
                     <div class="ms-3 border-s border-discord-divider">
-                        {#each kids.rooms as room (room.roomId)}
-                            {@render channelRow(room, null)}
+                        {#each nestRooms(kids.rooms) as row (row.item.roomId)}
+                            {@render channelRow(row.item, null, row.depth)}
                         {/each}
                         {#each kids.unjoined as room (room.roomId)}
                             {@render unjoinedRow(room)}

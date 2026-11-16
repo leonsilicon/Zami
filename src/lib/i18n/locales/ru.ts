@@ -816,6 +816,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Никаких прямых соединений, и серверы звонков никогда не видят ваш IP-адрес: звонки идут через прокси к TURN-ретранслятору сервера звонков по TCP или TLS. Если сервер не предоставляет TURN-ретранслятор, звонки не подключатся. Ожидайте большей задержки.",
     "proxySettings.callsDirectUnavailable":
         "Звонки не могут обходить системные настройки прокси. Чтобы это работало, задайте прокси здесь (вручную или PAC).",
+    "proxySettings.callsDirectUnavailableManual":
+        "Звонки не могут обходить системные настройки прокси. Чтобы это работало, задайте прокси здесь (вручную).",
+    "proxySettings.androidBackgroundHint":
+        "Уведомления и быстрые ответы загружаются вне WebView и работают только через прокси socks5:// или http://.",
+    "proxySettings.unsupported":
+        "Эта версия Android System WebView не умеет задавать прокси. Обновите её в Play Маркете.",
     "proxySettings.callsDirectAddresses": "Отправляется напрямую:",
     "proxySettings.save": "Сохранить",
     "proxySettings.saved": "Сохранено",
@@ -1416,6 +1422,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "Исходное сообщение удалено",
     "messageItem.originalMessageUnavailable": "Исходное сообщение недоступно",
     "messageItem.replyPreviewSticker": "Стикер",
+    "messageItem.forwarded": "Переслано",
+    "messageItem.forwardedFrom": "Переслано от {name}",
+    "messageItem.forwardedEmoteActor": "Отправитель",
     "messageItem.requestKeys": "Запросить ключи",
     "messageItem.keysRequested": "Ключи запрошены",
     "messageItem.requestKeysHelp":
@@ -2601,6 +2610,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Задать цвет",
     "spaceSidebar.dissolveFolder": "Расформировать папку",
     "spaceSidebar.somethingWentWrong": "Что-то пошло не так",
+    "spaceSidebar.folder": "Папка",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} в голосовом канале",
+    "spaceSidebar.moreParticipants": "+{count} ещё",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Восстановление сеанса…",
@@ -2670,6 +2683,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Загрузить более старые ответы",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Голосовой канал",
+    "bridgedChannels.stage": "Трибуна",
+    "bridgedChannels.announcement": "Канал объявлений",
+    "bridgedChannels.forum": "Форум",
+    "bridgedChannels.media": "Медиаканал",
+    "bridgedChannels.privateThread": "Приватное обсуждение",
+    "bridgedThreads.joinFailed": "Не удалось присоединиться к обсуждению.",
+    "bridgedThreads.joinThread": "Присоединиться к обсуждению",
+    "bridgedThreads.threadRooms": "Комнаты обсуждений",
+    "bridgedThreads.thread": "Обсуждение",
+    "bridgedThreads.goToParent": "Перейти в {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# участник} few {# участника} many {# участников} other {# участника}}",
     "threadsListPanel.threads": "Обсуждения",
     "threadsListPanel.closeThreadsPanel": "Закрыть панель обсуждений",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2918,6 +2944,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Личные чаты звонят. Комнаты - никогда, к ним присоединяются из самой комнаты.",
     "voiceAudioSettings.ringtoneVolume": "Громкость рингтона",
+    "voiceAudioSettings.ringtone": "Рингтон",
+    "voiceAudioSettings.ringtoneDefault": "По умолчанию",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Рингтон плагина (плагин не загружен)",
     "voiceAudioSettings.fullScreenCalls":
         "Показывать звонки на экране блокировки",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3381,6 +3412,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Правила подмены",
     "previewRewriter.rulesDescription":
         "Применяются по порядку к адресу, с которого получается предпросмотр. Сама ссылка не меняется.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Плашки ссылок на сообщения",
+    "messageLinkPill.description":
+        "Показывает вставленные ссылки на сообщения в виде компактной плашки с названием комнаты или личного чата, на который они ведут, и подсвечивает соответствующий предпросмотр, когда вы наводите курсор на плашку.",
+    "messageLinkPill.viewMessage": "Открыть сообщение",
+    "messageLinkPill.viewMessageIn": "Открыть цитируемое сообщение в {room}",
+    "messageLinkPill.viewQuotedMessage": "Открыть цитируемое сообщение",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

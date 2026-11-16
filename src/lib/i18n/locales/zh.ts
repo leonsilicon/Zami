@@ -770,6 +770,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "不进行直接连接，通话服务器也永远看不到你的 IP 地址：通话经代理，通过 TCP 或 TLS 连到通话服务器的 TURN 中继。如果服务器没有提供 TURN 中继，通话将无法连接。延迟会更高。",
     "proxySettings.callsDirectUnavailable":
         "通话无法绕过系统代理设置。请在此处设置代理（手动或 PAC）才能生效。",
+    "proxySettings.callsDirectUnavailableManual":
+        "通话无法绕过系统代理设置。请在此处设置代理（手动）才能生效。",
+    "proxySettings.androidBackgroundHint":
+        "通知和快速回复在 WebView 之外获取，只能通过 socks5:// 或 http:// 代理工作。",
+    "proxySettings.unsupported":
+        "此版本的 Android System WebView 无法设置代理。请从 Play 商店更新。",
     "proxySettings.callsDirectAddresses": "直连发送：",
     "proxySettings.save": "保存",
     "proxySettings.saved": "已保存",
@@ -1315,6 +1321,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "原消息已删除",
     "messageItem.originalMessageUnavailable": "原消息不可用",
     "messageItem.replyPreviewSticker": "贴纸",
+    "messageItem.forwarded": "已转发",
+    "messageItem.forwardedFrom": "转发自 {name}",
+    "messageItem.forwardedEmoteActor": "发送者",
     "messageItem.requestKeys": "请求密钥",
     "messageItem.keysRequested": "已请求密钥",
     "messageItem.requestKeysHelp":
@@ -2393,6 +2402,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "设置颜色",
     "spaceSidebar.dissolveFolder": "解散文件夹",
     "spaceSidebar.somethingWentWrong": "出错了",
+    "spaceSidebar.folder": "文件夹",
+    "spaceSidebar.liveBadge": "直播",
+    "spaceSidebar.inVoiceCount": "{count} 人在语音中",
+    "spaceSidebar.moreParticipants": "+{count} 人",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "正在恢复会话…",
@@ -2461,6 +2474,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "加载更早的回复",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "语音频道",
+    "bridgedChannels.stage": "舞台频道",
+    "bridgedChannels.announcement": "公告频道",
+    "bridgedChannels.forum": "论坛",
+    "bridgedChannels.media": "媒体频道",
+    "bridgedChannels.privateThread": "私密消息列",
+    "bridgedThreads.joinFailed": "无法加入消息列。",
+    "bridgedThreads.joinThread": "加入消息列",
+    "bridgedThreads.threadRooms": "消息列房间",
+    "bridgedThreads.thread": "消息列",
+    "bridgedThreads.goToParent": "前往 {name}",
+    "bridgedThreads.memberCount": "{count, plural, other {# 位成员}}",
     "threadsListPanel.threads": "消息列",
     "threadsListPanel.closeThreadsPanel": "关闭消息列面板",
     "threadsListPanel.noThreadsInThisRoomYet": "此房间中还没有消息列。",
@@ -2688,6 +2713,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "私信会响铃。房间从不响铃，你需要在房间里自行加入。",
     "voiceAudioSettings.ringtoneVolume": "铃声音量",
+    "voiceAudioSettings.ringtone": "铃声",
+    "voiceAudioSettings.ringtoneDefault": "默认",
+    "voiceAudioSettings.ringtonePluginOption": "{name}（{plugin}）",
+    "voiceAudioSettings.ringtoneUnavailable": "插件铃声（插件未加载）",
     "voiceAudioSettings.fullScreenCalls": "在锁屏上显示通话",
     "voiceAudioSettings.fullScreenCallsHint":
         "让私信来电像电话一样唤醒屏幕并全屏响铃。Android 会单独请求此权限。",
@@ -3106,6 +3135,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "重写规则",
     "previewRewriter.rulesDescription":
         "按顺序应用于获取预览所用的地址。链接本身不会改变。",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "消息链接胶囊",
+    "messageLinkPill.description":
+        "将粘贴的消息链接显示为紧凑的胶囊，标明其指向的房间或私信，并在你悬停某个胶囊时高亮对应的预览。",
+    "messageLinkPill.viewMessage": "查看消息",
+    "messageLinkPill.viewMessageIn": "查看 {room} 中的引用消息",
+    "messageLinkPill.viewQuotedMessage": "查看引用消息",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour": "你的账户上还没有插件同步数据。",

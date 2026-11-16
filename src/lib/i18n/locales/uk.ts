@@ -806,6 +806,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Жодних прямих з’єднань, і сервери викликів ніколи не бачать вашої IP-адреси: виклики йдуть через проксі до TURN-ретранслятора сервера викликів через TCP або TLS. Якщо сервер не пропонує TURN-ретранслятора, виклики не з’єднуватимуться. Очікуйте більшої затримки.",
     "proxySettings.callsDirectUnavailable":
         "Виклики не можуть оминати системні налаштування проксі. Щоб це працювало, задайте проксі тут (Вручну або PAC).",
+    "proxySettings.callsDirectUnavailableManual":
+        "Виклики не можуть оминати системні налаштування проксі. Щоб це працювало, задайте проксі тут (Вручну).",
+    "proxySettings.androidBackgroundHint":
+        "Сповіщення та швидкі відповіді завантажуються поза WebView і працюють лише через проксі socks5:// або http://.",
+    "proxySettings.unsupported":
+        "Ця версія Android System WebView не вміє задавати проксі. Оновіть її в Play Маркеті.",
     "proxySettings.callsDirectAddresses": "Надсилається напряму:",
     "proxySettings.save": "Зберегти",
     "proxySettings.saved": "Збережено",
@@ -1412,6 +1418,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageUnavailable":
         "Початкове повідомлення недоступне",
     "messageItem.replyPreviewSticker": "Стікер",
+    "messageItem.forwarded": "Переслано",
+    "messageItem.forwardedFrom": "Переслано від {name}",
+    "messageItem.forwardedEmoteActor": "Відправник",
     "messageItem.requestKeys": "Запитати ключі",
     "messageItem.keysRequested": "Ключі запитано",
     "messageItem.requestKeysHelp":
@@ -2594,6 +2603,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Задати колір",
     "spaceSidebar.dissolveFolder": "Розформувати теку",
     "spaceSidebar.somethingWentWrong": "Щось пішло не так",
+    "spaceSidebar.folder": "Папка",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} у голосовому каналі",
+    "spaceSidebar.moreParticipants": "+{count} ще",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Відновлення сеансу…",
@@ -2663,6 +2676,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Завантажити старіші відповіді",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Голосовий канал",
+    "bridgedChannels.stage": "Сцена",
+    "bridgedChannels.announcement": "Канал оголошень",
+    "bridgedChannels.forum": "Форум",
+    "bridgedChannels.media": "Медіаканал",
+    "bridgedChannels.privateThread": "Приватна гілка",
+    "bridgedThreads.joinFailed": "Не вдалося приєднатися до гілки.",
+    "bridgedThreads.joinThread": "Приєднатися до гілки",
+    "bridgedThreads.threadRooms": "Кімнати гілок",
+    "bridgedThreads.thread": "Гілка",
+    "bridgedThreads.goToParent": "Перейти до {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# учасник} few {# учасники} many {# учасників} other {# учасника}}",
     "threadsListPanel.threads": "Гілки",
     "threadsListPanel.closeThreadsPanel": "Закрити панель гілок",
     "threadsListPanel.noThreadsInThisRoomYet": "У цій кімнаті ще немає гілок.",
@@ -2910,6 +2936,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Особисті повідомлення дзвонять. Кімнати - ніколи: до них ви приєднуєтеся з самої кімнати.",
     "voiceAudioSettings.ringtoneVolume": "Гучність мелодії дзвінка",
+    "voiceAudioSettings.ringtone": "Мелодія дзвінка",
+    "voiceAudioSettings.ringtoneDefault": "Типова",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Мелодія плагіна (плагін не завантажено)",
     "voiceAudioSettings.fullScreenCalls":
         "Показувати виклики на екрані блокування",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3374,6 +3405,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Правила перезапису",
     "previewRewriter.rulesDescription":
         "Застосовуються по порядку до адреси, з якої отримується попередній перегляд. Саме посилання не змінюється.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Плашки посилань на повідомлення",
+    "messageLinkPill.description":
+        "Показує вставлені посилання на повідомлення у вигляді компактної плашки з назвою кімнати або особистого чату, на які вони ведуть, і підсвічує відповідний попередній перегляд, коли ви наводите курсор на плашку.",
+    "messageLinkPill.viewMessage": "Переглянути повідомлення",
+    "messageLinkPill.viewMessageIn":
+        "Переглянути цитоване повідомлення в {room}",
+    "messageLinkPill.viewQuotedMessage": "Переглянути цитоване повідомлення",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":

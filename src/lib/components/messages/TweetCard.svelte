@@ -8,7 +8,7 @@
     import { pauseOffscreen } from "$lib/actions/pauseOffscreen";
     import { rememberVolume } from "$lib/actions/rememberVolume";
     import { parkOffscreen } from "$lib/actions/parkOffscreen";
-    import { unloadOffscreen } from "$lib/actions/unloadOffscreen";
+    import { gifTileVideo } from "$lib/actions/gifTileVideo";
     import { reservedMediaBox } from "$lib/utils/mediaDimensions";
     import { galleryNav, galleryPositionLabel } from "$lib/utils/mediaGallery";
     import {
@@ -56,6 +56,16 @@
     let lightboxIndex = $state<number | null>(null);
 
     const photos = $derived(tweet.media.filter((m) => m.kind === "photo"));
+
+    /** A photo as the viewer wants it: the original, the grid's thumb as its
+     *  stand-in, and its size so the box is laid out before either loads. */
+    function viewerItem(p: (typeof photos)[number]) {
+        return {
+            src: p.url,
+            placeholders: [tweetPhotoThumb(p.url)],
+            dims: p.width && p.height ? { w: p.width, h: p.height } : null,
+        };
+    }
 
     const pollEnded = $derived(
         tweet.poll?.endsAt != null && tweet.poll.endsAt <= Date.now(),
@@ -226,11 +236,14 @@
                 )}
                 {#if item.kind === "gif"}
                     <!-- Played like a GIF: muted, looped, no controls. Its
-                         src is owned by unloadOffscreen, which drops it once
-                         the row is well out of view. -->
+                         src is owned by gifTileVideo, which only gives it one
+                         while it is near the viewport: a post can carry four
+                         GIFs plus four in its quote, and holding a hardware
+                         decoder for each corrupts frames (green/purple bands)
+                         once the pool runs out. width/height keep the box. -->
                     <!-- svelte-ignore a11y_media_has_caption -->
                     <video
-                        use:unloadOffscreen={item.url}
+                        use:gifTileVideo={item.url}
                         poster={item.thumbnail}
                         width={box?.width}
                         height={box?.height}
@@ -445,12 +458,22 @@
     {@const prev = nav.prevIndex}
     {@const next = nav.nextIndex}
     {#if photo}
+        <!-- The grid's medium thumb (already loaded) stands in, in a box
+             sized from the media dims, until the original arrives; the
+             neighbours carry the same so a step or swipe lands on a sized,
+             painted image instead of an empty 0x0 one. -->
         <Lightbox
             src={photo.url}
             alt={photo.alt ?? ""}
+            placeholders={viewerItem(photo).placeholders}
+            dims={viewerItem(photo).dims}
             onClose={() => (lightboxIndex = null)}
             onPrev={prev !== null ? () => (lightboxIndex = prev) : undefined}
             onNext={next !== null ? () => (lightboxIndex = next) : undefined}
+            neighbours={{
+                prev: prev !== null ? viewerItem(photos[prev]) : null,
+                next: next !== null ? viewerItem(photos[next]) : null,
+            }}
             position={galleryPositionLabel(photos.length, lightboxIndex)}
         />
     {/if}
