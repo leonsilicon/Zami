@@ -79,6 +79,8 @@
             "M20 6.54V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10.1A5 5 0 0 0 20 6.54zM19 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
         "view-source":
             "M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z",
+        "view-reactions":
+            "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z",
         report: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z",
         redact: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
         delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
@@ -112,7 +114,7 @@
     <BottomSheet {onClose}>
         {#if pending}
             <div class="px-4 py-3">
-                <p class="text-sm text-discord-textPrimary mb-3">
+                <p class="text-sm text-zam-textPrimary mb-3">
                     {t("messageActionsSheet.thisMessage", {
                         label: pending.label,
                     })}
@@ -120,12 +122,12 @@
                 <div class="flex justify-end gap-2">
                     <button
                         onclick={() => (pending = null)}
-                        class="px-4 min-h-11 rounded text-sm font-semibold text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                        class="px-4 min-h-11 rounded text-sm font-semibold text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                         >{t("common.cancel")}</button
                     >
                     <button
                         onclick={() => run(pending!.key)}
-                        class="px-4 min-h-11 rounded text-sm font-semibold text-white bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                        class="px-4 min-h-11 rounded text-sm font-semibold text-white bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                         >{pending.label}</button
                     >
                 </div>
@@ -141,7 +143,7 @@
                 -->
                 <div class="px-4 pb-3" data-sheet-no-drag>
                     <div
-                        class="max-h-[28vh] overflow-y-auto rounded-lg bg-discord-backgroundSecondary px-3 py-3 flex gap-3 min-w-0"
+                        class="max-h-[28vh] overflow-y-auto rounded-lg bg-zam-backgroundSecondary px-3 py-3 flex gap-3 min-w-0"
                     >
                         {#if sender}
                             <div class="w-10 flex-shrink-0 mt-0.5">
@@ -159,12 +161,12 @@
                                     class="flex items-baseline gap-2 mb-0.5 min-w-0"
                                 >
                                     <span
-                                        class="min-w-0 truncate font-semibold text-sm text-discord-textPrimary"
+                                        class="min-w-0 truncate font-semibold text-sm text-zam-textPrimary"
                                         style:color={sender.colour}
                                         >{sender.name}</span
                                     >
                                     <span
-                                        class="text-xs text-discord-textMuted whitespace-nowrap flex-shrink-0"
+                                        class="text-xs text-zam-textMuted whitespace-nowrap flex-shrink-0"
                                         title={sender.fullTime}
                                         >{sender.time}</span
                                     >
@@ -176,7 +178,7 @@
                                 </div>
                             {:else if preview}
                                 <p
-                                    class="text-sm leading-relaxed text-discord-textPrimary whitespace-pre-wrap break-words select-text"
+                                    class="text-sm leading-relaxed text-zam-textPrimary whitespace-pre-wrap break-words select-text"
                                 >
                                     {preview}
                                 </p>
@@ -184,7 +186,7 @@
                         </div>
                     </div>
                     {#if preview}
-                        <p class="mt-1.5 text-xs text-discord-textMuted">
+                        <p class="mt-1.5 text-xs text-zam-textMuted">
                             {t("messageActionsMenu.selectHint")}
                         </p>
                     {/if}
@@ -199,14 +201,14 @@
                     <button
                         role="menuitem"
                         onclick={() => pick(row)}
-                        class="w-full flex items-center gap-3 px-4 py-3 text-start text-sm transition-colors hover:bg-discord-messageHover {row.danger
-                            ? 'text-discord-danger'
-                            : 'text-discord-textPrimary'}"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-start text-sm transition-colors hover:bg-zam-messageHover {row.danger
+                            ? 'text-zam-danger'
+                            : 'text-zam-textPrimary'}"
                     >
                         <svg
                             class="w-5 h-5 flex-shrink-0 {row.danger
-                                ? 'text-discord-danger'
-                                : 'text-discord-textMuted'}"
+                                ? 'text-zam-danger'
+                                : 'text-zam-textMuted'}"
                             fill="currentColor"
                             viewBox="0 0 24 24"><path d={ICONS[row.key]} /></svg
                         >
@@ -217,17 +219,17 @@
                     <button
                         role="menuitem"
                         onclick={() => runPlugin(row.key)}
-                        class="w-full flex items-center gap-3 px-4 py-3 text-start text-sm transition-colors hover:bg-discord-messageHover text-discord-textPrimary"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-start text-sm transition-colors hover:bg-zam-messageHover text-zam-textPrimary"
                     >
                         {#if row.icon}
                             <svg
-                                class="w-5 h-5 flex-shrink-0 text-discord-textMuted"
+                                class="w-5 h-5 flex-shrink-0 text-zam-textMuted"
                                 fill="currentColor"
                                 viewBox="0 0 24 24"><path d={row.icon} /></svg
                             >
                         {:else}
                             <span
-                                class="w-5 h-5 flex-shrink-0 grid place-items-center text-xs font-semibold text-discord-textMuted"
+                                class="w-5 h-5 flex-shrink-0 grid place-items-center text-xs font-semibold text-zam-textMuted"
                                 >{row.label.slice(0, 1)}</span
                             >
                         {/if}

@@ -624,6 +624,36 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Синхронізація індексу не працює: потрібно ввімкнути індексацію зашифрованих кімнат.",
     "debugSettings.indexSyncNow": "Синхронізувати зараз",
     "debugSettings.indexSyncNever": "ніколи",
+    "debugSettings.searchIndex": "Пошуковий індекс",
+    "debugSettings.searchIndexHint":
+        "Проіндексувати зараз усю історію кожної зашифрованої кімнати на цьому пристрої, а не повільно у фоновому режимі. Під час роботи використовує мережу та сховище.",
+    "debugSettings.searchIndexBuild": "Побудувати повний індекс зараз",
+    "debugSettings.searchIndexCancel": "Скасувати",
+    "debugSettings.searchIndexBar": "Прогрес повного індексу",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} кімнат, {messages} повідомлень",
+    "debugSettings.searchIndexComplete":
+        "Готово: усі зашифровані кімнати проіндексовано.",
+    "debugSettings.searchIndexPartial":
+        "Готово, але {failed} кімнат ще не оброблено. Фоновий процес повторить спробу.",
+    "debugSettings.searchIndexStorage": "Зупинено: сховище майже заповнене.",
+    "debugSettings.prefetchTitle": "Фонове завантаження (Android)",
+    "debugSettings.prefetchHint":
+        "Завантажує зашифровані сторінки історії у фоні, коли застосунок не на передньому плані. Вони залишаються зашифрованими, доки індекс їх не прочитає.",
+    "debugSettings.prefetchPages": "Сторінок в очікуванні",
+    "debugSettings.prefetchSize": "Розмір",
+    "debugSettings.prefetchRooms": "Кімнати",
+    "debugSettings.prefetchLastRun": "Останній запуск",
+    "debugSettings.prefetchLastResult": "Останній результат",
+    "debugSettings.prefetchLastError": "Остання помилка",
+    "debugSettings.prefetchRefresh": "Оновити",
+    "debugSettings.searchIndexAborted": "Скасовано.",
+    "debugSettings.searchIndexUnavailable":
+        "Зупинено: індекс не працює на цьому пристрої.",
+    "debugSettings.searchIndexDisabled":
+        "Спочатку увімкніть індексацію зашифрованих кімнат у налаштуваннях приватності.",
+    "debugSettings.searchIndexNotRunning":
+        "Індекс зараз не працює. Він запуститься, коли застосунок завантажиться.",
     "debugSettings.indexSyncSessions": "Сеанси",
     "debugSettings.indexSyncAsked": "Запитано",
     "debugSettings.indexSyncRoomsMissing": "Кімнати з прогалинами",
@@ -1362,6 +1392,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.pinnedMessagesCount": "Закріплені повідомлення ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Сповіщати при відповіді",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "Нові відповіді сповіщають автора повідомлення, на яке ви відповідаєте, як @-згадка. У панелі відповіді це можна вимкнути для кожної відповіді.",
+    "messageInput.pingOn": "@ УВІМК",
+    "messageInput.pingOff": "@ ВИМК",
+    "messageInput.pingOnTitle": "Сповістити автора",
+    "messageInput.pingOffTitle": "Не сповіщати автора",
     "messageInput.replyingTo": "Відповідь для {replyTargetName}",
     "messageInput.cancelReplyEsc": "Скасувати відповідь (Esc)",
     "messageInput.editAttachment": "Редагувати вкладення",
@@ -2018,6 +2055,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "quickActions.couldNotSendTheJoinRequest":
         "Не вдалося надіслати запит на приєднання",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Реакції",
+    "reactionsViewer.count":
+        "{count, plural, one {# реакція} few {# реакції} many {# реакцій} other {# реакції}}",
+    "reactionsViewer.empty": "Це повідомлення не має реакцій.",
+    "reactionsViewer.removeYours": "Прибрати вашу реакцію",
+    "reactionsViewer.sending": "надсилання…",
+    "reactionsViewer.couldNotRemove": "Не вдалося прибрати вашу реакцію.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "ще +{overflow}",
     "reactorPopover.reactedWith": "Відреагували з {label}",
@@ -2343,6 +2388,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Ваше вивантаження вимірюється як {upload}, тож це досягає {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Ваше вивантаження ще не виміряно. Його вимірюють, поки ви надсилаєте відео, тож наразі це досягає {max}.",
+    "screenShareQualityChips.nativeCapture": "Помічник захоплення Windows",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Захоплює й кодує трансляцію поза браузером, тож важка гра її не смикає. Застосовується до наступної трансляції.",
     "screenShareQualityChips.shareSystemAudio": "Ділитися системним звуком",
     "screenShareQualityChips.appliesToNextShare":
         "Застосовується до наступного показу",
@@ -2649,7 +2697,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "Показ повідомлень",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Зберігається лише на цьому пристрої. Не синхронізується між вашими пристроями.",
-    "themeColorEditor.appTextSize": "Розмір тексту застосунку: {round}%",
+    "themeColorEditor.interfaceScale": "Масштаб інтерфейсу: {percent}%",
+    "themeColorEditor.messageTextScale":
+        "Розмір тексту повідомлень: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "Змінює лише повідомлення в чаті та поле введення.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Масштабує весь текст і відступи в застосунку.",
     "themeColorEditor.font": "Шрифт",
@@ -3278,6 +3330,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "client.codecCouldNotBeDecoded":
         "Цей пристрій не може декодувати відео {codec}. Натомість запитується H.264.",
     "client.couldNotSwitchVideoCodec": "Не вдалося перемкнути відеокодек",
+    "client.androidShareNeedsWebView":
+        "Для показу екрана в цій кімнаті потрібен новіший Android System WebView.",
+    "client.screenShareStopped": "Показ екрана зупинено.",
     "client.couldNotStartScreenShare": "Не вдалося розпочати показ екрана",
     "client.couldNotShareScreenAudio": "Показ екрана розпочато без його звуку",
     "client.couldnTChangeScreenShareQuality":
@@ -3788,6 +3843,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Відкріпити",
     "messageActionsMenu.pin": "Закріпити",
     "messageActionsMenu.copyLink": "Копіювати посилання",
+    "messageActionsMenu.viewReactions": "Переглянути реакції",
     "messageActionsMenu.markUnread": "Позначити як непрочитане",
     "messageActionsMenu.couldNotMarkUnread":
         "Не вдалося позначити як непрочитане",
@@ -3853,6 +3909,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturbDescription":
         "Вимикає сповіщення та дзвінки на всіх ваших пристроях",
     "presence.invisible": "Невидимий",
+    "presence.invisibleHidesActivity":
+        "Невидимий також приховує від інших ваші підтвердження прочитання і набір тексту.",
+    "presence.unsupportedByServer":
+        "Цей сервер не підтримує присутність, тому встановити статус неможливо.",
     "presence.appearOfflineToOtherUsers":
         "Показуватися іншим користувачам поза мережею",
 
@@ -4238,6 +4298,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/routes/+page.svelte
     "rootPage.failedToReconnectPleaseLogIn":
         "Не вдалося перепідключитися. Увійдіть знову.",
+    "rootPage.storageWipedSessionRecovered":
+        "Браузер скинув сховище Zam, імовірно, через заповнений диск. Вхід відновлено, але деякі налаштування могли повернутися до типових значень.",
     "rootPage.sessionOpenInAnotherTab":
         "Цей сеанс відкрито в іншій вкладці. Ця вкладка продовжить роботу, щойно та закриється.",
     "rootPage.signedInButSyncingCouldNot":

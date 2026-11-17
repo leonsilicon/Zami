@@ -32,6 +32,7 @@
     import WhatsNewModal from "$lib/components/layout/WhatsNewModal.svelte";
     import VerificationRequestCard from "$lib/components/layout/VerificationRequestCard.svelte";
     import ErrorToasts from "$lib/components/ui/ErrorToasts.svelte";
+    import { requestPersistentStorage } from "$lib/utils/persistentStorage";
     import ScreenSharePicker from "$lib/components/layout/ScreenSharePicker.svelte";
     import JoinConsentDialog from "$lib/components/layout/JoinConsentDialog.svelte";
     import MeshConsentDialog from "$lib/components/layout/MeshConsentDialog.svelte";
@@ -1437,6 +1438,8 @@
         void roomsState.roomsTick;
         void settingsState.receiptOverrides;
         void settingsState.privateReadReceipts;
+        void settingsState.ownPresence;
+        void settingsState.presenceUnsupported;
         receiptMirrorTimer ??= setTimeout(() => {
             receiptMirrorTimer = undefined;
             mirrorReceiptPrivacy();
@@ -1682,6 +1685,11 @@
     // Electron right-click "Save image as" (fetches with auth; see module).
     onMount(installDesktopSaveImage);
     onMount(installDesktopMessageMenu);
+    // Keep the browser from evicting this origin's storage (crypto store,
+    // account backup) when the disk runs low. See persistentStorage.ts.
+    onMount(() => {
+        void requestPersistentStorage();
+    });
 
     // Tell the main process when video plays (it weighs GPU crashes by it).
     onMount(() => {
@@ -2846,10 +2854,10 @@
 {#if !auth.isAuthenticated}
     <div
         role="status"
-        class="flex items-center justify-center bg-discord-backgroundTertiary"
+        class="flex items-center justify-center bg-zam-backgroundTertiary"
         style="min-height: 100vh; min-height: 100dvh;"
     >
-        <div class="flex items-center gap-3 text-discord-textMuted">
+        <div class="flex items-center gap-3 text-zam-textMuted">
             <div
                 aria-hidden="true"
                 class="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin"
@@ -2865,7 +2873,7 @@
     <div
         dir="ltr"
         data-zam-region="app"
-        class="flex overflow-hidden bg-discord-background"
+        class="flex overflow-hidden bg-zam-background"
         style="position: fixed; inset: 0;"
         ontouchstart={drawerDragStart}
     >
@@ -2910,7 +2918,7 @@
                     aria-valuemin={ROOM_LIST_MIN_W}
                     tabindex="0"
                     title={t("appShell.resizeRoomList")}
-                    class="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-discord-accent/40 focus-visible:bg-discord-accent/40 transition-colors"
+                    class="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-zam-accent/40 focus-visible:bg-zam-accent/40 transition-colors"
                     onpointerdown={startRoomListResize}
                     ondblclick={() => {
                         roomListWidth = clampRoomListWidth(240);
@@ -2972,7 +2980,7 @@
 
         <main
             dir={uiDir}
-            class="flex flex-1 min-w-0 overflow-hidden bg-discord-background"
+            class="flex flex-1 min-w-0 overflow-hidden bg-zam-background"
         >
             {#if roomsState.showInbox}
                 <InboxPanel
@@ -3015,9 +3023,9 @@
                     class="flex-1 flex flex-col items-center justify-center text-center p-8"
                 >
                     <div
-                        class="w-24 h-24 rounded-full bg-discord-backgroundSecondary flex items-center justify-center mb-6"
+                        class="w-24 h-24 rounded-full bg-zam-backgroundSecondary flex items-center justify-center mb-6"
                     >
-                        <span class="text-5xl font-bold text-discord-textMuted"
+                        <span class="text-5xl font-bold text-zam-textMuted"
                             >#</span
                         >
                     </div>
@@ -3026,27 +3034,27 @@
                          lives in one — saying "no rooms yet" would be a lie. -->
                     {#if roomsState.spaces.length === 0}
                         <h2
-                            class="text-2xl font-bold text-discord-textPrimary mb-2"
+                            class="text-2xl font-bold text-zam-textPrimary mb-2"
                         >
                             {t("appShell.noRoomsYet")}
                         </h2>
-                        <p class="text-discord-textMuted max-w-sm">
+                        <p class="text-zam-textMuted max-w-sm">
                             {t("appShell.createARoomOrStartA")}
                         </p>
                     {:else}
                         <h2
-                            class="text-2xl font-bold text-discord-textPrimary mb-2"
+                            class="text-2xl font-bold text-zam-textPrimary mb-2"
                         >
                             {t("appShell.nothingInHome")}
                         </h2>
-                        <p class="text-discord-textMuted max-w-sm">
+                        <p class="text-zam-textMuted max-w-sm">
                             {t("appShell.allOfYourRoomsLiveIn")}
                         </p>
                     {/if}
                     {#if interfaceState.isMobile}
                         <button
                             onclick={() => (interfaceState.leftOpen = true)}
-                            class="mt-6 px-5 py-2.5 bg-discord-accent hover:bg-discord-accentHover text-white rounded-lg text-sm font-semibold transition-colors"
+                            class="mt-6 px-5 py-2.5 bg-zam-accent hover:bg-zam-accentHover text-white rounded-lg text-sm font-semibold transition-colors"
                             >{t("appShell.openRoomList")}</button
                         >
                     {/if}

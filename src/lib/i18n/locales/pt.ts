@@ -623,6 +623,37 @@ const messages: Partial<Record<MessageKey, string>> = {
         "A sincronização do índice não está ativa: é preciso ativar a indexação de salas criptografadas.",
     "debugSettings.indexSyncNow": "Sincronizar agora",
     "debugSettings.indexSyncNever": "nunca",
+    "debugSettings.searchIndex": "Índice de pesquisa",
+    "debugSettings.searchIndexHint":
+        "Indexa agora todo o histórico de cada sala criptografada deste dispositivo, em vez de fazer isso devagar em segundo plano. Usa rede e armazenamento enquanto roda.",
+    "debugSettings.searchIndexBuild": "Criar índice completo agora",
+    "debugSettings.searchIndexCancel": "Cancelar",
+    "debugSettings.searchIndexBar": "Progresso do índice completo",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} salas, {messages} mensagens",
+    "debugSettings.searchIndexComplete":
+        "Concluído: todas as salas criptografadas estão indexadas.",
+    "debugSettings.searchIndexPartial":
+        "Concluído, mas {failed} salas ainda não foram concluídas. O rastreador em segundo plano vai tentar de novo.",
+    "debugSettings.searchIndexStorage":
+        "Interrompido: o armazenamento está quase cheio.",
+    "debugSettings.prefetchTitle": "Download em segundo plano (Android)",
+    "debugSettings.prefetchHint":
+        "Baixa páginas criptografadas do histórico em segundo plano quando o app não está em primeiro plano. Continuam criptografadas até o índice lê-las.",
+    "debugSettings.prefetchPages": "Páginas aguardando",
+    "debugSettings.prefetchSize": "Tamanho",
+    "debugSettings.prefetchRooms": "Salas",
+    "debugSettings.prefetchLastRun": "Última execução",
+    "debugSettings.prefetchLastResult": "Último resultado",
+    "debugSettings.prefetchLastError": "Último erro",
+    "debugSettings.prefetchRefresh": "Atualizar",
+    "debugSettings.searchIndexAborted": "Cancelado.",
+    "debugSettings.searchIndexUnavailable":
+        "Interrompido: o índice não está em execução neste dispositivo.",
+    "debugSettings.searchIndexDisabled":
+        "Ative primeiro a indexação de salas criptografadas nas configurações de privacidade.",
+    "debugSettings.searchIndexNotRunning":
+        "O índice não está em execução agora. Ele começa quando o app terminar de carregar.",
     "debugSettings.indexSyncSessions": "Sessões",
     "debugSettings.indexSyncAsked": "Consultado",
     "debugSettings.indexSyncRoomsMissing": "Salas com lacunas",
@@ -1357,6 +1388,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.pinnedMessagesCount": "Mensagens fixadas ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Avisar ao responder",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "As novas respostas avisam o autor da mensagem a que você responde, como uma menção @. Você pode desativar isso em cada resposta pela barra de resposta.",
+    "messageInput.pingOn": "@ LIGADO",
+    "messageInput.pingOff": "@ DESLIGADO",
+    "messageInput.pingOnTitle": "Avisar o autor",
+    "messageInput.pingOffTitle": "Não avisar o autor",
     "messageInput.replyingTo": "Respondendo a {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancelar resposta (Esc)",
     "messageInput.editAttachment": "Editar anexo",
@@ -2012,6 +2050,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "quickActions.couldNotSendTheJoinRequest":
         "Não foi possível enviar o pedido de entrada",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Reações",
+    "reactionsViewer.count":
+        "{count, plural, one {# reação} other {# reações}}",
+    "reactionsViewer.empty": "Nenhuma reação nesta mensagem.",
+    "reactionsViewer.removeYours": "Remover sua reação",
+    "reactionsViewer.sending": "enviando…",
+    "reactionsViewer.couldNotRemove": "Não foi possível remover sua reação.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "+{overflow} mais",
     "reactorPopover.reactedWith": "Reagiu com {label}",
@@ -2340,6 +2386,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Seu envio mede {upload}, então isto chega a {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Seu envio ainda não foi medido. Ele é medido enquanto você envia vídeo, então por enquanto isto chega a {max}.",
+    "screenShareQualityChips.nativeCapture": "Auxiliar de captura do Windows",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Captura e codifica o compartilhamento fora do navegador, para que um jogo pesado não o trave. Vale para o próximo compartilhamento.",
     "screenShareQualityChips.shareSystemAudio": "Compartilhar áudio do sistema",
     "screenShareQualityChips.appliesToNextShare":
         "Vale para o próximo compartilhamento",
@@ -2650,7 +2699,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "Exibição de mensagens",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Salvo somente neste dispositivo. Não é sincronizado com a sua conta.",
-    "themeColorEditor.appTextSize": "Tamanho do texto do aplicativo: {round}%",
+    "themeColorEditor.interfaceScale": "Escala da interface: {percent}%",
+    "themeColorEditor.messageTextScale":
+        "Tamanho do texto das mensagens: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "Altera apenas as mensagens do chat e o campo de escrita.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Dimensiona todo o texto e o espaçamento do aplicativo.",
     "themeColorEditor.font": "Fonte",
@@ -3292,6 +3345,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Este dispositivo não consegue decodificar vídeo {codec}. Pedindo H.264 no lugar.",
     "client.couldNotSwitchVideoCodec":
         "Não foi possível trocar o codec de vídeo",
+    "client.androidShareNeedsWebView":
+        "Compartilhar a tela nesta sala exige um Android System WebView mais recente.",
+    "client.screenShareStopped": "O compartilhamento de tela foi interrompido.",
     "client.couldNotStartScreenShare":
         "Não foi possível iniciar o compartilhamento de tela",
     "client.couldNotShareScreenAudio":
@@ -3810,6 +3866,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Desafixar",
     "messageActionsMenu.pin": "Fixar",
     "messageActionsMenu.copyLink": "Copiar link",
+    "messageActionsMenu.viewReactions": "Ver reações",
     "messageActionsMenu.markUnread": "Marcar como não lida",
     "messageActionsMenu.couldNotMarkUnread":
         "Não foi possível marcar como não lida",
@@ -3874,6 +3931,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturbDescription":
         "Silencia notificações e chamadas em todos os seus dispositivos",
     "presence.invisible": "Invisível",
+    "presence.invisibleHidesActivity":
+        "Invisível também oculta suas confirmações de leitura e quando você está digitando.",
+    "presence.unsupportedByServer":
+        "Este servidor não suporta presença, então não há status para definir.",
     "presence.appearOfflineToOtherUsers":
         "Aparece como offline para os outros usuários",
 
@@ -4263,6 +4324,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/routes/+page.svelte
     "rootPage.failedToReconnectPleaseLogIn":
         "Falha ao reconectar. Entre novamente.",
+    "rootPage.storageWipedSessionRecovered":
+        "O navegador redefiniu o armazenamento do Zam, provavelmente porque o disco estava cheio. Sua sessão foi recuperada, mas algumas configurações podem ter voltado ao padrão.",
     "rootPage.sessionOpenInAnotherTab":
         "Esta sessão está aberta em outra aba. Esta aba continuará quando aquela for fechada.",
     "rootPage.signedInButSyncingCouldNot":

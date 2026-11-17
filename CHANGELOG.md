@@ -4,6 +4,56 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.65.5
+
+🐛 **Fixed**
+
+- **Screen share size:** native screen shares (Windows window shares and Android) now tell the call server and other clients their real picture size. They used to report a tiny 64x64 size, which every viewer, including Element Call, was given.
+
+## v1.65.4
+
+🐛 **Fixed**
+
+- **Screen share stutter:** native screen shares (Windows window shares and Android) no longer judder for viewers. Frames were being shown at uneven intervals even when they all arrived; they now play back at the pace they were captured.
+
+## v1.65.3
+
+✨ **New**
+
+- **View reactions:** "View reactions" in a message's menu (right-click, or ⋯ / long-press on mobile) shows who reacted with what. Each reaction has its own tab, every reactor appears with the time they reacted, and your own reaction has a remove button. It is a dialog on desktop and a bottom sheet on mobile.
+- **Invisible is properly invisible:** while your status is Invisible, read receipts are sent as private and typing notifications are not sent.
+
+🐛 **Fixed**
+
+- **X/Twitter GIFs:** clicking a GIF in a post embed now opens it in the viewer, like photos do.
+- **Servers without presence:** on a server that has presence turned off (such as matrix.org), the status picker is hidden instead of offering choices that do nothing.
+
+## v1.65.2
+
+🐛 **Fixed**
+
+- **Replies now ping the author:** a reply used to leave the author of the message out of the mention list, so they were never notified. The reply bar has a new `@ ON / @ OFF` toggle, like Discord, and Settings → Messages and media has a "Ping on reply" option for the default (on).
+
+## v1.65.1
+
+🐛 **Fixed**
+
+- **Theme variable names:** the theme CSS variables are now `--zam-*` instead of `--discord-*`. If you use custom CSS or a plugin that references the old names, update them (the Example Theme and Emoji Stealer plugins have new versions).
+
+## v1.65.0
+
+✨ **New**
+
+- **Smooth window sharing on Windows:** sharing a window from the Windows app now captures and encodes it outside the browser engine, on every frame the window draws, with your graphics card's encoder. Sharing a game no longer stutters while the game keeps the GPU busy. Your own preview shows exactly what others see. The "Windows capture helper" switch in the screen share quality options turns it off.
+- **Screen sharing from Android:** the Android app can now share your screen in calls, including on older Android System WebViews. A notification shows while you share, with a "Stop sharing" button.
+- **Separate interface scale and message text size:** the text-size setting is now two: interface scale (75-150%) for the whole app, and message text size (80-200%) for messages and the composer. Your old setting carries over to the interface scale.
+- **Build the full search index:** Settings → Debug has "Build full index now", with progress and a cancel button. On Android, the app fetches encrypted history in the background (on Wi-Fi, when the battery isn't low) so indexing has less to download when you open it.
+
+🐛 **Fixed**
+
+- **Search missing older messages on mobile:** history whose keys arrived later from key backup was never indexed, so search only found what you had scrolled through. Existing installs re-index their history once.
+- **Screen share bitrate slider:** a bad upload-speed estimate could let the slider go far above what your connection can carry. Unrealistic readings are now ignored, and a bad stored value is corrected.
+
 ## v1.64.1
 
 ✨ **New**
