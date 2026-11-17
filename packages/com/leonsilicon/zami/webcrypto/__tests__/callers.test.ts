@@ -352,6 +352,33 @@ describe("Zam", () => {
     }
   });
 
+  test("file transfer v2 keys and tags (src/lib/utils/fileTransfer.zami.ts)", async () => {
+    const results = await Promise.all(
+      SIDES.map(async ([, s]) => {
+        // deriveMacKeyBits: HKDF-SHA-256 with an empty salt.
+        const base = await s.importKey("raw", bytes(32), "HKDF", false, ["deriveBits"]);
+        const bits = await s.deriveBits(
+          { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: utf8("zam-file-v2 mac") },
+          base,
+          256,
+        );
+        // hmacKeyUsage, then blockLeaf / sealPacket's tag.
+        const macKey = await s.importKey(
+          "raw",
+          new Uint8Array(bits),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"],
+        );
+        const tag = await s.sign("HMAC", macKey, bytes(1 + 8 + 300, 3));
+        // parentNode
+        const node = await s.digest("SHA-256", bytes(65, 9));
+        return [hex(new Uint8Array(bits)), hex(new Uint8Array(tag)), hex(new Uint8Array(node))];
+      }),
+    );
+    expect(results[0]).toEqual(results[1]);
+  });
+
   test("a call's media key (src/lib/matrix/livekitCall.zami.ts)", async () => {
     const args = ["raw", bytes(16), "HKDF", false, ["deriveBits", "deriveKey"]] as const;
     const ours = await subtle.importKey(...args);

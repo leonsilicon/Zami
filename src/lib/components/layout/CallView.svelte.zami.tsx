@@ -67,6 +67,7 @@ import {
     toggleCallDeafen,
     toggleCamera,
     toggleScreenShare,
+    toggleShareAudioMute,
     focusTile,
     clearFocus,
     participantAudioFor,
@@ -282,6 +283,8 @@ export default function CallView({
     );
     const cameraOn = useRune(() => voiceCallState.cameraOn);
     const screenSharing = useRune(() => voiceCallState.screenSharing);
+    const ownShareAudio = useRune(() => voiceCallState.ownShareAudio);
+    const shareAudioMuted = useRune(() => voiceCallState.shareAudioMuted);
     const joinPendingRoomId = useRune(() => voiceCallState.joinPendingRoomId);
     const mirrorCamera = useRune(() => settingsState.mirrorCamera);
     const cameraDisabled = useRune(() => settingsState.cameraDisabled);
@@ -1005,6 +1008,30 @@ export default function CallView({
                                                 : "text-zam-textPrimary"
                                         }
                                     />
+                                </Pressable>
+                            )}
+                            {screenSharing && ownShareAudio && (
+                                <Pressable
+                                    accessibilityRole="button"
+                                    onPress={() => toggleShareAudioMute()}
+                                    className="p-3 rounded-full hover:bg-zam-messageHover"
+                                    accessibilityLabel={
+                                        shareAudioMuted
+                                            ? t("callView.unmuteShareAudio")
+                                            : t("callView.muteShareAudio")
+                                    }
+                                >
+                                    {shareAudioMuted ? (
+                                        <VolumeX
+                                            size={20}
+                                            className="text-zam-textMuted"
+                                        />
+                                    ) : (
+                                        <Volume2
+                                            size={20}
+                                            className="text-zam-textPrimary"
+                                        />
+                                    )}
                                 </Pressable>
                             )}
                             <SoundboardButton

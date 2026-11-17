@@ -11,6 +11,8 @@ import {
     Signal,
     Maximize2,
     Settings2,
+    Volume2,
+    VolumeX,
 } from "lucide-svelte";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, type PressableInstance, Text, View } from "react-native";
@@ -23,6 +25,7 @@ import {
     toggleCallDeafen,
     toggleCamera,
     toggleScreenShare,
+    toggleShareAudioMute,
 } from "$lib/stores/voiceCall.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { connStateLabel } from "$lib/utils/voiceCall";
@@ -50,6 +53,8 @@ export default function VoiceCallPanel() {
     const connectedAt = useRune(() => voiceCallState.connectedAt);
     const playbackBlocked = useRune(() => voiceCallState.playbackBlocked);
     const screenSharing = useRune(() => voiceCallState.screenSharing);
+    const ownShareAudio = useRune(() => voiceCallState.ownShareAudio);
+    const shareAudioMuted = useRune(() => voiceCallState.shareAudioMuted);
     const micMuted = useRune(() => voiceCallState.micMuted);
     const deafened = useRune(() => voiceCallState.deafened);
     const cameraOn = useRune(() => voiceCallState.cameraOn);
@@ -222,6 +227,30 @@ export default function VoiceCallPanel() {
                                 className="text-zam-textMuted"
                             />
                         </Pressable>
+                        {ownShareAudio && (
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={() => toggleShareAudioMute()}
+                                className="p-0.5 rounded"
+                                accessibilityLabel={
+                                    shareAudioMuted
+                                        ? t("callView.unmuteShareAudio")
+                                        : t("callView.muteShareAudio")
+                                }
+                            >
+                                {shareAudioMuted ? (
+                                    <VolumeX
+                                        size={14}
+                                        className="text-zam-textMuted"
+                                    />
+                                ) : (
+                                    <Volume2
+                                        size={14}
+                                        className="text-zam-textMuted"
+                                    />
+                                )}
+                            </Pressable>
+                        )}
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void toggleScreenShare()}

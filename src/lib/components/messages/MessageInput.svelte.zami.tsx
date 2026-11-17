@@ -102,7 +102,13 @@ import { sendEventContent } from "$lib/matrix/pluginHost";
 import {
     buildFormattedBody as buildBody,
     mentionsFromFormatted,
+    mentionsFromHtml,
 } from "$lib/utils/messageBody";
+import {
+    editableBody,
+    isEmptyEdit,
+    sendMessageEdit,
+} from "$lib/matrix/editMessage";
 import { buildReplyContent, withReplyMention } from "$lib/utils/replyContent";
 import {
     buildTextContent,
@@ -211,6 +217,7 @@ import { discardRoomSession, prepareToSend } from "$lib/matrix/crypto";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import {
     Loader2,
+    Pencil,
     Plus,
     ImagePlay,
     Sticker,
@@ -237,6 +244,10 @@ interface Props {
     disabled?: boolean;
     replyToEvent?: MatrixEvent | null;
     onCancelReply?: () => void;
+    /** The message being edited in this composer (edit mode). Its text
+     *  replaces the composer's until the edit is saved or cancelled. */
+    editEvent?: MatrixEvent | null;
+    onCancelEdit?: () => void;
     onRequestEditLast?: () => void;
     /** `s/old/new/`: apply it to the user's last message here (the
      *  caller knows which messages that means). */
@@ -686,6 +697,8 @@ export default function MessageInput({
     disabled: disabledProp = false,
     replyToEvent = null,
     onCancelReply,
+    editEvent = null,
+    onCancelEdit,
     onRequestEditLast,
     onSedEdit,
     onThreadCreated,
@@ -717,6 +730,8 @@ export default function MessageInput({
         effComposerKey,
         replyToEvent,
         onCancelReply,
+        editEvent,
+        onCancelEdit,
         scrollEl,
         keepScrollOnSend,
     });
@@ -726,6 +741,8 @@ export default function MessageInput({
             effComposerKey,
             replyToEvent,
             onCancelReply,
+            editEvent,
+            onCancelEdit,
             scrollEl,
             keepScrollOnSend,
         };
@@ -756,6 +773,29 @@ export default function MessageInput({
     const textEmpty = useValueStore(textStore, isEmptyText);
     const textBlank = useValueStore(textStore, isBlankText);
     const [isSending, setIsSending, isSendingRef] = useLiveState(false);
+    // Edit mode. `activeEdit` is the edit target when it belongs to this room
+    // (a target from another room is ignored). While editing, the composer
+    // holds the edit text and the draft the user had typed waits in
+    // `editStash`. Not reactive: only the edit effect and draft saves read it.
+    const activeEdit =
+        editEvent && editEvent.getRoomId() === roomId ? editEvent : null;
+    const editStash = useRef<{
+        key: string;
+        text: string;
+        mentions: Map<string, string>;
+    } | null>(null);
+    const [isSavingEdit, setIsSavingEdit, isSavingEditRef] =
+        useLiveState(false);
+    // What to persist as this composer's draft: the stashed draft while
+    // editing, so an edit never overwrites the real draft.
+    function draftTextNow(): string {
+        return editStash.current ? editStash.current.text : textRef.current;
+    }
+    function draftMentionsNow(): Map<string, string> {
+        return editStash.current
+            ? editStash.current.mentions
+            : pendingMentionsRef.current;
+    }
     // In-flight attachment send, scoped to the room the send targeted so a
     // room switch mid-upload doesn't show room A's "sending" note in room B.
     const [sendingFileCount, setSendingFileCount] = useState(0);
@@ -849,7 +889,7 @@ export default function MessageInput({
     useEffect(() => {
         const key = effComposerKey;
         return registerDraftFlusher(key, () =>
-            setDraft(key, textRef.current, pendingMentionsRef.current),
+            setDraft(key, draftTextNow(), draftMentionsNow()),
         );
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- the callback reads the live model.
     }, [effComposerKey]);
@@ -1286,8 +1326,15 @@ export default function MessageInput({
 
     // Mirrors the send button's own disabled condition so the button can go
     // accent-coloured the moment the message becomes sendable.
-    const canSend =
-        (!textBlank || fileQueue.length > 0) && !isSending && !disabled;
+    // An edit can be saved once it has text (or a caption, for media) and no
+    // save is already in flight.
+    // Zami: isEmptyEdit reads only whether the text is blank.
+    const editSaveBlocked =
+        !!activeEdit &&
+        (isSavingEdit || isEmptyEdit(activeEdit, textBlank ? "" : "x"));
+    const canSend = activeEdit
+        ? !editSaveBlocked && !disabled
+        : (!textBlank || fileQueue.length > 0) && !isSending && !disabled;
     const textareaFocusedBeforePicker = useRef(false);
 
     // Track keyboard height on mobile so pickers stay above it
@@ -1337,7 +1384,7 @@ export default function MessageInput({
           ? t("messageInput.selectARoomToStartChatting")
           : isThread
             ? t("messageInput.replyInThread")
-            : replyToEvent
+            : replyToEvent && !activeEdit
               ? t("messageInput.replyTo", { replyTargetName })
               : t("messageInput.message", { roomName });
 
@@ -1454,9 +1501,61 @@ export default function MessageInput({
         setText(restored);
         setPendingMentions(new Map(draft?.mentions ?? []));
         renderComposer(restored.length);
-        return () => setDraft(key, textRef.current, pendingMentionsRef.current);
+        return () => {
+            setDraft(key, draftTextNow(), draftMentionsNow());
+            // The stash was saved as this room's draft just above. The next
+            // body run loads the incoming draft, so the edit session ends here.
+            editStash.current = null;
+        };
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only the key, as upstream's untrack() does.
     }, [effComposerKey]);
+
+    // Edit mode: entering an edit swaps the composer to that message's text
+    // (stashing the draft), and leaving it restores the draft. Tracks only the
+    // target id, so re-rendering the same target never resets the text.
+    const activeEditId = activeEdit?.getId() ?? null;
+    useEffect(() => {
+        const ev = activeEdit;
+        if (ev) {
+            // Switching from one edit to another keeps the original draft.
+            if (!editStash.current)
+                editStash.current = {
+                    key: effComposerKey,
+                    text: textRef.current,
+                    mentions: new Map(pendingMentionsRef.current),
+                };
+            setPendingMentions(
+                mentionsFromHtml(
+                    ev.getContent().formatted_body as string | undefined,
+                ),
+            );
+            mention.setQuery(null);
+            emoji.setQuery(null);
+            slash.setQuery(null);
+            // Zami: not ported: resetUndoHistory (see TextUndoHistory above).
+            if (
+                showActionsMenu ||
+                showEmojiPicker ||
+                showGifPicker ||
+                showStickerPicker
+            )
+                closeModal();
+            setComposerText(editableBody(ev));
+            textareaEl.current?.focus();
+            return;
+        }
+        // Edit ended: saved, cancelled, or its room was left. A stash from
+        // another room is left for the draft effect to save.
+        const stash = editStash.current;
+        if (!stash || stash.key !== effComposerKey) return;
+        editStash.current = null;
+        setPendingMentions(new Map(stash.mentions));
+        setComposerText(stash.text);
+        // Back to typing after a save or cancel. Not on touch, where
+        // focusing would open the keyboard unasked.
+        if (!interfaceState.isMobile) textareaEl.current?.focus();
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only the target id, as upstream's untrack() does.
+    }, [activeEditId]);
 
     function splitUserAndReason(arg: string): {
         user: string;
@@ -1847,7 +1946,46 @@ export default function MessageInput({
         );
     }
 
+    // Save the edit in progress: the composer's text becomes the message's new
+    // content. The caller's onCancelEdit ends edit mode (which restores the
+    // draft). On failure the text stays so the user can retry.
+    async function submitEdit(ev: MatrixEvent) {
+        if (
+            isSavingEditRef.current ||
+            !room ||
+            isEmptyEdit(ev, textRef.current)
+        )
+            return;
+        setIsSavingEdit(true);
+        try {
+            await sendMessageEdit(
+                room,
+                ev,
+                textRef.current,
+                pendingMentionsRef.current,
+            );
+            if (live.current.editEvent === ev) live.current.onCancelEdit?.();
+        } catch (err) {
+            console.error("Failed to edit message:", err);
+            showErrorToast(t("messageInput.editFailed"));
+        } finally {
+            setIsSavingEdit(false);
+        }
+    }
+
+    function getEditPreview(): string {
+        if (!activeEdit) return "";
+        const body = editableBody(activeEdit);
+        return body.length > 80 ? body.slice(0, 80) + "…" : body;
+    }
+
     async function send() {
+        // Edit mode: Enter and the send button save the edit. Nothing else
+        // (commands, sed, attachments, replies, threads) applies to it.
+        if (activeEdit) {
+            await submitEdit(activeEdit);
+            return;
+        }
         // `s/old/new/` edits the last message instead of sending one. Not with
         // files queued: then the text is a caption.
         if (
@@ -2486,19 +2624,22 @@ export default function MessageInput({
         // Zami: Shift+Enter and the physical Enter are onSubmitEditing's.
 
         // Picker dismissal is handled centrally (+page Escape/back). Here we
-        // only cancel an in-progress reply, and only when nothing else is open.
+        // only cancel an in-progress edit or reply, and only when nothing else
+        // is open. An edit is cancelled before a reply.
         if (
             e.key === "Escape" &&
             !interfaceState.modal &&
             !interfaceState.sidebar &&
-            replyToEvent
+            (activeEdit || replyToEvent)
         ) {
-            onCancelReply?.();
+            if (activeEdit) onCancelEdit?.();
+            else onCancelReply?.();
         }
         // Ctrl+E / Ctrl+S (open pickers) are global shortcuts handled
         // centrally in AppShell.
         if (
             e.key === "ArrowUp" &&
+            !activeEdit &&
             !textRef.current &&
             !e.altKey &&
             !e.ctrlKey &&
@@ -2574,9 +2715,15 @@ export default function MessageInput({
             return;
         }
         // Picker dismissal is handled centrally (+page Escape/back). Here we
-        // only cancel an in-progress reply, and only when nothing else is open.
-        if (!interfaceState.modal && !interfaceState.sidebar && replyToEvent) {
-            onCancelReply?.();
+        // only cancel an in-progress edit or reply, and only when nothing else
+        // is open. An edit is cancelled before a reply.
+        if (
+            !interfaceState.modal &&
+            !interfaceState.sidebar &&
+            (activeEdit || replyToEvent)
+        ) {
+            if (activeEdit) onCancelEdit?.();
+            else onCancelReply?.();
         }
     }
 
@@ -2621,6 +2768,9 @@ export default function MessageInput({
     }
 
     function enqueueFile(file: File, defaultName?: string, direct = false) {
+        // Attachments are not offered while editing a message.
+        const { editEvent } = live.current;
+        if (editEvent && editEvent.getRoomId() === roomId) return;
         const name = file.name || defaultName || "file";
         addQueuedFile(
             live.current.effComposerKey,
@@ -2908,8 +3058,40 @@ export default function MessageInput({
                     </Text>
                 )}
             </View>
+            {/* Edit bar: replaces the reply bar while a message is being edited. The
+                reply target itself is kept and returns when the edit ends. */}
+            {activeEdit && (
+                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent">
+                    <Pencil
+                        size={16}
+                        className="text-zam-accent flex-shrink-0"
+                    />
+                    <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
+                        <Text className="text-xs text-zam-accent font-semibold flex-shrink-0">
+                            {t("messageInput.editingMessage")}
+                        </Text>
+                        <Text
+                            numberOfLines={1}
+                            className="text-xs text-zam-textMuted min-w-0 flex-shrink"
+                        >
+                            {getEditPreview()}
+                        </Text>
+                    </View>
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("messageInput.cancelEditEsc")}
+                        onPress={() => onCancelEdit?.()}
+                        className="flex-shrink-0 p-0.5 rounded transition-colors"
+                    >
+                        <SvgIcon
+                            d={closeIcon}
+                            className="w-4 h-4 text-zam-textMuted"
+                        />
+                    </Pressable>
+                </View>
+            )}
             {/* Reply preview bar */}
-            {replyToEvent && (
+            {replyToEvent && !activeEdit && (
                 <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent">
                     <SvgIcon
                         d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
@@ -2917,7 +3099,9 @@ export default function MessageInput({
                     />
                     <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
                         <Text className="text-xs text-zam-accent font-semibold flex-shrink-0">
-                            {t("messageInput.replyingTo", { replyTargetName })}
+                            {t("messageInput.replyingTo", {
+                                replyTargetName,
+                            })}
                         </Text>
                         <Text
                             numberOfLines={1}
@@ -3250,7 +3434,7 @@ export default function MessageInput({
                 <View
                     className={`relative flex-row items-end gap-2 bg-zam-backgroundSecondary rounded-lg px-2.5 py-2.5 border transition-colors ${
                         focused ? "border-zam-accent/30" : "border-transparent"
-                    } ${replyToEvent ? "rounded-ss-none" : ""}`}
+                    } ${replyToEvent || activeEdit ? "rounded-ss-none" : ""}`}
                 >
                     {/* "+" actions menu */}
                     <View className="flex-shrink-0 relative">
@@ -3263,7 +3447,7 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("common.add")}
                             accessibilityState={{
-                                disabled,
+                                disabled: disabled || !!activeEdit,
                                 expanded: showActionsMenu,
                             }}
                             onPress={() => {
@@ -3273,7 +3457,7 @@ export default function MessageInput({
                                     openComposerActions(effComposerKey);
                                 }
                             }}
-                            disabled={disabled}
+                            disabled={disabled || !!activeEdit}
                             className={`relative p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40 ${
                                 showActionsMenu ? "z-50" : ""
                             }`}
@@ -3381,7 +3565,7 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("messageInput.favouriteGifs")}
                             onPress={() => openPicker("gif")}
-                            disabled={disabled}
+                            disabled={disabled || !!activeEdit}
                             className={`${
                                 isTouchscreen ? "hidden" : ""
                             } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
@@ -3441,7 +3625,7 @@ export default function MessageInput({
                             className={`${
                                 isTouchscreen ? "hidden" : ""
                             } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
-                            disabled={disabled}
+                            disabled={disabled || !!activeEdit}
                         >
                             <Sticker size={20} className="text-zam-textMuted" />
                         </Pressable>
@@ -3575,7 +3759,7 @@ export default function MessageInput({
                                         }
                                     });
                                 }}
-                                disabled={disabled}
+                                disabled={disabled || !!activeEdit}
                                 className="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
                             >
                                 {btn.icon ? (
@@ -3600,13 +3784,15 @@ export default function MessageInput({
                         accessibilityLabel={t("messageInput.sendMessage")}
                         onPress={() => void sendFromButton()}
                         disabled={
-                            (textBlank && fileQueue.length === 0) ||
-                            isSending ||
-                            disabled
+                            activeEdit
+                                ? editSaveBlocked || disabled
+                                : (textBlank && fileQueue.length === 0) ||
+                                  isSending ||
+                                  disabled
                         }
                         className="flex-shrink-0 p-1.5 rounded transition-colors hover:bg-zam-messageHover disabled:opacity-40"
                     >
-                        {isSending ? (
+                        {isSending || isSavingEdit ? (
                             // Zami: `border-current` → the button's text color.
                             <Spin
                                 className={`w-5 h-5 border-2 ${

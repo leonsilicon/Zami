@@ -295,6 +295,8 @@ export const en = {
     "callView.deafen": "Deafen",
     "callView.disconnect": "Disconnect",
     "callView.joinCall": "Join Call",
+    "callView.muteShareAudio": "Mute share audio",
+    "callView.unmuteShareAudio": "Unmute share audio",
     "callView.you": "You",
     "callView.sScreen": "{name}'s screen",
     "callView.exitSpotlightFor": "Exit spotlight for {label}",
@@ -1330,6 +1332,8 @@ export const en = {
     "messageArea.thisIsTheBeginningOfThe": "This is the beginning of the #",
     "messageArea.loadingHistory": "Loading older messages",
     "messageArea.room": "room.",
+    "messageArea.dmStart":
+        "This is the beginning of your direct message history with {name}.",
     "messageArea.newMessages": "New Messages",
     "messageArea.unreadSince":
         "{count, plural, one {# new message since {since}} other {# new messages since {since}}}",
@@ -1359,6 +1363,9 @@ export const en = {
     "messageInput.pingOffTitle": "Don't ping the author",
     "messageInput.replyingTo": "Replying to {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancel reply (Esc)",
+    "messageInput.editingMessage": "Editing message",
+    "messageInput.cancelEditEsc": "Cancel edit (Esc)",
+    "messageInput.editFailed": "Couldn't save the edit",
     "messageInput.editAttachment": "Edit attachment",
     "messageInput.editAttachment2": "Edit attachment {name}",
     "messageInput.custom": "custom",
@@ -1444,8 +1451,6 @@ export const en = {
     "mediaProgress.ofTotal": "{loaded} of {total}",
     "messageItem.fileAttachment": "File attachment",
     "messageItem.download": "Download",
-    "messageItem.toSave": "to save ·",
-    "messageItem.toCancel": "to cancel",
     "messageItem.openThread": "Open thread",
     "messageItem.failedToSend": "Failed to send.",
     "messageItem.retrying": "Retrying…",
@@ -2783,6 +2788,11 @@ export const en = {
     "verificationModal.session": "session",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} watching",
+    "videoTile.watchers": "Watching",
+    "videoTile.noWatchers": "Nobody is watching",
+    "videoTile.muteShareAudio": "Mute screen share audio",
+    "videoTile.unmuteShareAudio": "Unmute screen share audio",
     "videoTile.fullscreen": "Fullscreen",
     "videoTile.pictureInPicture": "Picture in picture",
     "videoTile.exitPictureInPicture": "Exit picture in picture",
@@ -4210,6 +4220,13 @@ export const en = {
     "fileOffer.cancel": "Cancel",
     "fileOffer.withdraw": "Withdraw",
     "fileOffer.connecting": "Connecting to the sender...",
+    "fileOffer.preparingReceive":
+        "Waiting for the sender to get the file ready",
+    "fileOffer.preparingSend": "Getting the file ready",
+    "fileOffer.acceptedElsewhere":
+        "Accepted on another of your devices ({device})",
+    "fileOffer.untrusted":
+        "This offer can't be trusted: it didn't come from the device it names.",
     "fileOffer.progress": "{done} of {total}, {rate}/s",
     "fileOffer.verifying": "Verifying the file...",
     "fileOffer.savedDone": "File saved and verified.",
@@ -4364,6 +4381,23 @@ export const en = {
     "meshConsent.connectDirectly": "Connect directly",
     "meshConsent.joinWithoutThem": "Join without them",
     "meshConsent.notNow": "Not now",
+    "meshConsent.titlePluginPublish": "Join this call over {label}?",
+    "meshConsent.titlePluginReceive": "Someone in this call uses {label}",
+    "meshConsent.pluginPublish":
+        "Your audio, video and screen share go over {label}, a way of carrying calls that a plugin adds. Only people whose Zam has the same plugin can hear and see you.",
+    "meshConsent.pluginReceive":
+        "Someone in this call sends their audio and video over {label}, which a plugin adds. To hear and see them, Zam uses it too.",
+    "meshConsent.pluginIpVisible":
+        "People you reach over {label} can see your IP address, which can reveal roughly where you are.",
+    "meshConsent.pluginIpHidden":
+        "{label} doesn't show your IP address to the people at the other end.",
+    "meshConsent.pluginThirdParty":
+        "Your call media also passes through {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Join without it",
+    "meshConsent.usePlugin": "Use {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} stopped, so nobody in this call hears or sees you until you rejoin.",
+    "voiceCall.pluginTransportFailed": "{label} couldn't start for this call.",
     "voiceCall.meshNeedsTurn":
         '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server. Turn it off in Voice & Video settings to join.',
     "voiceAudioSettings.meshRelayOnly":
