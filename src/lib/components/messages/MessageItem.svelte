@@ -119,14 +119,8 @@
         EventStatus,
     } from "$lib/matrix/client";
     import { forwardEventPermalink, readForward } from "$lib/utils/forwarded";
-    import MessageEditBox from "$lib/components/messages/MessageEditBox.svelte";
-    import { emoticonsFromHtml } from "$lib/utils/messageBody";
     import { saveObjectUrl, revokeLater } from "$lib/utils/saveFile";
-    import {
-        editableBody,
-        isEmptyEdit,
-        sendMessageEdit,
-    } from "$lib/matrix/editMessage";
+    import { editableBody } from "$lib/matrix/editMessage";
     import { displayContent } from "$lib/utils/displayContent";
     import { resolveBubbleLayout } from "$lib/utils/bubbleLayout";
     import {
@@ -280,7 +274,7 @@
     import { galleryPositionLabel } from "$lib/utils/mediaGallery";
     import { isSpoilerMedia } from "$lib/utils/spoilerAttachment";
     import { siblingUploadIndices } from "$lib/utils/uploadSiblings";
-    import { scrollBehavior, motionOK } from "$lib/utils/motionPreference";
+    import { motionOK } from "$lib/utils/motionPreference";
     import {
         audioPlaybackMode,
         audioStatusLabel,
@@ -310,8 +304,11 @@
         onReply: (event: MatrixEvent) => void;
         jumpToReply: (eventId: string) => void;
         onOpenThread?: (rootEventId: string) => void;
-        editRequested?: boolean;
-        onEditDone?: () => void;
+        /** Starts editing this message in the room composer. Absent when the
+         *  surface has no composer to edit in, which hides every Edit entry. */
+        onStartEdit?: (event: MatrixEvent) => void;
+        /** This message is the one the composer is editing: it is highlighted. */
+        isBeingEdited?: boolean;
         receipts?: ReadReceiptInfo[];
         mentionHighlight?: boolean;
         callSummary?: CallSummary | null;
@@ -330,8 +327,8 @@
         onReply,
         jumpToReply,
         onOpenThread,
-        editRequested = false,
-        onEditDone,
+        onStartEdit,
+        isBeingEdited = false,
         receipts = [],
         mentionHighlight = false,
         callSummary = null,
@@ -676,7 +673,6 @@
     let deleteConfirmFocus = $state<"yes" | "no">("yes");
     let deleteYesEl = $state<HTMLButtonElement | undefined>();
     let deleteNoEl = $state<HTMLButtonElement | undefined>();
-    let deleteRefocus = false;
 
     $effect(() => {
         if (confirmingDelete) {
@@ -692,11 +688,6 @@
                 console.error("[MessageItem] delete failed", err);
                 showErrorToast(t("messageItem.couldnTDeleteTheMessage"));
             });
-        }
-        if (deleteRefocus) {
-            deleteRefocus = false;
-            onEditDone?.();
-            return;
         }
         // Reached from the action bar, which is only keyboard-reachable as of
         // this branch. Clearing `confirmingDelete` unmounts the Yes/No buttons,
@@ -818,12 +809,7 @@
 
     let emojiPickerBelow = $state(false);
     let reactionBtnEl: HTMLButtonElement | undefined = $state();
-    let isEditing = $state(false);
-    let editFromKeyboard = false;
-    let editText = $state("");
-    let isSavingEdit = $state(false);
     let rootEl: HTMLElement | undefined = $state();
-    let editBoxEl: HTMLDivElement | undefined = $state();
 
     const reactionTick = $derived(messagesState.reactionTick);
     // Own messages swap their local `~` id for the real `$id` on the same event
@@ -1035,9 +1021,11 @@
     );
 
     // Gate for Edit action: your own m.text messages, plus the caption of your
-    // own captioned media (MSC2530), can be edited inline.
+    // own captioned media (MSC2530), can be edited in the composer. Needs a
+    // composer to edit in (`onStartEdit`).
     const canEditMessage = $derived(
-        isOwnMessage &&
+        !!onStartEdit &&
+            isOwnMessage &&
             eventType === "m.room.message" &&
             !forward &&
             isEditableContent(content),
@@ -1291,7 +1279,7 @@
                 onOpenThread?.(threadRootId);
                 break;
             case "edit":
-                startEdit();
+                onStartEdit?.(event);
                 break;
             case "pin":
                 togglePin();
@@ -1332,7 +1320,6 @@
             e.preventDefault();
             return;
         }
-        if (isEditing) return;
         const toItem = (r: MessageActionRow): DesktopMenuItem => ({
             key: r.key,
             label: r.label,
@@ -2377,74 +2364,6 @@
         });
     }
 
-    $effect(() => {
-        if (editRequested) {
-            editFromKeyboard = true;
-            startEdit();
-            tick().then(() => editBoxEl?.focus());
-        }
-    });
-
-    function startEdit() {
-        editText = body();
-        isEditing = true;
-        tick().then(() => {
-            // `scrollBehavior()` rather than a hardcoded "smooth": item 18 made
-            // programmatic scrolling honour prefers-reduced-motion.
-            rootEl?.scrollIntoView({
-                behavior: scrollBehavior(),
-                block: "nearest",
-            });
-            // The action bar is `display:none` while `isEditing` (it must not
-            // stay pinned open for the whole edit session), so activating Edit
-            // from the keyboard unmounts the very button that holds focus and
-            // the browser resets `document.activeElement` to <body>. Moving
-            // focus into the textarea here covers that, and makes all three
-            // entry points (this button, ArrowUp-in-composer, double-tap)
-            // land in the same place. The other two already focus after their
-            // own tick(); focus() on the already-focused element is a no-op.
-            editBoxEl?.focus();
-        });
-    }
-
-    function cancelEdit() {
-        isEditing = false;
-        editText = "";
-        if (editFromKeyboard) {
-            editFromKeyboard = false;
-            onEditDone?.();
-        }
-    }
-
-    async function saveEdit() {
-        if (!event.getId() || isSavingEdit) return;
-        // Captioned media: an empty caption just strips the caption rather
-        // than offering to delete the attachment.
-        if (isEmptyEdit(event, editText)) {
-            // Empty edit — cancel without returning focus, then prompt to delete
-            isEditing = false;
-            editText = "";
-            deleteRefocus = editFromKeyboard;
-            editFromKeyboard = false;
-            confirmingDelete = true;
-            return;
-        }
-        isSavingEdit = true;
-        try {
-            await sendMessageEdit(room, event, editText);
-            isEditing = false;
-            editText = "";
-            if (editFromKeyboard) {
-                editFromKeyboard = false;
-                onEditDone?.();
-            }
-        } catch (err) {
-            console.error("Failed to edit message:", err);
-        } finally {
-            isSavingEdit = false;
-        }
-    }
-
     function plainToHtml(text: string): string {
         const escaped = text
             .replace(/&/g, "&amp;")
@@ -2648,7 +2567,9 @@
         ? 'select-none [-webkit-touch-callout:none]'
         : 'hover:bg-zam-messageHover'} relative px-4 py-0.5 rounded transition-colors touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zam-accent {mentionHighlight
         ? 'bg-zam-warning/10 border-s-2 border-zam-warning'
-        : ''}"
+        : isBeingEdited
+          ? 'bg-zam-accent/10 border-s-2 border-zam-accent'
+          : ''}"
     class:pt-3={showHeader}
     class:bg-zam-messageHover={mobileSelected}
     tabindex="0"
@@ -2700,7 +2621,7 @@
             openActionsSheet();
         },
         shouldStart: (e) => {
-            if (!interfaceState.isTouchscreen || isEditing) return false;
+            if (!interfaceState.isTouchscreen) return false;
             const t = e.target as Element | null;
             // An image embed is a tap target (it opens the viewer), but a
             // hold on it should still open the actions sheet like a hold on
@@ -2908,47 +2829,6 @@
                 </button>
             {/if}
 
-            <!-- Media caption (MSC2530): rendered as a normal message above the
-             media, so an image/video/etc. with a caption reads like a message
-             followed by the attachment. -->
-            <!-- Inline edit box: replaces a text body, or a media caption (the
-             attachment itself stays rendered below it). -->
-            {#snippet editBox()}
-                <div class="mt-1">
-                    <MessageEditBox
-                        bind:text={editText}
-                        bind:editorEl={editBoxEl}
-                        {room}
-                        messageEmotes={emoticonsFromHtml(
-                            event.getContent().formatted_body as
-                                string | undefined,
-                        )}
-                        onSave={saveEdit}
-                        onCancel={cancelEdit}
-                    />
-                    <p class="text-xs text-zam-textMuted mt-1">
-                        <kbd class="font-mono">Enter</kbd>
-                        {t("messageItem.toSave")}
-                        <kbd class="font-mono">Esc</kbd>
-                        {t("messageItem.toCancel")}
-                    </p>
-                    <div class="flex gap-2 mt-1">
-                        <button
-                            onclick={saveEdit}
-                            disabled={isSavingEdit ||
-                                (!editText.trim() && !hasCaption())}
-                            class="px-3 py-1 text-xs font-semibold bg-zam-accent hover:bg-zam-accentHover text-white rounded transition-colors disabled:opacity-50"
-                            >{t("common.save")}</button
-                        >
-                        <button
-                            onclick={cancelEdit}
-                            class="px-3 py-1 text-xs font-semibold bg-zam-backgroundTertiary hover:bg-zam-messageHover text-zam-textPrimary rounded transition-colors"
-                            >{t("common.cancel")}</button
-                        >
-                    </div>
-                </div>
-            {/snippet}
-
             <!-- The player row for uploaded audio, and for tracker
              modules sent as m.file. -->
             {#snippet audioCard()}
@@ -3107,10 +2987,11 @@
                 </div>
             {/snippet}
 
+            <!-- Media caption (MSC2530): rendered as a normal message above the
+             media, so an image/video/etc. with a caption reads like a message
+             followed by the attachment. -->
             {#snippet mediaCaption()}
-                {#if isEditing}
-                    {@render editBox()}
-                {:else if hasCaption()}
+                {#if hasCaption()}
                     <div
                         use:spoilers
                         use:matrixLinks
@@ -3651,8 +3532,6 @@
                             </button>
                         {/if}
                     </div>
-                {:else if isEditing}
-                    {@render editBox()}
                 {:else}
                     <div class={bubble.bubble ? "own-bubble" : "contents"}>
                         <div
@@ -4059,16 +3938,12 @@
                 ? 'flex'
                 : `hidden ${
                       interfaceState.isTouchscreen ? '' : 'group-hover:flex'
-                  } ${
-                      isEditing
-                          ? ''
-                          : 'group-focus-visible:flex group-has-[:focus-visible]:flex'
-                  }`} absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg px-1 py-0.5 shadow-md z-20"
+                  } group-focus-visible:flex group-has-[:focus-visible]:flex`} absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg px-1 py-0.5 shadow-md z-20"
         >
             {#if !interfaceState.isTouchscreen && canEditMessage}
                 <button
                     data-message-action
-                    onclick={startEdit}
+                    onclick={() => onStartEdit?.(event)}
                     class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.editMessage")}
                     aria-label={t("messageItem.editMessage")}
@@ -4183,7 +4058,7 @@
                  Edit at the start of the bar instead. -->
                 <button
                     data-message-action
-                    onclick={startEdit}
+                    onclick={() => onStartEdit?.(event)}
                     class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.editMessage")}
                     aria-label={t("messageItem.editMessage")}

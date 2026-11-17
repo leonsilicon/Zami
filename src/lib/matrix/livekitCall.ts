@@ -81,6 +81,8 @@ import {
     memberPublishTransport,
     mutedIdentities,
     type LivekitTarget,
+    isAdvertisedServiceUrl,
+    livekitServiceUrls,
     sfuJwtUrl,
     screenShareCaptureResolution,
 } from "$lib/utils/voiceCall";
@@ -175,6 +177,12 @@ import {
     type VideoCodec,
 } from "$lib/utils/videoCodecs";
 import {
+    WATCHING_ATTRIBUTE,
+    encodeWatchingAttribute,
+    parseWatchingAttribute,
+    type WatchingMap,
+} from "$lib/utils/shareWatchers";
+import {
     clearLiveUploadEstimate,
     noteUploadEstimate,
     screenShareBitrateCeiling,
@@ -258,7 +266,18 @@ import {
     type TurnCredentials,
 } from "./call/fullMesh/meshPolicy";
 import { advertiseMeshSubscribe } from "./call/fullMesh/sdkMembership";
+import {
+    onPluginTransportsChange,
+    ownPluginTransport,
+    pickedPluginTransport,
+    registeredPluginTransports,
+    PluginTransportInstance,
+    type PluginTransportMember,
+    type RegisteredTransport,
+} from "./call/pluginTransport";
+import type { MeshLocalMedia } from "./call/fullMesh/connection";
 import { proxyBridge } from "$lib/proxyBridge";
+import { serverName } from "$lib/utils/joinConsent";
 
 type LivekitModule = typeof import("livekit-client");
 type LivekitRoom = LivekitClient.Room;
@@ -295,6 +314,17 @@ interface ActiveVoiceCall {
     meshAsked: Set<string>;
     /** Each LiveKit connection as a CallTransport. */
     lkTransports: Map<LivekitRoom, LivekitCallTransport>;
+    /** Plugin transports in use (zam.call.registerTransport), by
+     *  registry key. */
+    pluginTransports: Map<string, PluginTransportInstance>;
+    /** The plugin transport we publish on, instead of an SFU or the mesh. */
+    pluginPublish: RegisteredTransport | null;
+    /** Our media as the plugin transport we publish on sends it. */
+    pluginLocal: MeshLocalMedia | null;
+    /** Plugin transports the user agreed to for this call, and those
+     *  already asked about. */
+    pluginAllowed: Set<string>;
+    pluginAsked: Set<string>;
     publishKey: string;
     /** Multi-SFU: listen-only connections to the SFUs other members publish
      *  on, keyed by livekitTargetKey. lk-jwt-service only lets a homeserver's
@@ -353,6 +383,7 @@ function callTransports(call: ActiveVoiceCall): CallTransport[] {
         if (t) out.push(t);
     }
     out.push(call.mesh);
+    out.push(...call.pluginTransports.values());
     return out;
 }
 
@@ -514,12 +545,17 @@ export function setParticipantShareMute(
     applyVolumeForUser(userId);
 }
 
-// Screen shares the user stopped watching, by identity. Per call and never
-// saved: like leaving a stream in Discord, the next call starts watching.
-const unwatchedShares = new WeakMap<ActiveVoiceCall, Set<string>>();
+// Screen shares the user chose to watch, by identity. Opt-in: a remote share
+// starts unwatched (paused and silent) until Watch is clicked. Per call and
+// never saved: the next call starts with nothing watched.
+const watchedShares = new WeakMap<ActiveVoiceCall, Set<string>>();
 
 function isShareUnwatched(call: ActiveVoiceCall, identity: string): boolean {
-    return unwatchedShares.get(call)?.has(identity) === true;
+    return watchedShares.get(call)?.has(identity) !== true;
+}
+
+function watchedShareIds(call: ActiveVoiceCall): string[] {
+    return [...(watchedShares.get(call) ?? [])];
 }
 
 /** Stop or start watching someone's screen share: stops its video arriving
@@ -527,10 +563,10 @@ function isShareUnwatched(call: ActiveVoiceCall, identity: string): boolean {
 export function setShareWatched(identity: string, watched: boolean): void {
     const call = activeVoice;
     if (!call) return;
-    let set = unwatchedShares.get(call);
-    if (!set) unwatchedShares.set(call, (set = new Set()));
-    if (watched) set.delete(identity);
-    else set.add(identity);
+    let set = watchedShares.get(call);
+    if (!set) watchedShares.set(call, (set = new Set()));
+    if (watched) set.add(identity);
+    else set.delete(identity);
     for (const p of callParticipants(call)) {
         if (p.identity !== identity) continue;
         for (const track of p.tracks)
@@ -539,6 +575,72 @@ export function setShareWatched(identity: string, watched: boolean): void {
     for (const el of call.elsByIdentity.get(identity) ?? [])
         applyElementVolume(el, identity);
     notifyCallVideo(call);
+    announceWatching(call);
+    notifyCallWatchers(call);
+}
+
+// The last `zam.watching` value we set on the call's room, so an unchanged
+// list is never sent again.
+const watchingSent = new WeakMap<ActiveVoiceCall, string>();
+
+/** Tell the room which shares we watch (SFU only: mesh viewers are not
+ *  reported). Sends only when the value changes. */
+function announceWatching(call: ActiveVoiceCall): void {
+    const room = call.lkRoom;
+    if (activeVoice !== call || !room) return;
+    const value = encodeWatchingAttribute(watchedShareIds(call));
+    if (watchingSent.get(call) === value) return;
+    watchingSent.set(call, value);
+    void room.localParticipant
+        .setAttributes({ [WATCHING_ATTRIBUTE]: value })
+        .catch((err: unknown) => {
+            watchingSent.delete(call);
+            console.warn("Couldn't announce watched screen shares:", err);
+        });
+}
+
+const watchersSubscribers = new Set<(watching: WatchingMap) => void>();
+
+/** Fires with the current watching map whenever it may have changed. */
+export function onShareWatchersChanged(
+    cb: (watching: WatchingMap) => void,
+): () => void {
+    watchersSubscribers.add(cb);
+    return () => watchersSubscribers.delete(cb);
+}
+
+function notifyCallWatchers(call: ActiveVoiceCall): void {
+    if (activeVoice !== call) return;
+    const watching: WatchingMap = {};
+    for (const p of call.lkRoom?.remoteParticipants.values() ?? [])
+        watching[p.identity] = parseWatchingAttribute(
+            p.attributes[WATCHING_ATTRIBUTE],
+        );
+    const me = matrixClient?.getUserId();
+    const myDevice = matrixClient?.getDeviceId();
+    const ownIdentity =
+        call.lkRoom?.localParticipant.identity ||
+        (me && myDevice ? `${me}:${myDevice}` : "");
+    if (ownIdentity) watching[ownIdentity] = watchedShareIds(call).sort();
+    for (const cb of watchersSubscribers) cb(watching);
+}
+
+/** Whether our own screen share has system audio published (SFU or mesh). */
+export function hasOwnShareAudio(): boolean {
+    const call = activeVoice;
+    if (!call) return false;
+    return !!call.local.getTrack(call.lk.Track.Source.ScreenShareAudio);
+}
+
+/** Mute or unmute the sound of our own screen share, without ending it. */
+export function setShareAudioMuted(muted: boolean): void {
+    const call = activeVoice;
+    if (!call) return;
+    const track = call.local.getTrack(call.lk.Track.Source.ScreenShareAudio);
+    if (!track) return;
+    void (muted ? track.mute() : track.unmute()).catch((err: unknown) =>
+        console.warn("Couldn't change the share audio:", err),
+    );
 }
 
 export function setParticipantVideoHidden(
@@ -980,6 +1082,56 @@ export async function configuredRtcFoci(): Promise<unknown[]> {
     return [];
 }
 
+const ADVERTISED_SFU_TTL_MS = 10 * 60_000;
+const WELL_KNOWN_TIMEOUT_MS = 8_000;
+const advertisedSfus = new Map<string, { urls: string[]; at: number }>();
+
+/** The LiveKit service URLs another homeserver's .well-known advertises.
+ *  Cached a while; a failed fetch is not cached and reads as none. */
+async function remoteAdvertisedSfus(server: string): Promise<string[]> {
+    const cached = advertisedSfus.get(server);
+    if (cached && Date.now() - cached.at < ADVERTISED_SFU_TTL_MS)
+        return cached.urls;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), WELL_KNOWN_TIMEOUT_MS);
+    try {
+        const res = await fetch(`https://${server}/.well-known/matrix/client`, {
+            signal: abort.signal,
+            credentials: "omit",
+        });
+        if (!res.ok) return [];
+        const wk = (await res.json()) as Record<string, unknown> | null;
+        const urls = livekitServiceUrls(wk?.["org.matrix.msc4143.rtc_foci"]);
+        advertisedSfus.set(server, { urls, at: Date.now() });
+        return urls;
+    } catch (err) {
+        console.warn(`[call] couldn't read ${server}'s advertised SFUs`, err);
+        return [];
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Whether `userId`'s homeserver advertises `serviceUrl` as its SFU. A file
+ * transfer peer names its SFU in a to-device message, and connecting to it
+ * sends our OpenID token there and shows it our address, so a peer may only
+ * name the one its homeserver stands behind, not any server it likes.
+ */
+export async function sfuAdvertisedBy(
+    userId: string,
+    serviceUrl: string,
+): Promise<boolean> {
+    const server = serverName(userId);
+    if (!server) return false;
+    const own = matrixClient?.getUserId();
+    const urls =
+        own && serverName(own) === server
+            ? livekitServiceUrls(await configuredRtcFoci())
+            : await remoteAdvertisedSfus(server);
+    return isAdvertisedServiceUrl(serviceUrl, urls);
+}
+
 /** Ask an SFU's lk-jwt-service for a LiveKit token (legacy /sfu/get). On our
  *  own SFU it may publish; on another homeserver's it is listen-only. */
 async function fetchSfuJwt(
@@ -1256,8 +1408,19 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
             lk.RoomEvent.ParticipantAttributesChanged,
             (changed: Record<string, string>) => {
                 if (DECODE_ATTRIBUTE in changed) codecsChanged();
+                if (WATCHING_ATTRIBUTE in changed) notifyCallWatchers(call);
             },
         );
+        const watchersChanged = () => notifyCallWatchers(call);
+        lkRoom.on(lk.RoomEvent.ParticipantConnected, watchersChanged);
+        lkRoom.on(lk.RoomEvent.ParticipantDisconnected, watchersChanged);
+        // Our share's sound comes and goes with the share (SFU publishes it).
+        const shareAudioChanged = (pub: { source: unknown }) => {
+            if (pub.source === lk.Track.Source.ScreenShareAudio)
+                notifyCallVideo(call);
+        };
+        lkRoom.on(lk.RoomEvent.LocalTrackPublished, shareAudioChanged);
+        lkRoom.on(lk.RoomEvent.LocalTrackUnpublished, shareAudioChanged);
     }
     lkRoom.on(lk.RoomEvent.AudioPlaybackStatusChanged, () =>
         refreshPlaybackBlocked(call),
@@ -1425,10 +1588,19 @@ async function publishCallData(
     if (call.lkRoom)
         await call.lkRoom.localParticipant.publishData(payload, opts);
     if (call.mesh.publishing) await call.mesh.publishData(payload, opts);
+    // Call data goes where our media goes: over the plugin transport we
+    // publish on, when it can carry data.
+    const plugin = call.pluginPublish
+        ? call.pluginTransports.get(call.pluginPublish.key)
+        : undefined;
+    if (plugin?.carriesData) await plugin.publishData(payload, opts);
 }
 
 /** Who receives what we publish, over any transport. */
 function callSubscriberIdentities(call: ActiveVoiceCall): string[] {
+    const plugin = call.pluginPublish
+        ? call.pluginTransports.get(call.pluginPublish.key)
+        : undefined;
     return [
         ...(call.lkRoom
             ? [...call.lkRoom.remoteParticipants.values()].map(
@@ -1436,6 +1608,7 @@ function callSubscriberIdentities(call: ActiveVoiceCall): string[] {
               )
             : []),
         ...call.mesh.subscriberIdentities(),
+        ...(plugin?.carriesData ? plugin.subscriberIdentities() : []),
     ];
 }
 
@@ -1621,6 +1794,15 @@ async function syncRemoteSfus(call: ActiveVoiceCall): Promise<void> {
                 receivesOverMesh(transport, m.transports, m.deviceId),
         })),
     );
+    syncPluginTransports(
+        call,
+        others.map(({ m, transport }) => ({
+            userId: m.userId,
+            deviceId: m.deviceId,
+            memberId: m.memberId,
+            picked: transport,
+        })),
+    );
     notifyCallMutes(call);
     notifyCallVideo(call);
     notifyCallSpeakers(call);
@@ -1679,6 +1861,200 @@ function syncMesh(
             notifyVoiceNotice(t("voiceCall.meshPeerUnreachable"));
         });
 }
+
+/** Plugin transports (call/pluginTransport.ts): one instance per
+ *  registered transport that we publish on or someone else does, made once
+ *  the user agreed to it for this call. Instances of unregistered
+ *  transports close. */
+function syncPluginTransports(
+    call: ActiveVoiceCall,
+    others: {
+        userId: string;
+        deviceId: string;
+        memberId: string;
+        picked: unknown;
+    }[],
+): void {
+    if (!matrixClient) return;
+    const entries = registeredPluginTransports();
+    for (const [key, inst] of call.pluginTransports) {
+        if (entries.includes(inst.entry)) continue;
+        call.pluginTransports.delete(key);
+        call.speakersByRoom.delete(inst);
+        void inst.close();
+        if (inst.publishing)
+            notifyVoiceNotice(
+                t("voiceCall.pluginTransportGone", {
+                    label: inst.entry.factory.label,
+                }),
+            );
+    }
+    const userId = matrixClient.getUserId()!;
+    const deviceId = matrixClient.getDeviceId()!;
+    for (const entry of entries) {
+        const members: PluginTransportMember[] = others.map((o) => {
+            const p = pickedPluginTransport(o.picked, o.deviceId);
+            const on = p?.key === entry.key;
+            return {
+                userId: o.userId,
+                deviceId: o.deviceId,
+                memberId: o.memberId,
+                publishes: on,
+                data: on ? (p?.data ?? null) : null,
+            };
+        });
+        const ours = call.pluginPublish === entry;
+        const existing = call.pluginTransports.get(entry.key);
+        if (existing) {
+            existing.setMembers(members);
+            continue;
+        }
+        if (!ours && !members.some((m) => m.publishes)) continue;
+        if (!call.pluginAllowed.has(entry.key)) {
+            askPluginTransport(call, entry);
+            continue;
+        }
+        const inst: PluginTransportInstance = new PluginTransportInstance(
+            entry,
+            {
+                client: matrixClient,
+                roomId: call.roomId,
+                slotId: call.session.slotId,
+                own: { userId, deviceId, memberId: `${userId}:${deviceId}` },
+                local: ours ? call.pluginLocal : null,
+                listener: callListener(call, () => inst),
+            },
+        );
+        call.pluginTransports.set(entry.key, inst);
+        inst.setMembers(members);
+        try {
+            inst.start();
+        } catch (err) {
+            console.error(
+                `[plugin ${entry.pluginId}] transport "${entry.factory.id}" create threw`,
+                err,
+            );
+            call.pluginTransports.delete(entry.key);
+            void inst.close();
+            notifyVoiceNotice(
+                t("voiceCall.pluginTransportFailed", {
+                    label: entry.factory.label,
+                }),
+            );
+        }
+    }
+}
+
+/** Ask, once per call, before receiving someone over a plugin transport. */
+function askPluginTransport(
+    call: ActiveVoiceCall,
+    entry: RegisteredTransport,
+): void {
+    if (call.pluginAsked.has(entry.key)) return;
+    call.pluginAsked.add(entry.key);
+    void requestMeshConsent({
+        joining: false,
+        publishing: false,
+        plugin: pluginConsentInfo(entry),
+    }).then((answer) => {
+        if (answer !== "allow" || activeVoice !== call) return;
+        call.pluginAllowed.add(entry.key);
+        void syncRemoteSfus(call);
+    });
+}
+
+function pluginConsentInfo(entry: RegisteredTransport): {
+    label: string;
+    exposesIp: boolean;
+    thirdParty: string | null;
+} {
+    return {
+        label: entry.factory.label,
+        exposesIp: entry.factory.privacy.exposesIp,
+        thirdParty: entry.factory.privacy.thirdParty,
+    };
+}
+
+/** A plugin's answer; one that takes longer than `ms` counts as none. */
+function pluginAnswer<T>(
+    fn: () => T | Promise<T>,
+    ms: number,
+): Promise<T | undefined> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve(undefined), ms);
+        Promise.resolve()
+            .then(fn)
+            .then(
+                (v) => {
+                    clearTimeout(timer);
+                    resolve(v);
+                },
+                (err: unknown) => {
+                    clearTimeout(timer);
+                    reject(err);
+                },
+            );
+    });
+}
+
+/**
+ * Whether we publish on a plugin transport in `roomId`: the first one whose
+ * `use` says so, once the user agrees. "cancel": the user didn't join.
+ */
+async function choosePluginPublish(
+    roomId: string,
+): Promise<{ entry: RegisteredTransport; data: unknown } | null | "cancel"> {
+    for (const entry of registeredPluginTransports()) {
+        const { factory } = entry;
+        const use = factory.use;
+        if (!use) continue;
+        let wants: unknown = false;
+        try {
+            wants = await pluginAnswer(
+                () => use.call(factory, { roomId }),
+                3000,
+            );
+        } catch (err) {
+            console.error(
+                `[plugin ${entry.pluginId}] transport use threw`,
+                err,
+            );
+        }
+        if (wants !== true) continue;
+        const answer = await requestMeshConsent({
+            joining: true,
+            publishing: true,
+            plugin: pluginConsentInfo(entry),
+        });
+        if (answer === "cancel") return "cancel";
+        if (answer !== "allow") return null;
+        const describe = factory.describe;
+        let data: unknown = null;
+        try {
+            if (describe)
+                data = await pluginAnswer(
+                    () => describe.call(factory, { roomId }),
+                    10_000,
+                );
+        } catch (err) {
+            console.error(
+                `[plugin ${entry.pluginId}] transport describe threw`,
+                err,
+            );
+            notifyVoiceNotice(
+                t("voiceCall.pluginTransportFailed", { label: factory.label }),
+            );
+            return null;
+        }
+        return { entry, data };
+    }
+    return null;
+}
+
+// A plugin transport registered or unregistered mid-call: apply it now.
+onPluginTransportsChange(() => {
+    if (activeVoice) void syncRemoteSfus(activeVoice);
+});
 
 async function connectRemoteSfu(
     call: ActiveVoiceCall,
@@ -1806,7 +2182,12 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
     // lk-jwt-service lets us publish) and listen on everyone else's. A
     // homeserver without one publishes on full mesh instead (MSC4575):
     // another homeserver's SFU only gives us a listen-only token.
-    const target = pickOwnLivekitTransport(foci, roomId);
+    const sfuTarget = pickOwnLivekitTransport(foci, roomId);
+    // A plugin transport (zam.call.registerTransport) the plugin wants us
+    // to publish on here, if the user agrees: then not on the SFU.
+    const viaPlugin = await choosePluginPublish(roomId);
+    if (seq !== voiceJoinSeq || viaPlugin === "cancel") return;
+    const target = viaPlugin ? null : sfuTarget;
 
     const userId = matrixClient.getUserId()!;
     const deviceId = matrixClient.getDeviceId()!;
@@ -1826,10 +2207,10 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
                 receivesOverMesh(transport, m.transports, m.deviceId),
         );
     let meshConsent = false;
-    if (joinUsesMesh({ ownHasSfu: !!target, othersOverMesh })) {
+    if (joinUsesMesh({ ownHasSfu: !!target || !!viaPlugin, othersOverMesh })) {
         const answer = await requestMeshConsent({
             joining: true,
-            publishing: !target,
+            publishing: !target && !viaPlugin,
             ...meshConsentServers(await homeserverTurn()),
         });
         if (seq !== voiceJoinSeq || answer === "cancel") return;
@@ -1837,7 +2218,8 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
     }
     const iceConfig = await callIceConfig();
     if (seq !== voiceJoinSeq) return;
-    if (!target && !iceConfig) throw new Error(t("voiceCall.meshNeedsTurn"));
+    if (!target && !viaPlugin && !iceConfig)
+        throw new Error(t("voiceCall.meshNeedsTurn"));
 
     // Snapshot the call's non-self peers BEFORE our own membership publishes,
     // so we can tell "starting a call" (ring the peer) from "answering one"
@@ -1984,9 +2366,14 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
         lkRoom,
         local,
         mesh,
-        meshConsent: meshConsent || !target,
+        meshConsent: meshConsent || (!target && !viaPlugin),
         meshAsked: new Set(),
         lkTransports: new Map(),
+        pluginTransports: new Map(),
+        pluginPublish: viaPlugin?.entry ?? null,
+        pluginLocal: viaPlugin ? meshLocal : null,
+        pluginAllowed: new Set(viaPlugin ? [viaPlugin.entry.key] : []),
+        pluginAsked: new Set(viaPlugin ? [viaPlugin.entry.key] : []),
         publishKey: target ? livekitTargetKey(target) : "",
         remotes: new Map(),
         remotesConnecting: new Set(),
@@ -2051,7 +2438,14 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
                   livekit_service_url: target.serviceUrl,
                   livekit_alias: target.alias,
               }
-            : ownMeshTransport(deviceId);
+            : viaPlugin
+              ? ownPluginTransport(
+                    viaPlugin.entry.pluginId,
+                    viaPlugin.entry.factory.id,
+                    deviceId,
+                    viaPlugin.data,
+                )
+              : ownMeshTransport(deviceId);
         // Advertises the SFU we publish on, as multi_sfu (or the mesh). A
         // client that reads multi_sfu takes foci_preferred[0], the same one.
         // We can receive over the mesh: say so in can_subscribe (MSC4575).
@@ -2194,7 +2588,9 @@ async function connectPublishingRoom(
     notifyCallMutes(call);
     // The server's enabled codecs are known now.
     announceCodecs(call, lkRoom);
+    announceWatching(call);
     notifyCallCodecs(call);
+    notifyCallWatchers(call);
     notifyCallEncryption(call);
     if (seq !== voiceJoinSeq) await lkRoom.disconnect().catch(() => {});
 }
@@ -2358,6 +2754,7 @@ function leaveCallOnPageHide(): void {
     }
     for (const r of callLkRooms(call)) void r.disconnect().catch(() => {});
     void call.mesh.close();
+    for (const p of call.pluginTransports.values()) void p.close();
 }
 if (typeof window !== "undefined")
     window.addEventListener("pagehide", leaveCallOnPageHide);
@@ -2418,6 +2815,7 @@ async function leaveVoiceCallInternal(): Promise<void> {
         await Promise.allSettled([
             ...callLkRooms(call).map((r) => r.disconnect()),
             call.mesh.close(),
+            ...[...call.pluginTransports.values()].map((p) => p.close()),
             call.session.leave(10_000),
         ]);
         // After the SFU disconnect, which stops the tracks it owns.
@@ -2434,6 +2832,20 @@ async function leaveVoiceCallInternal(): Promise<void> {
 // The first-mic-track creation in flight, so a double unmute can't publish
 // two microphones.
 let micCreation: Promise<unknown> | null = null;
+
+/** LiveKit mutes a mic by disabling its raw track only. A mic with Zam's chain
+ *  sends `processedTrack` instead, so that is disabled too (and must start
+ *  disabled when the chain is attached or swapped while muted). */
+function syncMicSending(
+    track: LivekitClient.LocalTrack | undefined,
+    sending: boolean,
+): void {
+    const processed = (
+        track as
+            { processor?: { processedTrack?: MediaStreamTrack } } | undefined
+    )?.processor?.processedTrack;
+    if (processed) processed.enabled = sending;
+}
 
 /** Turn the call's mic on or off. Once a mic track exists this is LiveKit's
  *  own mute/unmute. Creating the FIRST one with Zam's mic chain on is done
@@ -2458,6 +2870,7 @@ async function setCallMicEnabled(
     ).chain;
     if (!enabled || !chain || local.getTrack(source)) {
         await local.setMicrophoneEnabled(enabled);
+        syncMicSending(local.getTrack(source), enabled);
         return;
     }
     const run = (async () => {
@@ -2478,6 +2891,7 @@ async function setCallMicEnabled(
             );
         }
         await local.publishTrack(track, { source });
+        syncMicSending(track, !desiredMicMuted);
     })();
     micCreation = run;
     try {
@@ -3276,6 +3690,7 @@ async function publishShareAudio(call: ActiveVoiceCall): Promise<void> {
     }
     // The share may have ended while this published.
     if (!sharing() && shareAudio?.track === track) stopShareAudio();
+    notifyCallVideo(call);
 }
 
 /** Stop and unpublish the share's own audio track, if there is one. */
@@ -3287,6 +3702,7 @@ function stopShareAudio(): void {
     stopShareAudioCapture();
     if (activeVoice === s.call) {
         void s.call.local.unpublishTrack(s.track).catch(() => {});
+        notifyCallVideo(s.call);
     }
 }
 
@@ -3520,6 +3936,9 @@ export async function setVoiceCaptureConstraints(opts: {
             failure = err;
         }
     }
+    // A restart or a new processor brings a new processed track: keep it
+    // silent while the mic is closed.
+    syncMicSending(track, !desiredMicMuted);
     if (failure) {
         console.error("Voice capture constraints change failed:", failure);
         if (activeVoice === call)

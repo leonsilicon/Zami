@@ -296,6 +296,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "Couper le son",
     "callView.disconnect": "Se déconnecter",
     "callView.joinCall": "Rejoindre l'appel",
+    "callView.muteShareAudio": "Couper le son du partage",
+    "callView.unmuteShareAudio": "Réactiver le son du partage",
     "callView.you": "Vous",
     "callView.sScreen": "Écran de {name}",
     "callView.exitSpotlightFor": "Quitter la mise en avant de {label}",
@@ -1226,6 +1228,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "Ceci est le début du salon #",
     "messageArea.loadingHistory": "Chargement des messages précédents",
     "messageArea.room": ".",
+    "messageArea.dmStart":
+        "Ceci est le début de votre historique de messages privés avec {name}.",
     "messageArea.newMessages": "Nouveaux messages",
     "messageArea.unreadSince":
         "{count, plural, one {# nouveau message depuis {since}} other {# nouveaux messages depuis {since}}}",
@@ -1255,6 +1259,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "Ne pas notifier l'auteur",
     "messageInput.replyingTo": "En réponse à {replyTargetName}",
     "messageInput.cancelReplyEsc": "Annuler la réponse (Échap)",
+    "messageInput.editingMessage": "Modification du message",
+    "messageInput.cancelEditEsc": "Annuler la modification (Échap)",
+    "messageInput.editFailed": "Impossible d'enregistrer la modification",
     "messageInput.editAttachment": "Modifier la pièce jointe",
     "messageInput.editAttachment2": "Modifier la pièce jointe {name}",
     "messageInput.custom": "personnalisé",
@@ -1345,8 +1352,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} sur {total}",
     "messageItem.fileAttachment": "Fichier joint",
     "messageItem.download": "Télécharger",
-    "messageItem.toSave": "pour enregistrer ·",
-    "messageItem.toCancel": "pour annuler",
     "messageItem.openThread": "Ouvrir le fil",
     "messageItem.failedToSend": "Échec de l'envoi.",
     "messageItem.retrying": "Nouvelle tentative…",
@@ -2817,6 +2822,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "votre autre session",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} regardent",
+    "videoTile.watchers": "Regardent",
+    "videoTile.noWatchers": "Personne ne regarde",
+    "videoTile.muteShareAudio": "Couper le son du partage d'écran",
+    "videoTile.unmuteShareAudio": "Réactiver le son du partage d'écran",
     "videoTile.fullscreen": "Plein écran",
     "videoTile.pictureInPicture": "Image dans l'image",
     "videoTile.exitPictureInPicture": "Quitter l'image dans l'image",
@@ -3141,6 +3151,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "Annuler",
     "fileOffer.withdraw": "Retirer",
     "fileOffer.connecting": "Connexion à l'expéditeur...",
+    "fileOffer.preparingReceive":
+        "En attente que l'expéditeur prépare le fichier",
+    "fileOffer.preparingSend": "Préparation du fichier",
+    "fileOffer.acceptedElsewhere":
+        "Accepté sur un autre de vos appareils ({device})",
+    "fileOffer.untrusted":
+        "Cette offre n'est pas fiable : elle ne vient pas de l'appareil qu'elle désigne.",
     "fileOffer.progress": "{done} sur {total}, {rate}/s",
     "fileOffer.verifying": "Vérification du fichier...",
     "fileOffer.savedDone": "Fichier enregistré et vérifié.",
@@ -4571,6 +4588,25 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "Se connecter directement",
     "meshConsent.joinWithoutThem": "Rejoindre sans elles",
     "meshConsent.notNow": "Pas maintenant",
+    "meshConsent.titlePluginPublish": "Rejoindre cet appel via {label} ?",
+    "meshConsent.titlePluginReceive":
+        "Quelqu'un dans cet appel utilise {label}",
+    "meshConsent.pluginPublish":
+        "Ton audio, ta vidéo et ton partage d'écran passent par {label}, un moyen de transporter les appels ajouté par un plugin. Seules les personnes dont Zam a le même plugin peuvent t'entendre et te voir.",
+    "meshConsent.pluginReceive":
+        "Quelqu'un dans cet appel envoie son audio et sa vidéo via {label}, ajouté par un plugin. Pour l'entendre et le voir, Zam l'utilise aussi.",
+    "meshConsent.pluginIpVisible":
+        "Les personnes que tu joins via {label} peuvent voir ton adresse IP, qui peut révéler à peu près où tu te trouves.",
+    "meshConsent.pluginIpHidden":
+        "{label} ne montre pas ton adresse IP aux personnes à l'autre bout.",
+    "meshConsent.pluginThirdParty":
+        "Les médias de ton appel passent aussi par {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Rejoindre sans",
+    "meshConsent.usePlugin": "Utiliser {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} s'est arrêté, donc personne dans cet appel ne t'entend ni ne te voit jusqu'à ce que tu le rejoignes à nouveau.",
+    "voiceCall.pluginTransportFailed":
+        "{label} n'a pas pu démarrer pour cet appel.",
     "voiceCall.meshNeedsTurn":
         "« Exiger un serveur relais pour les appels pair à pair » est activé, mais votre serveur d'accueil n'a pas de serveur relais (TURN). Désactivez-le dans les paramètres Voix et vidéo pour rejoindre l'appel.",
     "voiceAudioSettings.meshRelayOnly":

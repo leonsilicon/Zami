@@ -309,7 +309,7 @@ import {
     FILE_OFFER_EVENT,
     isFileOfferEventType,
 } from "$lib/utils/fileTransfer";
-import { hasUnreadMessages } from "$lib/utils/roomUnread";
+import { hasUnreadMessages, isStaleLocalUnread } from "$lib/utils/roomUnread";
 import { localReadVerdict, type LocalReadMark } from "$lib/utils/localRead";
 import { callMemberSendersMissingMembership } from "$lib/utils/callMemberSenders";
 import {
@@ -1613,6 +1613,26 @@ export async function startSync(
         },
     );
     client.on(RoomEvent.Timeline as never, onTimelineMember as never);
+    // Our own receipt can land after the newest message already decrypted and
+    // was counted unread (the receipts extension runs last under sliding sync).
+    // Re-check the room then. Registered here, before AppShell subscribes
+    // (AppShell mounts only after startSync resolves), so its receipt-driven
+    // re-render reads the corrected counts.
+    const onOwnReceipt = guardOwnership(
+        owner,
+        readOwner,
+        (event: MatrixEvent, room: Room) => {
+            try {
+                const userId = client.getUserId();
+                if (!userId || !receiptNamesUser(event, userId)) return;
+                if (clearStaleEncryptedUnread(room))
+                    notifyLocalUnreadChange(room.roomId);
+            } catch {
+                // Never break the receipt fan-out to other listeners.
+            }
+        },
+    );
+    client.on(RoomEvent.Receipt as never, onOwnReceipt as never);
     if (onLoggedOut) client.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
     let disposed = false;
@@ -1626,6 +1646,7 @@ export async function startSync(
         client.off(ClientEvent.Room as never, onRoom as never);
         client.off(RoomStateEvent.Events, onMemberState);
         client.off(RoomEvent.Timeline as never, onTimelineMember as never);
+        client.off(RoomEvent.Receipt as never, onOwnReceipt as never);
         if (onLoggedOut) client.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         document.removeEventListener("visibilitychange", onHidden);
         document.removeEventListener("visibilitychange", onVisibleKick);
@@ -5461,6 +5482,64 @@ export function getRoomUnreadInfo(room: Room): {
     return { unread, highlight };
 }
 
+/** Zero an encrypted room's main unread counts when our receipt already covers its newest message (see isStaleLocalUnread). Returns whether it changed anything. */
+function clearStaleEncryptedUnread(room: Room): boolean {
+    const userId = matrixClient?.getUserId();
+    if (!userId) return false;
+    // Main timeline only: thread counts are cleared by clearReadThreadCounts.
+    const total =
+        room.getRoomUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+    const highlight =
+        room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) ??
+        0;
+    const encrypted = room.hasEncryptionStateEvent();
+    if (!encrypted || (total === 0 && highlight === 0)) return false;
+
+    const events = room.getLiveTimeline().getEvents();
+    let newest: MatrixEvent | null = null;
+    for (let i = events.length - 1; i >= 0; i--) {
+        if (isNotificationEvent(events[i])) {
+            newest = events[i];
+            break;
+        }
+    }
+    const newestId = newest?.getId();
+    const newestNotificationRead = newestId
+        ? room.hasUserReadEvent(userId, newestId)
+        : null;
+    if (
+        !isStaleLocalUnread({
+            encrypted,
+            total,
+            highlight,
+            newestNotificationRead,
+        })
+    )
+        return false;
+
+    room.setUnreadNotificationCount(NotificationCountType.Total, 0);
+    room.setUnreadNotificationCount(NotificationCountType.Highlight, 0);
+    return true;
+}
+
+/** Whether a m.receipt event's content names `userId` for any event and receipt type. */
+function receiptNamesUser(event: MatrixEvent, userId: string): boolean {
+    const content = event.getContent() as unknown;
+    if (!content || typeof content !== "object") return false;
+    for (const byType of Object.values(content)) {
+        if (!byType || typeof byType !== "object") continue;
+        for (const users of Object.values(byType)) {
+            if (
+                users &&
+                typeof users === "object" &&
+                Object.prototype.hasOwnProperty.call(users, userId)
+            )
+                return true;
+        }
+    }
+    return false;
+}
+
 export function onTimelineEvent(
     callback: (event: MatrixEvent, room: Room, isLiveAppend: boolean) => void,
 ): () => void {
@@ -6283,19 +6362,18 @@ export async function sendEdit(
     // Media fields (see mediaEditBase) when editing a media caption; the
     // replacement must restate the whole media content, not just the text.
     mediaBase?: Record<string, unknown>,
+    // Mentions the editor resolved from the new body (pills and typed MXIDs).
+    newMentions?: { userIds?: string[]; room?: boolean },
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     // v1.7 mentions module: split m.mentions across the replacement halves —
     // top-level carries only the mentions NEWLY introduced by this revision;
     // m.new_content carries the resolved final set. Conservative: original
     // mentions are never dropped (see computeEditMentions).
-    // ⚑ deferred: pill anchors in the ORIGINAL formatted_body are lost on edit
-    // because the edit UI is a plain-text box — so a mention that existed only
-    // as a formatted_body pill (no bare mxid retyped) survives as an
-    // m.mentions user_id but loses its inline highlight in the new body.
     const { topLevel, resolved } = computeEditMentions(
         originalMentions,
         newText,
+        newMentions,
     );
     const newContent: Record<string, unknown> = {
         ...(mediaBase ?? { msgtype: "m.text" }),
@@ -6684,6 +6762,11 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
             room.getEventReadUpTo(myUserId, true),
         )
     ) {
+        // Our receipt may already cover the newest message while the counts
+        // still show it unread (see clearStaleEncryptedUnread). Opening the room
+        // lands here, so fix the counts now.
+        if (room && clearStaleEncryptedUnread(room))
+            notifyLocalUnreadChange(roomId);
         if (inFlightReceipts.get(roomId) !== eventId)
             notifyReadReceiptConfirmed(roomId);
         return;
@@ -11612,6 +11695,9 @@ export {
     setParticipantLocalMute,
     setParticipantShareMute,
     setShareWatched,
+    setShareAudioMuted,
+    hasOwnShareAudio,
+    onShareWatchersChanged,
     setParticipantVideoHidden,
     onVoiceConnStateChanged,
     onActiveSpeakersChanged,

@@ -273,6 +273,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "スピーカーミュート",
     "callView.disconnect": "切断",
     "callView.joinCall": "通話に参加",
+    "callView.muteShareAudio": "共有の音声をミュート",
+    "callView.unmuteShareAudio": "共有の音声のミュートを解除",
     "callView.you": "あなた",
     "callView.sScreen": "{name} の画面",
     "callView.exitSpotlightFor": "{label} のスポットライトを解除",
@@ -1152,6 +1154,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "ここが #",
     "messageArea.loadingHistory": "過去のメッセージを読み込み中",
     "messageArea.room": "ルームの始まりです。",
+    "messageArea.dmStart": "{name} とのダイレクトメッセージの始まりです。",
     "messageArea.newMessages": "新着メッセージ",
     "messageArea.unreadSince":
         "{count, plural, other {{since}以降の新着メッセージ#件}}",
@@ -1181,6 +1184,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "投稿者に通知しない",
     "messageInput.replyingTo": "{replyTargetName}に返信",
     "messageInput.cancelReplyEsc": "返信をキャンセル（Esc）",
+    "messageInput.editingMessage": "メッセージを編集中",
+    "messageInput.cancelEditEsc": "編集をキャンセル（Esc）",
+    "messageInput.editFailed": "編集を保存できませんでした",
     "messageInput.editAttachment": "添付ファイルを編集",
     "messageInput.editAttachment2": "添付ファイル{name}を編集",
     "messageInput.custom": "カスタム",
@@ -1263,8 +1269,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} / {total}",
     "messageItem.fileAttachment": "添付ファイル",
     "messageItem.download": "ダウンロード",
-    "messageItem.toSave": "で保存 ·",
-    "messageItem.toCancel": "でキャンセル",
     "messageItem.openThread": "スレッドを開く",
     "messageItem.failedToSend": "送信に失敗しました。",
     "messageItem.retrying": "再試行しています…",
@@ -2509,6 +2513,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.couldNotReportTheMismatch":
         "不一致を報告できませんでした",
     "verificationModal.session": "セッション",
+    "videoTile.watchingCount": "{count}人が視聴中",
+    "videoTile.watchers": "視聴中",
+    "videoTile.noWatchers": "視聴者はいません",
+    "videoTile.muteShareAudio": "画面共有の音声をミュート",
+    "videoTile.unmuteShareAudio": "画面共有の音声のミュートを解除",
     "videoTile.fullscreen": "全画面",
     "videoTile.pictureInPicture": "ピクチャーインピクチャー",
     "videoTile.exitPictureInPicture": "ピクチャーインピクチャーを終了",
@@ -3734,6 +3743,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "キャンセル",
     "fileOffer.withdraw": "取り消す",
     "fileOffer.connecting": "送信者に接続中…",
+    "fileOffer.preparingReceive": "送信者がファイルを準備するのを待っています",
+    "fileOffer.preparingSend": "ファイルを準備しています",
+    "fileOffer.acceptedElsewhere": "別の端末で承認されました（{device}）",
+    "fileOffer.untrusted":
+        "この依頼は信頼できません。指定された端末から送られたものではありません。",
     "fileOffer.progress": "{done} / {total}、{rate}/秒",
     "fileOffer.verifying": "ファイルを検証中…",
     "fileOffer.savedDone": "ファイルを保存し、検証しました。",
@@ -4036,6 +4050,24 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "直接接続",
     "meshConsent.joinWithoutThem": "その人を除いて参加",
     "meshConsent.notNow": "今はしない",
+    "meshConsent.titlePluginPublish": "{label} 経由でこの通話に参加しますか？",
+    "meshConsent.titlePluginReceive": "この通話の誰かが {label} を使っています",
+    "meshConsent.pluginPublish":
+        "あなたの音声、映像、画面共有は、プラグインが追加する通話の伝送方式 {label} を通ります。同じプラグインを入れた Zam の人だけがあなたの声や映像を受け取れます。",
+    "meshConsent.pluginReceive":
+        "この通話の誰かがプラグインの追加した {label} で音声と映像を送っています。その人の声や映像を受け取るため、Zam も {label} を使います。",
+    "meshConsent.pluginIpVisible":
+        "{label} でつながる相手にはあなたの IP アドレスが見え、おおよその居場所がわかる場合があります。",
+    "meshConsent.pluginIpHidden":
+        "{label} は相手にあなたの IP アドレスを見せません。",
+    "meshConsent.pluginThirdParty":
+        "通話のメディアは {thirdParty} も経由します。",
+    "meshConsent.pluginJoinWithout": "使わずに参加",
+    "meshConsent.usePlugin": "{label} を使う",
+    "voiceCall.pluginTransportGone":
+        "{label} が停止したため、再参加するまで通話の誰にもあなたの声や映像は届きません。",
+    "voiceCall.pluginTransportFailed":
+        "この通話で {label} を開始できませんでした。",
     "voiceCall.meshNeedsTurn":
         "「ピアツーピア通話に中継サーバーを必須にする」がオンですが、ホームサーバーに中継（TURN）サーバーがありません。参加するには、音声とビデオの設定でオフにしてください。",
     "voiceAudioSettings.meshRelayOnly":

@@ -309,6 +309,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "Отключить звук",
     "callView.disconnect": "Отключиться",
     "callView.joinCall": "Присоединиться к звонку",
+    "callView.muteShareAudio": "Выключить звук демонстрации",
+    "callView.unmuteShareAudio": "Включить звук демонстрации",
     "callView.you": "Вы",
     "callView.sScreen": "Экран пользователя {name}",
     "callView.exitSpotlightFor": "Выйти из режима «в центре внимания»: {label}",
@@ -1382,6 +1384,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "Это начало комнаты #",
     "messageArea.loadingHistory": "Загрузка более старых сообщений",
     "messageArea.room": ".",
+    "messageArea.dmStart": "Это начало вашей личной переписки с {name}.",
     "messageArea.newMessages": "Новые сообщения",
     "messageArea.unreadSince":
         "{count, plural, one {# новое сообщение с {since}} few {# новых сообщения с {since}} many {# новых сообщений с {since}} other {# новых сообщения с {since}}}",
@@ -1412,6 +1415,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "Не уведомлять автора",
     "messageInput.replyingTo": "Ответ для {replyTargetName}",
     "messageInput.cancelReplyEsc": "Отменить ответ (Esc)",
+    "messageInput.editingMessage": "Редактирование сообщения",
+    "messageInput.cancelEditEsc": "Отменить редактирование (Esc)",
+    "messageInput.editFailed": "Не удалось сохранить изменения",
     "messageInput.editAttachment": "Изменить вложение",
     "messageInput.editAttachment2": "Изменить вложение {name}",
     "messageInput.custom": "свои",
@@ -1499,8 +1505,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} из {total}",
     "messageItem.fileAttachment": "Вложенный файл",
     "messageItem.download": "Скачать",
-    "messageItem.toSave": "- сохранить ·",
-    "messageItem.toCancel": "- отменить",
     "messageItem.openThread": "Открыть обсуждение",
     "messageItem.failedToSend": "Не удалось отправить.",
     "messageItem.retrying": "Повторная попытка…",
@@ -2887,6 +2891,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "сеансе",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "смотрят: {count}",
+    "videoTile.watchers": "Смотрят",
+    "videoTile.noWatchers": "Никто не смотрит",
+    "videoTile.muteShareAudio": "Выключить звук демонстрации экрана",
+    "videoTile.unmuteShareAudio": "Включить звук демонстрации экрана",
     "videoTile.fullscreen": "На весь экран",
     "videoTile.pictureInPicture": "Картинка в картинке",
     "videoTile.exitPictureInPicture": "Выйти из режима «картинка в картинке»",
@@ -4338,6 +4347,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "Отмена",
     "fileOffer.withdraw": "Отозвать",
     "fileOffer.connecting": "Подключение к отправителю...",
+    "fileOffer.preparingReceive": "Ожидание, пока отправитель подготовит файл",
+    "fileOffer.preparingSend": "Подготовка файла",
+    "fileOffer.acceptedElsewhere":
+        "Принято на другом вашем устройстве ({device})",
+    "fileOffer.untrusted":
+        "Этому предложению нельзя доверять: оно пришло не с устройства, которое указано.",
     "fileOffer.progress": "{done} из {total}, {rate}/с",
     "fileOffer.verifying": "Проверка файла...",
     "fileOffer.savedDone": "Файл сохранён и проверен.",
@@ -4522,6 +4537,24 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "Подключиться напрямую",
     "meshConsent.joinWithoutThem": "Присоединиться без них",
     "meshConsent.notNow": "Не сейчас",
+    "meshConsent.titlePluginPublish": "Подключиться к звонку через {label}?",
+    "meshConsent.titlePluginReceive": "Кто-то в этом звонке использует {label}",
+    "meshConsent.pluginPublish":
+        "Ваш звук, видео и демонстрация экрана идут через {label}: способ передачи звонков, который добавляет плагин. Слышать и видеть вас смогут только те, у кого в Zam есть этот же плагин.",
+    "meshConsent.pluginReceive":
+        "Кто-то в этом звонке передаёт звук и видео через {label}, который добавляет плагин. Чтобы слышать и видеть его, Zam тоже использует {label}.",
+    "meshConsent.pluginIpVisible":
+        "Те, с кем вы связываетесь через {label}, видят ваш IP-адрес, по которому можно примерно определить, где вы находитесь.",
+    "meshConsent.pluginIpHidden":
+        "{label} не показывает ваш IP-адрес собеседникам.",
+    "meshConsent.pluginThirdParty":
+        "Медиа звонка также проходят через {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Подключиться без него",
+    "meshConsent.usePlugin": "Использовать {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} остановлен, поэтому никто в звонке не слышит и не видит вас, пока вы не переподключитесь.",
+    "voiceCall.pluginTransportFailed":
+        "Не удалось запустить {label} для этого звонка.",
     "voiceCall.meshNeedsTurn":
         "«Требовать ретранслятор для одноранговых звонков» включено, но у вашего домашнего сервера нет ретранслятора (TURN). Выключите это в настройках голоса и видео, чтобы присоединиться.",
     "voiceAudioSettings.meshRelayOnly":
