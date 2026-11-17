@@ -56,8 +56,23 @@ export default function TweetCard({ tweet, nested = false }: Props) {
     // player.
     const [playing, setPlaying] = useState<Set<string>>(() => new Set());
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+    // A GIF opened full size. It is a looping mp4 here, so the viewer plays it
+    // as a video; one at a time, with no gallery to step through.
+    const [gifViewer, setGifViewer] = useState<
+        TweetEmbed["media"][number] | null
+    >(null);
 
     const photos = tweet.media.filter((m) => m.kind === "photo");
+
+    /** A photo as the viewer wants it: the original, the grid's thumb as its
+     *  stand-in, and its size so the box is laid out before either loads. */
+    function viewerItem(p: (typeof photos)[number]) {
+        return {
+            src: p.url,
+            placeholders: [tweetPhotoThumb(p.url)],
+            dims: p.width && p.height ? { w: p.width, h: p.height } : null,
+        };
+    }
 
     const pollEnded =
         tweet.poll?.endsAt != null && tweet.poll.endsAt <= Date.now();
@@ -92,7 +107,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                     key={i}
                     accessibilityRole="link"
                     onPress={() => openLink(seg.href)}
-                    className="text-discord-accent"
+                    className="text-zam-accent"
                 >
                     {seg.text}
                 </Text>
@@ -122,23 +137,33 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         };
         if (item.kind === "gif")
             // Played like a GIF: muted, looped, no controls.
-            // Zami: not ported: unloadOffscreen, which drops its src once the
-            // row is well out of view; the FlatList unmounts far-off rows.
+            // Zami: not ported: gifTileVideo, which gives it a src only while
+            // it is near the viewport (an IntersectionObserver), so a post's
+            // many GIFs don't each hold a hardware decoder; the FlatList
+            // unmounts far-off rows, which releases the player.
             return (
-                <View
-                    accessibilityLabel={item.alt}
-                    className="w-full min-w-0 rounded overflow-hidden bg-black/10"
-                    style={cellStyle}
+                <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={item.alt || t("linkPreview.playVideo")}
+                    className="w-full min-w-0 p-0 border-0 bg-transparent"
+                    onPress={() => setGifViewer(item)}
                 >
-                    <Video
-                        src={item.url}
-                        poster={item.thumbnail}
-                        className="w-full h-full"
-                        autoplay
-                        muted
-                        loop
-                    />
-                </View>
+                    <View
+                        className="w-full min-w-0 rounded overflow-hidden bg-black/10"
+                        style={cellStyle}
+                        // Zami: the press is the wrapper's; the player takes no touches.
+                        pointerEvents="none"
+                    >
+                        <Video
+                            src={item.url}
+                            poster={item.thumbnail}
+                            className="w-full h-full"
+                            autoplay
+                            muted
+                            loop
+                        />
+                    </View>
+                </Pressable>
             );
         if (item.kind === "video" && !playing.has(item.url))
             return (
@@ -201,7 +226,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         );
     }
 
-    const textClass = "text-sm text-discord-textPrimary leading-relaxed";
+    const textClass = "text-sm text-zam-textPrimary leading-relaxed";
 
     const body = (
         <>
@@ -222,22 +247,22 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                     numberOfLines={1}
                     className="flex-shrink min-w-0 text-sm leading-snug"
                 >
-                    <Text className="text-sm font-semibold text-discord-textPrimary">
+                    <Text className="text-sm font-semibold text-zam-textPrimary">
                         {tweet.authorName}
                     </Text>{" "}
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         @{tweet.authorHandle}
                     </Text>
                 </Text>
             </Pressable>
 
             {tweet.replyingTo ? (
-                <Text className="text-xs text-discord-textMuted -mt-1">
+                <Text className="text-xs text-zam-textMuted -mt-1">
                     ↩ {t("linkPreview.replyingTo")}{" "}
                     <Text
                         accessibilityRole="link"
                         onPress={() => openLink(tweet.replyingTo!.url)}
-                        className="text-xs text-discord-accent"
+                        className="text-xs text-zam-accent"
                     >
                         @{tweet.replyingTo.handle}
                     </Text>
@@ -274,7 +299,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                             className="mt-0.5 self-start"
                             onPress={() => setExpanded((x) => !x)}
                         >
-                            <Text className="text-xs text-discord-accent">
+                            <Text className="text-xs text-zam-accent">
                                 {expanded
                                     ? t("linkPreview.showLess")
                                     : t("linkPreview.showMore")}
@@ -289,26 +314,26 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                     {tweet.poll.choices.map((choice, i) => (
                         <View
                             key={i}
-                            className="relative overflow-hidden rounded bg-discord-backgroundTertiary px-2 py-1"
+                            className="relative overflow-hidden rounded bg-zam-backgroundTertiary px-2 py-1"
                         >
                             <View
                                 className={`absolute inset-y-0 start-0 ${
                                     choice.percentage === pollLeader &&
                                     pollEnded
-                                        ? "bg-discord-accent/40"
-                                        : "bg-discord-accent/20"
+                                        ? "bg-zam-accent/40"
+                                        : "bg-zam-accent/20"
                                 }`}
                                 style={{ width: `${choice.percentage}%` }}
                             />
                             <View className="relative flex-row justify-between gap-3">
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink min-w-0 text-sm text-discord-textPrimary"
+                                    className="flex-shrink min-w-0 text-sm text-zam-textPrimary"
                                 >
                                     {choice.label}
                                 </Text>
                                 <Text
-                                    className={`flex-shrink-0 tabular-nums text-sm text-discord-textPrimary ${
+                                    className={`flex-shrink-0 tabular-nums text-sm text-zam-textPrimary ${
                                         choice.percentage === pollLeader
                                             ? "font-semibold"
                                             : ""
@@ -319,7 +344,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                             </View>
                         </View>
                     ))}
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("linkPreview.pollVotes", {
                             count: tweet.poll.totalVotes,
                             votes: tweet.poll.totalVotes.toLocaleString(
@@ -355,8 +380,8 @@ export default function TweetCard({ tweet, nested = false }: Props) {
             ) : null}
 
             {tweet.quote && isQuoteTombstone(tweet.quote) ? (
-                <View className="rounded border border-discord-divider px-3 py-2">
-                    <Text className="text-xs italic text-discord-textMuted">
+                <View className="rounded border border-zam-divider px-3 py-2">
+                    <Text className="text-xs italic text-zam-textMuted">
                         {tweet.quote.tombstone ||
                             t("linkPreview.quoteUnavailable")}
                     </Text>
@@ -366,11 +391,11 @@ export default function TweetCard({ tweet, nested = false }: Props) {
             ) : null}
 
             {tweet.communityNote ? (
-                <View className="rounded border border-discord-divider bg-discord-backgroundTertiary px-3 py-2">
-                    <Text className="text-xs font-semibold text-discord-textPrimary mb-0.5">
+                <View className="rounded border border-zam-divider bg-zam-backgroundTertiary px-3 py-2">
+                    <Text className="text-xs font-semibold text-zam-textPrimary mb-0.5">
                         {t("linkPreview.communityNote")}
                     </Text>
-                    <Text className="text-xs text-discord-textSecondary leading-relaxed">
+                    <Text className="text-xs text-zam-textSecondary leading-relaxed">
                         {segments(tweet.communityNote)}
                     </Text>
                 </View>
@@ -396,9 +421,9 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                             strokeWidth={2}
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="w-3.5 h-3.5 text-discord-textMuted"
+                            className="w-3.5 h-3.5 text-zam-textMuted"
                         />
-                        <Text className="text-xs tabular-nums text-discord-textMuted">
+                        <Text className="text-xs tabular-nums text-zam-textMuted">
                             {compactCount(stat.n, intlLocale())}
                         </Text>
                     </View>
@@ -407,23 +432,23 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                     <View className="ms-auto flex-row items-center gap-1">
                         {tweet.createdAt ? (
                             <>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {messageTimestamp(tweet.createdAt)}
                                 </Text>
                                 <Text
                                     aria-hidden
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
                                     ·
                                 </Text>
                             </>
                         ) : null}
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("linkPreview.xTwitter")}
                         </Text>
                     </View>
                 ) : tweet.createdAt ? (
-                    <Text className="ms-auto text-xs text-discord-textMuted">
+                    <Text className="ms-auto text-xs text-zam-textMuted">
                         {messageTimestamp(tweet.createdAt)}
                     </Text>
                 ) : null}
@@ -438,10 +463,16 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         const prev = nav.prevIndex;
         const next = nav.nextIndex;
         if (!photo) return null;
+        // The grid's medium thumb (already loaded) stands in, in a box
+        // sized from the media dims, until the original arrives; the
+        // neighbours carry the same so a step or swipe lands on a sized,
+        // painted image instead of an empty 0x0 one.
         return (
             <Lightbox
                 src={photo.url}
                 alt={photo.alt ?? ""}
+                placeholders={viewerItem(photo).placeholders}
+                dims={viewerItem(photo).dims}
                 onClose={() => setLightboxIndex(null)}
                 onPrev={
                     prev !== null ? () => setLightboxIndex(prev) : undefined
@@ -449,6 +480,10 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                 onNext={
                     next !== null ? () => setLightboxIndex(next) : undefined
                 }
+                neighbours={{
+                    prev: prev !== null ? viewerItem(photos[prev]) : null,
+                    next: next !== null ? viewerItem(photos[next]) : null,
+                }}
                 position={galleryPositionLabel(photos.length, lightboxIndex)}
             />
         );
@@ -457,18 +492,27 @@ export default function TweetCard({ tweet, nested = false }: Props) {
     return (
         <>
             {nested ? (
-                <View className="flex flex-col gap-2 rounded border border-discord-divider p-2.5 min-w-0">
+                <View className="flex flex-col gap-2 rounded border border-zam-divider p-2.5 min-w-0">
                     {body}
                 </View>
             ) : (
-                <View className="mt-2 flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary">
+                <View className="mt-2 flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary">
                     {/* Left accent bar */}
-                    <View className="w-1 flex-shrink-0 bg-discord-accent" />
+                    <View className="w-1 flex-shrink-0 bg-zam-accent" />
                     <View className="flex flex-1 min-w-0 flex-col p-3 gap-2">
                         {body}
                     </View>
                 </View>
             )}
+            {gifViewer ? (
+                <Lightbox
+                    src={gifViewer.url}
+                    kind="video"
+                    poster={gifViewer.thumbnail}
+                    alt={gifViewer.alt ?? ""}
+                    onClose={() => setGifViewer(null)}
+                />
+            ) : null}
             {lightbox}
         </>
     );

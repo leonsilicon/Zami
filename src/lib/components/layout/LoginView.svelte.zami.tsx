@@ -753,13 +753,13 @@ export default function LoginView({
                 keyboardShouldPersistTaps="handled"
                 bottomOffset={16}
             >
-                <View className="flex-1 flex-row items-center justify-center bg-discord-backgroundTertiary p-4">
+                <View className="flex-1 flex-row items-center justify-center bg-zam-backgroundTertiary p-4">
                     <View className="w-full max-w-md">
                         {/* Card */}
-                        <View className="bg-discord-background rounded-lg shadow-2xl p-8">
+                        <View className="bg-zam-background rounded-lg shadow-2xl p-8">
                             {/* Header */}
                             <View className="items-center mb-8">
-                                <View className="items-center justify-center w-16 h-16 rounded-2xl bg-discord-accent mb-4">
+                                <View className="items-center justify-center w-16 h-16 rounded-2xl bg-zam-accent mb-4">
                                     <Text className="text-3xl font-bold text-white">
                                         #
                                     </Text>
@@ -768,13 +768,13 @@ export default function LoginView({
                                     <>
                                         <Text
                                             accessibilityRole="header"
-                                            className="text-2xl font-bold text-discord-textPrimary text-center"
+                                            className="text-2xl font-bold text-zam-textPrimary text-center"
                                         >
                                             {isAddAccountMode
                                                 ? t("loginView.addAnAccount")
                                                 : t("loginView.welcomeBack")}
                                         </Text>
-                                        <Text className="text-discord-textSecondary mt-1 text-center">
+                                        <Text className="text-zam-textSecondary mt-1 text-center">
                                             {isAddAccountMode
                                                 ? t(
                                                       "loginView.signInWithAnotherMatrixAccount",
@@ -788,11 +788,11 @@ export default function LoginView({
                                     <>
                                         <Text
                                             accessibilityRole="header"
-                                            className="text-2xl font-bold text-discord-textPrimary text-center"
+                                            className="text-2xl font-bold text-zam-textPrimary text-center"
                                         >
                                             {t("loginView.createAnAccount")}
                                         </Text>
-                                        <Text className="text-discord-textSecondary mt-1 text-center">
+                                        <Text className="text-zam-textSecondary mt-1 text-center">
                                             {t(
                                                 "loginView.registerOnAMatrixHomeserver",
                                             )}
@@ -806,9 +806,9 @@ export default function LoginView({
                                 <View
                                     nativeID="login-error"
                                     accessibilityRole="alert"
-                                    className="mb-4 p-3 bg-discord-danger/10 border border-discord-danger/30 rounded-lg"
+                                    className="mb-4 p-3 bg-zam-danger/10 border border-zam-danger/30 rounded-lg"
                                 >
-                                    <Text className="text-discord-danger text-sm">
+                                    <Text className="text-zam-danger text-sm">
                                         {error}
                                     </Text>
                                 </View>
@@ -818,10 +818,10 @@ export default function LoginView({
                             {statusMsg && isLoading ? (
                                 <View
                                     accessibilityLiveRegion="polite"
-                                    className="mb-4 p-3 bg-discord-accent/10 border border-discord-accent/30 rounded-lg flex-row items-center gap-3"
+                                    className="mb-4 p-3 bg-zam-accent/10 border border-zam-accent/30 rounded-lg flex-row items-center gap-3"
                                 >
-                                    <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full flex-shrink-0" />
-                                    <Text className="flex-1 text-discord-accent text-sm">
+                                    <Spin className="w-4 h-4 border-2 border-zam-accent border-t-transparent rounded-full flex-shrink-0" />
+                                    <Text className="flex-1 text-zam-accent text-sm">
                                         {statusMsg}
                                     </Text>
                                 </View>
@@ -831,7 +831,7 @@ export default function LoginView({
                                 until answered: the form's values are mid-submission. */}
                             {prompt ? (
                                 <View
-                                    className="gap-3 p-4 rounded-lg bg-discord-backgroundSecondary border border-discord-divider"
+                                    className="gap-3 p-4 rounded-lg bg-zam-backgroundSecondary border border-zam-divider"
                                     role="group"
                                     aria-labelledby="reg-stage-title"
                                 >
@@ -839,15 +839,15 @@ export default function LoginView({
                                         <>
                                             <Text
                                                 nativeID="reg-stage-title"
-                                                className="text-sm font-semibold text-discord-textPrimary"
+                                                className="text-sm font-semibold text-zam-textPrimary"
                                             >
                                                 {t("registration.tokenTitle")}
                                             </Text>
                                             <Text
                                                 className={`text-xs ${
                                                     prompt.retry
-                                                        ? "text-discord-danger"
-                                                        : "text-discord-textMuted"
+                                                        ? "text-zam-danger"
+                                                        : "text-zam-textMuted"
                                                 }`}
                                             >
                                                 {prompt.retry
@@ -874,14 +874,14 @@ export default function LoginView({
                                                 accessibilityLabel={t(
                                                     "loginView.registrationToken",
                                                 )}
-                                                placeholderTextColorClassName="accent-discord-textMuted"
+                                                placeholderTextColorClassName="accent-zam-textMuted"
                                                 onSubmitEditing={() => {
                                                     if (stageToken.trim())
                                                         answerStage(
                                                             stageToken.trim(),
                                                         );
                                                 }}
-                                                className="w-full px-3 py-2.5 bg-discord-background text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none text-sm"
+                                                className="w-full px-3 py-2.5 bg-zam-background text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none text-sm"
                                             />
                                             <View className="flex-row gap-2">
                                                 <Pressable
@@ -894,7 +894,7 @@ export default function LoginView({
                                                     disabled={
                                                         !stageToken.trim()
                                                     }
-                                                    className="flex-1 items-center py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60"
+                                                    className="flex-1 items-center py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60"
                                                 >
                                                     <Text className="text-white font-semibold text-sm">
                                                         {t(
@@ -907,9 +907,9 @@ export default function LoginView({
                                                     onPress={() =>
                                                         answerStage(null)
                                                     }
-                                                    className="px-4 py-2 bg-discord-messageHover rounded"
+                                                    className="px-4 py-2 bg-zam-messageHover rounded"
                                                 >
-                                                    <Text className="text-discord-textPrimary text-sm">
+                                                    <Text className="text-zam-textPrimary text-sm">
                                                         {t("common.cancel")}
                                                     </Text>
                                                 </Pressable>
@@ -919,11 +919,11 @@ export default function LoginView({
                                         <>
                                             <Text
                                                 nativeID="reg-stage-title"
-                                                className="text-sm font-semibold text-discord-textPrimary"
+                                                className="text-sm font-semibold text-zam-textPrimary"
                                             >
                                                 {t("registration.termsTitle")}
                                             </Text>
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {t("registration.termsBody", {
                                                     server: serverHost,
                                                 })}
@@ -939,7 +939,7 @@ export default function LoginView({
                                                                     policy.url,
                                                                 )
                                                             }
-                                                            className="text-sm text-discord-accent hover:underline"
+                                                            className="text-sm text-zam-accent hover:underline"
                                                         >
                                                             {policy.name}
                                                         </Text>
@@ -952,7 +952,7 @@ export default function LoginView({
                                                 label={t(
                                                     "registration.termsAccept",
                                                 )}
-                                                labelClassName="flex-1 text-sm text-discord-textSecondary"
+                                                labelClassName="flex-1 text-sm text-zam-textSecondary"
                                                 className="items-start gap-2"
                                             />
                                             <View className="flex-row gap-2">
@@ -962,7 +962,7 @@ export default function LoginView({
                                                         answerStage("accepted")
                                                     }
                                                     disabled={!stageAccepted}
-                                                    className="flex-1 items-center py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60"
+                                                    className="flex-1 items-center py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60"
                                                 >
                                                     <Text className="text-white font-semibold text-sm">
                                                         {t(
@@ -975,9 +975,9 @@ export default function LoginView({
                                                     onPress={() =>
                                                         answerStage(null)
                                                     }
-                                                    className="px-4 py-2 bg-discord-messageHover rounded"
+                                                    className="px-4 py-2 bg-zam-messageHover rounded"
                                                 >
-                                                    <Text className="text-discord-textPrimary text-sm">
+                                                    <Text className="text-zam-textPrimary text-sm">
                                                         {t("common.cancel")}
                                                     </Text>
                                                 </Pressable>
@@ -987,13 +987,13 @@ export default function LoginView({
                                         <>
                                             <Text
                                                 nativeID="reg-stage-title"
-                                                className="text-sm font-semibold text-discord-textPrimary"
+                                                className="text-sm font-semibold text-zam-textPrimary"
                                             >
                                                 {t("registration.emailTitle")}
                                             </Text>
                                             {!stageEmailSent ? (
                                                 <>
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "registration.emailBody",
                                                             {
@@ -1017,12 +1017,12 @@ export default function LoginView({
                                                         accessibilityLabel={t(
                                                             "registration.emailPlaceholder",
                                                         )}
-                                                        placeholderTextColorClassName="accent-discord-textMuted"
+                                                        placeholderTextColorClassName="accent-zam-textMuted"
                                                         editable={!stageBusy}
                                                         onSubmitEditing={() =>
                                                             void sendStageEmail()
                                                         }
-                                                        className="w-full px-3 py-2.5 bg-discord-background text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none text-sm disabled:opacity-60"
+                                                        className="w-full px-3 py-2.5 bg-zam-background text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none text-sm disabled:opacity-60"
                                                     />
                                                     <View className="flex-row gap-2">
                                                         <Pressable
@@ -1034,7 +1034,7 @@ export default function LoginView({
                                                                 !stageEmail.trim() ||
                                                                 stageBusy
                                                             }
-                                                            className="flex-1 items-center py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60"
+                                                            className="flex-1 items-center py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60"
                                                         >
                                                             <Text className="text-white font-semibold text-sm">
                                                                 {stageBusy
@@ -1053,9 +1053,9 @@ export default function LoginView({
                                                                     null,
                                                                 )
                                                             }
-                                                            className="px-4 py-2 bg-discord-messageHover rounded"
+                                                            className="px-4 py-2 bg-zam-messageHover rounded"
                                                         >
-                                                            <Text className="text-discord-textPrimary text-sm">
+                                                            <Text className="text-zam-textPrimary text-sm">
                                                                 {t(
                                                                     "common.cancel",
                                                                 )}
@@ -1068,8 +1068,8 @@ export default function LoginView({
                                                     <Text
                                                         className={`text-xs ${
                                                             prompt.sent
-                                                                ? "text-discord-warning"
-                                                                : "text-discord-textMuted"
+                                                                ? "text-zam-warning"
+                                                                : "text-zam-textMuted"
                                                         }`}
                                                     >
                                                         {prompt.sent
@@ -1091,7 +1091,7 @@ export default function LoginView({
                                                                     "confirmed",
                                                                 )
                                                             }
-                                                            className="flex-1 items-center py-2 bg-discord-accent hover:bg-discord-accentHover rounded"
+                                                            className="flex-1 items-center py-2 bg-zam-accent hover:bg-zam-accentHover rounded"
                                                         >
                                                             <Text className="text-white font-semibold text-sm">
                                                                 {t(
@@ -1106,9 +1106,9 @@ export default function LoginView({
                                                                     null,
                                                                 )
                                                             }
-                                                            className="px-4 py-2 bg-discord-messageHover rounded"
+                                                            className="px-4 py-2 bg-zam-messageHover rounded"
                                                         >
-                                                            <Text className="text-discord-textPrimary text-sm">
+                                                            <Text className="text-zam-textPrimary text-sm">
                                                                 {t(
                                                                     "common.cancel",
                                                                 )}
@@ -1122,7 +1122,7 @@ export default function LoginView({
                                         <>
                                             <Text
                                                 nativeID="reg-stage-title"
-                                                className="text-sm font-semibold text-discord-textPrimary"
+                                                className="text-sm font-semibold text-zam-textPrimary"
                                             >
                                                 {prompt.stage ===
                                                 "m.login.recaptcha"
@@ -1133,7 +1133,7 @@ export default function LoginView({
                                                           "registration.fallbackTitle",
                                                       )}
                                             </Text>
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {prompt.stage ===
                                                 "m.login.recaptcha"
                                                     ? t(
@@ -1159,7 +1159,7 @@ export default function LoginView({
                                                     onPress={() =>
                                                         openInApp(prompt.url)
                                                     }
-                                                    className="px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded"
+                                                    className="px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded"
                                                 >
                                                     <Text className="text-white font-semibold text-sm">
                                                         {t(
@@ -1172,9 +1172,9 @@ export default function LoginView({
                                                     onPress={() =>
                                                         answerStage("done")
                                                     }
-                                                    className="px-4 py-2 bg-discord-messageHover rounded"
+                                                    className="px-4 py-2 bg-zam-messageHover rounded"
                                                 >
-                                                    <Text className="text-discord-textPrimary text-sm">
+                                                    <Text className="text-zam-textPrimary text-sm">
                                                         {t(
                                                             "registration.stepDone",
                                                         )}
@@ -1187,7 +1187,7 @@ export default function LoginView({
                                                     }
                                                     className="px-4 py-2"
                                                 >
-                                                    <Text className="text-discord-textMuted hover:text-discord-textPrimary text-sm">
+                                                    <Text className="text-zam-textMuted hover:text-zam-textPrimary text-sm">
                                                         {t("common.cancel")}
                                                     </Text>
                                                 </Pressable>
@@ -1197,7 +1197,7 @@ export default function LoginView({
                                     {stageError ? (
                                         <Text
                                             accessibilityRole="alert"
-                                            className="text-sm text-discord-danger"
+                                            className="text-sm text-zam-danger"
                                         >
                                             {stageError}
                                         </Text>
@@ -1209,7 +1209,7 @@ export default function LoginView({
                             <View className={stage ? "hidden" : "gap-4"}>
                                 {/* Homeserver */}
                                 <View>
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                         {t("loginView.homeserver")}
                                     </Text>
                                     {/* The lookup spinner sits inside the field so it never
@@ -1232,14 +1232,14 @@ export default function LoginView({
                                                 submitOrFocus(usernameInput)
                                             }
                                             placeholder={defaultHomeserver}
-                                            placeholderTextColorClassName="accent-discord-textMuted"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
                                             editable={!isLoading}
                                             keyboardType="url"
                                             textContentType="URL"
                                             autoCapitalize="none"
                                             autoCorrect={false}
                                             spellCheck={false}
-                                            className="w-full ps-3 pe-9 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
+                                            className="w-full ps-3 pe-9 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
                                         />
                                         {optionsLoading ? (
                                             // Centred by the flex wrapper, not a translate:
@@ -1249,11 +1249,11 @@ export default function LoginView({
                                                 pointerEvents="none"
                                                 className="absolute inset-y-0 end-3 justify-center pointer-events-none"
                                             >
-                                                <Spin className="w-4 h-4 border-2 border-discord-textMuted/40 border-t-discord-textMuted rounded-full" />
+                                                <Spin className="w-4 h-4 border-2 border-zam-textMuted/40 border-t-zam-textMuted rounded-full" />
                                             </View>
                                         ) : null}
                                     </View>
-                                    <Text className="mt-1.5 text-xs text-discord-textMuted">
+                                    <Text className="mt-1.5 text-xs text-zam-textMuted">
                                         {mode === "register"
                                             ? t(
                                                   "loginView.homeserverHintRegister",
@@ -1265,9 +1265,9 @@ export default function LoginView({
                                 {registrationClosed ? (
                                     <View
                                         accessibilityLiveRegion="polite"
-                                        className="p-3 rounded-lg bg-discord-warning/10 border border-discord-warning/30 gap-2"
+                                        className="p-3 rounded-lg bg-zam-warning/10 border border-zam-warning/30 gap-2"
                                     >
-                                        <Text className="text-sm text-discord-textPrimary">
+                                        <Text className="text-sm text-zam-textPrimary">
                                             {t("registration.closedOnServer", {
                                                 server: serverHost,
                                             })}
@@ -1279,7 +1279,7 @@ export default function LoginView({
                                                 onPress={usePublicServer}
                                                 className="self-start"
                                             >
-                                                <Text className="text-sm text-discord-accent hover:underline font-medium">
+                                                <Text className="text-sm text-zam-accent hover:underline font-medium">
                                                     {t(
                                                         "registration.useOtherServer",
                                                         {
@@ -1298,7 +1298,7 @@ export default function LoginView({
                                     <>
                                         {/* Username */}
                                         <View>
-                                            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                 {t("loginView.username")}
                                             </Text>
                                             <TextInput
@@ -1318,14 +1318,14 @@ export default function LoginView({
                                                         ? `@you:${new URL(defaultHomeserver).hostname}`
                                                         : "yourusername"
                                                 }
-                                                placeholderTextColorClassName="accent-discord-textMuted"
+                                                placeholderTextColorClassName="accent-zam-textMuted"
                                                 editable={!isLoading}
                                                 autoComplete="username"
                                                 textContentType="username"
                                                 autoCapitalize="none"
                                                 autoCorrect={false}
                                                 spellCheck={false}
-                                                className="w-full px-3 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
+                                                className="w-full px-3 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
                                             />
                                             {mode === "register" ? (
                                                 <Text
@@ -1333,12 +1333,12 @@ export default function LoginView({
                                                     className={`mt-1.5 text-xs ${
                                                         localUsernameIssue ||
                                                         nameTaken
-                                                            ? "text-discord-danger"
+                                                            ? "text-zam-danger"
                                                             : nameCheck?.name ===
                                                                     name &&
                                                                 nameCheck.available
-                                                              ? "text-discord-online"
-                                                              : "text-discord-textMuted"
+                                                              ? "text-zam-online"
+                                                              : "text-zam-textMuted"
                                                     }`}
                                                 >
                                                     {!name
@@ -1373,7 +1373,7 @@ export default function LoginView({
 
                                         {/* Password */}
                                         <View>
-                                            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                 {t("loginView.password")}
                                             </Text>
                                             <TextInput
@@ -1393,7 +1393,7 @@ export default function LoginView({
                                                     )
                                                 }
                                                 placeholder="••••••••••"
-                                                placeholderTextColorClassName="accent-discord-textMuted"
+                                                placeholderTextColorClassName="accent-zam-textMuted"
                                                 editable={!isLoading}
                                                 autoComplete={
                                                     mode === "register"
@@ -1407,13 +1407,13 @@ export default function LoginView({
                                                 }
                                                 autoCapitalize="none"
                                                 autoCorrect={false}
-                                                className="w-full px-3 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
+                                                className="w-full px-3 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
                                             />
                                         </View>
 
                                         {mode === "register" ? (
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                     {t(
                                                         "registration.confirmPassword",
                                                     )}
@@ -1437,18 +1437,18 @@ export default function LoginView({
                                                         )
                                                     }
                                                     placeholder="••••••••••"
-                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                     editable={!isLoading}
                                                     autoComplete="new-password"
                                                     textContentType="newPassword"
                                                     autoCapitalize="none"
                                                     autoCorrect={false}
-                                                    className="w-full px-3 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
+                                                    className="w-full px-3 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
                                                 />
                                                 {passwordsMismatch ? (
                                                     <Text
                                                         nativeID="confirm-hint"
-                                                        className="mt-1.5 text-xs text-discord-danger"
+                                                        className="mt-1.5 text-xs text-zam-danger"
                                                     >
                                                         {t(
                                                             "registration.passwordsDontMatch",
@@ -1463,12 +1463,12 @@ export default function LoginView({
                                         {mode === "register" &&
                                         showTokenField ? (
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                     {t(
                                                         "loginView.registrationToken",
                                                     )}
                                                     {!tokenRequired ? (
-                                                        <Text className="normal-case font-normal text-discord-textMuted">
+                                                        <Text className="normal-case font-normal text-zam-textMuted">
                                                             {" "}
                                                             {t(
                                                                 "loginView.ifRequired",
@@ -1477,7 +1477,7 @@ export default function LoginView({
                                                     ) : null}
                                                 </Text>
                                                 {tokenRequired ? (
-                                                    <Text className="mb-1.5 text-xs text-discord-textMuted">
+                                                    <Text className="mb-1.5 text-xs text-zam-textMuted">
                                                         {t(
                                                             "registration.tokenBody",
                                                             {
@@ -1506,13 +1506,13 @@ export default function LoginView({
                                                                   "loginView.leaveBlankIfNotRequired",
                                                               )
                                                     }
-                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                     autoComplete="off"
                                                     autoCapitalize="none"
                                                     autoCorrect={false}
                                                     spellCheck={false}
                                                     editable={!isLoading}
-                                                    className="w-full px-3 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
+                                                    className="w-full px-3 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none transition-colors disabled:opacity-60 text-sm"
                                                 />
                                             </View>
                                         ) : null}
@@ -1523,8 +1523,8 @@ export default function LoginView({
                                     <>
                                         {/* The provider's own page signs in and signs up; say so
                                             before sending anyone there, so leaving Zam is expected. */}
-                                        <View className="p-3 rounded-lg bg-discord-backgroundSecondary border border-discord-divider">
-                                            <Text className="text-sm text-discord-textSecondary">
+                                        <View className="p-3 rounded-lg bg-zam-backgroundSecondary border border-zam-divider">
+                                            <Text className="text-sm text-zam-textSecondary">
                                                 {mode === "register"
                                                     ? t(
                                                           "loginView.oauthRegisterExplainer",
@@ -1549,7 +1549,7 @@ export default function LoginView({
                                             disabled={
                                                 isLoading || !optionsCurrent
                                             }
-                                            className="w-full items-center py-2.5 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                            className="w-full items-center py-2.5 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
                                             {isLoading ? (
                                                 <View className="flex-row items-center justify-center gap-2">
@@ -1586,7 +1586,7 @@ export default function LoginView({
                                         {ssoHint ? (
                                             <Text
                                                 accessibilityLiveRegion="polite"
-                                                className="text-sm text-center text-discord-textSecondary"
+                                                className="text-sm text-center text-zam-textSecondary"
                                             >
                                                 {ssoHint}
                                             </Text>
@@ -1598,9 +1598,9 @@ export default function LoginView({
                                                     isLoading || !optionsCurrent
                                                 }
                                                 onPress={() => setShowQr(true)}
-                                                className="w-full items-center py-2.5 bg-discord-backgroundTertiary hover:bg-discord-messageHover rounded transition-colors disabled:opacity-60"
+                                                className="w-full items-center py-2.5 bg-zam-backgroundTertiary hover:bg-zam-messageHover rounded transition-colors disabled:opacity-60"
                                             >
-                                                <Text className="text-discord-textPrimary text-sm">
+                                                <Text className="text-zam-textPrimary text-sm">
                                                     {t("qrLogin.signInButton")}
                                                 </Text>
                                             </Pressable>
@@ -1618,7 +1618,7 @@ export default function LoginView({
                                             !optionsCurrent ||
                                             !canSubmitPasswordForm
                                         }
-                                        className="w-full items-center py-2.5 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                        className="w-full items-center py-2.5 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
                                         {isLoading ? (
                                             <View className="flex-row items-center justify-center gap-2">
@@ -1652,11 +1652,11 @@ export default function LoginView({
                                             accessibilityElementsHidden
                                             importantForAccessibility="no-hide-descendants"
                                         >
-                                            <View className="flex-1 h-px bg-discord-divider" />
-                                            <Text className="text-xs uppercase tracking-wide text-discord-textMuted">
+                                            <View className="flex-1 h-px bg-zam-divider" />
+                                            <Text className="text-xs uppercase tracking-wide text-zam-textMuted">
                                                 {t("loginView.or")}
                                             </Text>
-                                            <View className="flex-1 h-px bg-discord-divider" />
+                                            <View className="flex-1 h-px bg-zam-divider" />
                                         </View>
                                     ) : (
                                         <View className="mt-4" />
@@ -1674,9 +1674,9 @@ export default function LoginView({
                                                         isLoading ||
                                                         !optionsCurrent
                                                     }
-                                                    className="w-full items-center py-2.5 bg-discord-backgroundSecondary hover:bg-discord-messageHover rounded border border-discord-divider transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                    className="w-full items-center py-2.5 bg-zam-backgroundSecondary hover:bg-zam-messageHover rounded border border-zam-divider transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                                                 >
-                                                    <Text className="text-discord-textPrimary font-semibold text-sm">
+                                                    <Text className="text-zam-textPrimary font-semibold text-sm">
                                                         {t(
                                                             "loginView.continueWith",
                                                             {
@@ -1696,15 +1696,15 @@ export default function LoginView({
                                                 className={`w-full items-center py-2.5 ${
                                                     showPasswordForm &&
                                                     !sso.preferred
-                                                        ? "bg-discord-backgroundSecondary hover:bg-discord-messageHover border border-discord-divider"
-                                                        : "bg-discord-accent hover:bg-discord-accentHover"
+                                                        ? "bg-zam-backgroundSecondary hover:bg-zam-messageHover border border-zam-divider"
+                                                        : "bg-zam-accent hover:bg-zam-accentHover"
                                                 } rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed`}
                                             >
                                                 <Text
                                                     className={`${
                                                         showPasswordForm &&
                                                         !sso.preferred
-                                                            ? "text-discord-textPrimary"
+                                                            ? "text-zam-textPrimary"
                                                             : "text-white"
                                                     } font-semibold text-sm`}
                                                 >
@@ -1718,7 +1718,7 @@ export default function LoginView({
                                     {ssoHint ? (
                                         <Text
                                             accessibilityLiveRegion="polite"
-                                            className="mt-3 text-sm text-center text-discord-textSecondary"
+                                            className="mt-3 text-sm text-center text-zam-textSecondary"
                                         >
                                             {ssoHint}
                                         </Text>
@@ -1730,7 +1730,7 @@ export default function LoginView({
                             <View className="mt-5 flex-row flex-wrap items-center justify-center gap-1">
                                 {mode === "login" ? (
                                     <>
-                                        <Text className="text-sm text-discord-textMuted">
+                                        <Text className="text-sm text-zam-textMuted">
                                             {t("loginView.donTHaveAnAccount")}
                                         </Text>
                                         <Pressable
@@ -1738,14 +1738,14 @@ export default function LoginView({
                                             onPress={() => setMode("register")}
                                             disabled={!!stage}
                                         >
-                                            <Text className="text-sm text-discord-accent hover:underline font-medium">
+                                            <Text className="text-sm text-zam-accent hover:underline font-medium">
                                                 {t("loginView.register")}
                                             </Text>
                                         </Pressable>
                                     </>
                                 ) : (
                                     <>
-                                        <Text className="text-sm text-discord-textMuted">
+                                        <Text className="text-sm text-zam-textMuted">
                                             {t(
                                                 "loginView.alreadyHaveAnAccount",
                                             )}
@@ -1755,7 +1755,7 @@ export default function LoginView({
                                             onPress={() => setMode("login")}
                                             disabled={!!stage}
                                         >
-                                            <Text className="text-sm text-discord-accent hover:underline font-medium">
+                                            <Text className="text-sm text-zam-accent hover:underline font-medium">
                                                 {t("loginView.signIn2")}
                                             </Text>
                                         </Pressable>
@@ -1780,15 +1780,15 @@ export default function LoginView({
                                         {showAdvanced ? (
                                             <ChevronDown
                                                 size={12}
-                                                className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                                className="text-xs text-zam-textMuted hover:text-zam-textPrimary"
                                             />
                                         ) : (
                                             <ChevronRight
                                                 size={12}
-                                                className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                                className="text-xs text-zam-textMuted hover:text-zam-textPrimary"
                                             />
                                         )}
-                                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                        <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                             {t("loginView.advancedOptions")}
                                         </Text>
                                     </View>
@@ -1804,12 +1804,12 @@ export default function LoginView({
                                         className="mt-2 items-start gap-3"
                                         label={
                                             <View className="flex-1">
-                                                <Text className="text-sm text-discord-textSecondary">
+                                                <Text className="text-sm text-zam-textSecondary">
                                                     {t(
                                                         "loginView.useSlidingSync",
                                                     )}
                                                 </Text>
-                                                <Text className="text-xs text-discord-textMuted">
+                                                <Text className="text-xs text-zam-textMuted">
                                                     {t(
                                                         "loginView.fasterStartupOnServersThatSupport",
                                                     )}
@@ -1826,7 +1826,7 @@ export default function LoginView({
                                         accessibilityRole="button"
                                         onPress={onBackToActive}
                                     >
-                                        <Text className="text-sm text-discord-accent hover:underline font-medium">
+                                        <Text className="text-sm text-zam-accent hover:underline font-medium">
                                             {t("loginView.backTo", {
                                                 activeUserId,
                                             })}
@@ -1836,8 +1836,8 @@ export default function LoginView({
                             ) : null}
 
                             {dormantAccounts.length > 0 ? (
-                                <View className="mt-5 pt-4 border-t border-discord-divider">
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                <View className="mt-5 pt-4 border-t border-zam-divider">
+                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                         {t("loginView.orContinueAs")}
                                     </Text>
                                     <View className="gap-1">
@@ -1849,7 +1849,7 @@ export default function LoginView({
                                                     onContinueAs(account.userId)
                                                 }
                                                 disabled={isLoading}
-                                                className="w-full flex-row items-center gap-2.5 p-2 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                className="w-full flex-row items-center gap-2.5 p-2 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                             >
                                                 <AccountAvatar
                                                     account={account}
@@ -1858,14 +1858,14 @@ export default function LoginView({
                                                 <View className="flex-1 min-w-0">
                                                     <Text
                                                         numberOfLines={1}
-                                                        className="text-sm text-discord-textPrimary"
+                                                        className="text-sm text-zam-textPrimary"
                                                     >
                                                         {account.displayName ??
                                                             account.userId}
                                                     </Text>
                                                     <Text
                                                         numberOfLines={1}
-                                                        className="text-xs text-discord-textMuted"
+                                                        className="text-xs text-zam-textMuted"
                                                     >
                                                         {account.userId}
                                                     </Text>
@@ -1876,7 +1876,7 @@ export default function LoginView({
                                 </View>
                             ) : null}
 
-                            <Text className="text-center text-xs text-discord-textMuted mt-4 leading-relaxed">
+                            <Text className="text-center text-xs text-zam-textMuted mt-4 leading-relaxed">
                                 {t(
                                     "loginView.yourCredentialsAreSentDirectlyTo",
                                 )}
@@ -1887,21 +1887,21 @@ export default function LoginView({
                                     <Text
                                         accessibilityRole="link"
                                         onPress={() => openLink(WEBSITE_URL)}
-                                        className="text-xs text-discord-accent hover:underline"
+                                        className="text-xs text-zam-accent hover:underline"
                                     >
                                         {t("links.website")}
                                     </Text>
                                     <Text
                                         accessibilityRole="link"
                                         onPress={() => openLink(DOWNLOAD_URL)}
-                                        className="text-xs text-discord-accent hover:underline"
+                                        className="text-xs text-zam-accent hover:underline"
                                     >
                                         {t("links.downloadApps")}
                                     </Text>
                                     <Text
                                         accessibilityRole="link"
                                         onPress={() => openLink(GITHUB_URL)}
-                                        className="text-xs text-discord-accent hover:underline"
+                                        className="text-xs text-zam-accent hover:underline"
                                     >
                                         {t("links.github")}
                                     </Text>

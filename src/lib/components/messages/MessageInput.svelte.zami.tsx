@@ -103,7 +103,7 @@ import {
     buildFormattedBody as buildBody,
     mentionsFromFormatted,
 } from "$lib/utils/messageBody";
-import { buildReplyContent } from "$lib/utils/replyContent";
+import { buildReplyContent, withReplyMention } from "$lib/utils/replyContent";
 import {
     buildTextContent,
     buildFormattedContent,
@@ -290,11 +290,11 @@ const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
  *  corners of mention and spoiler pills, which nested text can't have. */
 const DECORATIONS: Record<string, string> = {
     "composer-mention":
-        "text-[rgb(var(--discord-accent-rgb)_/_1)] bg-[rgb(var(--discord-accent-rgb)_/_0.18)] font-medium",
-    "composer-custom-emoji": "text-discord-textPrimary",
-    "composer-link": "text-[rgb(var(--discord-accent-rgb)_/_1)] underline",
-    "composer-spoiler": "text-transparent bg-[var(--discord-spoiler-bg)]",
-    code: "bg-discord-backgroundTertiary text-[14px]",
+        "text-[rgb(var(--zam-accent-rgb)_/_1)] bg-[rgb(var(--zam-accent-rgb)_/_0.18)] font-medium",
+    "composer-custom-emoji": "text-zam-textPrimary",
+    "composer-link": "text-[rgb(var(--zam-accent-rgb)_/_1)] underline",
+    "composer-spoiler": "text-transparent bg-[var(--zam-spoiler-bg)]",
+    code: "bg-zam-backgroundTertiary text-[14px]",
     del: "line-through",
     strong: "font-bold",
     em: "italic",
@@ -1341,6 +1341,14 @@ export default function MessageInput({
               ? t("messageInput.replyTo", { replyTargetName })
               : t("messageInput.message", { roomName });
 
+    // Whether this reply pings the author. Starts from the setting each time a
+    // different message is picked to reply to; the reply bar toggles it.
+    const [replyPing, setReplyPing] = useState(true);
+    const replyToEventId = replyToEvent?.getId();
+    useEffect(() => {
+        setReplyPing(settingsState.replyPingDefault);
+    }, [replyToEventId]);
+
     // Focus textarea when reply is set
     useEffect(() => {
         if (replyToEvent) {
@@ -1660,9 +1668,18 @@ export default function MessageInput({
         renderComposer(0);
 
         try {
-            const mentions = formatted
+            const baseMentions = formatted
                 ? mentionsFromFormatted(formatted)
                 : undefined;
+            const mentions =
+                command.kind === "emote"
+                    ? baseMentions
+                    : withReplyMention(
+                          baseMentions,
+                          replyTarget?.getSender(),
+                          replyPing,
+                          auth.userId,
+                      );
             if (command.kind === "emote") {
                 await sendEmote(
                     roomId,
@@ -1989,6 +2006,14 @@ export default function MessageInput({
             (useCaption || !trimmed)
                 ? (replyTarget.getId() ?? undefined)
                 : undefined;
+        const captionMentions = formatted
+            ? withReplyMention(
+                  mentionsFromFormatted(formatted),
+                  fileReplyToId ? replyTarget?.getSender() : undefined,
+                  replyPing,
+                  auth.userId,
+              )
+            : undefined;
         const fileRelation = (i: number) =>
             isThread || (i === 0 && fileReplyToId)
                 ? {
@@ -2050,7 +2075,12 @@ export default function MessageInput({
             })
         ) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const baseContent: Record<string, unknown> = replyToEvent
                 ? (buildReplyContent({
                       replyEventId: replyToEvent.getId()!,
@@ -2078,7 +2108,12 @@ export default function MessageInput({
         // blocked the next message behind a spinner. Reported in issue #40.
         if (trimmed && formatted && !useCaption) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const replyId = replyToEvent?.getId() ?? undefined;
             const threadArmed = createThreadArmedRef.current;
             setCreateThreadArmed(false);
@@ -2160,8 +2195,7 @@ export default function MessageInput({
                                           body: trimmed,
                                           formattedBody:
                                               formatted.html ?? undefined,
-                                          mentions:
-                                              mentionsFromFormatted(formatted),
+                                          mentions: captionMentions,
                                       }
                                     : undefined,
                                 i === 0 ? fileRelation(0) : threadOnlyRelation,
@@ -2211,7 +2245,7 @@ export default function MessageInput({
                                 {
                                     body: trimmed,
                                     formattedBody: html ?? undefined,
-                                    mentions: mentionsFromFormatted(formatted),
+                                    mentions: captionMentions,
                                 },
                                 fileRelation(i),
                                 transformOutgoingContent,
@@ -2868,7 +2902,7 @@ export default function MessageInput({
                 {typingUsers.length > 0 && (
                     <Text
                         numberOfLines={1}
-                        className="text-xs leading-4 text-discord-textMuted"
+                        className="text-xs leading-4 text-zam-textMuted"
                     >
                         {typingText()}
                     </Text>
@@ -2876,22 +2910,45 @@ export default function MessageInput({
             </View>
             {/* Reply preview bar */}
             {replyToEvent && (
-                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-discord-backgroundTertiary rounded-t-lg border-s-2 border-discord-accent">
+                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent">
                     <SvgIcon
                         d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
-                        className="w-4 h-4 text-discord-accent flex-shrink-0"
+                        className="w-4 h-4 text-zam-accent flex-shrink-0"
                     />
                     <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
-                        <Text className="text-xs text-discord-accent font-semibold flex-shrink-0">
+                        <Text className="text-xs text-zam-accent font-semibold flex-shrink-0">
                             {t("messageInput.replyingTo", { replyTargetName })}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="text-xs text-discord-textMuted min-w-0 flex-shrink"
+                            className="text-xs text-zam-textMuted min-w-0 flex-shrink"
                         >
                             {getReplyPreview()}
                         </Text>
                     </View>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setReplyPing(!replyPing)}
+                        className="flex-shrink-0 px-1 rounded transition-colors"
+                        accessibilityLabel={
+                            replyPing
+                                ? t("messageInput.pingOffTitle")
+                                : t("messageInput.pingOnTitle")
+                        }
+                        accessibilityState={{ selected: replyPing }}
+                    >
+                        <Text
+                            className={`text-xs font-bold ${
+                                replyPing
+                                    ? "text-zam-accent"
+                                    : "text-zam-textMuted hover:text-zam-textPrimary"
+                            }`}
+                        >
+                            {replyPing
+                                ? t("messageInput.pingOn")
+                                : t("messageInput.pingOff")}
+                        </Text>
+                    </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("messageInput.cancelReplyEsc")}
@@ -2900,7 +2957,7 @@ export default function MessageInput({
                     >
                         <SvgIcon
                             d={closeIcon}
-                            className="w-4 h-4 text-discord-textMuted"
+                            className="w-4 h-4 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -2910,15 +2967,15 @@ export default function MessageInput({
             {sendingRoomId === roomId && sendingFileCount > 0 && (
                 <View className="flex-row items-center gap-2 mb-2">
                     <Spin>
-                        <Loader2 className="w-3.5 h-3.5 text-discord-textMuted" />
+                        <Loader2 className="w-3.5 h-3.5 text-zam-textMuted" />
                     </Spin>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("messageInput.sendingAttachments", {
                             count: sendingFileCount,
                         })}
                     </Text>
                     {uploadPercent !== null && (
-                        <Text className="text-xs text-discord-textMuted tabular-nums">
+                        <Text className="text-xs text-zam-textMuted tabular-nums">
                             {uploadPercent}%
                         </Text>
                     )}
@@ -2948,7 +3005,7 @@ export default function MessageInput({
                                     { name: item.name },
                                 )}
                                 onPress={() => openRename(item)}
-                                className="w-20 h-20 rounded-lg bg-discord-backgroundTertiary flex-row items-center justify-center overflow-hidden border border-discord-divider hover:border-discord-accent transition-colors"
+                                className="w-20 h-20 rounded-lg bg-zam-backgroundTertiary flex-row items-center justify-center overflow-hidden border border-zam-divider hover:border-zam-accent transition-colors"
                             >
                                 {item.previewUrl &&
                                 item.file.type.startsWith("video/") ? (
@@ -2971,7 +3028,7 @@ export default function MessageInput({
                                 ) : (
                                     <SvgIcon
                                         d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"
-                                        className="w-8 h-8 text-discord-textMuted"
+                                        className="w-8 h-8 text-zam-textMuted"
                                     />
                                 )}
                             </Pressable>
@@ -2983,13 +3040,13 @@ export default function MessageInput({
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="text-[10px] text-discord-textMuted text-center leading-tight"
+                                    className="text-[10px] text-zam-textMuted text-center leading-tight"
                                 >
                                     {item.name}
                                 </Text>
                             </Pressable>
                             {item.direct && (
-                                <Text className="text-[10px] font-semibold text-discord-accent">
+                                <Text className="text-[10px] font-semibold text-zam-accent">
                                     {t("messageInput.directFile")}
                                 </Text>
                             )}
@@ -2998,11 +3055,11 @@ export default function MessageInput({
                                 accessibilityRole="button"
                                 accessibilityLabel={t("common.remove")}
                                 onPress={() => removeFromQueue(item.id)}
-                                className="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-discord-backgroundSecondary border border-discord-divider hover:bg-discord-messageHover flex-row items-center justify-center transition-colors"
+                                className="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-zam-backgroundSecondary border border-zam-divider hover:bg-zam-messageHover flex-row items-center justify-center transition-colors"
                             >
                                 <SvgIcon
                                     d={closeIcon}
-                                    className="w-3 h-3 text-discord-textMuted"
+                                    className="w-3 h-3 text-zam-textMuted"
                                 />
                             </Pressable>
                         </View>
@@ -3049,7 +3106,7 @@ export default function MessageInput({
             {/* Mention autocomplete picker */}
             <SuggestionsView suggestions={mention}>
                 {(mentionCandidates, mentionSelectedIdx) => (
-                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                    <View className="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg">
                         {mentionCandidates.map((member, i) => (
                             <Pressable
                                 // Upstream's `{#each}` is unkeyed: by index.
@@ -3063,7 +3120,7 @@ export default function MessageInput({
                                 onHoverIn={() => mention.setSelected(i)}
                                 className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
                                     i === mentionSelectedIdx
-                                        ? "bg-discord-messageHover"
+                                        ? "bg-zam-messageHover"
                                         : ""
                                 }`}
                             >
@@ -3077,13 +3134,13 @@ export default function MessageInput({
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-sm text-discord-textPrimary font-medium truncate"
+                                    className="flex-shrink text-sm text-zam-textPrimary font-medium truncate"
                                 >
                                     {member.rawDisplayName || member.userId}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs text-discord-textMuted truncate"
+                                    className="flex-shrink text-xs text-zam-textMuted truncate"
                                 >
                                     {member.userId}
                                 </Text>
@@ -3096,7 +3153,7 @@ export default function MessageInput({
             {/* Slash-command autocomplete picker */}
             <SuggestionsView suggestions={slash}>
                 {(slashCandidates, slashSelectedIdx) => (
-                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                    <View className="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg">
                         {slashCandidates.map((command, i) => (
                             <Pressable
                                 key={i}
@@ -3107,27 +3164,27 @@ export default function MessageInput({
                                 onHoverIn={() => slash.setSelected(i)}
                                 className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
                                     i === slashSelectedIdx
-                                        ? "bg-discord-messageHover"
+                                        ? "bg-zam-messageHover"
                                         : ""
                                 }`}
                             >
                                 <Text
                                     style={styles.mono}
-                                    className="text-sm text-discord-textPrimary flex-shrink-0"
+                                    className="text-sm text-zam-textPrimary flex-shrink-0"
                                 >
                                     /{command.name}
                                 </Text>
                                 {command.argHint && (
                                     <Text
                                         style={styles.mono}
-                                        className="text-xs text-discord-textMuted flex-shrink-0"
+                                        className="text-xs text-zam-textMuted flex-shrink-0"
                                     >
                                         {command.argHint}
                                     </Text>
                                 )}
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
+                                    className="flex-shrink text-xs text-zam-textMuted truncate ms-auto"
                                 >
                                     {command.description}
                                 </Text>
@@ -3139,10 +3196,10 @@ export default function MessageInput({
 
             {/* Armed "create thread" banner: mirrors the reply banner pattern */}
             {createThreadArmed && !isThread && (
-                <View className="flex-row items-center justify-between gap-2 px-3 py-1.5 bg-discord-backgroundSecondary rounded-t-lg">
-                    <Text className="flex-shrink text-xs text-discord-textMuted">
+                <View className="flex-row items-center justify-between gap-2 px-3 py-1.5 bg-zam-backgroundSecondary rounded-t-lg">
+                    <Text className="flex-shrink text-xs text-zam-textMuted">
                         {t("messageInput.yourNextMessageWillStartA")}{" "}
-                        <Text className="text-xs font-bold text-discord-textMuted">
+                        <Text className="text-xs font-bold text-zam-textMuted">
                             {t("messageInput.thread")}
                         </Text>
                     </Text>
@@ -3156,7 +3213,7 @@ export default function MessageInput({
                     >
                         <SvgIcon
                             d={closeIcon}
-                            className="w-3.5 h-3.5 text-discord-textMuted"
+                            className="w-3.5 h-3.5 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -3191,10 +3248,8 @@ export default function MessageInput({
                 // Zami: `.input-box:focus-within`'s border, from the TextInput's
                 // focus.
                 <View
-                    className={`relative flex-row items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5 border transition-colors ${
-                        focused
-                            ? "border-discord-accent/30"
-                            : "border-transparent"
+                    className={`relative flex-row items-end gap-2 bg-zam-backgroundSecondary rounded-lg px-2.5 py-2.5 border transition-colors ${
+                        focused ? "border-zam-accent/30" : "border-transparent"
                     } ${replyToEvent ? "rounded-ss-none" : ""}`}
                 >
                     {/* "+" actions menu */}
@@ -3219,14 +3274,11 @@ export default function MessageInput({
                                 }
                             }}
                             disabled={disabled}
-                            className={`relative p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40 ${
+                            className={`relative p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40 ${
                                 showActionsMenu ? "z-50" : ""
                             }`}
                         >
-                            <Plus
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Plus size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showActionsMenu &&
                             (isTouchscreen ? (
@@ -3274,7 +3326,7 @@ export default function MessageInput({
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="text-[16px] text-discord-textMuted"
+                                    className="text-[16px] text-zam-textMuted"
                                 >
                                     {composerPlaceholder}
                                 </Text>
@@ -3308,7 +3360,7 @@ export default function MessageInput({
                             // Zami: `.composer-editor`'s min-height and the 26px
                             // line upstream's `leading-relaxed` gives it, as
                             // padding around the TextInput's own line.
-                            className="w-full min-h-[32px] max-h-48 bg-transparent text-discord-textPrimary text-[16px] py-[6px]"
+                            className="w-full min-h-[32px] max-h-48 bg-transparent text-zam-textPrimary text-[16px] py-[6px]"
                         />
                     </View>
 
@@ -3332,11 +3384,11 @@ export default function MessageInput({
                             disabled={disabled}
                             className={`${
                                 isTouchscreen ? "hidden" : ""
-                            } p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40`}
+                            } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
                         >
                             <ImagePlay
                                 size={20}
-                                className="text-discord-textMuted"
+                                className="text-zam-textMuted"
                             />
                         </Pressable>
                         {showGifPicker &&
@@ -3388,13 +3440,10 @@ export default function MessageInput({
                             onPress={() => openPicker("sticker")}
                             className={`${
                                 isTouchscreen ? "hidden" : ""
-                            } p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40`}
+                            } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
                             disabled={disabled}
                         >
-                            <Sticker
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Sticker size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showStickerPicker &&
                             (isTouchscreen ? (
@@ -3437,13 +3486,10 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("common.emoji")}
                             onPress={() => openPicker("emoji")}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
                             disabled={disabled}
                         >
-                            <Smile
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Smile size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showEmojiPicker &&
                             (isTouchscreen ? (
@@ -3530,15 +3576,15 @@ export default function MessageInput({
                                     });
                                 }}
                                 disabled={disabled}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40"
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
                             >
                                 {btn.icon ? (
                                     <SvgIcon
                                         d={btn.icon}
-                                        className="w-5 h-5 text-discord-textMuted"
+                                        className="w-5 h-5 text-zam-textMuted"
                                     />
                                 ) : (
-                                    <Text className="text-xs font-semibold text-discord-textMuted">
+                                    <Text className="text-xs font-semibold text-zam-textMuted">
                                         {btn.label.slice(0, 2)}
                                     </Text>
                                 )}
@@ -3558,15 +3604,15 @@ export default function MessageInput({
                             isSending ||
                             disabled
                         }
-                        className="flex-shrink-0 p-1.5 rounded transition-colors hover:bg-discord-messageHover disabled:opacity-40"
+                        className="flex-shrink-0 p-1.5 rounded transition-colors hover:bg-zam-messageHover disabled:opacity-40"
                     >
                         {isSending ? (
                             // Zami: `border-current` → the button's text color.
                             <Spin
                                 className={`w-5 h-5 border-2 ${
                                     canSend
-                                        ? "border-discord-accent"
-                                        : "border-discord-textMuted"
+                                        ? "border-zam-accent"
+                                        : "border-zam-textMuted"
                                 } border-t-transparent rounded-full`}
                             />
                         ) : (
@@ -3574,8 +3620,8 @@ export default function MessageInput({
                                 size={20}
                                 className={
                                     canSend
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }
                             />
                         )}

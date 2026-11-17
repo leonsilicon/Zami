@@ -7,7 +7,7 @@
 import type { TextStyle, ViewStyle } from "react-native";
 
 export interface StyleContext {
-  /** A CSS custom property's value (`--discord-divider`), or undefined. */
+  /** A CSS custom property's value (`--zam-divider`), or undefined. */
   variable: (name: string) => string | number | undefined;
   /** The parent's font size in px, for `em` and `%` font sizes. */
   parentFontSize: number;

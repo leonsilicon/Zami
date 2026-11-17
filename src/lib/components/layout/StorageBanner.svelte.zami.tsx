@@ -46,17 +46,17 @@ export default function StorageBanner() {
     return (
         <View
             accessibilityRole="alert"
-            className={`flex-row max-w-full items-center gap-3 rounded-lg border bg-discord-backgroundSecondary px-4 py-2.5 shadow-lg ${
-                full ? "border-discord-danger/50" : "border-discord-warning/50"
+            className={`flex-row max-w-full items-center gap-3 rounded-lg border bg-zam-backgroundSecondary px-4 py-2.5 shadow-lg ${
+                full ? "border-zam-danger/50" : "border-zam-warning/50"
             }`}
         >
             <SvgIcon
                 d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
                 className={`h-5 w-5 flex-shrink-0 ${
-                    full ? "text-discord-danger" : "text-discord-warning"
+                    full ? "text-zam-danger" : "text-zam-warning"
                 }`}
             />
-            <Text className="flex-shrink min-w-0 text-sm text-discord-textPrimary">
+            <Text className="flex-shrink min-w-0 text-sm text-zam-textPrimary">
                 {full
                     ? t("storageBanner.outOfStorage")
                     : t("storageBanner.lowStorage", { free: freeText })}
@@ -67,7 +67,7 @@ export default function StorageBanner() {
                     accessibilityState={{ disabled: checking }}
                     onPress={() => void checkAgain()}
                     disabled={checking}
-                    className="flex-shrink-0 rounded bg-discord-accent px-3 py-1 hover:opacity-90 disabled:opacity-50"
+                    className="flex-shrink-0 rounded bg-zam-accent px-3 py-1 hover:opacity-90 disabled:opacity-50"
                 >
                     <Text className="text-sm font-medium text-white">
                         {t("storageBanner.checkAgain")}
@@ -82,7 +82,7 @@ export default function StorageBanner() {
                     )}
                     className="flex-shrink-0"
                 >
-                    <X size={16} className="text-discord-textMuted" />
+                    <X size={16} className="text-zam-textMuted" />
                 </Pressable>
             )}
         </View>

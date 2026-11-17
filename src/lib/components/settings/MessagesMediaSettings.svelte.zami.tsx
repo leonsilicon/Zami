@@ -9,6 +9,7 @@ import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import {
     setShowMatrixIds,
     setShowReadReceiptAvatars,
+    setReplyPingDefault,
     setHoldToOpenMessageMenu,
     setSpellCheckEnabled,
     setLinkPreviewsEnabled,
@@ -52,6 +53,7 @@ export default function MessagesMediaSettings() {
     const showReadReceiptAvatars = useRune(
         () => settingsState.showReadReceiptAvatars,
     );
+    const replyPingDefault = useRune(() => settingsState.replyPingDefault);
     const holdToOpenMessageMenu = useRune(
         () => settingsState.holdToOpenMessageMenu,
     );
@@ -207,15 +209,15 @@ export default function MessagesMediaSettings() {
     return (
         <View className="gap-6">
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("messagesMediaSettings.messages")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.showMatrixIds")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.showFullMatrixIdsLikeUser",
                             )}
@@ -227,12 +229,12 @@ export default function MessagesMediaSettings() {
                         label={t("messagesMediaSettings.showMatrixIds")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.readReceiptAvatars")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.showWhoHasReadEachMessage",
                             )}
@@ -244,12 +246,27 @@ export default function MessagesMediaSettings() {
                         label={t("messagesMediaSettings.readReceiptAvatars")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("messagesMediaSettings.pingOnReply")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("messagesMediaSettings.pingOnReplyDescription")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={replyPingDefault}
+                        onChange={setReplyPingDefault}
+                        label={t("messagesMediaSettings.pingOnReply")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.holdToOpenMessageMenu")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.onTouchDevicesOpenAMessage",
                             )}
@@ -261,12 +278,12 @@ export default function MessagesMediaSettings() {
                         label={t("messagesMediaSettings.holdToOpenMessageMenu")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.checkSpelling")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.underlineMisspelledWordsAnd",
                             )}
@@ -280,10 +297,10 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.linkPreviews")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("messagesMediaSettings.whenOffNoLinkPreviewIs")}
                         </Text>
                     </View>
@@ -295,10 +312,10 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.pauseVideosOffScreen")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.pauseAPlayingVideoWhenIt",
                             )}
@@ -312,10 +329,10 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.fitImagesToScreen")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.fitImagesToScreenDescription",
                             )}
@@ -329,12 +346,12 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "messagesMediaSettings.sendVideosThatStreamFaster",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.rearrangeMp4VideosYouSend",
                             )}
@@ -350,12 +367,12 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "messagesMediaSettings.sendPhotosThatAppearSooner",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.rewriteJpegPhotosYouSend",
                             )}
@@ -371,17 +388,17 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "messagesMediaSettings.removeLocationAndMetadata",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.stripMetadataDescription",
                             )}
                         </Text>
-                        <Text className="mt-1 text-xs font-semibold text-discord-danger">
+                        <Text className="mt-1 text-xs font-semibold text-zam-danger">
                             {t("messagesMediaSettings.stripMetadataWarning")}
                         </Text>
                     </View>
@@ -395,10 +412,10 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.randomizeFileNames")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.randomizeFileNamesDescription",
                             )}
@@ -412,10 +429,10 @@ export default function MessagesMediaSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.sendGifsAsAnimatedWebp")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("messagesMediaSettings.reencodeGifsYouSend")}
                         </Text>
                     </View>
@@ -430,15 +447,15 @@ export default function MessagesMediaSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("common.gifs")}
                 </Text>
                 <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("messagesMediaSettings.defaultTab")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "messagesMediaSettings.whichTabTheGifPickerOpens",
                             )}
@@ -454,15 +471,15 @@ export default function MessagesMediaSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("midiSoundBank.midi")}
                 </Text>
                 <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("midiSoundBank.soundBank")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("midiSoundBank.theInstrumentSoundsUsedTo")}
                         </Text>
                     </View>
@@ -474,7 +491,7 @@ export default function MessagesMediaSettings() {
                     />
                 </View>
                 {systemBankSupported && systemBankAvailable === false ? (
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("midiSoundBank.noSystemSoundBankFound")}
                     </Text>
                 ) : null}
@@ -483,21 +500,21 @@ export default function MessagesMediaSettings() {
                         {customBank ? (
                             <Text
                                 numberOfLines={1}
-                                className="min-w-0 shrink text-sm text-discord-textPrimary"
+                                className="min-w-0 shrink text-sm text-zam-textPrimary"
                             >
                                 {customBank.name}{" "}
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     ({formatMediaSize(customBank.size)})
                                 </Text>
                             </Text>
                         ) : null}
                         <Pressable
                             accessibilityRole="button"
-                            className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover disabled:opacity-50 transition-colors"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
                             onPress={() => void openBankFilePicker()}
                             disabled={bankUploadBusy}
                         >
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {customBank
                                     ? t("midiSoundBank.chooseAnotherFile")
                                     : t("midiSoundBank.chooseFile")}
@@ -506,11 +523,11 @@ export default function MessagesMediaSettings() {
                         {customBank ? (
                             <Pressable
                                 accessibilityRole="button"
-                                className="px-2 py-1 rounded hover:bg-discord-danger disabled:opacity-50 transition-colors"
+                                className="px-2 py-1 rounded hover:bg-zam-danger disabled:opacity-50 transition-colors"
                                 onPress={() => void removeCustomBank()}
                                 disabled={bankUploadBusy}
                             >
-                                <Text className="text-xs text-discord-danger">
+                                <Text className="text-xs text-zam-danger">
                                     {t("common.remove")}
                                 </Text>
                             </Pressable>
@@ -518,16 +535,16 @@ export default function MessagesMediaSettings() {
                     </View>
                 ) : null}
                 {bankUploadBusy ? (
-                    <Text className="mt-1 text-xs text-discord-textMuted">
+                    <Text className="mt-1 text-xs text-zam-textMuted">
                         {t("midiSoundBank.saving")}
                     </Text>
                 ) : null}
                 {bankUploadError ? (
-                    <Text className="mt-1 text-xs text-discord-danger">
+                    <Text className="mt-1 text-xs text-zam-danger">
                         {bankUploadError}
                     </Text>
                 ) : null}
-                <Text className="mt-1 text-xs text-discord-textMuted">
+                <Text className="mt-1 text-xs text-zam-textMuted">
                     {t("midiSoundBank.sf2Sf3OrDlsUpTo")}
                 </Text>
             </View>

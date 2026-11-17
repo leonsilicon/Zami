@@ -101,7 +101,7 @@ export default function ScreenShareQualityPopover({
     }
 
     const popoverClass =
-        "absolute z-50 w-64 rounded-lg bg-discord-backgroundTertiary border border-discord-divider shadow-xl overflow-hidden";
+        "absolute z-50 w-64 rounded-lg bg-zam-backgroundTertiary border border-zam-divider shadow-xl overflow-hidden";
     const duration = motionOK() ? 120 : 0;
 
     return (

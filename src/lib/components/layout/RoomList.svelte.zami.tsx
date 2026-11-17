@@ -82,6 +82,7 @@ import {
     fetchSpaceHierarchy,
     getCachedHierarchy,
     getCachedHierarchyAge,
+    readSpaceChildCategories,
     patchCachedHierarchyEntry,
     getDMPartnerId,
     getRoomCallMemberships,
@@ -103,8 +104,6 @@ import {
     MicOff,
     HeadphoneOff,
     GripVertical,
-    Video,
-    Hash,
     Circle,
     Check,
 } from "lucide-svelte";
@@ -129,6 +128,21 @@ import {
     type RoomTagMap,
 } from "$lib/utils/roomOrdering";
 import { shouldOfferKnock, matrixErrorMessage } from "$lib/utils/knock";
+import { nestThreadRows } from "$lib/utils/bridgedThreads";
+import {
+    channelIconKind,
+    type BridgedChannelType,
+} from "$lib/utils/bridgedChannels";
+import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+import {
+    groupByCategory,
+    type BridgedCategory,
+} from "$lib/utils/bridgedCategories";
+import {
+    bridgedThreadParent,
+    bridgedThreadParentChannelId,
+} from "$lib/stores/bridgedThreads.svelte";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
 import { latestMessage, latestMessagePreview } from "$lib/utils/roomPreview";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
@@ -210,6 +224,20 @@ function dmPreviewFor(room: Room): string | undefined {
 // latestMessagePreview's SCAN_LIMIT.
 const PREVIEW_SCAN = 50;
 
+// ── Bridged Discord threads (ZDMB) ───────────────────────────────────
+// Like Discord: a joined thread sits under its channel; one we have not
+// joined is offered from the channel (message chip, Threads panel), not
+// as a channel of its own. Forum posts (parent is a space) are left as
+// they are: their forum already renders as a category.
+function isChannelThread(roomId: string): boolean {
+    return bridgedThreadParentChannelId(roomId) !== null;
+}
+
+function nestRooms(rooms: Room[]) {
+    void roomsState.roomsTick;
+    return nestThreadRows(rooms, (r) => r.roomId, bridgedThreadParentChannelId);
+}
+
 // ── Sub-spaces as tree categories ────────────────────────────────────
 type SubSpace = { id: string; name: string };
 
@@ -237,7 +265,7 @@ function spaceChildren(
         }
     }
     const unjoined = (hierarchy ?? []).filter(
-        (h) => !h.isSpace && !isJoinedNow(h),
+        (h) => !h.isSpace && !isJoinedNow(h) && !isChannelThread(h.roomId),
     );
     return { rooms, spaces, unjoined };
 }
@@ -578,6 +606,8 @@ function rowMetrics(fontScale: number) {
         channel: 12 + Math.max(20, sm),
         unjoined: 12 + Math.max(20, sm),
         category: 8 + Math.max(12, xs),
+        /** A Discord category's heading (`pt-3 pb-1`). */
+        bridgedCategory: 16 + Math.max(12, xs),
         emptyCategory: 8 + xs,
         browse: 8 + Math.max(12, xs),
         // The preview line is always allowed for, so every DM row is the same
@@ -675,14 +705,14 @@ function useStableHandlers<
     return stable;
 }
 
-// Zami: the selected row's `border-inline-start: 3px solid var(--discord-accent)`
-// is `border-s-[3px] border-discord-accent`; its `background: linear-gradient(to
-// var(--end-side), var(--discord-bg-selected) 85%, var(--discord-bg-secondary))`
+// Zami: the selected row's `border-inline-start: 3px solid var(--zam-accent)`
+// is `border-s-[3px] border-zam-accent`; its `background: linear-gradient(to
+// var(--end-side), var(--zam-bg-selected) 85%, var(--zam-bg-secondary))`
 // is this style, from the theme's variables.
 function useSelectedBackground(): ViewStyle | undefined {
     const [selected, secondary] = useCSSVariable([
-        "--discord-bg-selected",
-        "--discord-bg-secondary",
+        "--zam-bg-selected",
+        "--zam-bg-secondary",
     ]);
     return useMemo(() => {
         if (selected === undefined || secondary === undefined) return undefined;
@@ -774,9 +804,7 @@ function Draggable({
 function Indent({ depth, children }: { depth: number; children: ReactNode }) {
     let node = children;
     for (let i = 0; i < depth; i++)
-        node = (
-            <View className="ms-3 border-s border-discord-divider">{node}</View>
-        );
+        node = <View className="ms-3 border-s border-zam-divider">{node}</View>;
     return <>{node}</>;
 }
 
@@ -805,9 +833,7 @@ function InboxButtonRow() {
     const pending = useRune(
         () => roomsState.invitedRooms.length + roomsState.knockedRooms.length,
     );
-    const color = showInbox
-        ? "text-discord-textPrimary"
-        : "text-discord-textSecondary";
+    const color = showInbox ? "text-zam-textPrimary" : "text-zam-textSecondary";
     return (
         <Pressable
             accessibilityRole="button"
@@ -821,8 +847,8 @@ function InboxButtonRow() {
             }}
             className={`mb-2 w-full flex-row items-center gap-2 pe-2 py-1.5 transition-colors ${
                 showInbox
-                    ? "border-s-[3px] border-discord-accent ps-[5px]"
-                    : "ps-2 active:bg-discord-messageHover"
+                    ? "border-s-[3px] border-zam-accent ps-[5px]"
+                    : "ps-2 active:bg-zam-messageHover"
             }`}
             style={[{ height: metrics.inbox }, showInbox && selectedStyle]}
         >
@@ -842,7 +868,7 @@ const InboxButton = memo(InboxButtonRow);
 // Zami: the red count pill: the `<span>`'s box is a View and its text a Text.
 function CountBadge({ count }: { count: number | string }) {
     return (
-        <View className="flex-shrink-0 bg-discord-danger rounded-full px-1.5 min-w-[1.2rem] items-center">
+        <View className="flex-shrink-0 bg-zam-danger rounded-full px-1.5 min-w-[1.2rem] items-center">
             <Text className="text-white text-xs font-bold text-center">
                 {count}
             </Text>
@@ -923,7 +949,7 @@ function CallRosterList({ room }: { room: Room }) {
                         key={p.userId}
                         accessibilityRole="button"
                         accessibilityLabel={t("roomList.inVoice", { name })}
-                        className="w-full flex-row items-center gap-2 ps-8 pe-2 py-0.5 rounded active:bg-discord-messageHover"
+                        className="w-full flex-row items-center gap-2 ps-8 pe-2 py-0.5 rounded active:bg-zam-messageHover"
                         style={{ height: metrics.rosterEntry }}
                         onPress={() => {
                             setActiveRoom(room.roomId);
@@ -953,26 +979,26 @@ function CallRosterList({ room }: { room: Room }) {
                             {speaking.has(p.userId) ? (
                                 <View
                                     pointerEvents="none"
-                                    className="absolute -inset-0.5 rounded-full border-2 border-discord-accent"
+                                    className="absolute -inset-0.5 rounded-full border-2 border-zam-accent"
                                 />
                             ) : null}
                         </View>
                         <Text
                             numberOfLines={1}
-                            className="flex-1 text-xs text-discord-textSecondary"
+                            className="flex-1 text-xs text-zam-textSecondary"
                         >
                             {name}
                         </Text>
                         {status.micOff ? (
                             <MicOff
                                 size={14}
-                                className="flex-shrink-0 text-discord-danger"
+                                className="flex-shrink-0 text-zam-danger"
                             />
                         ) : null}
                         {status.deafened ? (
                             <HeadphoneOff
                                 size={14}
-                                className="flex-shrink-0 text-discord-danger"
+                                className="flex-shrink-0 text-zam-danger"
                             />
                         ) : null}
                     </Pressable>
@@ -997,7 +1023,7 @@ function RawOrderInput({ room, section }: { room: Room; section: Section }) {
             accessibilityLabel={t("roomList.orderValue")}
             // Zami: `py-0` drops Android's own padding, which made the field
             // taller than its row.
-            className="w-16 me-1 flex-shrink-0 rounded bg-discord-backgroundTertiary px-1 py-0 text-xs text-discord-textSecondary"
+            className="w-16 me-1 flex-shrink-0 rounded bg-zam-backgroundTertiary px-1 py-0 text-xs text-zam-textSecondary"
             onEndEditing={(e) => {
                 const v = e.nativeEvent.text;
                 if (v !== rawOrderOf(room, section))
@@ -1014,7 +1040,7 @@ function DropMarker({ at }: { at: "before" | "after" }) {
     return (
         <View
             pointerEvents="none"
-            className={`absolute start-2 end-2 h-0.5 rounded bg-discord-accent ${
+            className={`absolute start-2 end-2 h-0.5 rounded bg-zam-accent ${
                 at === "before" ? "top-0" : "bottom-0"
             }`}
         />
@@ -1025,9 +1051,12 @@ function DropMarker({ at }: { at: "before" | "after" }) {
 const ChannelRow = memo(function ChannelRow({
     room,
     section,
+    depth = 0,
 }: {
     room: Room;
     section: Section | null;
+    /** 1 for a bridged thread nested under its channel (nestThreadRows). */
+    depth?: number;
 }) {
     // Zami: what changes on its own, read on its own (see roomIsActive).
     const isActive = useRune(() => roomIsActive(room.roomId), [room]);
@@ -1042,6 +1071,8 @@ const ChannelRow = memo(function ChannelRow({
                 // Tick dependency: names change by in-place Room
                 // mutation (late-seeded state, renames).
                 roomName: getRoomDisplayName(room),
+                isThread: bridgedThreadParent(room.roomId) !== null,
+                channelType: bridgedChannel(room.roomId)?.type,
             };
         },
         [room],
@@ -1051,6 +1082,7 @@ const ChannelRow = memo(function ChannelRow({
         <ChannelRowView
             room={room}
             section={section}
+            depth={depth}
             isActive={isActive}
             {...unreadState}
             {...label}
@@ -1061,21 +1093,27 @@ const ChannelRow = memo(function ChannelRow({
 const ChannelRowView = memo(function ChannelRowView({
     room,
     section,
+    depth,
     isActive,
     unread,
     highlight,
     loud,
     isVideo,
     roomName,
+    isThread,
+    channelType,
 }: {
     room: Room;
     section: Section | null;
+    depth: number;
     isActive: boolean;
     unread: boolean;
     highlight: number;
     loud: boolean;
     isVideo: boolean;
     roomName: string;
+    isThread: boolean;
+    channelType: BridgedChannelType | null | undefined;
 }) {
     const {
         reorderMode,
@@ -1088,6 +1126,7 @@ const ChannelRowView = memo(function ChannelRowView({
     } = useRowContext();
     const draggable =
         reorderMode &&
+        depth === 0 &&
         section !== null &&
         (section !== "channels" || canReorderChannels);
     const rowRef = useRef<ViewInstance>(null);
@@ -1097,17 +1136,12 @@ const ChannelRowView = memo(function ChannelRowView({
             : null;
     const marker = useDragMarker(drag, rowRef, target);
     const color =
-        isActive || unread
-            ? "text-discord-textPrimary"
-            : "text-discord-textSecondary";
+        isActive || unread ? "text-zam-textPrimary" : "text-zam-textSecondary";
     const pressable = (
         <View className="flex-1 flex-row items-center min-w-0">
             {draggable ? (
                 <View className="flex-shrink-0 ps-1">
-                    <GripVertical
-                        size={14}
-                        className="text-discord-textMuted"
-                    />
+                    <GripVertical size={14} className="text-zam-textMuted" />
                 </View>
             ) : null}
             <Pressable
@@ -1128,11 +1162,16 @@ const ChannelRowView = memo(function ChannelRowView({
                         true,
                     );
                 }}
+                // Zami: `padding-inline-start: calc(0.5rem | 1.75rem [- 3px])`.
                 className={`flex-1 flex-row items-center gap-2 py-1.5 min-w-0 transition-colors ${
-                    isActive
-                        ? "ps-[5px]"
-                        : "ps-2 active:bg-discord-messageHover"
-                }`}
+                    depth > 0
+                        ? isActive
+                            ? "ps-[25px]"
+                            : "ps-7"
+                        : isActive
+                          ? "ps-[5px]"
+                          : "ps-2"
+                } ${isActive ? "" : "active:bg-zam-messageHover"}`}
             >
                 {/* Zami: `min-h-5`, so the unread dot's slot is as tall as the
                     icon's and the row keeps its height at small text sizes. */}
@@ -1141,21 +1180,19 @@ const ChannelRowView = memo(function ChannelRowView({
                         <View
                             className={`w-2 h-2 rounded-full ${
                                 loud || highlight
-                                    ? "bg-discord-danger"
-                                    : "bg-discord-textPrimary"
+                                    ? "bg-zam-danger"
+                                    : "bg-zam-textPrimary"
                             } flex-shrink-0`}
                         />
-                    ) : isVideo ? (
-                        <View
-                            className="opacity-70 flex-row items-center justify-center"
-                            accessibilityLabel={t("common.videoRoom")}
-                        >
-                            <Video size={14} className={color} />
-                        </View>
                     ) : (
-                        <View className="w-5 h-5 opacity-70 flex-row items-center justify-center">
-                            <Hash size={14} className={color} />
-                        </View>
+                        <ChannelTypeIcon
+                            kind={channelIconKind(channelType, {
+                                isThread,
+                                isVideo,
+                            })}
+                            class="w-5 h-5 opacity-70"
+                            iconClass={color}
+                        />
                     )}
                 </View>
                 <Text
@@ -1177,7 +1214,7 @@ const ChannelRowView = memo(function ChannelRowView({
             <View
                 ref={rowRef}
                 className={`flex-row items-center transition-colors ${
-                    isActive ? "border-s-[3px] border-discord-accent" : ""
+                    isActive ? "border-s-[3px] border-zam-accent" : ""
                 }`}
                 style={[{ height: metrics.channel }, isActive && selectedStyle]}
             >
@@ -1202,7 +1239,7 @@ const ChannelRowView = memo(function ChannelRowView({
                         className="flex-shrink-0 p-1 me-1 rounded transition-colors"
                     >
                         <SvgIcon
-                            className="w-3.5 h-3.5 text-discord-textMuted"
+                            className="w-3.5 h-3.5 text-zam-textMuted"
                             d={GEAR_PATH}
                         />
                     </Pressable>
@@ -1223,6 +1260,14 @@ const UnjoinedRow = memo(function UnjoinedRow({
     room: SpaceChildInfo;
 }) {
     const { actions, join, metrics } = useRowContext();
+    const tag = useRune(
+        () => {
+            void roomsState.roomsTick;
+            return bridgedChannel(room.roomId);
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
     // Zami: this row's part of the join store (see createJoinStore).
     const isJoining = useSyncExternalStore(join.subscribe, () =>
         join.isJoining(room.roomId),
@@ -1246,18 +1291,17 @@ const UnjoinedRow = memo(function UnjoinedRow({
             >
                 <View className="flex-1 flex-row items-center gap-2 py-1.5 min-w-0 ps-2">
                     <View className="w-5 flex-shrink-0 flex-row items-center justify-center">
-                        <View className="w-5 h-5 opacity-70 flex-row items-center justify-center">
-                            <Hash
-                                size={14}
-                                className="text-discord-textPrimary"
-                            />
-                        </View>
+                        <ChannelTypeIcon
+                            kind={channelIconKind(tag?.type)}
+                            class="w-5 h-5 opacity-70"
+                            iconClass="text-zam-textPrimary"
+                        />
                     </View>
                     <Text
                         numberOfLines={1}
-                        className="flex-1 text-sm text-discord-textSecondary transition-colors"
+                        className="flex-1 text-sm text-zam-textSecondary transition-colors"
                     >
-                        {room.name ?? ""}
+                        {tag?.name || room.name || ""}
                     </Text>
                 </View>
 
@@ -1265,7 +1309,7 @@ const UnjoinedRow = memo(function UnjoinedRow({
                     <>
                         {/* Pending knock: state chip + cancel on hover.
                             Zami: no hover, so both show. */}
-                        <Text className="flex-shrink-0 me-2 text-xs font-semibold text-discord-textMuted">
+                        <Text className="flex-shrink-0 me-2 text-xs font-semibold text-zam-textMuted">
                             {t("roomList.requested")}
                         </Text>
                         <Pressable
@@ -1275,11 +1319,11 @@ const UnjoinedRow = memo(function UnjoinedRow({
                                 void actions.handleCancelKnock(room.roomId)
                             }
                             disabled={isJoining}
-                            className={`flex-shrink-0 me-1 px-2 py-0.5 rounded border border-discord-divider transition-colors ${
+                            className={`flex-shrink-0 me-1 px-2 py-0.5 rounded border border-zam-divider transition-colors ${
                                 isJoining ? "opacity-60" : ""
                             }`}
                         >
-                            <Text className="text-xs font-semibold text-discord-textMuted">
+                            <Text className="text-xs font-semibold text-zam-textMuted">
                                 {t("roomList.cancelRequest")}
                             </Text>
                         </Pressable>
@@ -1293,7 +1337,7 @@ const UnjoinedRow = memo(function UnjoinedRow({
                         accessibilityState={{ disabled: isJoining }}
                         onPress={() => void actions.handleJoin(room)}
                         disabled={isJoining}
-                        className={`flex-shrink-0 me-1 px-2 py-0.5 rounded bg-discord-accent active:bg-discord-accentHover transition-colors ${
+                        className={`flex-shrink-0 me-1 px-2 py-0.5 rounded bg-zam-accent active:bg-zam-accentHover transition-colors ${
                             isJoining ? "opacity-60" : ""
                         }`}
                     >
@@ -1312,25 +1356,25 @@ const UnjoinedRow = memo(function UnjoinedRow({
             {knock ? (
                 // Zami: its height (with `mb-1.5`) goes to getItemLayout.
                 <View
-                    className="mx-2 mb-1.5 p-2 rounded bg-discord-backgroundTertiary flex-col gap-1.5"
+                    className="mx-2 mb-1.5 p-2 rounded bg-zam-backgroundTertiary flex-col gap-1.5"
                     onLayout={(e) =>
                         actions.setKnockPromptHeight(
                             e.nativeEvent.layout.height + 6,
                         )
                     }
                 >
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("roomList.youCanTJoinThisRoom")}
                     </Text>
                     <TextInput
                         value={knock.reason}
                         onChangeText={actions.setKnockReason}
                         placeholder={t("common.reasonOptional")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
-                        className="w-full px-2 py-1 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-xs"
+                        placeholderTextColorClassName="accent-zam-textMuted"
+                        className="w-full px-2 py-1 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-xs"
                     />
                     {knock.error ? (
-                        <Text className="text-xs text-discord-danger">
+                        <Text className="text-xs text-zam-danger">
                             {knock.error}
                         </Text>
                     ) : null}
@@ -1340,7 +1384,7 @@ const UnjoinedRow = memo(function UnjoinedRow({
                             onPress={() => actions.setKnockPromptId(null)}
                             className="px-2 py-0.5 rounded transition-colors"
                         >
-                            <Text className="text-xs font-medium text-discord-textMuted">
+                            <Text className="text-xs font-medium text-zam-textMuted">
                                 {t("roomList.notNow")}
                             </Text>
                         </Pressable>
@@ -1349,7 +1393,7 @@ const UnjoinedRow = memo(function UnjoinedRow({
                             accessibilityState={{ disabled: isJoining }}
                             onPress={() => void actions.handleKnock(room)}
                             disabled={isJoining}
-                            className={`px-2 py-0.5 rounded bg-discord-accent active:bg-discord-accentHover transition-colors ${
+                            className={`px-2 py-0.5 rounded bg-zam-accent active:bg-zam-accentHover transition-colors ${
                                 isJoining ? "opacity-60" : ""
                             }`}
                         >
@@ -1385,8 +1429,8 @@ const CategoryHeader = memo(function CategoryHeader({
     );
     const color =
         sub?.hasActive || sub?.unread
-            ? "text-discord-textPrimary"
-            : "text-discord-textMuted";
+            ? "text-zam-textPrimary"
+            : "text-zam-textMuted";
     return (
         <Pressable
             accessibilityRole="button"
@@ -1408,15 +1452,62 @@ const CategoryHeader = memo(function CategoryHeader({
                 {name}
             </Text>
             {loading ? (
-                <Spin className="w-3 h-3 flex-shrink-0 border-2 border-discord-textMuted border-t-transparent rounded-full" />
+                <Spin className="w-3 h-3 flex-shrink-0 border-2 border-zam-textMuted border-t-transparent rounded-full" />
             ) : sub?.unread ? (
                 <View
                     className={`w-2 h-2 flex-shrink-0 rounded-full ${
-                        sub.alert
-                            ? "bg-discord-danger"
-                            : "bg-discord-textPrimary"
+                        sub.alert ? "bg-zam-danger" : "bg-zam-textPrimary"
                     }`}
                 />
+            ) : null}
+        </Pressable>
+    );
+});
+
+// A Discord category (ZDMB). Collapsed like Discord: only the open channel
+// stays visible; the header shows hidden unread.
+const BridgedCategoryHeader = memo(function BridgedCategoryHeader({
+    toggleKey,
+    name,
+    expanded,
+    rooms,
+}: {
+    toggleKey: string;
+    name: string;
+    expanded: boolean;
+    rooms: Room[];
+}) {
+    const { actions, metrics } = useRowContext();
+    const hiddenUnread = useRune(
+        () =>
+            !expanded &&
+            rooms.some((r) => !roomIsActive(r.roomId) && roomUnread(r).unread),
+        [expanded, rooms],
+    );
+    const color = hiddenUnread ? "text-zam-textPrimary" : "text-zam-textMuted";
+    return (
+        <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={name}
+            onPress={() => actions.toggleSubspace(toggleKey)}
+            className="w-full flex-row items-center gap-1 px-2 pt-3 pb-1 transition-colors"
+            style={{ height: metrics.bridgedCategory }}
+        >
+            <SvgIcon
+                className={`w-3 h-3 flex-shrink-0 transition-transform ${
+                    expanded ? "" : "-rotate-90"
+                } ${color}`}
+                d={CHEVRON_PATH}
+            />
+            <Text
+                numberOfLines={1}
+                className={`flex-1 min-w-0 text-xs font-semibold uppercase tracking-wide ${color}`}
+            >
+                {name}
+            </Text>
+            {hiddenUnread ? (
+                <View className="w-2 h-2 flex-shrink-0 rounded-full bg-zam-textPrimary" />
             ) : null}
         </Pressable>
     );
@@ -1495,17 +1586,12 @@ const DmRowView = memo(function DmRowView({
             : null;
     const marker = useDragMarker(drag, rowRef, target);
     const color =
-        isActive || unread
-            ? "text-discord-textPrimary"
-            : "text-discord-textSecondary";
+        isActive || unread ? "text-zam-textPrimary" : "text-zam-textSecondary";
     const pressable = (
         <View className="flex-1 flex-row items-center min-w-0">
             {dmDraggable ? (
                 <View className="flex-shrink-0 ps-1">
-                    <GripVertical
-                        size={14}
-                        className="text-discord-textMuted"
-                    />
+                    <GripVertical size={14} className="text-zam-textMuted" />
                 </View>
             ) : null}
             <Pressable
@@ -1528,8 +1614,8 @@ const DmRowView = memo(function DmRowView({
                 }}
                 className={`flex-1 min-w-0 flex-row items-center gap-2 pe-2 py-1.5 transition-colors ${
                     isActive
-                        ? "border-s-[3px] border-discord-accent ps-[5px]"
-                        : "ps-2 active:bg-discord-messageHover"
+                        ? "border-s-[3px] border-zam-accent ps-[5px]"
+                        : "ps-2 active:bg-zam-messageHover"
                 }`}
                 style={isActive ? selectedStyle : undefined}
             >
@@ -1540,8 +1626,8 @@ const DmRowView = memo(function DmRowView({
                         Zami: the dot's `title` is its accessibility label. */}
                     <View
                         accessibilityLabel={presenceLabel}
-                        className={`absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-discord-backgroundSecondary ${
-                            presenceDotClass || "bg-discord-offline"
+                        className={`absolute -bottom-0.5 -end-0.5 w-3 h-3 rounded-full border-2 border-zam-backgroundSecondary ${
+                            presenceDotClass || "bg-zam-offline"
                         }`}
                     />
                 </View>
@@ -1564,8 +1650,8 @@ const DmRowView = memo(function DmRowView({
                             numberOfLines={1}
                             className={`text-xs font-normal ${
                                 unread && !isActive
-                                    ? "text-discord-textSecondary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textSecondary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {preview}
@@ -1581,9 +1667,7 @@ const DmRowView = memo(function DmRowView({
                             "messageArea.unreadNotifications",
                         )}
                         className={`flex-shrink-0 w-2 h-2 me-1 rounded-full ${
-                            loud
-                                ? "bg-discord-danger"
-                                : "bg-discord-textPrimary"
+                            loud ? "bg-zam-danger" : "bg-zam-textPrimary"
                         }`}
                     />
                 ) : null}
@@ -1626,6 +1710,8 @@ type Row =
           room: Room;
           section: Section | null;
           depth: number;
+          /** A bridged thread under its channel (nestThreadRows). */
+          threadDepth: number;
       }
     | { kind: "unjoined"; key: string; room: SpaceChildInfo; depth: number }
     | {
@@ -1636,6 +1722,15 @@ type Row =
           depth: number;
           expanded: boolean;
           loading: boolean;
+      }
+    /** A Discord category's heading (ZDMB); its channels follow it. */
+    | {
+          kind: "bridgedCategory";
+          key: string;
+          toggleKey: string;
+          name: string;
+          expanded: boolean;
+          rooms: Room[];
       }
     | { kind: "emptyCategory"; key: string; depth: number }
     | { kind: "browse"; key: string; collapsed: boolean }
@@ -1675,6 +1770,8 @@ function rowHeight(
             );
         case "category":
             return m.category;
+        case "bridgedCategory":
+            return m.bridgedCategory;
         case "emptyCategory":
             return m.emptyCategory;
         case "browse":
@@ -1764,7 +1861,7 @@ function PositionedMenu({
         return () => subscription.remove();
     }, []);
     const menuClass =
-        "absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl min-w-44 max-w-52";
+        "absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl min-w-44 max-w-52";
     return (
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
             <Pressable
@@ -1841,7 +1938,7 @@ const HeaderMenu = memo(function HeaderMenu({
                     onPress={closeModal}
                 />
                 <View
-                    className="absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl py-1 min-w-44"
+                    className="absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl py-1 min-w-44"
                     style={
                         anchor
                             ? {
@@ -1856,8 +1953,8 @@ const HeaderMenu = memo(function HeaderMenu({
                     <QuickActions spaceId={spaceId} />
                     {!spaceId ? (
                         <>
-                            <View className="w-full h-px bg-discord-divider my-1" />
-                            <Text className="px-2 pt-1 pb-0.5 text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                            <View className="w-full h-px bg-zam-divider my-1" />
+                            <Text className="px-2 pt-1 pb-0.5 text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                 {t("roomList.sortDmsBy")}
                             </Text>
                             <View
@@ -1876,13 +1973,13 @@ const HeaderMenu = memo(function HeaderMenu({
                                             onPress={() =>
                                                 setDmSortOrder(order)
                                             }
-                                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                                         >
                                             <View className="w-4 h-4 flex-shrink-0 flex-row items-center justify-center">
                                                 {selected && (
                                                     <Check
                                                         size={14}
-                                                        className="text-discord-textPrimary"
+                                                        className="text-zam-textPrimary"
                                                     />
                                                 )}
                                             </View>
@@ -1890,8 +1987,8 @@ const HeaderMenu = memo(function HeaderMenu({
                                                 numberOfLines={1}
                                                 className={`flex-1 text-sm ${
                                                     selected
-                                                        ? "text-discord-textPrimary"
-                                                        : "text-discord-textMuted"
+                                                        ? "text-zam-textPrimary"
+                                                        : "text-zam-textMuted"
                                                 }`}
                                             >
                                                 {DM_SORT_LABELS[order]()}
@@ -1904,19 +2001,19 @@ const HeaderMenu = memo(function HeaderMenu({
                     ) : null}
                     {canAccessSpaceSettings ? (
                         <>
-                            <View className="w-full h-px bg-discord-divider my-1" />
+                            <View className="w-full h-px bg-zam-divider my-1" />
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={onSpaceSettings}
-                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 active:bg-discord-messageHover transition-colors"
+                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 active:bg-zam-messageHover transition-colors"
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-discord-textMuted"
+                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-zam-textMuted"
                                     d={GEAR_PATH}
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-1 text-sm text-discord-textMuted"
+                                    className="flex-1 text-sm text-zam-textMuted"
                                 >
                                     {t("roomList.spaceSettings")}
                                 </Text>
@@ -2250,7 +2347,10 @@ export default function RoomList({
         () => {
             if (activeSpaceId === null) return NO_ROOMS;
             void roomsState.roomsTick;
-            return spaceHierarchy.filter((r) => !r.isSpace && !isJoinedNow(r));
+            return spaceHierarchy.filter(
+                (r) =>
+                    !r.isSpace && !isJoinedNow(r) && !isChannelThread(r.roomId),
+            );
         },
         [activeSpaceId, spaceHierarchy],
         { isEqual: shallowEqual },
@@ -2586,6 +2686,7 @@ export default function RoomList({
         const ids = rows.flatMap((r) =>
             (r.kind === "channel" &&
                 d.list === "main" &&
+                r.threadDepth === 0 &&
                 r.section === d.section) ||
             (r.kind === "dm" &&
                 d.list === "dm" &&
@@ -2673,15 +2774,19 @@ export default function RoomList({
     const hierarchyLoading = useRune(() => roomsState.hierarchyLoading);
 
     // Zami: the list's blocks, in upstream's order, as FlatList rows. Built in
-    // a rune selector: sub-space categories read their children live, so with
-    // any on screen it re-runs on each sync tick, but unchanged rows keep their
+    // a rune selector: sub-space categories and bridged threads and categories
+    // read their state live, so it re-runs on each sync tick, but unchanged rows keep their
     // objects and the list its array (`rowCache`), so such a tick re-renders
     // nothing.
     const [rowCache] = useState(() => createRowCache<Row>());
     const lastLoads = useRef<CategoryLoad[]>([]);
+    // Zami: each Discord category's rooms, the same array while they are, so
+    // its heading row stays the same object (see rowCache).
+    const categoryRooms = useRef(new Map<string, Room[]>());
     const flatRows = useRune(
         () => {
-            if (childSpaces.length > 0) void roomsState.roomsTick;
+            // Bridged threads and categories (nestRooms) read the tick too.
+            void roomsState.roomsTick;
             let loads: CategoryLoad[] = [];
             const rows = rowCache.build((row) => {
                 const out: Row[] = [];
@@ -2696,6 +2801,21 @@ export default function RoomList({
                     // context menus use other values on purpose: a heading's
                     // inset tracks the rows it labels, so don't collapse the
                     // three panels onto one number.
+                    const channelRows = (
+                        id: string,
+                        rows: ReturnType<typeof nestRooms>,
+                        section: Section | null,
+                    ) => {
+                        for (const row of rows)
+                            push({
+                                kind: "channel",
+                                key: `${id}:${row.item.roomId}`,
+                                room: row.item,
+                                section,
+                                depth: 0,
+                                threadDepth: row.depth,
+                            });
+                    };
                     const group = (
                         id: string,
                         label: string,
@@ -2704,14 +2824,7 @@ export default function RoomList({
                     ) => {
                         if (rooms.length === 0) return;
                         push({ kind: "heading", key: `heading:${id}`, label });
-                        for (const room of rooms)
-                            push({
-                                kind: "channel",
-                                key: `${id}:${room.roomId}`,
-                                room,
-                                section,
-                                depth: 0,
-                            });
+                        channelRows(id, nestRooms(rooms), section);
                     };
                     group(
                         "favourites",
@@ -2719,14 +2832,79 @@ export default function RoomList({
                         roomGroups.favourites,
                         "favourite",
                     );
-                    group(
-                        "normal",
-                        activeSpaceId
-                            ? t("roomList.channels")
-                            : t("roomList.rooms"),
-                        roomGroups.normal,
-                        activeSpaceId ? "channels" : null,
-                    );
+                    // Discord categories (ZDMB): the active space's channels
+                    // are grouped under their category, uncategorised ones
+                    // first, a thread under its channel's category. Reorder
+                    // mode keeps the flat list, since dragging writes the
+                    // space `order` across categories.
+                    const channelCategories = activeSpaceId
+                        ? readSpaceChildCategories(activeSpaceId)
+                        : new Map<string, BridgedCategory>();
+                    const categoryOf = (
+                        roomId: string,
+                    ): BridgedCategory | null => {
+                        const own = channelCategories.get(roomId);
+                        if (own) return own;
+                        const parent = bridgedThreadParentChannelId(roomId);
+                        return parent
+                            ? (channelCategories.get(parent) ?? null)
+                            : null;
+                    };
+                    const categoryKey = (category: BridgedCategory) =>
+                        `zdmb-category:${activeSpaceId}:${category.id}`;
+                    const categoryGroups =
+                        !activeSpaceId ||
+                        reorderMode ||
+                        channelCategories.size === 0
+                            ? null
+                            : groupByCategory(
+                                  roomGroups.normal,
+                                  (r) => r.roomId,
+                                  categoryOf,
+                              );
+                    if (categoryGroups) {
+                        for (const g of categoryGroups) {
+                            const rows = nestRooms(g.items);
+                            if (g.category) {
+                                const cat = g.category;
+                                const toggleKey = categoryKey(cat);
+                                const expanded =
+                                    !collapsedSubspaces.has(toggleKey);
+                                const prev =
+                                    categoryRooms.current.get(toggleKey);
+                                const items =
+                                    prev && shallowEqual(prev, g.items)
+                                        ? prev
+                                        : g.items;
+                                categoryRooms.current.set(toggleKey, items);
+                                push({
+                                    kind: "bridgedCategory",
+                                    key: `heading:${toggleKey}`,
+                                    toggleKey,
+                                    name: cat.name,
+                                    expanded,
+                                    rooms: items,
+                                });
+                                channelRows(
+                                    "normal",
+                                    expanded
+                                        ? rows
+                                        : rows.filter((r) =>
+                                              roomIsActive(r.item.roomId),
+                                          ),
+                                    "channels",
+                                );
+                            } else channelRows("normal", rows, "channels");
+                        }
+                    } else
+                        group(
+                            "normal",
+                            activeSpaceId
+                                ? t("roomList.channels")
+                                : t("roomList.rooms"),
+                            roomGroups.normal,
+                            activeSpaceId ? "channels" : null,
+                        );
                     group(
                         "lowPriority",
                         t("roomList.lowPriority"),
@@ -2769,13 +2947,14 @@ export default function RoomList({
                         loading,
                     });
                     if (expanded) {
-                        for (const room of kids.rooms)
+                        for (const row of nestRooms(kids.rooms))
                             push({
                                 kind: "channel",
-                                key: `${path}|room:${room.roomId}`,
-                                room,
+                                key: `${path}|room:${row.item.roomId}`,
+                                room: row.item,
                                 section: null,
                                 depth: indent + 1,
+                                threadDepth: row.depth,
                             });
                         for (const room of kids.unjoined)
                             push({
@@ -2896,6 +3075,7 @@ export default function RoomList({
             showDMs,
             sortedDirectRooms,
             hierarchyLoading,
+            reorderMode,
             rowCache,
         ],
         { isEqual: (a, b) => a.rows === b.rows && a.loads === b.loads },
@@ -3014,7 +3194,7 @@ export default function RoomList({
                         <Text
                             accessibilityRole="header"
                             numberOfLines={1}
-                            className="px-2 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="px-2 py-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                             style={{ height: metrics.heading }}
                         >
                             {item.label}
@@ -3026,6 +3206,7 @@ export default function RoomList({
                             <ChannelRow
                                 room={item.room}
                                 section={item.section}
+                                depth={item.threadDepth}
                             />
                         </Indent>
                     );
@@ -3046,12 +3227,21 @@ export default function RoomList({
                             />
                         </Indent>
                     );
+                case "bridgedCategory":
+                    return (
+                        <BridgedCategoryHeader
+                            toggleKey={item.toggleKey}
+                            name={item.name}
+                            expanded={item.expanded}
+                            rooms={item.rooms}
+                        />
+                    );
                 case "emptyCategory":
                     return (
                         <Indent depth={item.depth}>
                             <Text
                                 numberOfLines={1}
-                                className="px-2 py-1 text-xs italic text-discord-textMuted"
+                                className="px-2 py-1 text-xs italic text-zam-textMuted"
                                 style={{ height: metrics.emptyCategory }}
                             >
                                 {t("roomList.emptyCategory")}
@@ -3069,12 +3259,12 @@ export default function RoomList({
                         >
                             <Text
                                 numberOfLines={1}
-                                className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                                className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                             >
                                 {t("roomList.browseRooms")}
                             </Text>
                             <SvgIcon
-                                className={`w-3 h-3 flex-shrink-0 ms-auto transition-transform text-discord-textMuted ${
+                                className={`w-3 h-3 flex-shrink-0 ms-auto transition-transform text-zam-textMuted ${
                                     item.collapsed ? "-rotate-90" : ""
                                 }`}
                                 d={CHEVRON_PATH}
@@ -3091,7 +3281,7 @@ export default function RoomList({
                     );
                 case "empty":
                     return (
-                        <Text className="px-4 py-8 text-sm text-discord-textMuted text-center">
+                        <Text className="px-4 py-8 text-sm text-zam-textMuted text-center">
                             {t("roomList.noRoomsYet")}
                         </Text>
                     );
@@ -3134,7 +3324,7 @@ export default function RoomList({
     );
 
     const menuItemClass =
-        "w-full px-3 py-1.5 active:bg-discord-messageHover transition-colors";
+        "w-full px-3 py-1.5 active:bg-zam-messageHover transition-colors";
     const menuItems = (cm: NonNullable<typeof contextMenu>) => {
         if (!menu) return null;
         const { currentSetting, activeTagKind, eligibleSpaces } = menu;
@@ -3145,7 +3335,7 @@ export default function RoomList({
                     onPress={() => handleOpenSettings(cm.roomId)}
                     className={menuItemClass}
                 >
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("common.settings")}
                     </Text>
                 </Pressable>
@@ -3155,7 +3345,7 @@ export default function RoomList({
                         onPress={() => handleInvite(cm.roomId)}
                         className={menuItemClass}
                     >
-                        <Text className="text-sm text-discord-textSecondary">
+                        <Text className="text-sm text-zam-textSecondary">
                             {t("common.invitePeople")}
                         </Text>
                     </Pressable>
@@ -3165,7 +3355,7 @@ export default function RoomList({
                     onPress={() => void handleCopyLink(cm.roomId)}
                     className={menuItemClass}
                 >
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("roomList.copyRoomLink")}
                     </Text>
                 </Pressable>
@@ -3174,7 +3364,7 @@ export default function RoomList({
                     onPress={() => void handleMarkRead(cm.roomId)}
                     className={menuItemClass}
                 >
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("roomList.markAsRead")}
                     </Text>
                 </Pressable>
@@ -3183,15 +3373,15 @@ export default function RoomList({
                     onPress={() => void handleMarkUnread(cm.roomId)}
                     className={menuItemClass}
                 >
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("roomList.markAsUnread")}
                     </Text>
                 </Pressable>
-                <View className="w-full h-px bg-discord-divider my-1" />
+                <View className="w-full h-px bg-zam-divider my-1" />
                 {/* px-3 matches this menu's buttons, not the sidebar's list headings. */}
                 <Text
                     accessibilityRole="header"
-                    className="px-3 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                    className="px-3 py-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                 >
                     {t("common.notifications")}
                 </Text>
@@ -3205,8 +3395,8 @@ export default function RoomList({
                 ).map(([val, label]) => {
                     const color =
                         currentSetting === val
-                            ? "text-discord-textPrimary"
-                            : "text-discord-textSecondary";
+                            ? "text-zam-textPrimary"
+                            : "text-zam-textSecondary";
                     return (
                         <Pressable
                             key={val}
@@ -3228,7 +3418,7 @@ export default function RoomList({
                         </Pressable>
                     );
                 })}
-                <View className="w-full h-px bg-discord-divider my-1" />
+                <View className="w-full h-px bg-zam-divider my-1" />
                 {(
                     [
                         ["favourite", "Favourite"],
@@ -3237,8 +3427,8 @@ export default function RoomList({
                 ).map(([kind, label]) => {
                     const color =
                         activeTagKind === kind
-                            ? "text-discord-textPrimary"
-                            : "text-discord-textSecondary";
+                            ? "text-zam-textPrimary"
+                            : "text-zam-textSecondary";
                     return (
                         <Pressable
                             key={kind}
@@ -3262,10 +3452,10 @@ export default function RoomList({
                 })}
                 {eligibleSpaces.length > 0 ? (
                     <>
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                         <Text
                             accessibilityRole="header"
-                            className="px-3 py-1 text-xs text-discord-textMuted uppercase font-semibold tracking-wide"
+                            className="px-3 py-1 text-xs text-zam-textMuted uppercase font-semibold tracking-wide"
                         >
                             {t("roomList.addToSpace")}
                         </Text>
@@ -3283,7 +3473,7 @@ export default function RoomList({
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm text-discord-textSecondary"
+                                    className="text-sm text-zam-textSecondary"
                                 >
                                     {getSpaceName(space)}
                                 </Text>
@@ -3291,12 +3481,12 @@ export default function RoomList({
                         ))}
                     </>
                 ) : null}
-                <View className="w-full h-px bg-discord-divider my-1" />
+                <View className="w-full h-px bg-zam-divider my-1" />
                 {leaveConfirmId === cm.roomId ? (
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void handleLeave(cm.roomId)}
-                        className="w-full px-3 py-1.5 bg-discord-danger transition-colors"
+                        className="w-full px-3 py-1.5 bg-zam-danger transition-colors"
                     >
                         <Text className="text-sm text-white font-medium">
                             {menu.isLastMember
@@ -3308,16 +3498,16 @@ export default function RoomList({
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => setLeaveConfirmId(cm.roomId)}
-                        className="w-full px-3 py-1.5 active:bg-discord-danger transition-colors"
+                        className="w-full px-3 py-1.5 active:bg-zam-danger transition-colors"
                     >
-                        <Text className="text-sm text-discord-danger">
+                        <Text className="text-sm text-zam-danger">
                             {t("roomList.leaveRoom")}
                         </Text>
                     </Pressable>
                 )}
                 {menuPluginActions.length > 0 ? (
                     <>
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                         {menuPluginActions.map((entry) => (
                             <Pressable
                                 key={entry.key}
@@ -3325,7 +3515,7 @@ export default function RoomList({
                                 onPress={() => runPluginRoomAction(entry.run)}
                                 className={menuItemClass}
                             >
-                                <Text className="text-sm text-discord-textSecondary">
+                                <Text className="text-sm text-zam-textSecondary">
                                     {entry.label}
                                 </Text>
                             </Pressable>
@@ -3341,19 +3531,19 @@ export default function RoomList({
             {/* Zami: not ported: `data-zam-region="room-list"`, the DOM hook
                 plugins find the list by (pluginDom.ts); there's no DOM to
                 query. */}
-            <View className="flex-1 min-w-0 bg-discord-backgroundSecondary flex-col">
+            <View className="flex-1 min-w-0 bg-zam-backgroundSecondary flex-col">
                 {/* Header */}
-                <View className="h-12 px-4 flex-row items-center border-b border-discord-divider shadow-sm flex-shrink-0 gap-2">
+                <View className="h-12 px-4 flex-row items-center border-b border-zam-divider shadow-sm flex-shrink-0 gap-2">
                     {/* Zami: `text-base` is the size the web `<h2>` inherits. */}
                     <Text
                         accessibilityRole="header"
                         numberOfLines={1}
-                        className="text-base font-semibold text-discord-textPrimary flex-1"
+                        className="text-base font-semibold text-zam-textPrimary flex-1"
                     >
                         {title}
                     </Text>
                     {hierarchyLoading ? (
-                        <Spin className="w-3.5 h-3.5 border-2 border-discord-textMuted border-t-transparent rounded-full flex-shrink-0" />
+                        <Spin className="w-3.5 h-3.5 border-2 border-zam-textMuted border-t-transparent rounded-full flex-shrink-0" />
                     ) : null}
                     {/* Reorder-mode toggle. Zami: its `title` is its label. */}
                     {canReorderAnything ? (
@@ -3366,17 +3556,17 @@ export default function RoomList({
                             }
                             accessibilityState={{ selected: reorderMode }}
                             onPress={toggleReorderMode}
-                            className="p-1 rounded transition-colors flex-shrink-0 active:bg-discord-messageHover"
+                            className="p-1 rounded transition-colors flex-shrink-0 active:bg-zam-messageHover"
                         >
                             {reorderMode ? (
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-accent"
+                                    className="w-4 h-4 text-zam-accent"
                                     d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
                                 />
                             ) : (
                                 // Up/down arrows: "move things around"
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-textMuted"
+                                    className="w-4 h-4 text-zam-textMuted"
                                     d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3 5 6.99h3V14h2V6.99h3L9 3z"
                                 />
                             )}
@@ -3416,10 +3606,10 @@ export default function RoomList({
                                     );
                                     openModal("room-header-menu", () => {});
                                 }}
-                                className="p-1 rounded active:bg-discord-messageHover transition-colors"
+                                className="p-1 rounded active:bg-zam-messageHover transition-colors"
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-textMuted"
+                                    className="w-4 h-4 text-zam-textMuted"
                                     d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z"
                                 />
                             </Pressable>

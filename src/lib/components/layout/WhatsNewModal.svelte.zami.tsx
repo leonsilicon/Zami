@@ -74,12 +74,12 @@ export default function WhatsNewModal({
             label={t("whatsNewModal.whatSNew")}
             layerClass="z-[60] flex items-center justify-center p-4"
             backdropClass="bg-black/50"
-            panelClass="relative w-full max-w-lg rounded-lg bg-discord-backgroundSecondary shadow-xl flex flex-col max-h-[80vh]"
+            panelClass="relative w-full max-w-lg rounded-lg bg-zam-backgroundSecondary shadow-xl flex flex-col max-h-[80vh]"
         >
-            <View className="flex-row items-center justify-between border-b border-discord-divider px-4 py-3 flex-shrink-0">
+            <View className="flex-row items-center justify-between border-b border-zam-divider px-4 py-3 flex-shrink-0">
                 <Text
                     role="heading"
-                    className="shrink text-base font-semibold text-discord-textPrimary"
+                    className="shrink text-base font-semibold text-zam-textPrimary"
                 >
                     {sections.length > 1 && lastSeen
                         ? t("whatsNewModal.whatSNewSince", {
@@ -96,7 +96,7 @@ export default function WhatsNewModal({
                 >
                     <X
                         size={16}
-                        className="text-discord-textMuted hover:text-discord-textPrimary text-lg leading-none"
+                        className="text-zam-textMuted hover:text-zam-textPrimary text-lg leading-none"
                     />
                 </Pressable>
             </View>
@@ -105,15 +105,15 @@ export default function WhatsNewModal({
                 contentContainerClassName="px-4 py-3"
             >
                 {loading ? (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("common.loading")}
                     </Text>
                 ) : failed ? (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("whatsNewModal.releaseNotesUnavailable")}{" "}
                         <Text
                             accessibilityRole="button"
-                            className="text-sm text-discord-textMuted underline"
+                            className="text-sm text-zam-textMuted underline"
                             onPress={() =>
                                 openReleasePage(
                                     `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
@@ -129,7 +129,7 @@ export default function WhatsNewModal({
                             {sections.length > 1 && (
                                 <Text
                                     role="heading"
-                                    className={`text-sm font-semibold text-discord-textPrimary ${
+                                    className={`text-sm font-semibold text-zam-textPrimary ${
                                         i === 0 ? "mt-0" : "mt-3"
                                     } mb-1`}
                                 >
@@ -143,11 +143,11 @@ export default function WhatsNewModal({
                     <ReleaseNotesBody body={body ?? ""} />
                 )}
             </ScrollView>
-            <View className="flex-row justify-end border-t border-discord-divider px-4 py-3 flex-shrink-0">
+            <View className="flex-row justify-end border-t border-zam-divider px-4 py-3 flex-shrink-0">
                 <Pressable
                     accessibilityRole="button"
                     onPress={onClose}
-                    className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                    className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                 >
                     <Text className="text-sm font-semibold text-white">
                         {t("whatsNewModal.gotIt")}

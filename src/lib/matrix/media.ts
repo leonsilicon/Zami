@@ -328,6 +328,12 @@ export async function prepareFileContent(
         if (thumb) {
             info.w = thumb.w;
             info.h = thumb.h;
+            // MSC4230: lets receivers skip a server thumbnail that would
+            // freeze it. Only claimed for formats the sniff can read.
+            if (thumb.animated) {
+                info.is_animated = true;
+                info["org.matrix.msc4230.is_animated"] = true;
+            }
         }
         if (thumb?.blob) {
             ownedClientOrThrow(owner);
@@ -462,7 +468,8 @@ export async function sendGallery(
 
 /**
  * Send a file whose media is already on the server (a favourite starred from an
- * earlier message) by pointing a new `m.image` event at it, with no upload.
+ * earlier message) by pointing a new `m.image` (or, for a video, `m.video`)
+ * event at it, with no upload.
  * Resolves false, having sent nothing, when that can't be done safely: the
  * key of encrypted media sits in the event itself, so it may only go into an
  * encrypted room. The caller then uploads the bytes instead.
@@ -490,8 +497,11 @@ export async function sendExistingMedia(
     }
     ownedClientOrThrow(owner);
 
+    const mimetype = media.info.mimetype;
     const content = mediaEventContent(
-        "m.image",
+        typeof mimetype === "string" && mimetype.startsWith("video/")
+            ? "m.video"
+            : "m.image",
         name,
         attached,
         { ...media.info },

@@ -30,6 +30,7 @@ import type {
     MessageRenderer,
     RoomSettingsTabRegistration,
     SettingsPageRegistration,
+    DebugSectionRegistration,
     MemberDecorator,
     UserActionItem,
     ProfileSectionRegistration,
@@ -38,6 +39,7 @@ import type {
     CallControl,
     CallPanelRegistration,
     CallTileDecoration,
+    PluginRingtone,
 } from "./types";
 
 export interface RegistryEntry<T> {
@@ -68,6 +70,7 @@ export interface PluginRegistryData {
     messageRenderers: RegistryEntry<MessageRenderer>[];
     roomSettingsTabs: RegistryEntry<RoomSettingsTabRegistration>[];
     settingsPages: RegistryEntry<SettingsPageRegistration>[];
+    debugSections: RegistryEntry<DebugSectionRegistration>[];
     memberDecorators: RegistryEntry<MemberDecorator>[];
     userActions: RegistryEntry<UserActionItem>[];
     profileSections: RegistryEntry<ProfileSectionRegistration>[];
@@ -76,6 +79,7 @@ export interface PluginRegistryData {
     callControls: RegistryEntry<CallControl>[];
     callPanels: RegistryEntry<CallPanelRegistration>[];
     callTileDecorations: RegistryEntry<CallTileDecoration>[];
+    ringtones: RegistryEntry<PluginRingtone>[];
     tick: number;
     nextEntryId: number;
 }
@@ -107,6 +111,7 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "messageRenderers",
     "roomSettingsTabs",
     "settingsPages",
+    "debugSections",
     "memberDecorators",
     "userActions",
     "profileSections",
@@ -115,6 +120,7 @@ export const EXTENSION_KINDS: ExtensionKind[] = [
     "callControls",
     "callPanels",
     "callTileDecorations",
+    "ringtones",
 ];
 
 export function createRegistryData(): PluginRegistryData {
@@ -140,6 +146,7 @@ export function createRegistryData(): PluginRegistryData {
         messageRenderers: [],
         roomSettingsTabs: [],
         settingsPages: [],
+        debugSections: [],
         memberDecorators: [],
         userActions: [],
         profileSections: [],
@@ -148,6 +155,7 @@ export function createRegistryData(): PluginRegistryData {
         callControls: [],
         callPanels: [],
         callTileDecorations: [],
+        ringtones: [],
         tick: 0,
         nextEntryId: 1,
     };

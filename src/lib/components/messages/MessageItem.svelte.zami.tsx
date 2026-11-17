@@ -52,7 +52,10 @@ import {
     type HtmlElement,
 } from "@-/com.leonsilicon.zami.rn";
 import { shallowEqual, useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { eventRevision } from "@-/com.leonsilicon.zami.event-revision";
+import {
+    eventRevision,
+    relationsRevision,
+} from "@-/com.leonsilicon.zami.event-revision";
 import { createLruMemo } from "$lib/utils/lruMemo";
 
 // Module scope is deliberate: a room switch unmounts every MessageItem and
@@ -82,6 +85,7 @@ import {
 } from "$lib/matrix/progressiveImage";
 import { createFrameRelay } from "$lib/utils/frameRelay";
 import { createTileImage } from "$lib/utils/tileImage";
+import { isAnimatedImageInfo } from "$lib/utils/imageThumbnail";
 import {
     cacheDecryptedImage,
     cachedDecryptedImage,
@@ -109,9 +113,25 @@ import {
 } from "$lib/utils/messageActionsMenu";
 import EventShield from "./EventShield.svelte";
 import MessageDecorations from "$lib/components/messages/MessageDecorations.svelte";
-import { Check, Code, Forward, Link, Lock, Reply, Pencil } from "lucide-svelte";
+import {
+    Check,
+    Code,
+    Forward,
+    CornerUpRight,
+    Link,
+    Lock,
+    Reply,
+    Pencil,
+    ChevronRight,
+    MessagesSquare,
+} from "lucide-svelte";
+import {
+    bridgedThreadForEvent,
+    openBridgedThread,
+} from "$lib/stores/bridgedThreads.svelte";
 import Reactions from "$lib/components/messages/Reactions.svelte";
 import ReactorPopover from "./ReactorPopover.svelte";
+import ReactionsViewer from "./ReactionsViewer.svelte";
 import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
 import MessageEmbed from "$lib/components/messages/MessageEmbed.svelte";
 import { orderReadReceipts } from "$lib/utils/readReceipts";
@@ -143,10 +163,14 @@ import {
     seedRoomStateIfMissing,
     getRoomIdForAlias,
     getThreadSummary,
+    getReactions,
+    getRoomUnreadInfo,
     getThreadName,
     getHomeserverBaseUrl,
+    getRoomDisplayName,
     EventStatus,
 } from "$lib/matrix/client";
+import { forwardEventPermalink, readForward } from "$lib/utils/forwarded";
 import MessageEditBox from "$lib/components/messages/MessageEditBox.svelte";
 import { emoticonsFromHtml } from "$lib/utils/messageBody";
 import { saveObjectUrl, revokeLater } from "$lib/utils/saveFile";
@@ -155,6 +179,7 @@ import {
     isEmptyEdit,
     sendMessageEdit,
 } from "$lib/matrix/editMessage";
+import { displayContent } from "$lib/utils/displayContent";
 import { resolveBubbleLayout } from "$lib/utils/bubbleLayout";
 import {
     parseMatrixLink,
@@ -319,9 +344,20 @@ interface Props {
     timelineIndex?: number;
 }
 
+type BridgedChip = {
+    roomId: string;
+    name: string;
+    joined: boolean;
+    numMembers: number | null;
+    unread: boolean;
+    highlight: number;
+};
+
 // Zami: the default `receipts`, one array for every row, so it doesn't change
 // on every render.
 const NO_RECEIPTS: ReadReceiptInfo[] = [];
+// Zami: what a reaction is, for relationsRevision.
+const REACTION_TYPES = ["m.reaction"];
 
 // Zami: Zam's inline `<svg fill="currentColor">` icons, drawn by SvgIcon.
 const PLAY_PATH = "M8 5v14l11-7z";
@@ -359,8 +395,7 @@ const VERTICAL_LOCK_PX = 8;
 
 // Zami: `.own-bubble` in src/app.zami.css, as utilities (Uniwind has no
 // component classes). Not ported: its `::after` tail.
-const OWN_BUBBLE =
-    "self-end max-w-[80%] px-3 py-2 rounded-2xl bg-discord-accent";
+const OWN_BUBBLE = "self-end max-w-[80%] px-3 py-2 rounded-2xl bg-zam-accent";
 
 function MessageItem({
     event,
@@ -523,6 +558,7 @@ function MessageItem({
     const [pinning, setPinning] = useState(false);
     const [showForwardDialog, setShowForwardDialog] = useState(false);
     const [showViewSourceDialog, setShowViewSourceDialog] = useState(false);
+    const [showReactionsViewer, setShowReactionsViewer] = useState(false);
 
     // Zami: no INTERACTIVE_TARGET_SELECTOR: a touch on a link, button or other
     // pressable inside the row is that element's (the responder system gives it
@@ -946,13 +982,6 @@ function MessageItem({
                 : 0;
         return avatars + overflow + 4;
     })();
-    // An encrypted edit is applied once it decrypts; content re-reads on
-    // this event's revision then, so the indicator must too or the edited
-    // text shows without it.
-    // Zami: this and the event's other fields below are read as the row
-    // renders, which `rowState` makes it do whenever the event changes.
-    const isEdited = !!event.replacingEvent();
-
     // A failed (NOT_SENT) local echo: the send errored and the SDK is blocking
     // further sends in this room until it's retried or removed.
     // Zami: the status is read once, for this and the shield's key below.
@@ -1020,9 +1049,11 @@ function MessageItem({
         // so depend on its revision — moved on MatrixEventEvent.Decrypted —
         // or the encrypted envelope's (empty) content sticks after decryption.
         void revision;
+        // displayContent, not getContent(): an applied edit that is still
+        // encrypted (or failed to decrypt) leaves getContent() empty.
         // Zami: a redaction empties the content in place, so a redacted
         // event's is a copy, for the memos below that key on it.
-        const value = event.getContent();
+        const value = displayContent(event);
         return event.isRedacted() ? { ...value } : value;
     }, [event, revision]);
     // Likewise revision-dependent: getType() flips "m.room.encrypted" → the
@@ -1030,6 +1061,67 @@ function MessageItem({
     // a plain $derived(event.getType()) would keep the UTD placeholder up
     // forever.
     const eventType = event.getType();
+
+    // MSC4553 forward: `content` above is already the forwarded original
+    // (displayContent); this is the attribution drawn around it. All of it is
+    // the forwarder's claim, so names resolve from rooms we can see when we
+    // can, and the claimed room name is only a fallback.
+    const forward = useMemo(() => {
+        void revision;
+        if (event.isRedacted()) return null;
+        return readForward(event.getOriginalContent(), eventType);
+    }, [event, revision, eventType]);
+    function knownUserName(userId: string, roomId?: string): string {
+        if (room.getMember(userId)) return getMemberName(room, userId);
+        const source = roomId ? getRoom(roomId) : null;
+        if (source?.getMember(userId)) return getMemberName(source, userId);
+        return userId;
+    }
+    // Zami: both names read on roomsTick in one rune, as upstream's two
+    // deriveds do.
+    const forwardNames = useRune(
+        () => {
+            if (!forward) return { sender: null, room: null };
+            void roomsState.roomsTick;
+            const joined = forward.roomId ? getRoom(forward.roomId) : null;
+            return {
+                sender: forward.sender
+                    ? knownUserName(forward.sender, forward.roomId)
+                    : null,
+                room: joined
+                    ? getRoomDisplayName(joined)
+                    : (forward.roomName ?? null),
+            };
+        },
+        [forward, room],
+        { isEqual: shallowEqual },
+    );
+    const forwardSenderName = forwardNames.sender;
+    const forwardRoomName = forwardNames.room;
+    const forwardLink = useMemo(() => {
+        if (!forward?.roomId || !forward.eventId) return null;
+        const servers = forward.roomId.split(":").slice(1).join(":");
+        const target = parseMatrixLink(
+            forwardEventPermalink(
+                forward.roomId,
+                forward.eventId,
+                servers ? [servers] : [],
+            ),
+        );
+        return target && target.kind !== "user" ? target : null;
+    }, [forward]);
+    // An emote's actor: never the forwarder (MSC4553).
+    const emoteActor = forward
+        ? (forwardSenderName ?? t("messageItem.forwardedEmoteActor"))
+        : displayName;
+    // An encrypted edit is applied once it decrypts; content re-reads on
+    // this event's revision then, so the indicator must too or the edited
+    // text shows without it.
+    // Zami: declared here, after `forward`, which it reads. This and the
+    // event's other fields below are read as the row renders, which
+    // `rowState` makes it do whenever the event changes.
+    // Edits targeting a forward are ignored (MSC4553).
+    const isEdited = !forward && !!event.replacingEvent();
 
     const msgtype: string = content?.msgtype ?? "";
 
@@ -1062,6 +1154,7 @@ function MessageItem({
     const canEditMessage =
         isOwnMessage &&
         eventType === "m.room.message" &&
+        !forward &&
         isEditableContent(content);
 
     // Swipe reveal icon: "none" | "reply" | "edit" (depends on canEditMessage).
@@ -1279,6 +1372,13 @@ function MessageItem({
         setShowViewSourceDialog(true);
     }
 
+    function openReactionsViewer() {
+        slotToken.current = openModal("reactions-viewer", () => {
+            setShowReactionsViewer(false);
+        });
+        setShowReactionsViewer(true);
+    }
+
     async function copyMessageText() {
         try {
             // Zami: expo-clipboard for navigator.clipboard.
@@ -1322,6 +1422,9 @@ function MessageItem({
                 break;
             case "view-source":
                 openViewSourceDialog();
+                break;
+            case "view-reactions":
+                openReactionsViewer();
                 break;
             case "thread":
                 onOpenThread?.(threadRootId);
@@ -1635,9 +1738,11 @@ function MessageItem({
     const imageThumbUrl = useMemo(() => {
         const value = (() => {
             if (msgtype !== "m.image") return null;
-            // GIFs are served full-res in chat so they keep animating; the server
-            // thumbnail would (depending on homeserver) drop the animation.
-            if (isGif || isSvgImage) return mxcToHttp(content?.url as string);
+            // GIFs, and anything flagged animated (MSC4230 / APNG), are served
+            // full-res in chat so they keep animating; the server thumbnail would
+            // (depending on homeserver) drop the animation.
+            if (isGif || isSvgImage || isAnimatedImageInfo(content?.info))
+                return mxcToHttp(content?.url as string);
             // Homeservers generally can't thumbnail JPEG XL, so ask for the
             // original; utils/jxl transcodes it where the engine can't decode it.
             if (
@@ -2188,7 +2293,7 @@ function MessageItem({
         audioIsTracker,
     ]);
 
-    // Reactively track whether the current image URL is favourited. The
+    // Reactively track whether this image or video is favourited. The
     // full-resolution URL is the favourite key (so the picker sends full quality).
     // An encrypted GIF has no usable URL, so it is keyed by a pointer to this
     // message instead (see favouriteFile.ts).
@@ -2207,14 +2312,28 @@ function MessageItem({
         (content?.file as { url?: unknown } | undefined)?.url,
     );
     const imageMediaMxc = validMxc(content?.url) ?? encryptedMxc;
+    // A video's full URL: the favourite key of a starred plaintext video.
+    const videoFullUrl =
+        msgtype === "m.video" ? mxcToHttp(content?.url as string) : null;
+    // The full URL of this message's media, whichever kind it is.
+    const mediaFullUrl = msgtype === "m.video" ? videoFullUrl : imageFullUrl();
     // Zami: only a GIF or WebP can be a favourite, and only the tile's hover
     // star shows whether it is one, so that star (GifFavouriteStar) reads the
     // list, and no other row does.
     const imageFavouriteKey = canFavouriteImage
-        ? (imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource))
+        ? (mediaFullUrl ?? eventFavouriteKey(encryptedFavouriteSource))
         : null;
 
-    function toggleImageFavourite() {
+    // A starred video's poster, for its picker tile and the resent event.
+    // Plaintext only: an encrypted video's poster is read from its event.
+    const videoPosterUrl = (() => {
+        if (msgtype !== "m.video") return null;
+        const poster = videoPoster(content as Record<string, unknown>);
+        return poster?.kind === "plain" ? mxcToHttp(poster.mxc) : null;
+    })();
+
+    function toggleMediaFavourite() {
+        const isVideo = msgtype === "m.video";
         // Remove the favourite of this media first, whichever message starred it.
         const byMedia = imageMediaMxc
             ? favouriteUrlForMxc(imageMediaMxc)
@@ -2223,7 +2342,7 @@ function MessageItem({
             removeFavouriteGif(byMedia);
             return;
         }
-        const full = imageFullUrl();
+        const full = mediaFullUrl;
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
             if (isFavouriteGif(key)) removeFavouriteGif(key);
@@ -2233,6 +2352,7 @@ function MessageItem({
                     previewUrl: key,
                     source: encryptedFavouriteSource,
                     ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...(isVideo ? { video: true } : {}),
                     ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
@@ -2242,7 +2362,10 @@ function MessageItem({
         } else {
             addFavouriteGif({
                 url: full,
-                previewUrl: imageThumbUrl() ?? full,
+                previewUrl: isVideo
+                    ? (videoPosterUrl ?? "")
+                    : (imageThumbUrl() ?? full),
+                ...(isVideo ? { video: true } : {}),
                 // Kept so a GIF sent from the picker goes out under its name.
                 ...(typeof mediaFilename === "string" && mediaFilename
                     ? { name: mediaFilename }
@@ -2294,6 +2417,19 @@ function MessageItem({
     // Every action this message offers, with full names. Drives the mobile ⋯
     // / long-press sheet and the desktop right-click menu; the hover bar keeps
     // its icon buttons for the everyday ones.
+    // Zami: follows this event's reactions (relationsRevision) in place of
+    // reactionTick, as Reactions does.
+    const hasReactions = useRune(() => {
+        relationsRevision(
+            room.relations,
+            event,
+            "m.annotation",
+            REACTION_TYPES,
+        );
+        return (
+            eventId.startsWith("$") && getReactions(room, eventId).length > 0
+        );
+    }, [room, event, eventId]);
     const overflowRows = useMemo(
         () =>
             messageActionsMenu({
@@ -2312,6 +2448,7 @@ function MessageItem({
                 canMarkUnread:
                     eventId.startsWith("$") && !isFailed && !isThreadReply,
                 canViewSource: true,
+                canViewReactions: hasReactions,
                 canReport: !isOwnMessage && !isFailed,
                 canRedact: !isOwnMessage && !isFailed && canRedact,
                 canDelete: isOwnMessage,
@@ -2328,6 +2465,7 @@ function MessageItem({
             isOwnMessage,
             canRedact,
             isThreadReply,
+            hasReactions,
         ],
     );
     // Root summary: this message is a thread ROOT iff other events reply to it.
@@ -2344,6 +2482,34 @@ function MessageItem({
     const threadSummary = roomView.threadSummary;
     const isThreadRoot = !isThreadReply && threadSummary.count > 0;
     const threadName = isThreadRoot ? roomView.threadName : null;
+
+    // A Discord thread bridged by ZDMB that was started from this message
+    // (stores/bridgedThreads.svelte.ts). Memoised like threadSummary: one per
+    // row, and the lookup mints a fresh object on every roomsTick.
+    // Zami: the memo is useRune's shallow comparison.
+    const bridgedChip = useRune(
+        (): BridgedChip | null => {
+            void roomsState.roomsTick;
+            void roomsState.unreadTick;
+            const info = isThreadReply
+                ? null
+                : bridgedThreadForEvent(room.roomId, eventId);
+            if (!info) return null;
+            const counts = info.room
+                ? getRoomUnreadInfo(info.room)
+                : { unread: false, highlight: 0 };
+            return {
+                roomId: info.roomId,
+                name: info.name,
+                joined: info.joined,
+                numMembers: info.numMembers,
+                unread: counts.unread,
+                highlight: counts.highlight,
+            };
+        },
+        [room.roomId, eventId, isThreadReply],
+        { isEqual: shallowEqual },
+    );
 
     // Links to other messages render as an embed of that message instead of
     // a homeserver URL preview (which would only show matrix.to's own page).
@@ -2601,7 +2767,7 @@ function MessageItem({
     // links are white.
     const bodyTextClass = bubble.bubble
         ? "text-sm text-white leading-relaxed [&_a]:text-white [&_a]:underline"
-        : "text-sm text-discord-textPrimary leading-relaxed";
+        : "text-sm text-zam-textPrimary leading-relaxed";
 
     // Zami: the body with what upstream sets inline after it (the edited mark,
     // the receipts' spacer). After text they wrap on as a row; after blocks
@@ -2629,7 +2795,7 @@ function MessageItem({
                     onImagePress={onBodyImagePress}
                 />
                 {isEdited ? (
-                    <Text className="text-xs text-discord-textMuted ms-1 leading-relaxed">
+                    <Text className="text-xs text-zam-textMuted ms-1 leading-relaxed">
                         {t("messageItem.edited")}
                     </Text>
                 ) : null}
@@ -2669,7 +2835,7 @@ function MessageItem({
                     onSave={saveEdit}
                     onCancel={cancelEdit}
                 />
-                <Text className="text-xs text-discord-textMuted mt-1">
+                <Text className="text-xs text-zam-textMuted mt-1">
                     <Text className="font-mono">Enter</Text>{" "}
                     {t("messageItem.toSave")}{" "}
                     <Text className="font-mono">Esc</Text>{" "}
@@ -2687,7 +2853,7 @@ function MessageItem({
                                 isSavingEdit ||
                                 (!editText.trim() && !hasCaption()),
                         }}
-                        className={`px-3 py-1 bg-discord-accent rounded transition-colors ${
+                        className={`px-3 py-1 bg-zam-accent rounded transition-colors ${
                             isSavingEdit || (!editText.trim() && !hasCaption())
                                 ? "opacity-50"
                                 : ""
@@ -2700,9 +2866,9 @@ function MessageItem({
                     <Pressable
                         accessibilityRole="button"
                         onPress={cancelEdit}
-                        className="px-3 py-1 bg-discord-backgroundTertiary rounded transition-colors"
+                        className="px-3 py-1 bg-zam-backgroundTertiary rounded transition-colors"
                     >
-                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
                             {t("common.cancel")}
                         </Text>
                     </Pressable>
@@ -2721,20 +2887,20 @@ function MessageItem({
             );
             return (
                 <View
-                    className="mt-1 h-1 rounded-full bg-discord-backgroundSecondary overflow-hidden"
+                    className="mt-1 h-1 rounded-full bg-zam-backgroundSecondary overflow-hidden"
                     role="progressbar"
                     accessibilityLabel={t("common.loading")}
                     accessibilityValue={{ min: 0, max: 100, now: percent }}
                 >
                     <View
-                        className="h-full bg-discord-accent transition-[width] duration-150"
+                        className="h-full bg-zam-accent transition-[width] duration-150"
                         style={{ width: `${percent}%` }}
                     />
                 </View>
             );
         }
         return (
-            <View className="flex-row items-center gap-3 p-3 bg-discord-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
+            <View className="flex-row items-center gap-3 p-3 bg-zam-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
                 {!(audioIsMidi && audioBlobUrl) ? (
                     <Pressable
                         accessibilityRole="button"
@@ -2751,7 +2917,7 @@ function MessageItem({
                                 setAudioClicked(true);
                             }
                         }}
-                        className={`w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center ${
+                        className={`w-8 h-8 rounded-full bg-zam-accent flex-shrink-0 flex items-center justify-center ${
                             audioLoading ? "opacity-50" : ""
                         }`}
                         disabled={audioLoading}
@@ -2775,7 +2941,7 @@ function MessageItem({
                 <View className="flex-1 min-w-0">
                     <Text
                         numberOfLines={1}
-                        className="text-discord-textPrimary text-xs font-medium mb-1"
+                        className="text-zam-textPrimary text-xs font-medium mb-1"
                     >
                         {mediaFilename || t("messageItem.audio")}
                     </Text>
@@ -2803,8 +2969,8 @@ function MessageItem({
                             <Text
                                 className={`text-xs ${
                                     audioMode === "failed"
-                                        ? "text-discord-danger"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-danger"
+                                        : "text-zam-textMuted"
                                 }`}
                             >
                                 {audioStatusLabel(audioMode)}
@@ -2824,7 +2990,7 @@ function MessageItem({
                     >
                         <SvgIcon
                             d={DOWNLOAD_PATH}
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                         />
                     </Pressable>
                 ) : null}
@@ -2893,9 +3059,9 @@ function MessageItem({
                 <Pulse className="flex-row items-center gap-1.5">
                     <Lock
                         size={14}
-                        className="flex-shrink-0 text-discord-textMuted"
+                        className="flex-shrink-0 text-zam-textMuted"
                     />
-                    <Text className="text-sm italic text-discord-textMuted leading-relaxed">
+                    <Text className="text-sm italic text-zam-textMuted leading-relaxed">
                         {DECRYPTING_MESSAGE_TEXT}
                     </Text>
                 </Pulse>
@@ -2911,9 +3077,9 @@ function MessageItem({
                 <View className="flex-row flex-wrap items-center gap-1.5">
                     <Lock
                         size={14}
-                        className="flex-shrink-0 text-discord-textMuted"
+                        className="flex-shrink-0 text-zam-textMuted"
                     />
-                    <Text className="text-sm italic text-discord-textMuted leading-relaxed">
+                    <Text className="text-sm italic text-zam-textMuted leading-relaxed">
                         {utdText}
                     </Text>
                     {utdRequestable ? (
@@ -2929,7 +3095,7 @@ function MessageItem({
                                 keyRequest !== "idle" ? "opacity-60" : ""
                             }
                         >
-                            <Text className="text-xs font-medium text-discord-accent">
+                            <Text className="text-xs font-medium text-zam-accent">
                                 {keyRequest === "idle"
                                     ? t("messageItem.requestKeys")
                                     : t("messageItem.keysRequested")}
@@ -3043,12 +3209,12 @@ function MessageItem({
                 );
             } else if (file && imageDecryptFailed) {
                 tile = (
-                    <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm">
+                    <View className="flex-row items-center gap-2 p-3 bg-zam-backgroundSecondary rounded-lg mt-1 max-w-sm">
                         <SvgIcon
                             d={ERROR_PATH}
-                            className="w-4 h-4 text-discord-danger"
+                            className="w-4 h-4 text-zam-danger"
                         />
-                        <Text className="text-xs text-discord-danger">
+                        <Text className="text-xs text-zam-danger">
                             {t("messageItem.couldnTDecryptImage")}
                         </Text>
                     </View>
@@ -3069,6 +3235,16 @@ function MessageItem({
                                 placeholders={ucur.placeholders}
                                 dims={ucur.dims}
                                 mimetype={ucur.mimetype}
+                                neighbours={{
+                                    prev:
+                                        uprev !== null
+                                            ? ug.images[uprev]
+                                            : null,
+                                    next:
+                                        unext !== null
+                                            ? ug.images[unext]
+                                            : null,
+                                }}
                                 onClose={() => setUploadGallery(null)}
                                 onPrev={
                                     uprev !== null
@@ -3144,7 +3320,7 @@ function MessageItem({
                                 <GifFavouriteStar
                                     favouriteKey={imageFavouriteKey}
                                     mediaMxc={imageMediaMxc}
-                                    onPress={toggleImageFavourite}
+                                    onPress={toggleMediaFavourite}
                                 />
                             ) : null}
                         </View>
@@ -3153,7 +3329,7 @@ function MessageItem({
                 );
             } else {
                 tile = (
-                    <Text className="text-xs text-discord-textMuted italic">
+                    <Text className="text-xs text-zam-textMuted italic">
                         {t("messageItem.imageUnavailable")}
                     </Text>
                 );
@@ -3172,12 +3348,12 @@ function MessageItem({
                                 accessibilityLabel={t(
                                     "messageItem.revealSpoiler",
                                 )}
-                                className="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center rounded-lg bg-discord-backgroundDark active:bg-discord-backgroundTertiary"
+                                className="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center rounded-lg bg-zam-backgroundDark active:bg-zam-backgroundTertiary"
                                 onPress={() => setSpoilerRevealed(true)}
                                 onLongPress={rowLongPress}
                                 delayLongPress={500}
                             >
-                                <Text className="text-sm font-bold uppercase tracking-wide text-discord-textPrimary">
+                                <Text className="text-sm font-bold uppercase tracking-wide text-zam-textPrimary">
                                     {t("messageItem.spoiler")}
                                 </Text>
                             </Pressable>
@@ -3244,7 +3420,33 @@ function MessageItem({
             return (
                 <>
                     {mediaCaption()}
-                    <MessageVideo content={content} filename={mediaFilename} />
+                    {/* Zami: the star shows on hover, which touch doesn't
+                        have, as on an image. */}
+                    <MessageVideo
+                        content={content}
+                        filename={mediaFilename}
+                        overlay={
+                            isTouchscreen
+                                ? undefined
+                                : (where: "poster" | "player") => (
+                                      <GifFavouriteStar
+                                          favouriteKey={
+                                              mediaFullUrl ??
+                                              eventFavouriteKey(
+                                                  encryptedFavouriteSource,
+                                              )
+                                          }
+                                          mediaMxc={imageMediaMxc}
+                                          onPress={toggleMediaFavourite}
+                                          position={
+                                              where === "player"
+                                                  ? "top-2 end-11"
+                                                  : "top-1.5 end-1.5"
+                                          }
+                                      />
+                                  )
+                        }
+                    />
                 </>
             );
         }
@@ -3338,19 +3540,19 @@ function MessageItem({
                         />
                     ) : null}
                     {audioIsTracker || audioIsMidi ? audioCard() : null}
-                    <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
+                    <View className="flex-row items-center gap-2 p-3 bg-zam-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
                         <SvgIcon
                             d={FILE_PATH}
-                            className="w-8 h-8 text-discord-accent flex-shrink-0"
+                            className="w-8 h-8 text-zam-accent flex-shrink-0"
                         />
                         <View className="min-w-0 flex-1">
                             <Text
                                 numberOfLines={1}
-                                className="text-discord-textPrimary text-sm font-medium"
+                                className="text-zam-textPrimary text-sm font-medium"
                             >
                                 {fileName}
                             </Text>
-                            <Text className="text-discord-textMuted text-xs">
+                            <Text className="text-zam-textMuted text-xs">
                                 {fileSize
                                     ? fileSize / 1024 < 1024
                                         ? t("messageItem.kb", {
@@ -3375,7 +3577,7 @@ function MessageItem({
                             >
                                 <SvgIcon
                                     d={DOWNLOAD_PATH}
-                                    className="w-5 h-5 text-discord-textMuted"
+                                    className="w-5 h-5 text-zam-textMuted"
                                 />
                             </Pressable>
                         ) : null}
@@ -3395,7 +3597,7 @@ function MessageItem({
         // can only ever be text.
         const html =
             msgtype === "m.emote"
-                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                ? `<span>* ${escapeHtml(emoteActor)} </span>${bodyHtml}`
                 : bodyHtml;
         return (
             <>
@@ -3425,6 +3627,44 @@ function MessageItem({
         );
     }
 
+    // Where a forward came from: the room and the original's time, a link to
+    // the original when its room is one a permalink can open.
+    // Zami: the end of upstream's forward block, as a function the block
+    // calls after messageBody.
+    function forwardSource(): ReactNode {
+        if (!forward || !(forwardRoomName || forward.ts)) return null;
+        const fwdTs = forward.ts;
+        const footer = [forwardRoomName, fwdTs ? messageTimestamp(fwdTs) : null]
+            .filter(Boolean)
+            .join(" · ");
+        if (forwardLink) {
+            const link = forwardLink;
+            return (
+                <Pressable
+                    accessibilityRole="link"
+                    accessibilityHint={fwdTs ? fullTimestamp(fwdTs) : undefined}
+                    onPress={() => openMatrixTarget(link)}
+                    className="forward-source mt-1 self-start max-w-full"
+                >
+                    <Text
+                        numberOfLines={1}
+                        className="text-xs text-zam-textMuted"
+                    >
+                        {footer}
+                    </Text>
+                </Pressable>
+            );
+        }
+        return (
+            <Text
+                numberOfLines={1}
+                className="forward-source mt-1 text-xs text-zam-textMuted"
+            >
+                {footer}
+            </Text>
+        );
+    }
+
     // The long-press sheet's preview: the same body markup the chat log
     // renders (formatting, emoji, emote prefix, edited mark), so the sheet shows
     // the message as it looks in the timeline.
@@ -3435,13 +3675,13 @@ function MessageItem({
     function sheetPreviewBody(): ReactNode {
         const html =
             msgtype === "m.emote"
-                ? `<span>* ${escapeHtml(displayName)} </span>${bodyHtml}`
+                ? `<span>* ${escapeHtml(emoteActor)} </span>${bodyHtml}`
                 : bodyHtml;
         return (
             <View className="flex-row flex-wrap items-end">
                 <Html
                     html={html}
-                    className={`text-sm text-discord-textPrimary leading-relaxed${
+                    className={`text-sm text-zam-textPrimary leading-relaxed${
                         emojiOnly ? " emoji-only" : ""
                     }${msgtype === "m.emote" ? " italic" : ""}${
                         msgtype === "m.notice" ? " opacity-70" : ""
@@ -3450,7 +3690,7 @@ function MessageItem({
                     onLinkPress={matrixLinks}
                 />
                 {isEdited ? (
-                    <Text className="text-xs text-discord-textMuted ms-1 leading-relaxed">
+                    <Text className="text-xs text-zam-textMuted ms-1 leading-relaxed">
                         {t("messageItem.edited")}
                     </Text>
                 ) : null}
@@ -3467,7 +3707,7 @@ function MessageItem({
     // tiles do: the SDK emits RelationsCreated on the event with the first
     // one, which moves its revision and re-renders the row. Until then the
     // row follows nothing for them.
-    const hasReactions = !!room.relations.getChildEventsForEvent(
+    const hasReactionRelations = !!room.relations.getChildEventsForEvent(
         eventId,
         "m.annotation",
         "m.reaction",
@@ -3485,11 +3725,11 @@ function MessageItem({
             accessible={false}
             className={`group relative px-4 py-0.5 rounded transition-colors ${
                 mentionHighlight
-                    ? "bg-discord-warning/10 border-s-2 border-discord-warning"
+                    ? "bg-zam-warning/10 border-s-2 border-zam-warning"
                     : ""
             } ${showHeader ? "pt-3" : ""} ${
                 mobileSelected || (!isTouchscreen && rowHovered)
-                    ? "bg-discord-messageHover"
+                    ? "bg-zam-messageHover"
                     : ""
             }`}
             onHoverIn={() => {
@@ -3551,12 +3791,12 @@ function MessageItem({
                                             ? { color: nameColour }
                                             : undefined
                                     }
-                                    className="font-semibold text-sm text-discord-textPrimary"
+                                    className="font-semibold text-sm text-zam-textPrimary"
                                 >
                                     {displayName}
                                 </Text>
                             </Pressable>
-                            <Text className="text-xs text-discord-textMuted flex-shrink-0">
+                            <Text className="text-xs text-zam-textMuted flex-shrink-0">
                                 {messageTimestamp(timestamp)}
                             </Text>
                             {shield ? <EventShield shield={shield} /> : null}
@@ -3564,7 +3804,7 @@ function MessageItem({
                         </View>
                     ) : bubble.showTimeOnlyHeader ? (
                         <View className="flex-row items-baseline gap-2 mb-0.5 justify-end">
-                            <Text className="text-xs text-discord-textMuted flex-shrink-0">
+                            <Text className="text-xs text-zam-textMuted flex-shrink-0">
                                 {messageTimestamp(timestamp)}
                             </Text>
                             {shield ? <EventShield shield={shield} /> : null}
@@ -3597,16 +3837,16 @@ function MessageItem({
                         >
                             <Reply
                                 size={14}
-                                className="text-discord-textMuted flex-shrink-0 self-center"
+                                className="text-zam-textMuted flex-shrink-0 self-center"
                             />
-                            <View className="w-0.5 bg-discord-textMuted rounded-full self-stretch flex-shrink-0 opacity-60" />
+                            <View className="w-0.5 bg-zam-textMuted rounded-full self-stretch flex-shrink-0 opacity-60" />
                             <View className="flex-row items-center gap-1.5 min-w-0 shrink">
-                                <Text className="text-xs font-semibold text-discord-textSecondary flex-shrink-0">
+                                <Text className="text-xs font-semibold text-zam-textSecondary flex-shrink-0">
                                     {replyTargetSender}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="shrink text-xs text-discord-textSecondary opacity-80"
+                                    className="shrink text-xs text-zam-textSecondary opacity-80"
                                 >
                                     {replyTargetBody}
                                 </Text>
@@ -3629,7 +3869,35 @@ function MessageItem({
                         />
                     ) : null}
 
-                    {messageBody()}
+                    {/* MSC4553 forward: a label, the original in a quoted block, and
+                        where it came from. `contents` leaves a plain message's layout
+                        untouched. */}
+                    {forward ? (
+                        <View className="forward-label flex-row min-w-0 items-center gap-1">
+                            <CornerUpRight
+                                size={12}
+                                className="flex-shrink-0 text-zam-textMuted"
+                            />
+                            <Text
+                                numberOfLines={1}
+                                className="shrink text-xs italic text-zam-textMuted"
+                            >
+                                {forwardSenderName
+                                    ? t("messageItem.forwardedFrom", {
+                                          name: forwardSenderName,
+                                      })
+                                    : t("messageItem.forwarded")}
+                            </Text>
+                        </View>
+                    ) : null}
+                    {forward ? (
+                        <View className="forward-block mt-0.5 border-s-[3px] border-zam-divider ps-3 min-w-0">
+                            {messageBody()}
+                            {forwardSource()}
+                        </View>
+                    ) : (
+                        messageBody()
+                    )}
 
                     {/* Paged lightbox for this message's OWN inline body images. A single
                         media image opens with no dead nav; ≥2 page with the chevrons /
@@ -3647,6 +3915,18 @@ function MessageItem({
                                   <Lightbox
                                       src={cur.src}
                                       alt={cur.alt}
+                                      placeholders={cur.placeholders}
+                                      dims={cur.dims}
+                                      neighbours={{
+                                          prev:
+                                              prev !== null
+                                                  ? g.images[prev]
+                                                  : null,
+                                          next:
+                                              next !== null
+                                                  ? g.images[next]
+                                                  : null,
+                                      }}
                                       onClose={() => setBodyGallery(null)}
                                       onPrev={
                                           prev !== null
@@ -3683,43 +3963,117 @@ function MessageItem({
                             accessibilityRole="button"
                             accessibilityHint={t("messageItem.openThread")}
                             onPress={() => onOpenThread?.(eventId)}
-                            className="flex-row self-start items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-discord-backgroundSecondary border border-discord-divider transition-colors"
+                            className="flex-row self-start items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-zam-backgroundSecondary border border-zam-divider transition-colors"
                         >
                             <SvgIcon
                                 d={THREAD_CHIP_PATH}
-                                className="w-3 h-3 flex-shrink-0 text-discord-textMuted"
+                                className="w-3 h-3 flex-shrink-0 text-zam-textMuted"
                             />
                             {threadName ? (
                                 <>
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs font-semibold text-discord-textPrimary max-w-48 shrink"
+                                        className="text-xs font-semibold text-zam-textPrimary max-w-48 shrink"
                                     >
                                         {threadName}
                                     </Text>
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         &middot;
                                     </Text>
                                 </>
                             ) : null}
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("common.replyCount", {
                                     count: threadSummary.count,
                                 })}
                             </Text>
                             {threadSummary.latestTs > 0 ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     &middot; {timeOnly(threadSummary.latestTs)}
                                 </Text>
                             ) : null}
                         </Pressable>
                     ) : null}
 
+                    {/* Discord thread bridged by ZDMB from this message: opens (or
+                        joins, then opens) the thread's own room. */}
+                    {bridgedChip
+                        ? (() => {
+                              const chip = bridgedChip;
+                              return (
+                                  <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityHint={
+                                          chip.joined
+                                              ? t("messageItem.openThread")
+                                              : t("bridgedThreads.joinThread")
+                                      }
+                                      onPress={() =>
+                                          void openBridgedThread(chip.roomId)
+                                      }
+                                      className="flex-row self-start items-center gap-1.5 mt-0.5 max-w-full px-1.5 py-0.5 rounded bg-zam-backgroundSecondary border border-zam-divider transition-colors"
+                                  >
+                                      <MessagesSquare
+                                          size={12}
+                                          className="flex-shrink-0 text-zam-textMuted"
+                                      />
+                                      <Text
+                                          numberOfLines={1}
+                                          className="text-xs font-semibold text-zam-textPrimary shrink max-w-48"
+                                      >
+                                          {chip.name}
+                                      </Text>
+                                      {chip.numMembers !== null ? (
+                                          <>
+                                              <Text className="flex-shrink-0 text-xs text-zam-textMuted">
+                                                  &middot;
+                                              </Text>
+                                              <Text className="flex-shrink-0 text-xs text-zam-textMuted">
+                                                  {t(
+                                                      "bridgedThreads.memberCount",
+                                                      {
+                                                          count: chip.numMembers,
+                                                      },
+                                                  )}
+                                              </Text>
+                                          </>
+                                      ) : null}
+                                      {!chip.joined ? (
+                                          <>
+                                              <Text className="flex-shrink-0 text-xs text-zam-textMuted">
+                                                  &middot;
+                                              </Text>
+                                              <Text className="flex-shrink-0 text-xs text-zam-accent">
+                                                  {t(
+                                                      "bridgedThreads.joinThread",
+                                                  )}
+                                              </Text>
+                                          </>
+                                      ) : chip.highlight > 0 ? (
+                                          <View className="flex-shrink-0 bg-zam-danger rounded-full px-1.5 min-w-[1.2rem] items-center">
+                                              <Text className="text-xs text-white font-bold text-center">
+                                                  {chip.highlight > 99
+                                                      ? "99+"
+                                                      : chip.highlight}
+                                              </Text>
+                                          </View>
+                                      ) : chip.unread ? (
+                                          <View className="flex-shrink-0 w-2 h-2 rounded-full bg-zam-textPrimary" />
+                                      ) : null}
+                                      <ChevronRight
+                                          size={12}
+                                          className="flex-shrink-0 text-zam-textMuted"
+                                      />
+                                  </Pressable>
+                              );
+                          })()
+                        : null}
+
                     {/* Reactions (reserve right clearance on touch so the wrapped reaction
                         row never runs under the out-of-flow read-receipt overlay; not needed
                         when own bubbles are right-aligned — the overlay is on the LEFT then) */}
                     <View className={reactionsClass}>
-                        {hasReactions ? (
+                        {hasReactionRelations ? (
                             <Reactions
                                 eventId={eventId}
                                 room={room}
@@ -3731,12 +4085,12 @@ function MessageItem({
                     {/* Failed-send indicator: retry or delete a NOT_SENT local echo */}
                     {isFailed ? (
                         <View className="flex-row items-center gap-2 px-4 py-0.5">
-                            <StrokedIcon className="w-4 h-4 flex-shrink-0 text-discord-danger">
+                            <StrokedIcon className="w-4 h-4 flex-shrink-0 text-zam-danger">
                                 <Circle cx="12" cy="12" r="10" />
                                 <Line x1="12" y1="8" x2="12" y2="12" />
                                 <Line x1="12" y1="16" x2="12.01" y2="16" />
                             </StrokedIcon>
-                            <Text className="text-xs text-discord-danger">
+                            <Text className="text-xs text-zam-danger">
                                 {t("messageItem.failedToSend")}
                             </Text>
                             <Pressable
@@ -3746,20 +4100,20 @@ function MessageItem({
                                 onPress={() => void retrySend()}
                                 className={isResending ? "opacity-50" : ""}
                             >
-                                <Text className="text-xs text-discord-danger font-semibold underline">
+                                <Text className="text-xs text-zam-danger font-semibold underline">
                                     {isResending
                                         ? t("messageItem.retrying")
                                         : t("common.retry")}
                                 </Text>
                             </Pressable>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 ·
                             </Text>
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => deleteFailedMessage(event)}
                             >
-                                <Text className="text-xs text-discord-danger font-semibold underline">
+                                <Text className="text-xs text-zam-danger font-semibold underline">
                                     {t("common.delete")}
                                 </Text>
                             </Pressable>
@@ -3802,7 +4156,7 @@ function MessageItem({
                             />
                         ))}
                         {receiptCluster.overflow > 0 ? (
-                            <Text className="text-[10px] text-discord-textMuted ms-1">
+                            <Text className="text-[10px] text-zam-textMuted ms-1">
                                 +{receiptCluster.overflow}
                             </Text>
                         ) : null}
@@ -3839,7 +4193,7 @@ function MessageItem({
                 >
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted"
+                        className="text-xs text-zam-textMuted"
                     >
                         {timeOnly(timestamp)}
                     </Text>
@@ -3862,7 +4216,7 @@ function MessageItem({
                 <View
                     role="toolbar"
                     accessibilityLabel={t("messageItem.messageActions")}
-                    className="flex-row absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg px-1 py-0.5 shadow-md z-20"
+                    className="flex-row absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg px-1 py-0.5 shadow-md z-20"
                 >
                     {!isTouchscreen && canEditMessage ? (
                         <ActionButton
@@ -3871,7 +4225,7 @@ function MessageItem({
                         >
                             <SvgIcon
                                 d={EDIT_PATH}
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                             />
                         </ActionButton>
                     ) : null}
@@ -3889,8 +4243,8 @@ function MessageItem({
                                 d={PIN_PATH}
                                 className={`w-4 h-4 ${
                                     isPinned
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }`}
                             />
                         </ActionButton>
@@ -3916,7 +4270,7 @@ function MessageItem({
                                 }
                             }}
                         >
-                            <SvgIcon className="w-4 h-4 text-discord-textMuted">
+                            <SvgIcon className="w-4 h-4 text-zam-textMuted">
                                 <Path fillRule="evenodd" d={REACTION_PATH} />
                             </SvgIcon>
                         </ActionButton>
@@ -3943,6 +4297,7 @@ function MessageItem({
                                             room.roomId,
                                             eventId,
                                             emoji.mxcUrl,
+                                            emoji.shortcode,
                                         );
                                         closeModal();
                                     }}
@@ -3957,7 +4312,7 @@ function MessageItem({
                     >
                         <SvgIcon
                             d={REPLY_PATH}
-                            className="w-4 h-4 text-discord-textMuted"
+                            className="w-4 h-4 text-zam-textMuted"
                         />
                     </ActionButton>
                     {isTouchscreen && canEditMessage ? (
@@ -3970,7 +4325,7 @@ function MessageItem({
                         >
                             <SvgIcon
                                 d={EDIT_PATH}
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                             />
                         </ActionButton>
                     ) : onOpenThread && (isThreadReply || !isRelatedEvent) ? (
@@ -3984,7 +4339,7 @@ function MessageItem({
                         >
                             <SvgIcon
                                 d={THREAD_PATH}
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                             />
                         </ActionButton>
                     ) : null}
@@ -3995,10 +4350,7 @@ function MessageItem({
                             label={t("messageItem.forwardMessage")}
                             onPress={openForwardDialog}
                         >
-                            <Forward
-                                size={16}
-                                className="text-discord-textMuted"
-                            />
+                            <Forward size={16} className="text-zam-textMuted" />
                         </ActionButton>
                     ) : null}
                     {!isTouchscreen
@@ -4011,10 +4363,10 @@ function MessageItem({
                                   {view.icon ? (
                                       <SvgIcon
                                           d={view.icon}
-                                          className="w-4 h-4 text-discord-textMuted"
+                                          className="w-4 h-4 text-zam-textMuted"
                                       />
                                   ) : (
-                                      <Text className="text-xs font-semibold text-discord-textMuted">
+                                      <Text className="text-xs font-semibold text-zam-textMuted">
                                           {view.label.slice(0, 1)}
                                       </Text>
                                   )}
@@ -4030,7 +4382,7 @@ function MessageItem({
                         >
                             <SvgIcon
                                 d={MORE_PATH}
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                             />
                         </ActionButton>
                     ) : null}
@@ -4046,12 +4398,12 @@ function MessageItem({
                             {linkCopied ? (
                                 <Check
                                     size={16}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                             ) : (
                                 <Link
                                     size={16}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                             )}
                         </ActionButton>
@@ -4061,10 +4413,7 @@ function MessageItem({
                             label={t("messageItem.viewSource")}
                             onPress={openViewSourceDialog}
                         >
-                            <Code
-                                size={16}
-                                className="text-discord-textMuted"
-                            />
+                            <Code size={16} className="text-zam-textMuted" />
                         </ActionButton>
                     ) : null}
                     {!isTouchscreen && !isOwnMessage && !isFailed ? (
@@ -4093,7 +4442,7 @@ function MessageItem({
                     {!isTouchscreen && isOwnMessage ? (
                         confirmingDelete ? (
                             <>
-                                <Text className="text-xs text-discord-textMuted px-1">
+                                <Text className="text-xs text-zam-textMuted px-1">
                                     {t("messageItem.delete")}
                                 </Text>
                                 <Pressable
@@ -4102,7 +4451,7 @@ function MessageItem({
                                         "messageItem.yesDeleteMessage",
                                     )}
                                     onPress={() => resolveDelete(true)}
-                                    className="px-2 py-1 rounded bg-discord-danger transition-colors"
+                                    className="px-2 py-1 rounded bg-zam-danger transition-colors"
                                 >
                                     <Text className="text-xs font-semibold text-white">
                                         {t("messageItem.yes")}
@@ -4116,7 +4465,7 @@ function MessageItem({
                                     onPress={() => resolveDelete(false)}
                                     className="px-2 py-1 rounded transition-colors"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-textMuted">
+                                    <Text className="text-xs font-semibold text-zam-textMuted">
                                         {t("messageItem.no")}
                                     </Text>
                                 </Pressable>
@@ -4129,7 +4478,7 @@ function MessageItem({
                             >
                                 <SvgIcon
                                     d={DELETE_PATH}
-                                    className="w-4 h-4 text-discord-textMuted"
+                                    className="w-4 h-4 text-zam-textMuted"
                                 />
                             </ActionButton>
                         )
@@ -4170,6 +4519,7 @@ function MessageItem({
                                         room.roomId,
                                         eventId,
                                         emoji.mxcUrl,
+                                        emoji.shortcode,
                                     );
                                     closeModal();
                                 }}
@@ -4245,6 +4595,14 @@ function MessageItem({
 
             {showForwardDialog ? <ForwardMessageDialog event={event} /> : null}
 
+            {showReactionsViewer ? (
+                <ReactionsViewer
+                    room={room}
+                    eventId={eventId}
+                    onClose={closeModal}
+                />
+            ) : null}
+
             {showViewSourceDialog ? <ViewSourceDialog event={event} /> : null}
         </>
     );
@@ -4279,7 +4637,7 @@ export default memo(MessageItem, sameProps);
 // an async per-event decrypt, so an encrypted room keeps single-image opens.
 function isPageableImageUpload(e: MatrixEvent): boolean {
     if (e.getType() !== "m.room.message") return false;
-    const c = e.getContent() as {
+    const c = displayContent(e) as {
         msgtype?: string;
         url?: unknown;
         file?: unknown;
@@ -4296,14 +4654,15 @@ function isPageableImageUpload(e: MatrixEvent): boolean {
 }
 
 function uploadImageOf(e: MatrixEvent): GalleryImage {
-    const c = e.getContent() as {
+    const c = displayContent(e) as {
         url?: string;
         filename?: string;
         body?: string;
         info?: { w?: unknown; h?: unknown; mimetype?: string };
     };
     const sender = videoPoster(c as Record<string, unknown>);
-    const isGifUpload = c.info?.mimetype === "image/gif";
+    const isGifUpload =
+        c.info?.mimetype === "image/gif" || isAnimatedImageInfo(c.info);
     const isVectorUpload = isSvg(c.info?.mimetype, c.filename ?? c.body);
     return {
         src: mxcToHttp(c.url as string) ?? "",
@@ -4449,11 +4808,15 @@ function GifFavouriteStar({
     favouriteKey,
     mediaMxc,
     onPress,
+    position = "top-1.5 end-1.5",
 }: {
     favouriteKey: string | null;
     /** The media's mxc: a message reusing a favourite's media matches it. */
     mediaMxc: string | undefined;
     onPress: () => void;
+    /** Where it sits on the media (upstream's `favouriteStar` snippet's
+     *  `position`, less its hover classes). */
+    position?: string;
 }) {
     const imageIsFavourited = useRune(() => {
         void favouritesState.gifs; // track
@@ -4469,13 +4832,11 @@ function GifFavouriteStar({
                     : t("common.addToFavourites")
             }
             onPress={onPress}
-            className="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 transition-opacity"
+            accessibilityState={{ selected: imageIsFavourited }}
+            className={`absolute z-10 p-1 rounded-full bg-black/50 transition-opacity ${position}`}
         >
             {imageIsFavourited ? (
-                <SvgIcon
-                    d={STAR_PATH}
-                    className="w-4 h-4 text-discord-warning"
-                />
+                <SvgIcon d={STAR_PATH} className="w-4 h-4 text-zam-warning" />
             ) : (
                 <StrokedIcon className="w-4 h-4 text-white">
                     <Path d={STAR_PATH} />
@@ -4592,16 +4953,16 @@ function ReplyFallback({
             className="flex-row w-full items-start gap-1 mb-1 rounded opacity-60 transition-opacity"
             onPress={onPress}
         >
-            <View className="w-0.5 bg-discord-textMuted rounded-full self-stretch flex-shrink-0" />
+            <View className="w-0.5 bg-zam-textMuted rounded-full self-stretch flex-shrink-0" />
             <View className="flex-row items-center gap-1.5 min-w-0 shrink">
                 {fallbackLine ? (
                     <>
-                        <Text className="text-xs font-semibold text-discord-textSecondary flex-shrink-0">
+                        <Text className="text-xs font-semibold text-zam-textSecondary flex-shrink-0">
                             {fallbackLine.sender}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="shrink text-xs text-discord-textMuted"
+                            className="shrink text-xs text-zam-textMuted"
                         >
                             {fallbackLine.text || "…"}
                         </Text>
@@ -4613,7 +4974,7 @@ function ReplyFallback({
                     // or a non-message type (sticker/poll) — call that
                     // "unavailable", not "deleted", so a decrypting
                     // target is not mislabelled. No parent = not loaded.
-                    <Text className="text-xs text-discord-textMuted italic">
+                    <Text className="text-xs text-zam-textMuted italic">
                         {missingLabel}
                     </Text>
                 )}
@@ -4714,7 +5075,7 @@ function AudioControls({ src }: { src: string }) {
             >
                 <SvgIcon
                     d={playing ? PAUSE_PATH : PLAY_PATH}
-                    className="w-4 h-4 text-discord-textPrimary"
+                    className="w-4 h-4 text-zam-textPrimary"
                 />
             </Pressable>
             <Pressable
@@ -4731,14 +5092,14 @@ function AudioControls({ src }: { src: string }) {
                 }
                 className="flex-1 h-8 justify-center"
             >
-                <View className="h-1 rounded-full bg-discord-backgroundSecondary overflow-hidden">
+                <View className="h-1 rounded-full bg-zam-backgroundSecondary overflow-hidden">
                     <View
-                        className="h-full bg-discord-accent"
+                        className="h-full bg-zam-accent"
                         style={{ width: `${progress * 100}%` }}
                     />
                 </View>
             </Pressable>
-            <Text className="text-[11px] text-discord-textMuted tabular-nums">
+            <Text className="text-[11px] text-zam-textMuted tabular-nums">
                 {formatCallDuration(currentTime * 1000)}
                 {duration > 0
                     ? ` / ${formatCallDuration(duration * 1000)}`
@@ -4889,21 +5250,21 @@ function SwipeReveal({
             <View
                 className={`flex-row items-center justify-center w-9 h-9 rounded-full transition-colors ${
                     icon === "edit"
-                        ? "bg-discord-backgroundTertiary"
+                        ? "bg-zam-backgroundTertiary"
                         : icon === "reply"
-                          ? "bg-discord-accent"
-                          : "bg-discord-backgroundTertiary"
+                          ? "bg-zam-accent"
+                          : "bg-zam-backgroundTertiary"
                 }`}
             >
                 {icon === "edit" ? (
-                    <Pencil size={16} className="text-discord-textPrimary" />
+                    <Pencil size={16} className="text-zam-textPrimary" />
                 ) : (
                     <Reply
                         size={16}
                         className={
                             icon === "reply"
                                 ? "text-white"
-                                : "text-discord-textSecondary"
+                                : "text-zam-textSecondary"
                         }
                     />
                 )}

@@ -119,10 +119,10 @@ export default function SoundboardPopover({
         <View className="gap-3">
             <View>
                 <View className="flex-row items-center justify-between gap-2">
-                    <Text className="text-xs text-discord-textMuted uppercase font-semibold tracking-wide">
+                    <Text className="text-xs text-zam-textMuted uppercase font-semibold tracking-wide">
                         {t("soundboard.yourVolume")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted tabular-nums">
+                    <Text className="text-xs text-zam-textMuted tabular-nums">
                         {Math.round(myLevel * 100)}%
                     </Text>
                 </View>
@@ -137,7 +137,7 @@ export default function SoundboardPopover({
                 />
             </View>
             {failed && (
-                <Text className="text-xs text-discord-danger">
+                <Text className="text-xs text-zam-danger">
                     {t("soundboard.sendFailed")}
                 </Text>
             )}
@@ -146,7 +146,7 @@ export default function SoundboardPopover({
                     <Text
                         accessibilityRole="header"
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted uppercase font-semibold tracking-wide truncate"
+                        className="text-xs text-zam-textMuted uppercase font-semibold tracking-wide truncate"
                     >
                         {pack.name}
                     </Text>
@@ -159,11 +159,11 @@ export default function SoundboardPopover({
                                 accessibilityRole="button"
                                 accessibilityHint={sound.body}
                                 onPress={() => void play(sound)}
-                                className="max-w-full px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-accent active:bg-discord-accent transition-colors"
+                                className="max-w-full px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-accent active:bg-zam-accent transition-colors"
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="truncate text-sm text-discord-textPrimary"
+                                    className="truncate text-sm text-zam-textPrimary"
                                 >
                                     {sound.name}
                                 </Text>
@@ -173,7 +173,7 @@ export default function SoundboardPopover({
                 </View>
             ))}
             {packs.length === 0 && (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("soundboard.empty")}
                 </Text>
             )}
@@ -181,7 +181,7 @@ export default function SoundboardPopover({
     );
 
     const panelClass =
-        "absolute z-50 w-80 rounded-lg bg-discord-backgroundTertiary border border-discord-divider shadow-xl";
+        "absolute z-50 w-80 rounded-lg bg-zam-backgroundTertiary border border-zam-divider shadow-xl";
 
     return (
         <Portal>

@@ -134,10 +134,10 @@ export default function MessageRedactAction({
                     : below
                       ? "absolute top-full end-0 mt-1 z-50 w-72"
                       : "absolute bottom-full end-0 mb-1 z-50 w-72"
-            } bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl p-3`}
+            } bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl p-3`}
             style={isTouchscreen ? { bottom: keyboardOffset + 8 } : undefined}
         >
-            <Text className="text-xs font-semibold uppercase text-discord-textMuted mb-2">
+            <Text className="text-xs font-semibold uppercase text-zam-textMuted mb-2">
                 {t("messageRedactAction.removeThisMessage")}
             </Text>
             <TextInput
@@ -146,24 +146,22 @@ export default function MessageRedactAction({
                 value={reason}
                 onChangeText={setReason}
                 placeholder={t("common.reasonOptional")}
-                placeholderTextColorClassName="accent-discord-textMuted"
+                placeholderTextColorClassName="accent-zam-textMuted"
                 editable={status !== "sending"}
                 textAlignVertical="top"
                 // Zami: `rows="2"`: two 20px lines, the padding and the border.
-                className="w-full min-h-[58px] resize-none rounded bg-discord-backgroundSecondary border border-discord-divider p-2 text-sm text-discord-textPrimary focus:outline-none focus:border-discord-accent"
+                className="w-full min-h-[58px] resize-none rounded bg-zam-backgroundSecondary border border-zam-divider p-2 text-sm text-zam-textPrimary focus:outline-none focus:border-zam-accent"
             />
             {status === "error" && (
-                <Text className="text-xs text-discord-danger mt-2">
-                    {error}
-                </Text>
+                <Text className="text-xs text-zam-danger mt-2">{error}</Text>
             )}
             <View className="flex-row justify-end gap-2 mt-2">
                 <Pressable
                     accessibilityRole="button"
                     onPress={closeModal}
-                    className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                    className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                 >
-                    <Text className="text-xs font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                    <Text className="text-xs font-semibold text-zam-textMuted hover:text-zam-textPrimary">
                         {t("common.cancel")}
                     </Text>
                 </Pressable>
@@ -172,7 +170,7 @@ export default function MessageRedactAction({
                     accessibilityState={{ disabled: status === "sending" }}
                     onPress={() => void submit()}
                     disabled={status === "sending"}
-                    className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-2 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Text className="text-xs font-semibold text-white">
                         {status === "sending"
@@ -199,11 +197,11 @@ export default function MessageRedactAction({
                     accessibilityLabel={t("messageRedactAction.removeMessage")}
                     accessibilityState={{ expanded: open }}
                     onPress={() => (open ? closeModal() : show())}
-                    className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                    className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                 >
                     <SvgIcon
                         d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                        className="w-4 h-4 text-discord-textMuted"
+                        className="w-4 h-4 text-zam-textMuted"
                     />
                 </Pressable>
             )}

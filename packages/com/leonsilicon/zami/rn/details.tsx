@@ -46,7 +46,7 @@ export interface DetailsProps {
  */
 export function Details({
   summary,
-  summaryTextClassName = "text-sm text-discord-textPrimary",
+  summaryTextClassName = "text-sm text-zam-textPrimary",
   summaryClassName = "items-center gap-1",
   marker = true,
   open,

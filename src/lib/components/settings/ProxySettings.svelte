@@ -1,10 +1,12 @@
 <script lang="ts">
     import { t } from "$lib/i18n";
     import { onMount } from "svelte";
+    import { proxyBridge } from "$lib/proxyBridge";
 
-    // Desktop only: Zam's own proxy and how calls treat it
-    // (electron/proxy.cjs). Applied by main on Save, no restart needed.
-    const bridge = typeof window !== "undefined" ? window.desktop?.proxy : null;
+    // Zam's own proxy and how calls treat it: electron/proxy.cjs on desktop,
+    // ZamProxy.java on Android (no PAC, no "proxy" call mode there). Applied
+    // on Save, no restart needed.
+    const bridge = proxyBridge();
 
     let info = $state<DesktopProxyInfo | null>(null);
     let draft = $state<DesktopProxyPrefs>({
@@ -50,8 +52,12 @@
         saving = true;
         saved = false;
         try {
-            adopt(await bridge.set($state.snapshot(draft)));
-            saved = !info?.error;
+            const next = await bridge.set($state.snapshot(draft));
+            // Android keeps the old setting when the new one is rejected;
+            // keep the draft so the typo can be fixed.
+            if (next.error) info = next;
+            else adopt(next);
+            saved = !next.error;
         } catch (e) {
             loadError = String(e);
         } finally {
@@ -60,14 +66,22 @@
     }
 
     const selectClass =
-        "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+        "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
     const inputClass =
-        "w-full px-3 py-2 rounded text-sm bg-discord-backgroundTertiary text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-1 focus:ring-discord-accent";
-    const labelClass = "block text-sm text-discord-textPrimary mb-1";
-    const hintClass = "text-xs text-discord-textMuted mt-1";
+        "w-full px-3 py-2 rounded text-sm bg-zam-backgroundTertiary text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-1 focus:ring-zam-accent";
+    const labelClass = "block text-sm text-zam-textPrimary mb-1";
+    const hintClass = "text-xs text-zam-textMuted mt-1";
 
     // Calls can only bypass Zam's own proxy or the launch flags' (not the
     // OS settings), judged on the draft so the note shows before saving.
+    const offers = (mode: DesktopProxyPrefs["mode"]) =>
+        !info?.modes || info.modes.includes(mode);
+    const offersCalls = (calls: DesktopProxyPrefs["calls"]) =>
+        !info?.callModes || info.callModes.includes(calls);
+    // Only Android limits modes, and only Android proxies native requests
+    // from Java, which can't use every proxy scheme.
+    const android = $derived(!!info?.modes);
+
     const bypassUnavailable = $derived(
         draft.calls === "direct" &&
             draft.mode === "system" &&
@@ -75,10 +89,21 @@
     );
 </script>
 
-{#if bridge}
+{#if bridge && info?.supported === false}
+    <section data-setting-anchor="cust-network" class="space-y-2">
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
+        >
+            {t("proxySettings.network")}
+        </p>
+        <p class="text-sm text-zam-textMuted">
+            {t("proxySettings.unsupported")}
+        </p>
+    </section>
+{:else if bridge}
     <section data-setting-anchor="cust-network" class="space-y-4">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
         >
             {t("proxySettings.network")}
         </p>
@@ -91,7 +116,9 @@
                 <option value="system">{t("proxySettings.modeSystem")}</option>
                 <option value="direct">{t("proxySettings.modeDirect")}</option>
                 <option value="manual">{t("proxySettings.modeManual")}</option>
-                <option value="pac">{t("proxySettings.modePac")}</option>
+                {#if offers("pac")}
+                    <option value="pac">{t("proxySettings.modePac")}</option>
+                {/if}
             </select>
             {#if draft.mode === "system" && info?.launchFlags.length}
                 <p class={hintClass}>
@@ -116,6 +143,11 @@
                     bind:value={draft.rules}
                 />
                 <p class={hintClass}>{t("proxySettings.serverHint")}</p>
+                {#if android}
+                    <p class={hintClass}>
+                        {t("proxySettings.androidBackgroundHint")}
+                    </p>
+                {/if}
             </div>
             <div>
                 <label class={labelClass} for="proxy-bypass"
@@ -161,7 +193,11 @@
                     >{t("proxySettings.callsDefault")}</option
                 >
                 <option value="direct">{t("proxySettings.callsDirect")}</option>
-                <option value="proxy">{t("proxySettings.callsProxy")}</option>
+                {#if offersCalls("proxy")}
+                    <option value="proxy"
+                        >{t("proxySettings.callsProxy")}</option
+                    >
+                {/if}
             </select>
             <p class={hintClass}>
                 {draft.calls === "direct"
@@ -171,8 +207,10 @@
                       : t("proxySettings.callsDefaultHint")}
             </p>
             {#if bypassUnavailable}
-                <p class="text-xs text-discord-warning mt-1">
-                    {t("proxySettings.callsDirectUnavailable")}
+                <p class="text-xs text-zam-warning mt-1">
+                    {android
+                        ? t("proxySettings.callsDirectUnavailableManual")
+                        : t("proxySettings.callsDirectUnavailable")}
                 </p>
             {/if}
             {#if info?.calls === "direct" && info.callBypassAddresses.length}
@@ -187,23 +225,23 @@
 
         <div class="flex items-center gap-3">
             <button
-                class="px-3 py-1.5 rounded text-sm font-medium bg-discord-accent hover:bg-discord-accentHover text-white disabled:opacity-50"
+                class="px-3 py-1.5 rounded text-sm font-medium bg-zam-accent hover:bg-zam-accentHover text-white disabled:opacity-50"
                 disabled={!dirty || saving}
                 onclick={() => void save()}
             >
                 {t("proxySettings.save")}
             </button>
             {#if info?.error}
-                <p class="text-xs text-discord-danger">
+                <p class="text-xs text-zam-danger">
                     {t("proxySettings.applyFailed", { error: info.error })}
                 </p>
             {:else if saved && !dirty}
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("proxySettings.saved")}
                 </p>
             {/if}
             {#if loadError}
-                <p class="text-xs text-discord-danger">{loadError}</p>
+                <p class="text-xs text-zam-danger">{loadError}</p>
             {/if}
         </div>
     </section>

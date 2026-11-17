@@ -38,6 +38,7 @@ import {
     setCallSoundsVolume,
     setRingEnabled,
     setRingVolume,
+    setRingtone,
     setMirrorCamera,
     setPushToTalk,
     setCallVideoCodec,
@@ -81,7 +82,11 @@ import {
     listMicFilters,
     micFilterUsable,
 } from "$lib/audio/micFilters";
-import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginRegistry, getPluginHost } from "$lib/stores/plugins.svelte";
+import {
+    pluginRingtoneOptions,
+    previewRingtone,
+} from "$lib/audio/ringtoneChoice";
 import { playSpeakerTestTone } from "$lib/audio/speakerTest";
 import {
     playCallSound,
@@ -153,6 +158,19 @@ export default function VoiceAudioSettings() {
     const [cameraError, setCameraError] = useState<string | null>(null);
     // Why incoming-call OS alerts stay silent (blocked/unsupported), or null.
     const [ringNotifyHint, setRingNotifyHint] = useState<string | null>(null);
+    // Plugin ringtones for the picker, labelled "name (Plugin Name)".
+    const ringtoneOptions = useRune(() => {
+        void pluginRegistry.tick;
+        return pluginRingtoneOptions(pluginRegistry.ringtones).map((o) => ({
+            ...o,
+            label: t("voiceAudioSettings.ringtonePluginOption", {
+                name: o.name,
+                plugin:
+                    getPluginHost(o.pluginId)?.zam.plugin.manifest.name ??
+                    o.pluginId,
+            }),
+        }));
+    });
     // Android 14+: whether an incoming DM call may ring full screen over the
     // lock screen. Re-checked when the user comes back from system settings.
     const [fullScreenCallsGranted, setFullScreenCallsGranted] = useState(true);
@@ -218,6 +236,7 @@ export default function VoiceAudioSettings() {
     const callSoundsVolume = useRune(() => settingsState.callSoundsVolume);
     const ringEnabled = useRune(() => settingsState.ringEnabled);
     const ringVolume = useRune(() => settingsState.ringVolume);
+    const ringtone = useRune(() => settingsState.ringtone);
     const connState = useRune(() => voiceCallState.connState);
 
     // Zami: not ported: output devices. React Native has no setSinkId, so the
@@ -549,12 +568,12 @@ export default function VoiceAudioSettings() {
     }, [remoteStreamsKey]);
 
     const selectClass =
-        "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+        "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
 
     return (
         <View className="gap-6">
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.inputDevice")}
                 </Text>
                 <Select
@@ -568,14 +587,14 @@ export default function VoiceAudioSettings() {
                     ]}
                 />
                 {inputFallback ? (
-                    <Text className="text-xs text-discord-warning mt-1">
+                    <Text className="text-xs text-zam-warning mt-1">
                         {t(
                             "voiceAudioSettings.savedMicrophoneNotFoundUsingThe",
                         )}
                     </Text>
                 ) : null}
                 {micError ? (
-                    <Text className="text-xs text-discord-danger mt-2">
+                    <Text className="text-xs text-zam-danger mt-2">
                         {micError}
                     </Text>
                 ) : (
@@ -584,10 +603,10 @@ export default function VoiceAudioSettings() {
                             accessibilityLabel={t(
                                 "voiceAudioSettings.microphoneLevel",
                             )}
-                            className="mt-3 h-2 rounded bg-discord-backgroundTertiary overflow-hidden"
+                            className="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
                         >
                             <View
-                                className="h-full bg-discord-accent"
+                                className="h-full bg-zam-accent"
                                 style={{
                                     width: `${Math.round(micLevel * 100)}%`,
                                 }}
@@ -598,15 +617,15 @@ export default function VoiceAudioSettings() {
                             onPress={() => void toggleLoopback()}
                             className={`mt-2 self-start px-3 py-1 rounded ${
                                 loopbackOn
-                                    ? "bg-discord-accent"
-                                    : "bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                                    ? "bg-zam-accent"
+                                    : "bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                             }`}
                         >
                             <Text
                                 className={`text-xs font-medium ${
                                     loopbackOn
                                         ? "text-white"
-                                        : "text-discord-textMuted"
+                                        : "text-zam-textMuted"
                                 }`}
                             >
                                 {loopbackOn
@@ -618,18 +637,18 @@ export default function VoiceAudioSettings() {
                 )}
                 <View className="mt-3 flex-row items-center gap-3">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.pushToTalk")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.pushToTalkHint")}
                         </Text>
                         {pttNeedsKey ? (
-                            <Text className="text-xs text-discord-warning mt-1">
+                            <Text className="text-xs text-zam-warning mt-1">
                                 {t("voiceAudioSettings.pushToTalkNoKey")}{" "}
                                 <Text
                                     accessibilityRole="button"
-                                    className="text-xs underline text-discord-accent"
+                                    className="text-xs underline text-zam-accent"
                                     onPress={() =>
                                         openAppSettingsTab("keybinds")
                                     }
@@ -648,7 +667,7 @@ export default function VoiceAudioSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.outputDevice")}
                 </Text>
                 {outputMode === "picker" ? (
@@ -671,14 +690,14 @@ export default function VoiceAudioSettings() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void chooseOutputViaBrowser()}
-                        className="self-start px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                        className="self-start px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                     >
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.chooseOutputDevice")}
                         </Text>
                     </Pressable>
                 ) : (
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("voiceAudioSettings.audioOutputIsRoutedByThe")}
                     </Text>
                 )}
@@ -690,15 +709,15 @@ export default function VoiceAudioSettings() {
                                 settingsState.audioOutputDeviceId,
                             )
                         }
-                        className="mt-2 self-start px-3 py-1 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                        className="mt-2 self-start px-3 py-1 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                     >
-                        <Text className="text-xs font-medium text-discord-textMuted">
+                        <Text className="text-xs font-medium text-zam-textMuted">
                             {t("voiceAudioSettings.testSpeaker")}
                         </Text>
                     </Pressable>
                 ) : null}
                 <View className="mt-3 flex-row items-center gap-3">
-                    <Text className="text-sm text-discord-textPrimary flex-shrink-0">
+                    <Text className="text-sm text-zam-textPrimary flex-shrink-0">
                         {t("voiceAudioSettings.callVolume")}
                     </Text>
                     {/* Zami: `flex-1` in place of `w-full`: React Native doesn't
@@ -718,13 +737,13 @@ export default function VoiceAudioSettings() {
                 </View>
                 <View className="mt-3 flex-row items-center gap-3">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {unavailableIf(
                                 !incomingProcessingSupported,
                                 t("voiceAudioSettings.normalizeVoices"),
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.normalizeVoicesHint")}
                         </Text>
                     </View>
@@ -743,16 +762,16 @@ export default function VoiceAudioSettings() {
                             accessibilityLabel={t(
                                 "voiceAudioSettings.incomingCallAudio",
                             )}
-                            className="mt-3 h-2 rounded bg-discord-backgroundTertiary overflow-hidden"
+                            className="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
                         >
                             <View
-                                className="h-full bg-discord-accent transition-[width] duration-75"
+                                className="h-full bg-zam-accent transition-[width] duration-75"
                                 style={{
                                     width: `${Math.round(outLevel * 100)}%`,
                                 }}
                             />
                         </View>
-                        <Text className="text-xs text-discord-textMuted mt-1">
+                        <Text className="text-xs text-zam-textMuted mt-1">
                             {t(
                                 "voiceAudioSettings.incomingCallAudioIfThisMoves",
                             )}
@@ -762,15 +781,15 @@ export default function VoiceAudioSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.voiceProcessing")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.noiseSuppression")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {isPluginFilterKey(nsMode)
                                 ? !dfSupported
                                     ? t(
@@ -826,7 +845,7 @@ export default function VoiceAudioSettings() {
                         accessibilityLabel={t(
                             "voiceAudioSettings.noiseSuppression",
                         )}
-                        className="flex-shrink-0 w-40 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                        className="flex-shrink-0 w-40 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                         value={noiseSuppressionMode}
                         onChange={(value) => {
                             setNoiseSuppressionMode(
@@ -890,12 +909,12 @@ export default function VoiceAudioSettings() {
                 </View>
                 {gpuSupported &&
                 noiseSuppressionHasGpu(noiseSuppressionMode) ? (
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("voiceAudioSettings.noiseSuppressionGpu")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t(
                                     "voiceAudioSettings.noiseSuppressionGpuHint",
                                 )}
@@ -917,8 +936,8 @@ export default function VoiceAudioSettings() {
                         />
                     </View>
                 ) : null}
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                    <Text className="flex-1 text-sm text-discord-textPrimary">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <Text className="flex-1 text-sm text-zam-textPrimary">
                         {t("voiceAudioSettings.echoCancellation")}
                     </Text>
                     <ToggleSwitch
@@ -930,12 +949,12 @@ export default function VoiceAudioSettings() {
                         label={t("voiceAudioSettings.echoCancellation")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.meshRelayOnly")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.meshRelayOnlyHint")}
                         </Text>
                     </View>
@@ -945,12 +964,12 @@ export default function VoiceAudioSettings() {
                         label={t("voiceAudioSettings.meshRelayOnly")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.meshPublicStun")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.meshPublicStunHint")}
                         </Text>
                     </View>
@@ -960,12 +979,12 @@ export default function VoiceAudioSettings() {
                         label={t("voiceAudioSettings.meshPublicStun")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.autoGainControl")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {/* Zami: Zam's two stages fall back to the
                                 platform's AGC where the chain can't run. */}
                             {(micGainMode === "normalize" ||
@@ -986,7 +1005,7 @@ export default function VoiceAudioSettings() {
                         accessibilityLabel={t(
                             "voiceAudioSettings.autoGainControl",
                         )}
-                        className="flex-shrink-0 w-40 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                        className="flex-shrink-0 w-40 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                         value={micGainMode}
                         onChange={(value) => {
                             setMicGainMode(normalizeMicGainMode(value, true));
@@ -1021,7 +1040,7 @@ export default function VoiceAudioSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.camera")}
                 </Text>
                 <Select
@@ -1047,10 +1066,10 @@ export default function VoiceAudioSettings() {
                 />
                 <View className="flex-row items-center justify-between gap-3 py-2">
                     <View className="shrink">
-                        <Text className="text-sm font-medium text-discord-textPrimary">
+                        <Text className="text-sm font-medium text-zam-textPrimary">
                             {t("voiceAudioSettings.mirrorMyCamera")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "voiceAudioSettings.flipYourOwnPreviewOthersAlways",
                             )}
@@ -1064,15 +1083,15 @@ export default function VoiceAudioSettings() {
                 </View>
                 <View className="flex-row items-center justify-between gap-3 py-2">
                     <View className="shrink">
-                        <Text className="text-sm font-medium text-discord-textPrimary">
+                        <Text className="text-sm font-medium text-zam-textPrimary">
                             {t("voiceAudioSettings.videoCodec")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.videoCodecHint")}
                         </Text>
                     </View>
                     <Select
-                        className="flex-shrink-0 w-32 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 border border-discord-divider focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                        className="flex-shrink-0 w-32 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
                         value={callVideoCodec}
                         onChange={(value) => setCallVideoCodec(value)}
                         accessibilityLabel={t("voiceAudioSettings.videoCodec")}
@@ -1089,10 +1108,10 @@ export default function VoiceAudioSettings() {
                     />
                 </View>
                 <View className="py-2">
-                    <Text className="text-sm font-medium text-discord-textPrimary">
+                    <Text className="text-sm font-medium text-zam-textPrimary">
                         {t("voiceAudioSettings.cannotWatch")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted mb-1.5">
+                    <Text className="text-xs text-zam-textMuted mb-1.5">
                         {t("voiceAudioSettings.cannotWatchHint")}
                     </Text>
                     <View className="flex-row flex-wrap gap-1.5">
@@ -1109,8 +1128,8 @@ export default function VoiceAudioSettings() {
                                         }}
                                         className={`px-2.5 py-1 rounded border transition-colors ${
                                             blocked
-                                                ? "bg-discord-accent border-discord-accent"
-                                                : "bg-discord-backgroundTertiary border-transparent hover:bg-discord-messageHover"
+                                                ? "bg-zam-accent border-zam-accent"
+                                                : "bg-zam-backgroundTertiary border-transparent hover:bg-zam-messageHover"
                                         }`}
                                         onPress={() => {
                                             setBlockedDecodeCodecs(
@@ -1130,7 +1149,7 @@ export default function VoiceAudioSettings() {
                                             className={`text-xs font-medium ${
                                                 blocked
                                                     ? "text-white"
-                                                    : "text-discord-textMuted"
+                                                    : "text-zam-textMuted"
                                             }`}
                                         >
                                             {VIDEO_CODEC_LABELS[codec]}
@@ -1143,10 +1162,10 @@ export default function VoiceAudioSettings() {
                 </View>
                 <View className="flex-row items-center justify-between gap-3 py-2">
                     <View className="shrink">
-                        <Text className="text-sm font-medium text-discord-textPrimary">
+                        <Text className="text-sm font-medium text-zam-textPrimary">
                             {t("voiceAudioSettings.adaptiveStream")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("voiceAudioSettings.adaptiveStreamHint")}
                         </Text>
                     </View>
@@ -1162,15 +1181,13 @@ export default function VoiceAudioSettings() {
                         onPress={() => void toggleCamera()}
                         className={`mt-2 self-start px-3 py-1 rounded ${
                             cameraOn
-                                ? "bg-discord-accent"
-                                : "bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                                ? "bg-zam-accent"
+                                : "bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                         }`}
                     >
                         <Text
                             className={`text-xs font-medium ${
-                                cameraOn
-                                    ? "text-white"
-                                    : "text-discord-textMuted"
+                                cameraOn ? "text-white" : "text-zam-textMuted"
                             }`}
                         >
                             {cameraOn
@@ -1180,7 +1197,7 @@ export default function VoiceAudioSettings() {
                     </Pressable>
                 ) : null}
                 {cameraError ? (
-                    <Text className="text-xs text-discord-danger mt-2">
+                    <Text className="text-xs text-zam-danger mt-2">
                         {cameraError}
                     </Text>
                 ) : null}
@@ -1202,11 +1219,11 @@ export default function VoiceAudioSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.callSounds")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                    <Text className="flex-1 text-sm text-discord-textPrimary">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <Text className="flex-1 text-sm text-zam-textPrimary">
                         {t("voiceAudioSettings.playCallSounds")}
                     </Text>
                     <ToggleSwitch
@@ -1220,7 +1237,7 @@ export default function VoiceAudioSettings() {
                     />
                 </View>
                 <View className="mt-3 flex-row items-center gap-3">
-                    <Text className="text-sm text-discord-textPrimary flex-shrink-0">
+                    <Text className="text-sm text-zam-textPrimary flex-shrink-0">
                         {t("voiceAudioSettings.soundVolume")}
                     </Text>
                     <Range
@@ -1240,15 +1257,15 @@ export default function VoiceAudioSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("voiceAudioSettings.ringing")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("voiceAudioSettings.ringForIncomingDmCalls")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted mt-0.5">
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
                             {t(
                                 "voiceAudioSettings.directMessagesRingRoomsNeverDo",
                             )}
@@ -1281,33 +1298,33 @@ export default function VoiceAudioSettings() {
                     />
                 </View>
                 {ringNotifyHint ? (
-                    <Text className="text-xs text-discord-danger mt-2">
+                    <Text className="text-xs text-zam-danger mt-2">
                         {ringNotifyHint}
                     </Text>
                 ) : null}
                 {ringEnabled && !fullScreenCallsGranted ? (
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("voiceAudioSettings.fullScreenCalls")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted mt-0.5">
+                            <Text className="text-xs text-zam-textMuted mt-0.5">
                                 {t("voiceAudioSettings.fullScreenCallsHint")}
                             </Text>
                         </View>
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void openFullScreenCallSettings()}
-                            className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover flex-shrink-0"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover flex-shrink-0"
                         >
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("voiceAudioSettings.fullScreenCallsAllow")}
                             </Text>
                         </Pressable>
                     </View>
                 ) : null}
                 <View className="mt-3 flex-row items-center gap-3">
-                    <Text className="text-sm text-discord-textPrimary flex-shrink-0">
+                    <Text className="text-sm text-zam-textPrimary flex-shrink-0">
                         {t("voiceAudioSettings.ringtoneVolume")}
                     </Text>
                     <Range
@@ -1324,6 +1341,49 @@ export default function VoiceAudioSettings() {
                             configureRing({ volume: v });
                         }}
                         onChangeEnd={() => playRingPreview()}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 mt-3 border-t border-zam-divider">
+                    <Text className="flex-1 text-sm text-zam-textPrimary">
+                        {t("voiceAudioSettings.ringtone")}
+                    </Text>
+                    <Select
+                        accessibilityLabel={t("voiceAudioSettings.ringtone")}
+                        className="max-w-[60%] bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                        value={ringtone}
+                        onChange={(key) => {
+                            setRingtone(key);
+                            previewRingtone(
+                                key,
+                                pluginRegistry.ringtones,
+                                {
+                                    enabled: settingsState.ringEnabled,
+                                    volume: settingsState.ringVolume,
+                                },
+                                playRingPreview,
+                            );
+                        }}
+                        options={[
+                            {
+                                value: "",
+                                label: t("voiceAudioSettings.ringtoneDefault"),
+                            },
+                            ...ringtoneOptions.map((o) => ({
+                                value: o.key,
+                                label: o.label,
+                            })),
+                            ...(ringtone &&
+                            !ringtoneOptions.some((o) => o.key === ringtone)
+                                ? [
+                                      {
+                                          value: ringtone,
+                                          label: t(
+                                              "voiceAudioSettings.ringtoneUnavailable",
+                                          ),
+                                      },
+                                  ]
+                                : []),
+                        ]}
                     />
                 </View>
             </View>

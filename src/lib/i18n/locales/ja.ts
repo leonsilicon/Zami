@@ -556,6 +556,37 @@ const messages: Partial<Record<MessageKey, string>> = {
         "インデックス同期は動作していません。暗号化ルームのインデックス作成を有効にしてください。",
     "debugSettings.indexSyncNow": "今すぐ同期",
     "debugSettings.indexSyncNever": "なし",
+    "debugSettings.searchIndex": "検索インデックス",
+    "debugSettings.searchIndexHint":
+        "このデバイス上の暗号化ルームすべての履歴を、バックグラウンドでゆっくり進めるのではなく今すぐインデックス化します。実行中はネットワークとストレージを使います。",
+    "debugSettings.searchIndexBuild": "今すぐ完全なインデックスを作成",
+    "debugSettings.searchIndexCancel": "キャンセル",
+    "debugSettings.searchIndexBar": "完全なインデックスの進捗",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} ルーム、{messages} 件のメッセージ",
+    "debugSettings.searchIndexComplete":
+        "完了: すべての暗号化ルームがインデックス化されました。",
+    "debugSettings.searchIndexPartial":
+        "完了しましたが、{failed} 件のルームはまだ完了していません。バックグラウンドで再試行されます。",
+    "debugSettings.searchIndexStorage":
+        "停止: ストレージの空きがほとんどありません。",
+    "debugSettings.prefetchTitle": "バックグラウンドダウンロード (Android)",
+    "debugSettings.prefetchHint":
+        "アプリが前面にないとき、暗号化された履歴ページをバックグラウンドで取得します。インデックスが読むまで暗号化されたままです。",
+    "debugSettings.prefetchPages": "待機中のページ",
+    "debugSettings.prefetchSize": "サイズ",
+    "debugSettings.prefetchRooms": "ルーム",
+    "debugSettings.prefetchLastRun": "最終実行",
+    "debugSettings.prefetchLastResult": "前回の結果",
+    "debugSettings.prefetchLastError": "前回のエラー",
+    "debugSettings.prefetchRefresh": "更新",
+    "debugSettings.searchIndexAborted": "キャンセルしました。",
+    "debugSettings.searchIndexUnavailable":
+        "停止: このデバイスではインデックスが動作していません。",
+    "debugSettings.searchIndexDisabled":
+        "先にプライバシー設定で暗号化ルームのインデックスを有効にしてください。",
+    "debugSettings.searchIndexNotRunning":
+        "インデックスは現在動作していません。アプリの読み込みが終わると開始します。",
     "debugSettings.indexSyncSessions": "セッション",
     "debugSettings.indexSyncAsked": "問い合わせ",
     "debugSettings.indexSyncRoomsMissing": "欠けがあるルーム",
@@ -723,6 +754,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "直接接続は行わず、通話サーバーに IP アドレスも見えません。通話はプロキシ経由で、通話サーバーの TURN リレーに TCP または TLS で送られます。サーバーが TURN リレーを提供しない場合、通話は接続できません。遅延が増える見込みです。",
     "proxySettings.callsDirectUnavailable":
         "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動または PAC）を設定してください。",
+    "proxySettings.callsDirectUnavailableManual":
+        "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動）を設定してください。",
+    "proxySettings.androidBackgroundHint":
+        "通知とクイック返信は WebView の外で取得され、socks5:// または http:// プロキシ経由でのみ動作します。",
+    "proxySettings.unsupported":
+        "このバージョンの Android System WebView ではプロキシを設定できません。Play ストアから更新してください。",
     "proxySettings.callsDirectAddresses": "直接送信:",
     "proxySettings.save": "保存",
     "proxySettings.saved": "保存しました",
@@ -1135,6 +1172,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.closePanel": "パネルを閉じる",
     "messageArea.someone": "誰か",
     "messageArea.pinnedMessagesCount": "ピン留めしたメッセージ（{count}）",
+    "messagesMediaSettings.pingOnReply": "返信時に通知",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "新しい返信は、返信先のメッセージの投稿者に@メンションのように通知されます。返信バーから返信ごとにオフにできます。",
+    "messageInput.pingOn": "@ オン",
+    "messageInput.pingOff": "@ オフ",
+    "messageInput.pingOnTitle": "投稿者に通知する",
+    "messageInput.pingOffTitle": "投稿者に通知しない",
     "messageInput.replyingTo": "{replyTargetName}に返信",
     "messageInput.cancelReplyEsc": "返信をキャンセル（Esc）",
     "messageInput.editAttachment": "添付ファイルを編集",
@@ -1182,6 +1226,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "元のメッセージは削除されました",
     "messageItem.originalMessageUnavailable": "元のメッセージは利用できません",
     "messageItem.replyPreviewSticker": "ステッカー",
+    "messageItem.forwarded": "転送済み",
+    "messageItem.forwardedFrom": "{name} から転送",
+    "messageItem.forwardedEmoteActor": "送信者",
     "messageItem.requestKeys": "鍵をリクエスト",
     "messageItem.keysRequested": "鍵をリクエストしました",
     "messageItem.requestKeysHelp":
@@ -1721,6 +1768,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ルームのアドレス（#room:server.com）またはルームID（!id:server.com）を入力してください",
     "quickActions.couldNotSendTheJoinRequest":
         "参加リクエストを送信できませんでした",
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "リアクション",
+    "reactionsViewer.count": "{count, plural, other {#件のリアクション}}",
+    "reactionsViewer.empty": "このメッセージにリアクションはありません。",
+    "reactionsViewer.removeYours": "自分のリアクションを削除",
+    "reactionsViewer.sending": "送信中…",
+    "reactionsViewer.couldNotRemove": "リアクションを削除できませんでした。",
     "reactorPopover.more": "他{overflow}件",
     "reactorPopover.reactedWith": "{label}でリアクション",
     "reactorPopover.userList": "ユーザー一覧",
@@ -2021,6 +2075,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "アップロードの実測値は {upload} なので、最大 {max} まで上がります。",
     "screenShareQualityChips.bitrateUnmeasured":
         "アップロードはまだ測定されていません。ビデオ送信中に測定されるため、当面は最大 {max} までです。",
+    "screenShareQualityChips.nativeCapture": "Windows キャプチャヘルパー",
+    "screenShareQualityChips.nativeCaptureHint":
+        "ブラウザの外で共有をキャプチャしてエンコードするため、負荷の高いゲーム中も映像がかくつきません。次の共有から適用されます。",
     "screenShareQualityChips.shareSystemAudio": "システム音声を共有",
     "screenShareQualityChips.appliesToNextShare": "次回の共有に適用",
     "screenShareQualityChips.shareSystemAudioAppliesToNext":
@@ -2254,6 +2311,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "色を設定",
     "spaceSidebar.dissolveFolder": "フォルダを解散",
     "spaceSidebar.somethingWentWrong": "問題が発生しました",
+    "spaceSidebar.folder": "フォルダー",
+    "spaceSidebar.liveBadge": "ライブ",
+    "spaceSidebar.inVoiceCount": "通話中 {count} 人",
+    "spaceSidebar.moreParticipants": "+{count} 人",
     "splash.restoringSession": "セッションを復元中…",
     "stickerPicker.searchStickers": "ステッカーを検索…",
     "stickerPicker.searchStickers2": "ステッカーを検索",
@@ -2289,7 +2350,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "メッセージ表示",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "このデバイスにのみ保存されます。アカウント間では同期されません。",
-    "themeColorEditor.appTextSize": "アプリの文字サイズ: {round}%",
+    "themeColorEditor.interfaceScale": "インターフェースの倍率: {percent}%",
+    "themeColorEditor.messageTextScale": "メッセージの文字サイズ: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "チャットのメッセージと入力欄だけを拡大縮小します。",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "アプリ全体の文字と余白を拡大縮小します。",
     "themeColorEditor.font": "フォント",
@@ -2312,6 +2376,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.noRepliesYetStartTheThread":
         "まだ返信はありません。下からスレッドを始めてください。",
     "threadPanel.loadOlderReplies": "古い返信を読み込む",
+    "bridgedChannels.voice": "ボイスチャンネル",
+    "bridgedChannels.stage": "ステージチャンネル",
+    "bridgedChannels.announcement": "アナウンスチャンネル",
+    "bridgedChannels.forum": "フォーラム",
+    "bridgedChannels.media": "メディアチャンネル",
+    "bridgedChannels.privateThread": "プライベートスレッド",
+    "bridgedThreads.joinFailed": "スレッドに参加できませんでした。",
+    "bridgedThreads.joinThread": "スレッドに参加",
+    "bridgedThreads.threadRooms": "スレッドルーム",
+    "bridgedThreads.thread": "スレッド",
+    "bridgedThreads.goToParent": "{name} に移動",
+    "bridgedThreads.memberCount": "{count, plural, other {# 人のメンバー}}",
     "threadsListPanel.threads": "スレッド",
     "threadsListPanel.closeThreadsPanel": "スレッドパネルを閉じる",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2539,6 +2615,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "ダイレクトメッセージは鳴ります。ルームは鳴りません - ルームはルーム自体から参加します。",
     "voiceAudioSettings.ringtoneVolume": "着信音の音量",
+    "voiceAudioSettings.ringtone": "着信音",
+    "voiceAudioSettings.ringtoneDefault": "デフォルト",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "プラグインの着信音（プラグインが読み込まれていません）",
     "voiceAudioSettings.fullScreenCalls": "ロック画面に通話を表示",
     "voiceAudioSettings.fullScreenCallsHint":
         "着信DM通話で画面を点灯し、電話のように全画面で鳴らせるようにします。Androidでは別途許可が必要です。",
@@ -2848,6 +2929,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このデバイスは {codec} 映像をデコードできません。代わりにH.264を要求します。",
     "client.couldNotSwitchVideoCodec":
         "映像コーデックを切り替えられませんでした",
+    "client.androidShareNeedsWebView":
+        "このルームで画面共有するには、新しいAndroid System WebViewが必要です。",
+    "client.screenShareStopped": "画面共有が停止しました。",
     "client.couldNotStartScreenShare": "画面共有を開始できませんでした",
     "client.couldNotShareScreenAudio": "画面共有を音声なしで開始しました",
     "client.couldnTChangeScreenShareQuality":
@@ -2956,6 +3040,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "書き換えルール",
     "previewRewriter.rulesDescription":
         "プレビューの取得先アドレスに順番に適用されます。リンク自体は変更されません。",
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "メッセージリンクのピル",
+    "messageLinkPill.description":
+        "貼り付けたメッセージリンクを、リンク先のルームまたはDMの名前を示すコンパクトなピルとして表示します。ピルにカーソルを合わせると、対応するプレビューがハイライトされます。",
+    "messageLinkPill.viewMessage": "メッセージを表示",
+    "messageLinkPill.viewMessageIn": "{room} の引用メッセージを表示",
+    "messageLinkPill.viewQuotedMessage": "引用メッセージを表示",
+
     "pluginBoot.noPluginSyncDataOnYour":
         "アカウントにまだプラグインの同期データがありません。",
     "pluginBoot.theSyncDataOnYourAccount":
@@ -3254,6 +3346,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "ピン留めを解除",
     "messageActionsMenu.pin": "ピン留め",
     "messageActionsMenu.copyLink": "リンクをコピー",
+    "messageActionsMenu.viewReactions": "リアクションを表示",
     "messageActionsMenu.markUnread": "未読にする",
     "messageActionsMenu.couldNotMarkUnread": "未読にできませんでした",
     "messageActionsMenu.report": "通報",
@@ -3299,6 +3392,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturbDescription":
         "すべての端末で通知と着信を鳴らしません",
     "presence.invisible": "オフライン表示",
+    "presence.invisibleHidesActivity":
+        "オフライン表示にすると、既読通知と入力中の表示も他のユーザーに見えなくなります。",
+    "presence.unsupportedByServer":
+        "このホームサーバーはプレゼンスに対応していないため、設定できるステータスはありません。",
     "presence.appearOfflineToOtherUsers": "他のユーザーにオフラインとして表示",
     "pushRuleWrite.yourHomeserverHasNoNotificationRule":
         "ホームサーバーに「{label}」の通知ルールがないため、変更できませんでした。",
@@ -3609,6 +3706,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "rootLayout.linkCopied": "リンクをコピーしました",
     "rootPage.failedToReconnectPleaseLogIn":
         "再接続に失敗しました。もう一度ログインしてください。",
+    "rootPage.storageWipedSessionRecovered":
+        "ディスクがいっぱいになったため、ブラウザーが Zam のストレージをリセットした可能性があります。サインインは復元されましたが、一部の設定が既定値に戻っている場合があります。",
     "rootPage.sessionOpenInAnotherTab":
         "このセッションは別のタブで開かれています。そのタブを閉じると、このタブで続行します。",
     "rootPage.signedInButSyncingCouldNot":

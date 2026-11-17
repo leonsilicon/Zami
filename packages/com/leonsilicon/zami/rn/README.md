@@ -17,7 +17,7 @@ features Zam relies on.
     `<img>` that can't load, such as twemoji's, shows its alt text). Pass a stable
     function such as Zam's `mxcToHttp`: the HTML is parsed again when it changes.
   - `className` takes the text classes, applied to every run of text, plus
-    `[&_a]:…` classes for links (by default `text-discord-accent`), `emoji-only` (large
+    `[&_a]:…` classes for links (by default `text-zam-accent`), `emoji-only` (large
     emoji) and `whitespace-pre-wrap` (keep spaces and newlines, as topics do).
   - `onLinkPress` gets each pressed link's `href`; without it, `openLink` opens it.
   - `onImagePress(src, element, images)` gets each pressed image (an `<img>` that isn't
@@ -39,7 +39,7 @@ these, which keep the element's props as close as React Native allows:
   and a pick or a press outside closes it.
 - `Checkbox`: `<label><input type="checkbox"> text</label>`. `checked`,
   `onChange(checked)`, `label` (a string is a `Text` styled by `labelClassName`, by
-  default `text-sm text-discord-textPrimary`; any other node renders as it is),
+  default `text-sm text-zam-textPrimary`; any other node renders as it is),
   `accessibilityLabel`, `disabled`, `className` (the `<label>`'s layout classes; it's
   a row, by default `items-center gap-2`) and `inputClassName` (the `<input>`'s size,
   rounding and margins; by default the browser's `w-3.5 h-3.5 rounded-sm`).
@@ -53,7 +53,7 @@ these, which keep the element's props as close as React Native allows:
   `accessibilityRole="radiogroup"`.
 - `Details`: `<details><summary>…</summary>…</details>`. `summary` (a string is a
   `Text` styled by `summaryTextClassName`, by default `text-sm
-  text-discord-textPrimary`, whose color and font size also give the disclosure
+  text-zam-textPrimary`, whose color and font size also give the disclosure
   triangle's; any other node renders as it is), `summaryClassName` (the `<summary>`'s
   layout; it's a row, by default `items-center gap-1`), `marker` (false for a
   `<summary>` upstream lays out as `flex`, which has no triangle), `className` (the
@@ -127,7 +127,7 @@ embeds), which here live in Zami's detached linkedom DOM
 
 - `DomView`: shows a DOM element and its subtree as React Native views. `node` (its own
   style and classes apply to the outer box), `textClassName` (the text classes it
-  inherits, as CSS inherits them; by default `text-base text-discord-textPrimary`),
+  inherits, as CSS inherits them; by default `text-base text-zam-textPrimary`),
   `className`/`style` (the box around it), `onLinkPress(href)` (by default `openLink`)
   and `resolveMxc` (for `mxc://` image sources).
   - Elements: blocks are `View`s, and inline content is a run of `Text` (a wrapping row

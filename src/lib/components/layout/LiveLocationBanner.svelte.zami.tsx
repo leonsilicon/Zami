@@ -85,8 +85,8 @@ export default function LiveLocationBanner({ room }: Props) {
     return (
         <>
             {ownShare ? (
-                <View className="flex-row items-center gap-2 border-b border-discord-divider bg-discord-danger/10 px-4 py-2">
-                    <View className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger" />
+                <View className="flex-row items-center gap-2 border-b border-zam-divider bg-zam-danger/10 px-4 py-2">
+                    <View className="h-2 w-2 flex-shrink-0 rounded-full bg-zam-danger" />
                     {/* A stop that is in flight or was rejected must say so: the beacon is
                         still live on the server until it acks, and a failed stop reads as
                         an error, not as a healthy share. */}
@@ -99,8 +99,8 @@ export default function LiveLocationBanner({ room }: Props) {
                         <Text
                             className={`text-sm hover:underline ${
                                 ownStop?.phase === "failed"
-                                    ? "font-semibold text-discord-danger"
-                                    : "text-discord-textPrimary"
+                                    ? "font-semibold text-zam-danger"
+                                    : "text-zam-textPrimary"
                             }`}
                         >
                             {stopStatusLabel(ownStop) ??
@@ -122,9 +122,9 @@ export default function LiveLocationBanner({ room }: Props) {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => openLiveLocationMap(room.roomId)}
-                        className="ms-auto rounded bg-discord-backgroundSecondary px-3 py-1 transition-colors hover:bg-discord-messageHover active:bg-discord-messageHover"
+                        className="ms-auto rounded bg-zam-backgroundSecondary px-3 py-1 transition-colors hover:bg-zam-messageHover active:bg-zam-messageHover"
                     >
-                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
                             {t("liveLocationBanner.map")}
                         </Text>
                     </Pressable>
@@ -139,7 +139,7 @@ export default function LiveLocationBanner({ room }: Props) {
                             disabled: ownStop?.phase === "stopping",
                         }}
                         onPress={() => void stopShare(room.roomId)}
-                        className={`rounded bg-discord-danger px-3 py-1 transition-opacity hover:opacity-90 ${
+                        className={`rounded bg-zam-danger px-3 py-1 transition-opacity hover:opacity-90 ${
                             ownStop?.phase === "stopping" ? "opacity-60" : ""
                         }`}
                     >
@@ -149,18 +149,18 @@ export default function LiveLocationBanner({ room }: Props) {
                     </Pressable>
                 </View>
             ) : others.length > 0 ? (
-                <View className="border-b border-discord-divider bg-discord-backgroundSecondary">
+                <View className="border-b border-zam-divider bg-zam-backgroundSecondary">
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => openLiveLocationMap(room.roomId)}
-                        className="w-full flex-row items-center gap-2 px-4 py-2 transition-colors hover:bg-discord-messageHover active:bg-discord-messageHover"
+                        className="w-full flex-row items-center gap-2 px-4 py-2 transition-colors hover:bg-zam-messageHover active:bg-zam-messageHover"
                     >
                         <LocateFixed
                             size={16}
-                            className="text-discord-accent flex-shrink-0"
+                            className="text-zam-accent flex-shrink-0"
                         />
                         {others.length === 1 ? (
-                            <Text className="flex-shrink text-sm text-discord-textPrimary">
+                            <Text className="flex-shrink text-sm text-zam-textPrimary">
                                 {t("liveLocationBanner.isSharingLiveLocation", {
                                     getMemberName: getMemberName(
                                         room,
@@ -169,7 +169,7 @@ export default function LiveLocationBanner({ room }: Props) {
                                 })}
                             </Text>
                         ) : (
-                            <Text className="flex-shrink text-sm text-discord-textPrimary">
+                            <Text className="flex-shrink text-sm text-zam-textPrimary">
                                 {t(
                                     "liveLocationBanner.peopleSharingLiveLocation",
                                     {
@@ -179,12 +179,12 @@ export default function LiveLocationBanner({ room }: Props) {
                             </Text>
                         )}
                         <View className="ms-auto flex-row items-center gap-0.5">
-                            <Text className="text-xs text-discord-accent">
+                            <Text className="text-xs text-zam-accent">
                                 {t("liveLocationBanner.viewMap")}
                             </Text>
                             {/* Zami: `mirror:` (`:dir(rtl)`) → Uniwind's `rtl:`. */}
                             <ChevronRight
-                                className="rtl:-scale-x-100 text-discord-accent"
+                                className="rtl:-scale-x-100 text-zam-accent"
                                 size={14}
                             />
                         </View>

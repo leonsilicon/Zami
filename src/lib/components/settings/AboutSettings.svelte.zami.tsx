@@ -335,9 +335,9 @@ export default function AboutSettings() {
                 onPress={run}
                 disabled={v.busy}
                 accessibilityState={{ disabled: v.busy }}
-                className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
+                className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
             >
-                <Text className="text-sm font-medium text-discord-textPrimary">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {v.actionLabel}
                 </Text>
             </Pressable>
@@ -347,14 +347,14 @@ export default function AboutSettings() {
     function updaterStatus(v: UpdateStatusView, autoDesc: string) {
         return (
             <>
-                <View className="py-2 border-b border-discord-divider gap-2">
-                    <Text className="text-sm text-discord-textMuted">
+                <View className="py-2 border-b border-zam-divider gap-2">
+                    <Text className="text-sm text-zam-textMuted">
                         {v.label}
                     </Text>
                     {v.percent !== null ? (
-                        <View className="h-1.5 w-full overflow-hidden rounded-full bg-discord-backgroundTertiary">
+                        <View className="h-1.5 w-full overflow-hidden rounded-full bg-zam-backgroundTertiary">
                             <View
-                                className="h-full rounded-full bg-discord-accent transition-all"
+                                className="h-full rounded-full bg-zam-accent transition-all"
                                 style={{ width: `${v.percent}%` }}
                             />
                         </View>
@@ -362,10 +362,10 @@ export default function AboutSettings() {
                 </View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("aboutSettings.automaticUpdates")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {autoDesc}
                         </Text>
                     </View>
@@ -382,15 +382,15 @@ export default function AboutSettings() {
     return (
         <View className="gap-6">
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("aboutSettings.version")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             Zam
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("aboutSettings.currentVersionV", {
                                 APP_VERSION,
                             })}
@@ -399,7 +399,7 @@ export default function AboutSettings() {
                             <Text
                                 accessibilityRole="link"
                                 onPress={() => openLink(GITHUB_URL)}
-                                className="text-xs text-discord-accent hover:underline"
+                                className="text-xs text-zam-accent hover:underline"
                             >
                                 {t("aboutSettings.sourceCodeOnGitHub")}
                             </Text>
@@ -408,14 +408,14 @@ export default function AboutSettings() {
                                     <Text
                                         accessibilityRole="link"
                                         onPress={() => openLink(WEBSITE_URL)}
-                                        className="text-xs text-discord-accent hover:underline"
+                                        className="text-xs text-zam-accent hover:underline"
                                     >
                                         {t("links.website")}
                                     </Text>
                                     <Text
                                         accessibilityRole="link"
                                         onPress={() => openLink(DOWNLOAD_URL)}
-                                        className="text-xs text-discord-accent hover:underline"
+                                        className="text-xs text-zam-accent hover:underline"
                                     >
                                         {t("links.downloadApps")}
                                     </Text>
@@ -433,9 +433,9 @@ export default function AboutSettings() {
                             onPress={() => void check()}
                             disabled={checking}
                             accessibilityState={{ disabled: checking }}
-                            className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
                         >
-                            <Text className="text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-sm font-medium text-zam-textPrimary">
                                 {checking
                                     ? t("common.checking")
                                     : t("aboutSettings.checkForUpdates")}
@@ -459,16 +459,14 @@ export default function AboutSettings() {
 
             {!isDesktopUpdater() && !isAndroidUpdater() ? (
                 error ? (
-                    <Text className="text-sm text-discord-textMuted">
-                        {error}
-                    </Text>
+                    <Text className="text-sm text-zam-textMuted">{error}</Text>
                 ) : info?.updateAvailable ? (
-                    <View className="rounded-lg border border-discord-accent bg-discord-accent/10 p-4 flex-row items-center gap-4">
+                    <View className="rounded-lg border border-zam-accent bg-zam-accent/10 p-4 flex-row items-center gap-4">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm font-semibold text-discord-textPrimary">
+                            <Text className="text-sm font-semibold text-zam-textPrimary">
                                 {t("aboutSettings.updateAvailable")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 v{info.current} → v{info.latest}
                             </Text>
                         </View>
@@ -477,7 +475,7 @@ export default function AboutSettings() {
                             onPress={() => void apply(info)}
                             disabled={reloading}
                             accessibilityState={{ disabled: reloading }}
-                            className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors flex-shrink-0 disabled:opacity-50"
+                            className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors flex-shrink-0 disabled:opacity-50"
                         >
                             <Text className="text-sm font-semibold text-white">
                                 {reloading
@@ -489,7 +487,7 @@ export default function AboutSettings() {
                         </Pressable>
                     </View>
                 ) : info ? (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("aboutSettings.youReOnTheLatestVersion")}
                     </Text>
                 ) : null
@@ -498,15 +496,15 @@ export default function AboutSettings() {
             <WhatsNew />
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("aboutSettings.troubleshooting")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("aboutSettings.clearCacheAndResync")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("aboutSettings.reDownloadsYourRoomsFromThe")}
                         </Text>
                     </View>
@@ -515,9 +513,9 @@ export default function AboutSettings() {
                         onPress={clearCache}
                         disabled={clearingCache}
                         accessibilityState={{ disabled: clearingCache }}
-                        className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
+                        className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
                     >
-                        <Text className="text-sm font-medium text-discord-textPrimary">
+                        <Text className="text-sm font-medium text-zam-textPrimary">
                             {clearingCache
                                 ? t("aboutSettings.resyncing")
                                 : t("aboutSettings.clearCache")}
@@ -530,10 +528,10 @@ export default function AboutSettings() {
                 for the record, not something anyone needs to see day to day. */}
             <Details
                 summary={t("aboutSettings.credits")}
-                summaryTextClassName="text-xs font-semibold text-discord-textMuted uppercase tracking-wide cursor-pointer select-none hover:text-discord-textPrimary"
+                summaryTextClassName="text-xs font-semibold text-zam-textMuted uppercase tracking-wide cursor-pointer select-none hover:text-zam-textPrimary"
             >
                 <View className="py-2 gap-1">
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("aboutSettings.creditsMidiInstruments")}:{" "}
                         <Text
                             accessibilityRole="link"
@@ -542,18 +540,18 @@ export default function AboutSettings() {
                                     "https://musical-artifacts.com/artifacts/1481",
                                 )
                             }
-                            className="text-discord-accent hover:underline"
+                            className="text-zam-accent hover:underline"
                         >
                             Phoenix MT-32
                         </Text>
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("aboutSettings.creditsSoundFont", {
                             author: "W.D. Tharinda Perera",
                             original: "Jexu",
                         })}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("aboutSettings.creditsSoundFontGaps", {
                             microgm: "microgm",
                             microgmAuthor: "michael",
@@ -567,7 +565,7 @@ export default function AboutSettings() {
                                     "https://github.com/mrbumpy409/GeneralUser-GS",
                                 )
                             }
-                            className="text-discord-accent hover:underline"
+                            className="text-zam-accent hover:underline"
                         >
                             github.com/mrbumpy409/GeneralUser-GS
                         </Text>

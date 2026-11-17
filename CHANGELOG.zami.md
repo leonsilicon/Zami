@@ -4,6 +4,118 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.65.5
+
+🐛 **Fixed**
+
+- **Screen share size:** native screen shares (Windows window shares and Android) now tell the call server and other clients their real picture size. They used to report a tiny 64x64 size, which every viewer, including Element Call, was given.
+
+## v1.65.4
+
+🐛 **Fixed**
+
+- **Screen share stutter:** native screen shares (Windows window shares and Android) no longer judder for viewers. Frames were being shown at uneven intervals even when they all arrived; they now play back at the pace they were captured.
+
+## v1.65.3
+
+✨ **New**
+
+- **View reactions:** "View reactions" in a message's menu (right-click, or ⋯ / long-press on mobile) shows who reacted with what. Each reaction has its own tab, every reactor appears with the time they reacted, and your own reaction has a remove button. It is a dialog on desktop and a bottom sheet on mobile.
+- **Invisible is properly invisible:** while your status is Invisible, read receipts are sent as private and typing notifications are not sent.
+
+🐛 **Fixed**
+
+- **X/Twitter GIFs:** clicking a GIF in a post embed now opens it in the viewer, like photos do.
+- **Servers without presence:** on a server that has presence turned off (such as matrix.org), the status picker is hidden instead of offering choices that do nothing.
+
+## v1.65.2
+
+🐛 **Fixed**
+
+- **Replies now ping the author:** a reply used to leave the author of the message out of the mention list, so they were never notified. The reply bar has a new `@ ON / @ OFF` toggle, like Discord, and Settings → Messages and media has a "Ping on reply" option for the default (on).
+
+## v1.65.1
+
+🐛 **Fixed**
+
+- **Theme variable names:** the theme CSS variables are now `--zam-*` instead of `--discord-*`. If you use custom CSS or a plugin that references the old names, update them (the Example Theme and Emoji Stealer plugins have new versions).
+
+## v1.65.0
+
+✨ **New**
+
+- **Smooth window sharing on Windows:** sharing a window from the Windows app now captures and encodes it outside the browser engine, on every frame the window draws, with your graphics card's encoder. Sharing a game no longer stutters while the game keeps the GPU busy. Your own preview shows exactly what others see. The "Windows capture helper" switch in the screen share quality options turns it off.
+- **Screen sharing from Android:** the Android app can now share your screen in calls, including on older Android System WebViews. A notification shows while you share, with a "Stop sharing" button.
+- **Separate interface scale and message text size:** the text-size setting is now two: interface scale (75-150%) for the whole app, and message text size (80-200%) for messages and the composer. Your old setting carries over to the interface scale.
+- **Build the full search index:** Settings → Debug has "Build full index now", with progress and a cancel button. On Android, the app fetches encrypted history in the background (on Wi-Fi, when the battery isn't low) so indexing has less to download when you open it.
+
+🐛 **Fixed**
+
+- **Search missing older messages on mobile:** history whose keys arrived later from key backup was never indexed, so search only found what you had scrolled through. Existing installs re-index their history once.
+- **Screen share bitrate slider:** a bad upload-speed estimate could let the slider go far above what your connection can carry. Unrealistic readings are now ignored, and a bad stored value is corrected.
+
+## v1.64.1
+
+✨ **New**
+
+- **Plugin debug tools:** plugins can add their own section to Settings → Debug, below Zam's debug tools (`zam.ui.addDebugSection`).
+
+🐛 **Fixed**
+
+- **Soundboard and other call data on desktop:** after the graphics process restarted, the desktop app ignored everything other people sent in a call besides audio and video, such as soundboard sounds. It now receives them again.
+- **Rich presence left behind on your profile:** what you're playing or listening to is now cleared when you close the app or sign out, and leftovers from a session that quit or crashed are cleared the next time you start.
+
+## v1.64.0
+
+✨ **New**
+
+- **Discord servers bridged with ZDMB look like Discord:** [ZDMB](https://github.com/az4521/ZDMB) (Zam Discord-Matrix Bridge) is a new fork of the Out Of Your Element bridge that tells Zam how a Discord server is laid out. The next three points are what Zam does with it.
+- **Discord categories:** in a ZDMB space, channels are grouped under their Discord categories, which you can collapse. A collapsed category keeps the channel you're in visible and shows a dot when a hidden channel has unread messages.
+- **Discord channel icons and names:** each bridged channel shows Discord's icon for its type (text, voice, stage, announcement, forum, media, thread, private thread) and its name without the bridge's `[🔊]` / `[⛓️]` prefix, including channels you haven't joined yet.
+- **Discord threads:** threads you've joined sit under their channel. The message a thread was started from gets a chip with the thread's name, member count and unread badge that opens it, joining it first if needed. The channel's Threads panel lists its threads, and inside a thread the header shows `# channel ›` to get back.
+- **Forwarded messages say where they're from:** forwarding a message now records who sent it, where and when (MSC4553). Forwards show the original under a "Forwarded from" label with a footer that opens the original, and notifications and previews show the original too. Apps without support see a "Forwarded from" line with a link and the original quoted.
+- **Animated thumbnails:** GIF, APNG and animated WebP/AVIF uploads get an animated thumbnail instead of a still one, so they keep moving in apps that show the thumbnail inline (any app in an encrypted room). Images marked as animated now load at full size so they don't freeze.
+- **Name colours in the member list:** members show their name colour once another part of the app has loaded it. Offline members' colours are dimmed.
+
+🐛 **Fixed**
+
+- **Swiping photos in X/Twitter previews:** stepping to the next photo in the viewer shows its thumbnail at the right size right away, instead of an empty box until the full photo loads.
+
+## v1.63.2
+
+✨ **New**
+
+- **Proxy settings on Android:** Settings → General → Network now works on Android too, with the same panel as desktop. The proxy also covers push notifications and quick replies. Android has no PAC files and no "only through the proxy" mode for calls.
+- **Calls in the server list:** servers, Home and folders show a speaker badge when someone is in a call in one of their rooms, and a LIVE badge when someone is screen sharing in your call. Hovering an icon shows a card with the name and who is in each call.
+- **Pan zoomed images past their edges:** in the image viewer, a zoomed image can now be dragged a little past its edges, so text at the edge is no longer stuck under the toolbar or caption.
+- **Message link pills** now end in a chevron and speech bubble, so a link to a message looks different from a link to a room.
+
+🐛 **Fixed**
+
+- **Edited messages showing up empty:** an edited message could show only "(edited)" with no text, mostly on Android. It now shows the original text until the edit can be decrypted, and edits that failed to decrypt while the app was in the background are retried when you come back.
+- **Rooms staying unread on a slow connection:** opening a room marks it read right away instead of waiting for the server, and clearing "Mark as unread" is instant too.
+- **Swiping a zoomed image:** the zoomed image now slides fully off the screen, and the next image comes in from off-screen instead of popping in.
+
+## v1.63.1
+
+✨ **New**
+
+- **Message link pills:** a pasted link to a message now shows as a small pill naming where the message is: `#room name` for a room, or the person's avatar and name for a DM. Hovering a pill highlights the matching preview card. Links you gave your own label are left as they are. Thanks to the community author of the Message Link Pill plugin, now built in and on by default (turn it off under Settings → Plugins).
+- **Favourite videos:** video messages can be starred like images and GIFs. Starred videos play as muted, looping tiles in the GIF picker's Favourites tab and send as videos.
+
+## v1.63.0
+
+✨ **New**
+
+- **Plugin ringtones:** plugins can now add their own ringtones, either a sound file or one they play themselves (for example through MIDI). Pick one under Settings → Voice & audio → Ringing, which now has a ringtone menu with a short preview. If the plugin is turned off or its ringtone fails to start, the built-in ringtone plays instead, so a call always rings.
+- **Smoother swiping in the image viewer:** letting go of a swipe now slides the current image fully off while the next one slides in, and a short swipe springs back, instead of the image swapping before the animation finished. The images on either side are loaded ahead of time (decrypted ahead in encrypted rooms), and the chat thumbnail shows while the full image loads.
+
+🐛 **Fixed**
+
+- **"New messages" bar:** it no longer spreads over the member list or thread panel, and shrinks to fit the chat when a side panel is open. The "Jump to present" button had the same problem.
+- **Custom reaction names:** hovering a custom (image) reaction shows its name, like `:blobcat:`, instead of an `mxc://` link. Custom reactions you send now carry their name for other apps too.
+- **Green and purple bands in X/Twitter previews:** GIFs in tweet previews only play while they are near the screen, so a chat full of them no longer runs out of video decoders.
+
 ## v1.62.0
 
 ✨ **New**

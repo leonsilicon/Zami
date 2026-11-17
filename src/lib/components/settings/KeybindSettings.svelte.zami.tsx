@@ -40,8 +40,8 @@ import { setPushToTalk } from "$lib/stores/settings.svelte";
 import KeyCaps from "$lib/components/keybinds/KeyCaps.svelte";
 
 const smallButtonClass =
-    "px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover";
-const smallButtonTextClass = "text-sm font-medium text-discord-textPrimary";
+    "px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover";
+const smallButtonTextClass = "text-sm font-medium text-zam-textPrimary";
 
 // Zami: `data-setting-anchor` (settings search scrolls to it) is not ported.
 export default function KeybindSettings() {
@@ -208,13 +208,13 @@ export default function KeybindSettings() {
         const status = globalStatus;
         if (!status) return null;
         return (
-            <View className="py-2 border-b border-discord-divider">
+            <View className="py-2 border-b border-zam-divider">
                 {status.state === "wayland" ? (
                     <>
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("keybinds.globalVoice")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("keybinds.globalWayland")}
                         </Text>
                     </>
@@ -222,10 +222,10 @@ export default function KeybindSettings() {
                     <>
                         <View className="flex-row items-center gap-3">
                             <View className="flex-1">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t("keybinds.globalVoice")}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {status.backend === "portal"
                                         ? t("keybinds.globalPortalHint")
                                         : t("keybinds.globalVoiceHint")}
@@ -242,7 +242,7 @@ export default function KeybindSettings() {
                                 className="mt-2 flex-row flex-wrap items-center gap-2"
                                 role="status"
                             >
-                                <Text className="flex-1 min-w-[12rem] text-xs text-discord-warning">
+                                <Text className="flex-1 min-w-[12rem] text-xs text-zam-warning">
                                     {t("keybinds.globalPermission")}
                                 </Text>
                                 <Pressable
@@ -259,7 +259,7 @@ export default function KeybindSettings() {
                             </View>
                         ) : globalVoice && status.state === "error" ? (
                             <Text
-                                className="mt-2 text-xs text-discord-warning"
+                                className="mt-2 text-xs text-zam-warning"
                                 role="status"
                             >
                                 {t(
@@ -273,13 +273,13 @@ export default function KeybindSettings() {
                           status.state === "active" &&
                           status.backend === "portal" ? (
                             <View className="mt-2 flex-col gap-1" role="status">
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("keybinds.globalPortalAssigned")}
                                 </Text>
                                 {(status.shortcuts ?? []).map((s) => (
                                     <Text
                                         key={s.id}
-                                        className="text-xs text-discord-textPrimary"
+                                        className="text-xs text-zam-textPrimary"
                                     >
                                         {isKeybindAction(s.id)
                                             ? keybindLabel(s.id)
@@ -289,7 +289,7 @@ export default function KeybindSettings() {
                                             className={
                                                 s.trigger
                                                     ? "font-medium"
-                                                    : "text-discord-textMuted"
+                                                    : "text-zam-textMuted"
                                             }
                                         >
                                             {s.trigger || t("keybinds.notSet")}
@@ -297,7 +297,7 @@ export default function KeybindSettings() {
                                     </Text>
                                 ))}
                                 {hasMouseVoiceBinding ? (
-                                    <Text className="text-xs text-discord-warning">
+                                    <Text className="text-xs text-zam-warning">
                                         {t("keybinds.globalPortalMouse")}
                                     </Text>
                                 ) : null}
@@ -326,7 +326,7 @@ export default function KeybindSettings() {
         <View className="flex-col gap-6">
             <View>
                 <View className="flex-row items-start gap-3">
-                    <Text className="flex-1 text-sm text-discord-textMuted">
+                    <Text className="flex-1 text-sm text-zam-textMuted">
                         {t("keybinds.intro")}
                     </Text>
                     <Pressable
@@ -341,7 +341,7 @@ export default function KeybindSettings() {
                 </View>
                 {notice ? (
                     <Text
-                        className="mt-2 text-xs text-discord-warning"
+                        className="mt-2 text-xs text-zam-warning"
                         role="status"
                     >
                         {notice}
@@ -351,7 +351,7 @@ export default function KeybindSettings() {
 
             {groups.map((g) => (
                 <View key={g.category}>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {keybindCategoryLabel(g.category)}
                     </Text>
                     {g.category === "voice" ? globalVoiceStatus() : null}
@@ -361,14 +361,14 @@ export default function KeybindSettings() {
                         return (
                             <View
                                 key={id}
-                                className="flex-row flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b border-discord-divider"
+                                className="flex-row flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b border-zam-divider"
                             >
                                 <View className="flex-1 min-w-[10rem]">
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {keybindLabel(id)}
                                     </Text>
                                     {hint(id) ? (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {hint(id)}
                                         </Text>
                                     ) : null}
@@ -389,12 +389,12 @@ export default function KeybindSettings() {
                                     accessibilityState={{ selected: recording }}
                                     className={`min-w-[9rem] px-2 py-1 rounded border ${
                                         recording
-                                            ? "border-discord-accent bg-discord-backgroundTertiary"
-                                            : "border-transparent bg-discord-backgroundTertiary hover:border-discord-divider"
+                                            ? "border-zam-accent bg-zam-backgroundTertiary"
+                                            : "border-transparent bg-zam-backgroundTertiary hover:border-zam-divider"
                                     }`}
                                 >
                                     {recording ? (
-                                        <Text className="text-xs text-discord-accent">
+                                        <Text className="text-xs text-zam-accent">
                                             {isHold(id)
                                                 ? t("keybinds.pressKeyOrButton")
                                                 : t("keybinds.pressKey")}
@@ -402,7 +402,7 @@ export default function KeybindSettings() {
                                     ) : row.binding ? (
                                         <KeyCaps binding={row.binding} />
                                     ) : (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {t("keybinds.notSet")}
                                         </Text>
                                     )}
@@ -416,11 +416,11 @@ export default function KeybindSettings() {
                                                 "keybinds.clearFor",
                                                 { action: keybindLabel(id) },
                                             )}
-                                            className="p-1 rounded hover:bg-discord-messageHover"
+                                            className="p-1 rounded hover:bg-zam-messageHover"
                                         >
                                             <SvgIcon
                                                 d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"
-                                                className="w-4 h-4 text-discord-textMuted"
+                                                className="w-4 h-4 text-zam-textMuted"
                                             />
                                         </Pressable>
                                     ) : null}
@@ -432,11 +432,11 @@ export default function KeybindSettings() {
                                                 "keybinds.resetFor",
                                                 { action: keybindLabel(id) },
                                             )}
-                                            className="p-1 rounded hover:bg-discord-messageHover"
+                                            className="p-1 rounded hover:bg-zam-messageHover"
                                         >
                                             <SvgIcon
                                                 d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"
-                                                className="w-4 h-4 text-discord-textMuted"
+                                                className="w-4 h-4 text-zam-textMuted"
                                             />
                                         </Pressable>
                                     ) : null}

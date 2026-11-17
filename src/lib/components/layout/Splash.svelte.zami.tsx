@@ -16,12 +16,12 @@ export default function Splash({
     message?: string | null;
 }) {
     return (
-        <View className="flex-1 flex-row items-center justify-center bg-discord-backgroundTertiary p-4">
+        <View className="flex-1 flex-row items-center justify-center bg-zam-backgroundTertiary p-4">
             {/* Zami: a column, so the launch step can go under the message. */}
             <View className="items-center">
                 <View className="flex-row items-center gap-3">
-                    <Spin className="w-6 h-6 border-2 border-discord-textMuted border-t-transparent rounded-full" />
-                    <Text className="text-discord-textMuted">
+                    <Spin className="w-6 h-6 border-2 border-zam-textMuted border-t-transparent rounded-full" />
+                    <Text className="text-zam-textMuted">
                         {message ?? t("splash.restoringSession")}
                     </Text>
                 </View>
@@ -51,7 +51,7 @@ function StartupStep() {
     }, []);
     if (elapsed < 1000) return null;
     return (
-        <Text className="mt-3 text-xs text-discord-textMuted">
+        <Text className="mt-3 text-xs text-zam-textMuted">
             {`${step} · ${(elapsed / 1000).toFixed(1)} s`}
         </Text>
     );

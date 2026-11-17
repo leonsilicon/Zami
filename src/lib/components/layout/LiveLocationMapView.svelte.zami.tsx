@@ -86,37 +86,37 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
     return (
         <Portal>
             <View
-                className="absolute inset-0 z-[70] flex flex-col bg-discord-background"
+                className="absolute inset-0 z-[70] flex flex-col bg-zam-background"
                 style={{
                     paddingTop: insets.top,
                     paddingBottom: insets.bottom,
                 }}
             >
                 {/* Header */}
-                <View className="h-12 px-2 flex-row items-center gap-2 border-b border-discord-divider flex-shrink-0">
+                <View className="h-12 px-2 flex-row items-center gap-2 border-b border-zam-divider flex-shrink-0">
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("liveLocationMapView.back")}
                         onPress={onClose}
-                        className="p-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                        className="p-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                     >
                         <SvgIcon
                             d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                         />
                     </Pressable>
-                    <Text className="font-semibold text-discord-textPrimary">
+                    <Text className="font-semibold text-zam-textPrimary">
                         {t("liveLocationMapView.liveLocation")}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("liveLocationMapView.recenter")}
                         onPress={() => mapEl.current?.recenter()}
-                        className="ms-auto p-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                        className="ms-auto p-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                     >
                         <SvgIcon
                             d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm8.94 3A8.99 8.99 0 0 0 13 3.06V1h-2v2.06A8.99 8.99 0 0 0 3.06 11H1v2h2.06A8.99 8.99 0 0 0 11 20.94V23h2v-2.06A8.99 8.99 0 0 0 20.94 13H23v-2h-2.06zM12 19a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -129,7 +129,7 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                             pointerEvents="none"
                             className="absolute inset-0 z-[401] flex-row items-center justify-center"
                         >
-                            <Text className="rounded bg-discord-backgroundSecondary/90 px-4 py-2 text-sm text-discord-textMuted overflow-hidden">
+                            <Text className="rounded bg-zam-backgroundSecondary/90 px-4 py-2 text-sm text-zam-textMuted overflow-hidden">
                                 {t(
                                     "liveLocationMapView.waitingForALocationFix",
                                 )}
@@ -139,18 +139,18 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                 </View>
 
                 {/* Footer: own-share controls + sharer freshness */}
-                <View className="flex-shrink-0 border-t border-discord-divider bg-discord-backgroundSecondary px-4 py-3 flex flex-col gap-2">
+                <View className="flex-shrink-0 border-t border-zam-divider bg-zam-backgroundSecondary px-4 py-3 flex flex-col gap-2">
                     {ownShare && (
                         <View className="flex-row items-center gap-2">
-                            <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger" />
+                            <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-zam-danger" />
                             {/* Same three states as the banner: stopping / stop-failed /
                                 sharing. A failed stop reads as an error because the
                                 beacon really is still broadcasting. */}
                             <Text
                                 className={`flex-shrink text-sm ${
                                     ownStop?.phase === "failed"
-                                        ? "font-semibold text-discord-danger"
-                                        : "text-discord-textPrimary"
+                                        ? "font-semibold text-zam-danger"
+                                        : "text-zam-textPrimary"
                                 }`}
                             >
                                 {stopStatusLabel(ownStop) ??
@@ -160,7 +160,7 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                                 · {remainingLabel(ownShare.expiresAt, now)}
                             </Text>
                             {ownShare.lastSentTs ? (
-                                <Text className="flex-shrink text-xs text-discord-textMuted">
+                                <Text className="flex-shrink text-xs text-zam-textMuted">
                                     {t("liveLocationMapView.lastUpdatedAt", {
                                         timeOnly: timeOnly(ownShare.lastSentTs),
                                         updatedAgoLabel: updatedAgoLabel(
@@ -180,7 +180,7 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                                     disabled: ownStop?.phase === "stopping",
                                 }}
                                 onPress={() => void stopShare(room.roomId)}
-                                className={`ms-auto rounded bg-discord-danger px-3 py-1 transition-opacity hover:opacity-90 ${
+                                className={`ms-auto rounded bg-zam-danger px-3 py-1 transition-opacity hover:opacity-90 ${
                                     ownStop?.phase === "stopping"
                                         ? "opacity-60"
                                         : ""
@@ -201,19 +201,19 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                                 key={s.id}
                                 className="flex-row items-center gap-2"
                             >
-                                <Text className="text-xs font-medium text-discord-textSecondary">
+                                <Text className="text-xs font-medium text-zam-textSecondary">
                                     {getMemberName(room, s.owner)}
                                 </Text>
                                 {s.description ? (
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink text-xs text-discord-textMuted"
+                                        className="flex-shrink text-xs text-zam-textMuted"
                                     >
                                         · {s.description}
                                     </Text>
                                 ) : null}
                                 {s.updatedTs ? (
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         · {updatedAgoLabel(s.updatedTs, now)}
                                     </Text>
                                 ) : null}
@@ -224,19 +224,19 @@ export default function LiveLocationMapView({ room, onClose }: Props) {
                                     }
                                     className="ms-auto flex-shrink-0 flex-row items-center gap-1"
                                 >
-                                    <Text className="text-xs text-discord-accent hover:underline">
+                                    <Text className="text-xs text-zam-accent hover:underline">
                                         {t("liveLocationMapView.osm")}
                                     </Text>
                                     <ExternalLink
                                         size={14}
-                                        className="text-discord-accent"
+                                        className="text-zam-accent"
                                     />
                                 </Pressable>
                             </View>
                         ))}
                     {!ownShare &&
                         sharers.filter((s) => !s.isSelf).length === 0 && (
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t(
                                     "liveLocationMapView.noActiveLiveSharesInThis",
                                 )}

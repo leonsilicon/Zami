@@ -56,7 +56,7 @@ export default function QrCodeImage({
             </View>
         );
     return (
-        <Text role="alert" className="text-xs text-discord-danger">
+        <Text role="alert" className="text-xs text-zam-danger">
             {t("qrCodeImage.couldNotRenderTheVerificationCode")}
         </Text>
     );

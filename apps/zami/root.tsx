@@ -85,10 +85,7 @@ function AppProviders({ children }: { children: ReactNode }) {
       <SafeAreaProvider>
         <KeyboardProvider>
           <AppFontProvider>
-            <View
-              className="flex-1 bg-discord-backgroundTertiary"
-              onTouchStartCapture={reportTouch}
-            >
+            <View className="flex-1 bg-zam-backgroundTertiary" onTouchStartCapture={reportTouch}>
               {children}
             </View>
           </AppFontProvider>

@@ -67,26 +67,26 @@ export default function ForwardMessageDialog({ event }: Props) {
                 onClose={closeModal}
                 labelledBy="forward-title"
                 layerClass="z-[90] flex items-center justify-center p-3"
-                panelClass="relative flex max-h-[90%] w-full max-w-md flex-col overflow-hidden rounded-lg border border-discord-divider bg-discord-backgroundSecondary shadow-2xl"
+                panelClass="relative flex max-h-[90%] w-full max-w-md flex-col overflow-hidden rounded-lg border border-zam-divider bg-zam-backgroundSecondary shadow-2xl"
             >
                 <View className="max-h-[620px] shrink flex-col">
-                    <View className="flex-row items-center justify-between border-b border-discord-divider px-4 py-3">
+                    <View className="flex-row items-center justify-between border-b border-zam-divider px-4 py-3">
                         <Text
                             nativeID="forward-title"
                             role="heading"
-                            className="text-base font-semibold text-discord-textPrimary"
+                            className="text-base font-semibold text-zam-textPrimary"
                         >
                             {t("forwardMessageDialog.forwardMessage")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={closeModal}
-                            className="p-1.5 rounded hover:bg-discord-messageHover"
+                            className="p-1.5 rounded hover:bg-zam-messageHover"
                             accessibilityLabel={t("common.close")}
                         >
                             <X
                                 size={20}
-                                className="text-discord-textMuted hover:text-discord-textPrimary"
+                                className="text-zam-textMuted hover:text-zam-textPrimary"
                             />
                         </Pressable>
                     </View>
@@ -99,7 +99,7 @@ export default function ForwardMessageDialog({ event }: Props) {
                             >
                                 <Search
                                     size={16}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                             </View>
                             <TextInput
@@ -109,13 +109,13 @@ export default function ForwardMessageDialog({ event }: Props) {
                                 placeholder={t(
                                     "forwardMessageDialog.searchRooms",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "forwardMessageDialog.searchRooms",
                                 )}
                                 autoCorrect={false}
                                 returnKeyType="search"
-                                className="w-full rounded bg-discord-backgroundTertiary py-2 ps-9 pe-3 text-sm text-discord-textPrimary focus:ring-1 focus:ring-discord-accent"
+                                className="w-full rounded bg-zam-backgroundTertiary py-2 ps-9 pe-3 text-sm text-zam-textPrimary focus:ring-1 focus:ring-zam-accent"
                             />
                         </View>
                     </View>
@@ -137,8 +137,8 @@ export default function ForwardMessageDialog({ event }: Props) {
                                 }}
                                 className={`flex-row w-full items-center gap-3 rounded px-2 py-2 transition-colors ${
                                     selectedRoomId === room.roomId
-                                        ? "bg-discord-accent/20"
-                                        : "hover:bg-discord-messageHover active:bg-discord-messageHover"
+                                        ? "bg-zam-accent/20"
+                                        : "hover:bg-zam-messageHover active:bg-zam-messageHover"
                                 }`}
                             >
                                 <Avatar
@@ -149,26 +149,26 @@ export default function ForwardMessageDialog({ event }: Props) {
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="min-w-0 flex-shrink text-sm font-medium text-discord-textPrimary"
+                                    className="min-w-0 flex-shrink text-sm font-medium text-zam-textPrimary"
                                 >
                                     {getRoomDisplayName(room)}
                                 </Text>
                             </Pressable>
                         )}
                         ListEmptyComponent={
-                            <Text className="px-3 py-8 text-center text-sm text-discord-textMuted">
+                            <Text className="px-3 py-8 text-center text-sm text-zam-textMuted">
                                 {t("forwardMessageDialog.noJoinedRoomsFound")}
                             </Text>
                         }
                     />
 
-                    <View className="flex-row justify-end gap-2 border-t border-discord-divider p-3">
+                    <View className="flex-row justify-end gap-2 border-t border-zam-divider p-3">
                         <Pressable
                             accessibilityRole="button"
                             onPress={closeModal}
                             className="px-3 py-2"
                         >
-                            <Text className="text-sm font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-sm font-semibold text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
@@ -179,7 +179,7 @@ export default function ForwardMessageDialog({ event }: Props) {
                             accessibilityState={{
                                 disabled: !selectedRoomId || isSending,
                             }}
-                            className={`rounded bg-discord-accent px-4 py-2 transition-colors hover:bg-discord-accentHover ${
+                            className={`rounded bg-zam-accent px-4 py-2 transition-colors hover:bg-zam-accentHover ${
                                 !selectedRoomId || isSending ? "opacity-50" : ""
                             }`}
                         >

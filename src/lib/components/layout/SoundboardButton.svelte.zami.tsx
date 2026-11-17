@@ -45,7 +45,7 @@ export default function SoundboardButton({
         buttonRef.current?.measureInWindow((x, y) => setAnchor({ x, y }));
     }
 
-    const colorClass = anchor ? "text-discord-accent" : idleClass;
+    const colorClass = anchor ? "text-zam-accent" : idleClass;
     return (
         <>
             <Pressable

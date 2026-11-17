@@ -351,11 +351,11 @@ describe("readClassName", () => {
   test("splits off link classes and layout flags", () => {
     expect(
       readClassName(
-        "text-sm text-discord-textPrimary whitespace-pre-wrap break-words [&_a]:text-discord-accent [&_a]:underline emoji-only",
+        "text-sm text-zam-textPrimary whitespace-pre-wrap break-words [&_a]:text-zam-accent [&_a]:underline emoji-only",
       ),
     ).toEqual({
-      text: "text-sm text-discord-textPrimary break-words",
-      link: "text-discord-accent underline",
+      text: "text-sm text-zam-textPrimary break-words",
+      link: "text-zam-accent underline",
       emojiOnly: true,
       preserveWhitespace: true,
     });

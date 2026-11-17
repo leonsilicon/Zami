@@ -256,7 +256,7 @@ export default function DebugPanel({ room }: Props) {
                                     {copyDone ? (
                                         <Check
                                             size={12}
-                                            className="text-discord-textPrimary"
+                                            className="text-zam-textPrimary"
                                         />
                                     ) : null}
                                     <Text className={MONO}>

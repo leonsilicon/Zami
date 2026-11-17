@@ -90,23 +90,23 @@ function openInApp(url: string): void {
 }
 
 const inputClass =
-    "w-full bg-discord-backgroundDark text-discord-textPrimary text-sm rounded px-3 py-1.5 outline-none";
+    "w-full bg-zam-backgroundDark text-zam-textPrimary text-sm rounded px-3 py-1.5 outline-none";
 // Zami: a TextInput has no `disabled:` state; a disabled one (`editable={false}`)
 // is dimmed with this, as upstream's `disabled:opacity-50`.
 const disabledInputClass = "opacity-50";
-// Zami: `<label class="flex items-start gap-2 text-xs text-discord-textMuted">`;
+// Zami: `<label class="flex items-start gap-2 text-xs text-zam-textMuted">`;
 // the label text takes the rest of the row so it wraps.
-const checkboxLabelClass = "flex-1 text-xs text-discord-textMuted";
+const checkboxLabelClass = "flex-1 text-xs text-zam-textMuted";
 // Zami: buttons on their own in a column are `self-start`, as an inline
 // `<button>` is as wide as its text rather than the column.
 const accentButtonClass =
-    "px-3 py-1.5 bg-discord-accent rounded disabled:opacity-50";
+    "px-3 py-1.5 bg-zam-accent rounded disabled:opacity-50";
 const accentButtonTextClass = "text-white text-sm";
 const secondaryButtonClass =
-    "px-3 py-1.5 bg-discord-messageHover rounded disabled:opacity-50";
-const secondaryButtonTextClass = "text-discord-textPrimary text-sm";
+    "px-3 py-1.5 bg-zam-messageHover rounded disabled:opacity-50";
+const secondaryButtonTextClass = "text-zam-textPrimary text-sm";
 const dangerButtonClass =
-    "px-3 py-1.5 bg-discord-danger rounded disabled:opacity-50";
+    "px-3 py-1.5 bg-zam-danger rounded disabled:opacity-50";
 
 // Zami: a badge is a padded, rounded box, which a nested Text can't be: its
 // background and padding go on a View, its text classes on the Text inside.
@@ -617,18 +617,18 @@ export default function SecuritySettings() {
         if (!approval) return null;
         return (
             <View
-                className="gap-2 rounded border border-discord-divider p-3"
+                className="gap-2 rounded border border-zam-divider p-3"
                 role="group"
                 accessibilityLabel={t("securitySettings.approveOnAccountPage")}
             >
-                <Text className="text-sm font-medium text-discord-textPrimary">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {t("securitySettings.approveOnAccountPage")}
                 </Text>
                 <Text
                     className={`text-xs ${
                         approval.retry
-                            ? "text-discord-warning"
-                            : "text-discord-textMuted"
+                            ? "text-zam-warning"
+                            : "text-zam-textMuted"
                     }`}
                 >
                     {approval.retry
@@ -675,7 +675,7 @@ export default function SecuritySettings() {
     // current claim about the account (audit CRYPTO-02).
     function staleMarker(): ReactNode {
         return (
-            <Text className="text-xs text-discord-textMuted py-1.5">
+            <Text className="text-xs text-zam-textMuted py-1.5">
                 {t("securitySettings.showingTheLastReadingThatLoaded")}
             </Text>
         );
@@ -689,14 +689,12 @@ export default function SecuritySettings() {
     ): ReactNode {
         return (
             <View className="flex-row items-center justify-between gap-3 py-1.5">
-                <Text className="flex-1 text-sm text-discord-textPrimary">
+                <Text className="flex-1 text-sm text-zam-textPrimary">
                     {label}
                 </Text>
                 <Badge
-                    box={
-                        ok ? "bg-discord-online/20" : "bg-discord-messageHover"
-                    }
-                    text={ok ? "text-discord-online" : "text-discord-textMuted"}
+                    box={ok ? "bg-zam-online/20" : "bg-zam-messageHover"}
+                    text={ok ? "text-zam-online" : "text-zam-textMuted"}
                     label={ok ? okText : offText}
                 />
             </View>
@@ -716,7 +714,7 @@ export default function SecuritySettings() {
                 autoCapitalize="none"
                 autoCorrect={false}
                 placeholder={t("securitySettings.accountPassword")}
-                placeholderTextColorClassName="accent-discord-textMuted"
+                placeholderTextColorClassName="accent-zam-textMuted"
                 accessibilityLabel={t("securitySettings.accountPassword")}
                 editable={!disabled}
                 returnKeyType="done"
@@ -754,7 +752,7 @@ export default function SecuritySettings() {
                             placeholder={t(
                                 "securitySettings.recoveryPassphrase",
                             )}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "securitySettings.recoveryPassphrase",
                             )}
@@ -764,11 +762,11 @@ export default function SecuritySettings() {
                             }`}
                         />
                         {passphraseError ? (
-                            <Text className="text-xs text-discord-danger">
+                            <Text className="text-xs text-zam-danger">
                                 {passphraseError}
                             </Text>
                         ) : (
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("securitySettings.atLeastCharactersWeCanT", {
                                     MIN_PASSPHRASE_LENGTH,
                                 })}
@@ -787,11 +785,11 @@ export default function SecuritySettings() {
             <View>
                 <Text
                     accessibilityRole="header"
-                    className="text-sm font-semibold text-discord-textPrimary mb-1"
+                    className="text-sm font-semibold text-zam-textPrimary mb-1"
                 >
                     {t("securitySettings.securityEncryption")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("securitySettings.setUpRecoverySoYourCross")}
                 </Text>
             </View>
@@ -799,32 +797,32 @@ export default function SecuritySettings() {
             {/* Status rows. Rendered only from a reading that actually landed: a
                 failed read shows the notice below instead, because the all-false
                 placeholder underneath it is indistinguishable from a fresh account. */}
-            <View className="rounded bg-discord-backgroundTertiary px-4 py-2">
+            <View className="rounded bg-zam-backgroundTertiary px-4 py-2">
                 {status && showRows ? (
                     <>
                         {panel.stale ? staleMarker() : null}
                         <View className="flex-row items-center justify-between gap-3 py-1.5">
-                            <Text className="flex-1 text-sm text-discord-textPrimary">
+                            <Text className="flex-1 text-sm text-zam-textPrimary">
                                 {t("securitySettings.verification")}
                             </Text>
                             <Badge
                                 box={
                                     verificationTone === "verified"
-                                        ? "bg-discord-online/20"
+                                        ? "bg-zam-online/20"
                                         : verificationTone === "warning"
-                                          ? "bg-discord-warning/20"
+                                          ? "bg-zam-warning/20"
                                           : verificationTone === "unverified"
-                                            ? "bg-discord-messageHover"
-                                            : "bg-discord-messageHover"
+                                            ? "bg-zam-messageHover"
+                                            : "bg-zam-messageHover"
                                 }
                                 text={
                                     verificationTone === "verified"
-                                        ? "text-discord-online"
+                                        ? "text-zam-online"
                                         : verificationTone === "warning"
-                                          ? "text-discord-warning"
+                                          ? "text-zam-warning"
                                           : verificationTone === "unverified"
-                                            ? "text-discord-textMuted"
-                                            : "text-discord-textMuted"
+                                            ? "text-zam-textMuted"
+                                            : "text-zam-textMuted"
                                 }
                                 label={
                                     verificationView?.label ??
@@ -870,20 +868,20 @@ export default function SecuritySettings() {
                         )}
                     </>
                 ) : panel.state === "loading" ? (
-                    <Text className="text-xs text-discord-textMuted py-1.5">
+                    <Text className="text-xs text-zam-textMuted py-1.5">
                         {t("securitySettings.loadingEncryptionStatus")}
                     </Text>
                 ) : (
                     // Deliberately NOT the rows above: we don't know this account's
                     // posture, and "Not set up" would claim we do.
-                    <Text className="text-xs text-discord-textMuted py-1.5">
+                    <Text className="text-xs text-zam-textMuted py-1.5">
                         {t(
                             "securitySettings.encryptionStatusUnknownOnThisSession",
                         )}
                     </Text>
                 )}
                 {status && showRows ? (
-                    <Text className="text-[11px] text-discord-textMuted pt-1 pb-1.5">
+                    <Text className="text-[11px] text-zam-textMuted pt-1 pb-1.5">
                         {t("securitySettings.recoveryKeyId")}{" "}
                         <Text selectable className="font-mono">
                             {secretStorageKeyLabel(status.defaultKeyId)}
@@ -893,7 +891,7 @@ export default function SecuritySettings() {
             </View>
 
             {panel.notice ? (
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {panel.notice}
                 </Text>
             ) : null}
@@ -910,15 +908,15 @@ export default function SecuritySettings() {
                 the Set-up wizard — non-destructive, but its Cancel walks away from an
                 account with nothing to recover with, and the explanation is gone. */}
             {(canSetUp || step === "show") && !resetView.blocking ? (
-                <View className="rounded bg-discord-backgroundTertiary px-4 py-4 gap-3">
+                <View className="rounded bg-zam-backgroundTertiary px-4 py-4 gap-3">
                     {step === "idle" ||
                     step === "password" ||
                     step === "working" ? (
                         <View className="gap-1">
-                            <Text className="text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-sm font-medium text-zam-textPrimary">
                                 {t("securitySettings.setUpRecovery")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("securitySettings.weLlCreateA")}{" "}
                                 <Text className="font-bold">
                                     {t("securitySettings.recoveryKey")}
@@ -941,14 +939,14 @@ export default function SecuritySettings() {
                     ) : step === "password" || step === "working" ? (
                         <View className="gap-2">
                             {oauthSession ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "securitySettings.approveOnAccountPageHint",
                                     )}
                                 </Text>
                             ) : (
                                 <>
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t(
                                             "securitySettings.confirmYourAccountPasswordToCreate",
                                         )}
@@ -997,21 +995,21 @@ export default function SecuritySettings() {
                         </View>
                     ) : step === "show" ? (
                         <View className="gap-3">
-                            <Text className="text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-sm font-medium text-zam-textPrimary">
                                 {t("securitySettings.saveYourRecoveryKey")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("securitySettings.thisIsShown")}{" "}
                                 <Text className="font-bold">
                                     {t("securitySettings.onlyOnce")}
                                 </Text>
                                 {t("securitySettings.storeItNowWithoutItYou")}
                             </Text>
-                            <View className="bg-discord-backgroundDark rounded px-3 py-2">
+                            <View className="bg-zam-backgroundDark rounded px-3 py-2">
                                 {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                 <Text
                                     selectable
-                                    className="font-mono text-sm text-discord-textPrimary"
+                                    className="font-mono text-sm text-zam-textPrimary"
                                 >
                                     {formatRecoveryKey(recoveryKey)}
                                 </Text>
@@ -1021,16 +1019,16 @@ export default function SecuritySettings() {
                                 onPress={() => {
                                     void copyKey();
                                 }}
-                                className="self-start px-3 py-1.5 bg-discord-messageHover rounded"
+                                className="self-start px-3 py-1.5 bg-zam-messageHover rounded"
                             >
                                 <View className="flex-row items-center justify-center gap-1">
                                     {copied ? (
                                         <Check
                                             size={14}
-                                            className="text-discord-textPrimary"
+                                            className="text-zam-textPrimary"
                                         />
                                     ) : null}
-                                    <Text className="text-discord-textPrimary text-xs">
+                                    <Text className="text-zam-textPrimary text-xs">
                                         {copied
                                             ? t("securitySettings.copied")
                                             : t("securitySettings.copyKey")}
@@ -1038,7 +1036,7 @@ export default function SecuritySettings() {
                                 </View>
                             </Pressable>
                             {keyHasPassphrase ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "securitySettings.youCanAlsoUnlockWithThe",
                                     )}
@@ -1070,13 +1068,11 @@ export default function SecuritySettings() {
                     {approvalPrompt()}
 
                     {error ? (
-                        <Text className="text-sm text-discord-danger">
-                            {error}
-                        </Text>
+                        <Text className="text-sm text-zam-danger">{error}</Text>
                     ) : null}
                 </View>
             ) : step === "done" || recoveryDone || resetView.blocking ? (
-                <View className="rounded bg-discord-backgroundTertiary px-4 py-4 gap-3">
+                <View className="rounded bg-zam-backgroundTertiary px-4 py-4 gap-3">
                     {/* The repair branch below lives in this same section, so this
                         header cannot be unconditional: "Recovery is set up" directly
                         above "the new recovery wasn't created" (and a status row
@@ -1085,10 +1081,10 @@ export default function SecuritySettings() {
                         the false one. */}
                     {!resetView.blocking ? (
                         <View className="gap-1">
-                            <Text className="text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-sm font-medium text-zam-textPrimary">
                                 {t("securitySettings.recoveryIsSetUp")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("securitySettings.yourCrossSigningKeysAndA")}
                             </Text>
                             {/* This panel renders from the RETAINED payload, so when the
@@ -1100,10 +1096,10 @@ export default function SecuritySettings() {
                         // No stale marker here: this state is asserted from what the
                         // reset itself did on this session, not from a read.
                         <View className="gap-1">
-                            <Text className="text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-sm font-medium text-zam-textPrimary">
                                 {t("securitySettings.recoveryIsNotSetUp")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t(
                                     "securitySettings.thisAccountHasNoRecoveryKey",
                                 )}
@@ -1114,15 +1110,15 @@ export default function SecuritySettings() {
                     {resetStep === "idle" &&
                     status?.crossSigningUnpublished &&
                     panel.authoritative ? (
-                        <View className="gap-2 pt-3 border-t border-discord-divider">
-                            <Text className="text-sm font-medium text-discord-warning">
+                        <View className="gap-2 pt-3 border-t border-zam-divider">
+                            <Text className="text-sm font-medium text-zam-warning">
                                 {t("securitySettings.keysNotOnServer")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("securitySettings.keysNotOnServerHint")}
                             </Text>
                             {oauthSession ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "securitySettings.approveOnAccountPageHint",
                                     )}
@@ -1167,7 +1163,7 @@ export default function SecuritySettings() {
                             className="self-start disabled:opacity-50"
                         >
                             <Text
-                                className={`text-xs text-discord-textMuted ${
+                                className={`text-xs text-zam-textMuted ${
                                     panel.allowDestructive ? "underline" : ""
                                 }`}
                             >
@@ -1177,8 +1173,8 @@ export default function SecuritySettings() {
                             </Text>
                         </Pressable>
                     ) : resetStep === "confirm" ? (
-                        <View className="gap-2 pt-3 border-t border-discord-divider">
-                            <Text className="text-xs text-discord-warning">
+                        <View className="gap-2 pt-3 border-t border-zam-divider">
+                            <Text className="text-xs text-zam-warning">
                                 {t("securitySettings.resettingCreatesA")}{" "}
                                 <Text className="font-bold">
                                     {t("securitySettings.new")}
@@ -1217,8 +1213,8 @@ export default function SecuritySettings() {
                         // its own submit — `runRepair` runs the SETUP half alone — and
                         // no cancel: re-running the reset from here would wipe a second
                         // time, and leaving quietly strands the account (CRYPTO-01).
-                        <View className="gap-2 pt-3 border-t border-discord-divider">
-                            <Text className="text-xs text-discord-warning">
+                        <View className="gap-2 pt-3 border-t border-zam-divider">
+                            <Text className="text-xs text-zam-warning">
                                 {t(
                                     "securitySettings.yourOldRecoveryKeyAndBackup",
                                 )}
@@ -1251,16 +1247,16 @@ export default function SecuritySettings() {
                         </View>
                     ) : resetStep === "password" ||
                       resetStep === "destroying" ? (
-                        <View className="gap-2 pt-3 border-t border-discord-divider">
+                        <View className="gap-2 pt-3 border-t border-zam-divider">
                             {oauthSession ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "securitySettings.approveOnAccountPageHint",
                                     )}
                                 </Text>
                             ) : (
                                 <>
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t(
                                             "securitySettings.confirmYourAccountPasswordToReset",
                                         )}
@@ -1312,9 +1308,7 @@ export default function SecuritySettings() {
                     {approvalPrompt()}
 
                     {error ? (
-                        <Text className="text-sm text-discord-danger">
-                            {error}
-                        </Text>
+                        <Text className="text-sm text-zam-danger">{error}</Text>
                     ) : null}
                 </View>
             ) : null}
@@ -1325,33 +1319,33 @@ export default function SecuritySettings() {
                 means "we don't know" — and that line is what talks users into resetting
                 recovery they still have (audit CRYPTO-02). The notice above covers it. */}
             {panel.authoritative && backup ? (
-                <View className="rounded bg-discord-backgroundTertiary px-4 py-4 gap-3">
+                <View className="rounded bg-zam-backgroundTertiary px-4 py-4 gap-3">
                     <View className="flex-row items-center justify-between gap-3">
-                        <Text className="flex-1 text-sm font-medium text-discord-textPrimary">
+                        <Text className="flex-1 text-sm font-medium text-zam-textPrimary">
                             {t("securitySettings.messageHistoryBackup")}
                         </Text>
                         {badge ? (
                             <Badge
                                 box={
                                     badge.tone === "active"
-                                        ? "bg-discord-online/20"
+                                        ? "bg-zam-online/20"
                                         : badge.tone === "warning"
-                                          ? "bg-discord-warning/20"
-                                          : "bg-discord-messageHover"
+                                          ? "bg-zam-warning/20"
+                                          : "bg-zam-messageHover"
                                 }
                                 text={
                                     badge.tone === "active"
-                                        ? "text-discord-online"
+                                        ? "text-zam-online"
                                         : badge.tone === "warning"
-                                          ? "text-discord-warning"
-                                          : "text-discord-textMuted"
+                                          ? "text-zam-warning"
+                                          : "text-zam-textMuted"
                                 }
                                 label={badge.label}
                             />
                         ) : null}
                     </View>
                     {summary ? (
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {summary}
                         </Text>
                     ) : null}
@@ -1361,7 +1355,7 @@ export default function SecuritySettings() {
                                 <Text
                                     key={line}
                                     role="listitem"
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
                                     {line}
                                 </Text>
@@ -1404,7 +1398,7 @@ export default function SecuritySettings() {
                                         }}
                                         className={secondaryButtonClass}
                                     >
-                                        <Text className="text-discord-textPrimary text-sm font-medium">
+                                        <Text className="text-zam-textPrimary text-sm font-medium">
                                             {t(
                                                 "verification.verifyWithAnotherDevice",
                                             )}
@@ -1424,15 +1418,15 @@ export default function SecuritySettings() {
                                             onPress={() => setUnlockMode("key")}
                                             className={`px-2 py-1 rounded ${
                                                 unlockMode === "key"
-                                                    ? "bg-discord-accent"
-                                                    : "bg-discord-messageHover"
+                                                    ? "bg-zam-accent"
+                                                    : "bg-zam-messageHover"
                                             }`}
                                         >
                                             <Text
                                                 className={`text-xs ${
                                                     unlockMode === "key"
                                                         ? "text-white"
-                                                        : "text-discord-textPrimary"
+                                                        : "text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -1451,15 +1445,15 @@ export default function SecuritySettings() {
                                             }
                                             className={`px-2 py-1 rounded ${
                                                 unlockMode === "passphrase"
-                                                    ? "bg-discord-accent"
-                                                    : "bg-discord-messageHover"
+                                                    ? "bg-zam-accent"
+                                                    : "bg-zam-messageHover"
                                             }`}
                                         >
                                             <Text
                                                 className={`text-xs ${
                                                     unlockMode === "passphrase"
                                                         ? "text-white"
-                                                        : "text-discord-textPrimary"
+                                                        : "text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -1469,7 +1463,7 @@ export default function SecuritySettings() {
                                         </Pressable>
                                     </View>
                                 ) : null}
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("securitySettings.enterYour")}{" "}
                                     <Text className="font-bold">
                                         {effectiveUnlockMode === "key"
@@ -1489,7 +1483,7 @@ export default function SecuritySettings() {
                                         placeholder={t(
                                             "securitySettings.recoveryKey2",
                                         )}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
+                                        placeholderTextColorClassName="accent-zam-textMuted"
                                         accessibilityLabel={t(
                                             "securitySettings.recoveryKey2",
                                         )}
@@ -1501,7 +1495,7 @@ export default function SecuritySettings() {
                                         onSubmitEditing={() => {
                                             if (unlockReady) void runUnlock();
                                         }}
-                                        className="w-full bg-discord-backgroundDark text-discord-textPrimary font-mono text-sm rounded px-3 py-1.5 outline-none"
+                                        className="w-full bg-zam-backgroundDark text-zam-textPrimary font-mono text-sm rounded px-3 py-1.5 outline-none"
                                     />
                                 ) : (
                                     <TextInput
@@ -1511,7 +1505,7 @@ export default function SecuritySettings() {
                                         placeholder={t(
                                             "securitySettings.recoveryPassphrase",
                                         )}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
+                                        placeholderTextColorClassName="accent-zam-textMuted"
                                         accessibilityLabel={t(
                                             "securitySettings.recoveryPassphrase",
                                         )}
@@ -1557,12 +1551,12 @@ export default function SecuritySettings() {
                             </View>
                         ) : unlockStep === "working" ? (
                             <View className="gap-2">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {progressView.label}
                                 </Text>
-                                <View className="h-1.5 w-full rounded bg-discord-backgroundDark overflow-hidden">
+                                <View className="h-1.5 w-full rounded bg-zam-backgroundDark overflow-hidden">
                                     <View
-                                        className="h-full bg-discord-accent transition-all"
+                                        className="h-full bg-zam-accent transition-all"
                                         style={{
                                             width: `${progressView.percent ?? 15}%`,
                                         }}
@@ -1586,7 +1580,7 @@ export default function SecuritySettings() {
 
                     {unlockStep === "done" && unlockResult ? (
                         <View className="gap-2">
-                            <Text className="text-sm font-medium text-discord-online">
+                            <Text className="text-sm font-medium text-zam-online">
                                 {unlockResult.sessionVerified
                                     ? t(
                                           "securitySettings.thisSessionIsNowVerified",
@@ -1595,7 +1589,7 @@ export default function SecuritySettings() {
                                           "securitySettings.encryptedHistoryRestored",
                                       )}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {restoreResultLabel(unlockResult)}.
                             </Text>
                             <Pressable
@@ -1611,7 +1605,7 @@ export default function SecuritySettings() {
                     ) : null}
 
                     {unlockError ? (
-                        <Text className="text-sm text-discord-danger">
+                        <Text className="text-sm text-zam-danger">
                             {unlockError}
                         </Text>
                     ) : null}

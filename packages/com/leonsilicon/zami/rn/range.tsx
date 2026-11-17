@@ -149,24 +149,21 @@ export function Range({
       >
         <View
           pointerEvents="none"
-          className="h-1 rounded-full bg-discord-backgroundTertiary overflow-hidden"
+          className="h-1 rounded-full bg-zam-backgroundTertiary overflow-hidden"
         >
-          <View
-            className="h-1 bg-discord-accent"
-            style={{ width: fraction * travel + THUMB / 2 }}
-          />
+          <View className="h-1 bg-zam-accent" style={{ width: fraction * travel + THUMB / 2 }} />
         </View>
         {ticks.map((tick) => (
           <View
             key={tick}
             pointerEvents="none"
-            className="absolute bottom-0 w-px h-1.5 bg-discord-textMuted"
+            className="absolute bottom-0 w-px h-1.5 bg-zam-textMuted"
             style={{ left: fractionOf(tick) * travel + THUMB / 2 }}
           />
         ))}
         <View
           pointerEvents="none"
-          className="absolute w-4 h-4 rounded-full bg-discord-accent"
+          className="absolute w-4 h-4 rounded-full bg-zam-accent"
           style={{ left: fraction * travel }}
         />
       </View>

@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "messages-media",
+        label: t("messagesMediaSettings.pingOnReply"),
+        keywords: ["reply", "mention", "ping", "notify", "@"],
+        anchor: "cust-messages",
+    },
+    {
+        tab: "messages-media",
         label: t("messagesMediaSettings.fitImagesToScreen"),
         keywords: ["lightbox", "viewer", "zoom", "fit", "image", "enlarge"],
         anchor: "cust-messages",
@@ -283,7 +289,7 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         label: t("settingsSearch.proxy"),
         keywords: ["proxy", "socks", "tor", "pac", "bypass", "network"],
         anchor: "cust-network",
-        available: (p) => p.desktopTray,
+        available: (p) => p.desktopTray || p.nativeApp,
     },
     // appearance (language)
     {

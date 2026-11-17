@@ -140,12 +140,12 @@ export default function PinnedMessagesPanel({
         <View
             className={`${
                 isMobile ? "" : "w-72"
-            } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+            } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
         >
-            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                 >
                     {t("pinnedMessagesPanel.pinnedMessages")}
                 </Text>
@@ -166,7 +166,7 @@ export default function PinnedMessagesPanel({
                     const avatarUrl = getMemberAvatar(room, sender);
                     const name = getMemberName(room, sender);
                     return (
-                        <View className="p-2 rounded-lg hover:bg-discord-messageHover transition-colors">
+                        <View className="p-2 rounded-lg hover:bg-zam-messageHover transition-colors">
                             <View className="flex-row items-center gap-2 mb-1">
                                 <Avatar
                                     src={avatarUrl}
@@ -176,17 +176,17 @@ export default function PinnedMessagesPanel({
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs font-semibold text-discord-textPrimary"
+                                    className="flex-shrink text-xs font-semibold text-zam-textPrimary"
                                 >
                                     {name}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted ms-auto flex-shrink-0">
+                                <Text className="text-xs text-zam-textMuted ms-auto flex-shrink-0">
                                     {pinnedDate(event.getTs())}
                                 </Text>
                             </View>
                             <Text
                                 numberOfLines={3}
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {excerpt(event)}
                             </Text>
@@ -202,13 +202,13 @@ export default function PinnedMessagesPanel({
                                     }}
                                     hitSlop={6}
                                 >
-                                    <Text className="text-xs text-discord-accent">
+                                    <Text className="text-xs text-zam-accent">
                                         {t("pinnedMessagesPanel.jump")}
                                     </Text>
                                 </Pressable>
                                 {canPin ? (
                                     <>
-                                        <Text className="text-discord-textMuted text-xs">
+                                        <Text className="text-zam-textMuted text-xs">
                                             ·
                                         </Text>
                                         <Pressable
@@ -229,7 +229,7 @@ export default function PinnedMessagesPanel({
                                                     : ""
                                             }
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-danger transition-colors">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-danger transition-colors">
                                                 {t("pinnedMessagesPanel.unpin")}
                                             </Text>
                                         </Pressable>
@@ -242,10 +242,10 @@ export default function PinnedMessagesPanel({
                 ListEmptyComponent={
                     loading ? (
                         <View className="flex-row justify-center mt-8">
-                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                            <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                         </View>
                     ) : (
-                        <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                        <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                             {t("pinnedMessagesPanel.noPinnedMessages")}
                         </Text>
                     )

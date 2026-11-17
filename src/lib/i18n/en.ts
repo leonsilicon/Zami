@@ -610,6 +610,36 @@ export const en = {
         "Index sync isn't running: it needs encrypted-room indexing turned on.",
     "debugSettings.indexSyncNow": "Sync now",
     "debugSettings.indexSyncNever": "never",
+    "debugSettings.searchIndex": "Search index",
+    "debugSettings.searchIndexHint":
+        "Index the full history of every encrypted room on this device now, instead of slowly in the background. Uses network and storage while it runs.",
+    "debugSettings.searchIndexBuild": "Build full index now",
+    "debugSettings.searchIndexCancel": "Cancel",
+    "debugSettings.searchIndexBar": "Full index progress",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} rooms, {messages} messages",
+    "debugSettings.searchIndexComplete":
+        "Finished: every encrypted room is indexed.",
+    "debugSettings.searchIndexPartial":
+        "Finished, but {failed} rooms are not done yet. The background crawler will retry them.",
+    "debugSettings.searchIndexStorage": "Stopped: storage is nearly full.",
+    "debugSettings.prefetchTitle": "Background download (Android)",
+    "debugSettings.prefetchHint":
+        "Downloads encrypted history pages in the background while the app is not in front. They stay encrypted until the index reads them.",
+    "debugSettings.prefetchPages": "Pages waiting",
+    "debugSettings.prefetchSize": "Size",
+    "debugSettings.prefetchRooms": "Rooms",
+    "debugSettings.prefetchLastRun": "Last run",
+    "debugSettings.prefetchLastResult": "Last result",
+    "debugSettings.prefetchLastError": "Last error",
+    "debugSettings.prefetchRefresh": "Refresh",
+    "debugSettings.searchIndexAborted": "Cancelled.",
+    "debugSettings.searchIndexUnavailable":
+        "Stopped: the index isn't running on this device.",
+    "debugSettings.searchIndexDisabled":
+        "Turn on indexing for encrypted rooms in privacy settings first.",
+    "debugSettings.searchIndexNotRunning":
+        "The index isn't running right now. It starts once the app has finished loading.",
     "debugSettings.indexSyncSessions": "Sessions",
     "debugSettings.indexSyncAsked": "Asked",
     "debugSettings.indexSyncRoomsMissing": "Rooms with holes",
@@ -789,6 +819,12 @@ export const en = {
         "No direct connections, and call servers never see your IP address: calls go through the proxy to the call server's TURN relay over TCP or TLS. If the server offers no TURN relay, calls won't connect. Expect more delay.",
     "proxySettings.callsDirectUnavailable":
         "Calls can't bypass the system proxy settings. Set the proxy here (Manual or PAC) for this to work.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Calls can't bypass the system proxy settings. Set the proxy here (Manual) for this to work.",
+    "proxySettings.androidBackgroundHint":
+        "Notifications and quick replies are fetched outside the WebView and only work through socks5:// or http:// proxies.",
+    "proxySettings.unsupported":
+        "This version of Android System WebView can't set a proxy. Update it from the Play Store.",
     "proxySettings.callsDirectAddresses": "Sent direct:",
     "proxySettings.save": "Save",
     "proxySettings.saved": "Saved",
@@ -1314,6 +1350,13 @@ export const en = {
     "messageArea.pinnedMessagesCount": "Pinned messages ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Ping on reply",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "New replies ping the author of the message you reply to, like an @mention. You can still turn it off per reply from the reply bar.",
+    "messageInput.pingOn": "@ ON",
+    "messageInput.pingOff": "@ OFF",
+    "messageInput.pingOnTitle": "Ping the author",
+    "messageInput.pingOffTitle": "Don't ping the author",
     "messageInput.replyingTo": "Replying to {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancel reply (Esc)",
     "messageInput.editAttachment": "Edit attachment",
@@ -1362,6 +1405,9 @@ export const en = {
     "messageItem.originalMessageDeleted": "Original message deleted",
     "messageItem.originalMessageUnavailable": "Original message unavailable",
     "messageItem.replyPreviewSticker": "Sticker",
+    "messageItem.forwarded": "Forwarded",
+    "messageItem.forwardedFrom": "Forwarded from {name}",
+    "messageItem.forwardedEmoteActor": "Sender",
     "messageItem.requestKeys": "Request keys",
     "messageItem.keysRequested": "Keys requested",
     "messageItem.requestKeysHelp":
@@ -1939,6 +1985,14 @@ export const en = {
     "quickActions.couldNotSendTheJoinRequest":
         "Could not send the join request",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Reactions",
+    "reactionsViewer.count":
+        "{count, plural, one {# reaction} other {# reactions}}",
+    "reactionsViewer.empty": "No reactions on this message.",
+    "reactionsViewer.removeYours": "Remove your reaction",
+    "reactionsViewer.sending": "sending…",
+    "reactionsViewer.couldNotRemove": "Could not remove your reaction.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "+{overflow} more",
     "reactorPopover.reactedWith": "Reacted with {label}",
@@ -2258,6 +2312,9 @@ export const en = {
         "Your upload measures {upload}, so this goes up to {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Your upload hasn't been measured yet. It's measured while you send video, so this goes up to {max} for now.",
+    "screenShareQualityChips.nativeCapture": "Windows capture helper",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Captures and encodes the share outside the browser, so a busy game doesn't stutter it. Applies to the next share.",
     "screenShareQualityChips.shareSystemAudio": "Share system audio",
     "screenShareQualityChips.appliesToNextShare": "Applies to next share",
     "screenShareQualityChips.shareSystemAudioAppliesToNext":
@@ -2504,6 +2561,10 @@ export const en = {
     "spaceSidebar.setColor": "Set Color",
     "spaceSidebar.dissolveFolder": "Dissolve Folder",
     "spaceSidebar.somethingWentWrong": "Something went wrong",
+    "spaceSidebar.folder": "Folder",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} in voice",
+    "spaceSidebar.moreParticipants": "+{count} more",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restoring session…",
@@ -2546,7 +2607,10 @@ export const en = {
     "themeColorEditor.messageDisplay": "Message display",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Saved on this device only. Not synced across your account.",
-    "themeColorEditor.appTextSize": "App text size: {round}%",
+    "themeColorEditor.interfaceScale": "Interface scale: {percent}%",
+    "themeColorEditor.messageTextScale": "Message text size: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "Scales chat messages and the message composer only.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Scales all text and spacing across the app.",
     "themeColorEditor.font": "Font",
@@ -2573,6 +2637,21 @@ export const en = {
     "threadPanel.loadOlderReplies": "Load older replies",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    // src/lib/components/ui/ChannelTypeIcon.svelte (ZDMB channel types)
+    "bridgedChannels.voice": "Voice channel",
+    "bridgedChannels.stage": "Stage channel",
+    "bridgedChannels.announcement": "Announcement channel",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Media channel",
+    "bridgedChannels.privateThread": "Private thread",
+    // src/lib/stores/bridgedThreads.svelte.ts (ZDMB Discord threads)
+    "bridgedThreads.joinFailed": "Couldn't join the thread.",
+    "bridgedThreads.joinThread": "Join thread",
+    "bridgedThreads.threadRooms": "Thread rooms",
+    "bridgedThreads.thread": "Thread",
+    "bridgedThreads.goToParent": "Go to {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# member} other {# members}}",
     "threadsListPanel.threads": "Threads",
     "threadsListPanel.closeThreadsPanel": "Close threads panel",
     "threadsListPanel.noThreadsInThisRoomYet": "No threads in this room yet.",
@@ -2812,6 +2891,11 @@ export const en = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Direct messages ring. Rooms never do - you join those from the room itself.",
     "voiceAudioSettings.ringtoneVolume": "Ringtone volume",
+    "voiceAudioSettings.ringtone": "Ringtone",
+    "voiceAudioSettings.ringtoneDefault": "Default",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Plugin ringtone (plugin not loaded)",
     "voiceAudioSettings.fullScreenCalls": "Show calls on the lock screen",
     "voiceAudioSettings.fullScreenCallsHint":
         "Lets an incoming DM call wake the screen and ring full screen, like a phone call. Android asks for this separately.",
@@ -3144,6 +3228,9 @@ export const en = {
     "client.codecCouldNotBeDecoded":
         "This device can't decode {codec} video. Asking for H.264 instead.",
     "client.couldNotSwitchVideoCodec": "Couldn't switch the video codec",
+    "client.androidShareNeedsWebView":
+        "Screen sharing in this room needs a newer Android System WebView.",
+    "client.screenShareStopped": "Screen sharing stopped.",
     "client.couldNotStartScreenShare": "Could not start screen share",
     "client.couldNotShareScreenAudio": "Screen share started without its audio",
     "client.couldnTChangeScreenShareQuality":
@@ -3265,6 +3352,14 @@ export const en = {
     "previewRewriter.rules": "Rewrite rules",
     "previewRewriter.rulesDescription":
         "Applied in order to the address a preview is fetched from. The link itself is not changed.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Message link pills",
+    "messageLinkPill.description":
+        "Shows pasted message links as a compact pill naming the room or DM they point to, and highlights the matching preview when you hover one.",
+    "messageLinkPill.viewMessage": "View message",
+    "messageLinkPill.viewMessageIn": "View quoted message in {room}",
+    "messageLinkPill.viewQuotedMessage": "View quoted message",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":
@@ -3623,6 +3718,7 @@ export const en = {
     "messageActionsMenu.unpin": "Unpin",
     "messageActionsMenu.pin": "Pin",
     "messageActionsMenu.copyLink": "Copy link",
+    "messageActionsMenu.viewReactions": "View reactions",
     "messageActionsMenu.markUnread": "Mark as unread",
     "messageActionsMenu.couldNotMarkUnread": "Couldn't mark as unread",
     "messageActionsMenu.report": "Report",
@@ -3707,6 +3803,10 @@ export const en = {
     "presence.doNotDisturbDescription":
         "Silences notifications and calls on all your devices",
     "presence.invisible": "Invisible",
+    "presence.invisibleHidesActivity":
+        "Invisible also hides your read receipts and typing from other users.",
+    "presence.unsupportedByServer":
+        "This homeserver does not support presence, so there is no status to set.",
     "presence.appearOfflineToOtherUsers": "Appear offline to other users",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -4081,6 +4181,8 @@ export const en = {
     // src/routes/+page.svelte
     "rootPage.failedToReconnectPleaseLogIn":
         "Failed to reconnect. Please log in again.",
+    "rootPage.storageWipedSessionRecovered":
+        "Your browser reset Zam's storage, probably because the disk was full. Your sign-in was recovered, but some settings may be back to their defaults.",
     "rootPage.sessionOpenInAnotherTab":
         "This session is open in another tab. This tab will continue once that one closes.",
     "rootPage.signedInButSyncingCouldNot":

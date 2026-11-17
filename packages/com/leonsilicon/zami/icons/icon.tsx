@@ -5,7 +5,7 @@ import { useResolveClassNames } from "uniwind";
 // On the web an icon is `currentColor`, its parent's text color. React Native has no
 // inheritance, so an icon without a color class falls back to Zam's primary text color
 // rather than black.
-const FALLBACK_COLOR = "text-discord-textPrimary";
+const FALLBACK_COLOR = "text-zam-textPrimary";
 
 /**
  * A lucide-react-native icon that also takes a `className`: `w-*`/`h-*`/`size-*` set its

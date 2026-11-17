@@ -49,18 +49,18 @@ import {
 // background and padding go on a View, its text classes on the Text inside.
 function badgeBox(tone: string | undefined): string {
     return tone === "verified"
-        ? "bg-discord-online/20"
+        ? "bg-zam-online/20"
         : tone === "warning"
-          ? "bg-discord-warning/20"
-          : "bg-discord-messageHover";
+          ? "bg-zam-warning/20"
+          : "bg-zam-messageHover";
 }
 
 function badgeText(tone: string | undefined): string {
     return tone === "verified"
-        ? "text-discord-online"
+        ? "text-zam-online"
         : tone === "warning"
-          ? "text-discord-warning"
-          : "text-discord-textMuted";
+          ? "text-zam-warning"
+          : "text-zam-textMuted";
 }
 
 function Badge({
@@ -82,7 +82,7 @@ function Badge({
 }
 
 const passwordInputClass =
-    "flex-1 bg-discord-backgroundDark text-discord-textPrimary text-sm rounded px-3 py-1.5 outline-none";
+    "flex-1 bg-zam-backgroundDark text-zam-textPrimary text-sm rounded px-3 py-1.5 outline-none";
 
 // Zami: a row of the session list draws again only when one of `deps` changed
 // (what the row shows, and the state its buttons read), not on every change to
@@ -372,7 +372,7 @@ export default function SessionSettings() {
         return (
             <View
                 key={device.deviceId}
-                className="rounded bg-discord-backgroundTertiary px-4 py-3 gap-3"
+                className="rounded bg-zam-backgroundTertiary px-4 py-3 gap-3"
             >
                 <View className="flex-row items-start justify-between gap-3">
                     <View className="min-w-0 flex-1">
@@ -385,7 +385,7 @@ export default function SessionSettings() {
                                     placeholder={t(
                                         "sessionSettings.sessionName",
                                     )}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     accessibilityLabel={t(
                                         "sessionSettings.sessionName",
                                     )}
@@ -393,7 +393,7 @@ export default function SessionSettings() {
                                     onSubmitEditing={() => {
                                         void saveRename();
                                     }}
-                                    className="flex-1 bg-discord-backgroundDark text-discord-textPrimary text-sm rounded px-2 py-1 outline-none"
+                                    className="flex-1 bg-zam-backgroundDark text-zam-textPrimary text-sm rounded px-2 py-1 outline-none"
                                 />
                                 <Pressable
                                     accessibilityRole="button"
@@ -404,7 +404,7 @@ export default function SessionSettings() {
                                         void saveRename();
                                     }}
                                     disabled={renameSaving}
-                                    className="px-2.5 py-1 bg-discord-accent rounded justify-center"
+                                    className="px-2.5 py-1 bg-zam-accent rounded justify-center"
                                 >
                                     <Text className="text-white text-xs">
                                         {renameSaving
@@ -415,9 +415,9 @@ export default function SessionSettings() {
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={() => setRenamingId(null)}
-                                    className="px-2.5 py-1 bg-discord-messageHover rounded justify-center"
+                                    className="px-2.5 py-1 bg-zam-messageHover rounded justify-center"
                                 >
-                                    <Text className="text-discord-textPrimary text-xs">
+                                    <Text className="text-zam-textPrimary text-xs">
                                         {t("common.cancel")}
                                     </Text>
                                 </Pressable>
@@ -429,14 +429,14 @@ export default function SessionSettings() {
                             <View className="flex-row items-center">
                                 <Text
                                     numberOfLines={1}
-                                    className="shrink text-sm font-medium text-discord-textPrimary"
+                                    className="shrink text-sm font-medium text-zam-textPrimary"
                                 >
                                     {device.displayName || device.deviceId}
                                 </Text>
                                 {isCurrent ? (
                                     <Badge
-                                        box="bg-discord-accent/20"
-                                        text="text-discord-accent"
+                                        box="bg-zam-accent/20"
+                                        text="text-zam-accent"
                                         label={t("sessionSettings.current")}
                                     />
                                 ) : null}
@@ -459,11 +459,11 @@ export default function SessionSettings() {
                         )}
                         <Text
                             selectable
-                            className="text-xs text-discord-textMuted font-mono mt-0.5"
+                            className="text-xs text-zam-textMuted font-mono mt-0.5"
                         >
                             {device.deviceId}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted mt-1">
+                        <Text className="text-xs text-zam-textMuted mt-1">
                             {details}
                         </Text>
                     </View>
@@ -480,9 +480,9 @@ export default function SessionSettings() {
                                 onPress={() => {
                                     void startVerifyWithAnotherDevice();
                                 }}
-                                className="px-2.5 py-1 bg-discord-accent/20 rounded"
+                                className="px-2.5 py-1 bg-zam-accent/20 rounded"
                             >
-                                <Text className="text-discord-accent text-xs">
+                                <Text className="text-zam-accent text-xs">
                                     {t("verification.verifyWithAnotherDevice")}
                                 </Text>
                             </Pressable>
@@ -493,9 +493,9 @@ export default function SessionSettings() {
                                 onPress={() => {
                                     void startVerify(device.deviceId);
                                 }}
-                                className="px-2.5 py-1 bg-discord-accent/20 rounded"
+                                className="px-2.5 py-1 bg-zam-accent/20 rounded"
                             >
-                                <Text className="text-discord-accent text-xs">
+                                <Text className="text-zam-accent text-xs">
                                     {t("common.verify")}
                                 </Text>
                             </Pressable>
@@ -504,9 +504,9 @@ export default function SessionSettings() {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => startRename(device)}
-                                className="px-2.5 py-1 bg-discord-messageHover rounded"
+                                className="px-2.5 py-1 bg-zam-messageHover rounded"
                             >
-                                <Text className="text-discord-textPrimary text-xs">
+                                <Text className="text-zam-textPrimary text-xs">
                                     {t("sessionSettings.rename")}
                                 </Text>
                             </Pressable>
@@ -516,9 +516,9 @@ export default function SessionSettings() {
                                 <Pressable
                                     accessibilityRole="link"
                                     onPress={() => openLink(sessionsUrl)}
-                                    className="px-2.5 py-1 bg-discord-messageHover rounded"
+                                    className="px-2.5 py-1 bg-zam-messageHover rounded"
                                 >
-                                    <Text className="text-discord-textPrimary text-xs">
+                                    <Text className="text-zam-textPrimary text-xs">
                                         {t("sessionSettings.manageAtProvider")}
                                     </Text>
                                 </Pressable>
@@ -531,15 +531,15 @@ export default function SessionSettings() {
                                 disabled={signOutBusy}
                                 className={`px-2.5 py-1 rounded ${
                                     confirmId === device.deviceId
-                                        ? "bg-discord-danger"
-                                        : "bg-discord-messageHover"
+                                        ? "bg-zam-danger"
+                                        : "bg-zam-messageHover"
                                 }`}
                             >
                                 <Text
                                     className={`text-xs ${
                                         confirmId === device.deviceId
                                             ? "text-white"
-                                            : "text-discord-danger"
+                                            : "text-zam-danger"
                                     }`}
                                 >
                                     {confirmId === device.deviceId
@@ -551,8 +551,8 @@ export default function SessionSettings() {
                     </View>
                 </View>
                 {passwordId === device.deviceId ? (
-                    <View className="pt-3 border-t border-discord-divider gap-2">
-                        <Text className="text-xs text-discord-textMuted">
+                    <View className="pt-3 border-t border-zam-divider gap-2">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "sessionSettings.confirmYourAccountPasswordToSign",
                             )}
@@ -569,7 +569,7 @@ export default function SessionSettings() {
                                 placeholder={t(
                                     "sessionSettings.accountPassword",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "sessionSettings.accountPassword",
                                 )}
@@ -595,7 +595,7 @@ export default function SessionSettings() {
                                     );
                                 }}
                                 disabled={signOutBusy || !password}
-                                className="px-3 py-1.5 bg-discord-danger rounded justify-center disabled:opacity-50"
+                                className="px-3 py-1.5 bg-zam-danger rounded justify-center disabled:opacity-50"
                             >
                                 <Text className="text-white text-xs">
                                     {signOutBusy
@@ -606,9 +606,9 @@ export default function SessionSettings() {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={cancelSignOut}
-                                className="px-3 py-1.5 bg-discord-messageHover rounded justify-center"
+                                className="px-3 py-1.5 bg-zam-messageHover rounded justify-center"
                             >
-                                <Text className="text-discord-textPrimary text-xs">
+                                <Text className="text-zam-textPrimary text-xs">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>
@@ -621,23 +621,23 @@ export default function SessionSettings() {
 
     return (
         <View className="gap-6">
-            <View className="rounded bg-discord-backgroundTertiary px-4 py-3 gap-1.5">
+            <View className="rounded bg-zam-backgroundTertiary px-4 py-3 gap-1.5">
                 <View className="flex-row items-center gap-2">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("sessionSettings.encryption")}
                     </Text>
                     <View
                         className={`px-1.5 py-0.5 rounded ${
                             cryptoActive
-                                ? "bg-discord-accent/20"
-                                : "bg-discord-messageHover"
+                                ? "bg-zam-accent/20"
+                                : "bg-zam-messageHover"
                         }`}
                     >
                         <Text
                             className={`text-[10px] font-semibold uppercase ${
                                 cryptoActive
-                                    ? "text-discord-accent"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-accent"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {cryptoActive
@@ -647,31 +647,31 @@ export default function SessionSettings() {
                     </View>
                 </View>
                 {deviceEd25519 ? (
-                    <Text selectable className="text-xs text-discord-textMuted">
+                    <Text selectable className="text-xs text-zam-textMuted">
                         {t("sessionSettings.thisDeviceSKey")}{" "}
-                        <Text className="text-xs font-mono text-discord-textPrimary">
+                        <Text className="text-xs font-mono text-zam-textPrimary">
                             {deviceEd25519}
                         </Text>
                     </Text>
                 ) : cryptoActive ? (
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("sessionSettings.loadingDeviceKey")}
                     </Text>
                 ) : (
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("sessionSettings.endToEndEncryptionCouldNot")}
                     </Text>
                 )}
                 {cryptoActive ? (
                     <>
-                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-discord-divider">
+                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-zam-divider">
                             <View className="flex-1 min-w-0">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t(
                                         "sessionSettings.encryptNewDirectMessages",
                                     )}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "sessionSettings.newDmsYouStartAreEncrypted",
                                     )}
@@ -685,14 +685,14 @@ export default function SessionSettings() {
                                 )}
                             />
                         </View>
-                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-discord-divider">
+                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-zam-divider">
                             <View className="flex-1 min-w-0">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t(
                                         "sessionSettings.excludeInsecureDevices",
                                     )}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "sessionSettings.excludeInsecureDevicesHelp",
                                     )}
@@ -706,14 +706,14 @@ export default function SessionSettings() {
                                 )}
                             />
                         </View>
-                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-discord-divider">
+                        <View className="flex-row items-center gap-3 pt-2 mt-1 border-t border-zam-divider">
                             <View className="flex-1 min-w-0">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t(
                                         "sessionSettings.onlySendToVerifiedDevices",
                                     )}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "sessionSettings.refuseToEncryptMessagesForSessions",
                                     )}
@@ -731,7 +731,7 @@ export default function SessionSettings() {
                 ) : null}
             </View>
             <View className="flex-row items-center justify-between gap-3">
-                <Text className="flex-1 text-xs text-discord-textMuted">
+                <Text className="flex-1 text-xs text-zam-textMuted">
                     {t("sessionSettings.devicesCurrentlySignedInToThis")}
                 </Text>
                 <Pressable
@@ -741,9 +741,9 @@ export default function SessionSettings() {
                         void load();
                     }}
                     disabled={loading}
-                    className="px-3 py-1.5 rounded bg-discord-backgroundTertiary disabled:opacity-50"
+                    className="px-3 py-1.5 rounded bg-zam-backgroundTertiary disabled:opacity-50"
                 >
-                    <Text className="text-xs text-discord-textPrimary">
+                    <Text className="text-xs text-zam-textPrimary">
                         {loading
                             ? t("sessionSettings.refreshing")
                             : t("sessionSettings.refresh")}
@@ -751,28 +751,26 @@ export default function SessionSettings() {
                 </Pressable>
             </View>
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
             {verifyError ? (
-                <Text className="text-sm text-discord-danger">
-                    {verifyError}
-                </Text>
+                <Text className="text-sm text-zam-danger">{verifyError}</Text>
             ) : null}
             {current ? (
                 deviceRow(current, true)
             ) : loading ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("sessionSettings.loadingSessions")}
                 </Text>
             ) : null}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("sessionSettings.otherSessions", {
                         value: loaded ? `(${others.length})` : "",
                     })}
                 </Text>
                 {loaded && others.length === 0 ? (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("sessionSettings.noOtherSessionsYouReOnly")}
                     </Text>
                 ) : (

@@ -45,12 +45,12 @@ export default function InviteModal({ roomId }: { roomId: string }) {
                             accessibilityViewIsModal
                             aria-labelledby="invite-modal-title"
                             onAccessibilityEscape={closeModal}
-                            className="relative z-10 shrink bg-discord-background rounded-lg shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-4"
+                            className="relative z-10 shrink bg-zam-background rounded-lg shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-4"
                         >
                             <Text
                                 nativeID="invite-modal-title"
                                 role="heading"
-                                className="text-lg font-bold text-discord-textPrimary"
+                                className="text-lg font-bold text-zam-textPrimary"
                             >
                                 {t("common.invitePeople")}
                             </Text>

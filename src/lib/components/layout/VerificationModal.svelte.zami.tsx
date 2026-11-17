@@ -212,17 +212,17 @@ export default function VerificationModal() {
                     accessibilityViewIsModal
                     aria-labelledby="verification-modal-title"
                     onAccessibilityEscape={closeActive}
-                    className="relative z-10 shrink w-full max-w-sm rounded-lg bg-discord-backgroundSecondary border border-discord-divider shadow-xl p-5"
+                    className="relative z-10 shrink w-full max-w-sm rounded-lg bg-zam-backgroundSecondary border border-zam-divider shadow-xl p-5"
                 >
                     <Text
                         nativeID="verification-modal-title"
                         role="heading"
-                        className="text-base font-semibold text-discord-textPrimary"
+                        className="text-base font-semibold text-zam-textPrimary"
                     >
                         {title}
                     </Text>
                     {view.otherDeviceId ? (
-                        <Text className="mt-0.5 text-xs text-discord-textMuted font-mono">
+                        <Text className="mt-0.5 text-xs text-zam-textMuted font-mono">
                             {view.otherDeviceId}
                         </Text>
                     ) : null}
@@ -231,12 +231,12 @@ export default function VerificationModal() {
                         <View className="mt-5 flex-col items-center gap-2">
                             <ShieldCheck
                                 size={40}
-                                className="text-discord-online"
+                                className="text-zam-online"
                             />
-                            <Text className="text-center text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-center text-sm font-medium text-zam-textPrimary">
                                 {statusLabel}
                             </Text>
-                            <Text className="text-center text-xs text-discord-textMuted">
+                            <Text className="text-center text-xs text-zam-textMuted">
                                 {isSelf
                                     ? t(
                                           "verificationModal.thisSessionIsNowTrusted",
@@ -250,12 +250,12 @@ export default function VerificationModal() {
                         <View className="mt-5 flex-col items-center gap-2">
                             <ShieldAlert
                                 size={40}
-                                className="text-discord-danger"
+                                className="text-zam-danger"
                             />
-                            <Text className="text-center text-sm font-medium text-discord-textPrimary">
+                            <Text className="text-center text-sm font-medium text-zam-textPrimary">
                                 {statusLabel}
                             </Text>
-                            <Text className="text-center text-xs text-discord-textMuted">
+                            <Text className="text-center text-xs text-zam-textMuted">
                                 {t(
                                     "verificationModal.noTrustWasEstablishedYouCan",
                                 )}
@@ -270,17 +270,14 @@ export default function VerificationModal() {
                            don't have one, so… yes?"). */
                         <>
                             <View className="mt-5 flex-col items-center gap-3">
-                                <QrCode
-                                    size={32}
-                                    className="text-discord-accent"
-                                />
+                                <QrCode size={32} className="text-zam-accent" />
                                 {/* The prompt arrives asynchronously and the branch
                                     swap drops focus, so announce it rather than
                                     leaving a screen-reader user showing a code in
                                     silence. Neither button is autofocused: this
                                     answer must be deliberate. */}
                                 <Text
-                                    className="text-center text-sm text-discord-textPrimary"
+                                    className="text-center text-sm text-zam-textPrimary"
                                     accessibilityLiveRegion="polite"
                                 >
                                     {isSelf
@@ -294,7 +291,7 @@ export default function VerificationModal() {
                                               },
                                           )}
                                 </Text>
-                                <Text className="text-center text-xs text-discord-textMuted">
+                                <Text className="text-center text-xs text-zam-textMuted">
                                     {isSelf
                                         ? t(
                                               "verificationModal.onlyConfirmIfYouScannedIt",
@@ -314,16 +311,16 @@ export default function VerificationModal() {
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={denyScanned}
-                                    className="flex-1 px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-danger/20 transition-colors"
+                                    className="flex-1 px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-danger/20 transition-colors"
                                 >
-                                    <Text className="text-center text-discord-danger text-sm font-semibold">
+                                    <Text className="text-center text-zam-danger text-sm font-semibold">
                                         {t("verificationModal.no")}
                                     </Text>
                                 </Pressable>
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={confirmScanned}
-                                    className="flex-1 px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                                    className="flex-1 px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                                 >
                                     <Text className="text-center text-white text-sm font-semibold">
                                         {t("verificationModal.yesIScannedIt")}
@@ -333,7 +330,7 @@ export default function VerificationModal() {
                         </>
                     ) : emojiRows.length > 0 && !confirmed ? (
                         <>
-                            <Text className="mt-4 text-xs text-discord-textMuted">
+                            <Text className="mt-4 text-xs text-zam-textMuted">
                                 {t(
                                     "verificationModal.confirmTheSameEmojiAppearIn",
                                     {
@@ -356,14 +353,14 @@ export default function VerificationModal() {
                                         {row.map((emoji, i) => (
                                             <View
                                                 key={i}
-                                                className="flex w-16 flex-col items-center gap-1 rounded bg-discord-backgroundTertiary px-1 py-2"
+                                                className="flex w-16 flex-col items-center gap-1 rounded bg-zam-backgroundTertiary px-1 py-2"
                                             >
                                                 <Text className="text-2xl leading-none">
                                                     {emoji.symbol}
                                                 </Text>
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="text-[10px] capitalize text-discord-textMuted truncate max-w-full"
+                                                    className="text-[10px] capitalize text-zam-textMuted truncate max-w-full"
                                                 >
                                                     {emoji.name}
                                                 </Text>
@@ -378,9 +375,9 @@ export default function VerificationModal() {
                                     accessibilityState={{ disabled: busy }}
                                     onPress={() => void noMatch()}
                                     disabled={busy}
-                                    className="flex-1 px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-danger/20 transition-colors disabled:opacity-50"
+                                    className="flex-1 px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-danger/20 transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-center text-discord-danger text-sm font-semibold">
+                                    <Text className="text-center text-zam-danger text-sm font-semibold">
                                         {t("verificationModal.theyDonTMatch")}
                                     </Text>
                                 </Pressable>
@@ -389,7 +386,7 @@ export default function VerificationModal() {
                                     accessibilityState={{ disabled: busy }}
                                     onPress={() => void match()}
                                     disabled={busy}
-                                    className="flex-1 px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                    className="flex-1 px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                                 >
                                     <Text className="text-center text-white text-sm font-semibold">
                                         {busy
@@ -421,7 +418,7 @@ export default function VerificationModal() {
                                                           )
                                                 }
                                             />
-                                            <Text className="text-center text-xs text-discord-textMuted">
+                                            <Text className="text-center text-xs text-zam-textMuted">
                                                 {isSelf
                                                     ? t(
                                                           "verificationModal.scanThisWithYourOtherSession",
@@ -435,7 +432,7 @@ export default function VerificationModal() {
                                         /* The reason itself renders in the shared
                                            alert below; this only fills the empty
                                            pane. */
-                                        <Text className="text-center text-xs text-discord-textMuted">
+                                        <Text className="text-center text-xs text-zam-textMuted">
                                             {t(
                                                 "verificationModal.noCodeToShowRightNow",
                                             )}
@@ -444,7 +441,7 @@ export default function VerificationModal() {
                                         <Spin>
                                             <Loader2
                                                 size={28}
-                                                className="text-discord-accent"
+                                                className="text-zam-accent"
                                             />
                                         </Spin>
                                     )}
@@ -474,9 +471,9 @@ export default function VerificationModal() {
                                             onPress={() =>
                                                 setAttempt((n) => n + 1)
                                             }
-                                            className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                                            className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                                         >
-                                            <Text className="text-discord-textPrimary text-xs">
+                                            <Text className="text-zam-textPrimary text-xs">
                                                 {t(
                                                     "verificationModal.scanAgain",
                                                 )}
@@ -486,7 +483,7 @@ export default function VerificationModal() {
                                 </View>
                             ) : (
                                 <>
-                                    <Text className="mt-4 text-xs text-discord-textMuted">
+                                    <Text className="mt-4 text-xs text-zam-textMuted">
                                         {startPending
                                             ? t("common.starting")
                                             : t(
@@ -507,7 +504,7 @@ export default function VerificationModal() {
                                                 }}
                                                 onPress={() => void chooseSas()}
                                                 disabled={busy || startPending}
-                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                                             >
                                                 <ShieldCheck
                                                     size={18}
@@ -531,13 +528,13 @@ export default function VerificationModal() {
                                                     void openShowQr()
                                                 }
                                                 disabled={busy || startPending}
-                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                             >
                                                 <QrCode
                                                     size={18}
-                                                    className="text-discord-textMuted shrink-0"
+                                                    className="text-zam-textMuted shrink-0"
                                                 />
-                                                <Text className="shrink text-discord-textPrimary text-sm">
+                                                <Text className="shrink text-zam-textPrimary text-sm">
                                                     {t(
                                                         "verificationModal.showACodeForTheOther",
                                                     )}
@@ -553,13 +550,13 @@ export default function VerificationModal() {
                                                 }}
                                                 onPress={openScanQr}
                                                 disabled={busy || startPending}
-                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                className="flex-row items-center gap-3 px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                             >
                                                 <Camera
                                                     size={18}
-                                                    className="text-discord-textMuted shrink-0"
+                                                    className="text-zam-textMuted shrink-0"
                                                 />
-                                                <Text className="shrink text-discord-textPrimary text-sm">
+                                                <Text className="shrink text-zam-textPrimary text-sm">
                                                     {t(
                                                         "verificationModal.scanTheirCodeWithTheCamera",
                                                     )}
@@ -579,13 +576,13 @@ export default function VerificationModal() {
                                         when the layout is right-to-left. */}
                                     <ArrowLeft
                                         size={14}
-                                        className={`text-discord-textMuted ${
+                                        className={`text-zam-textMuted ${
                                             I18nManager.isRTL
                                                 ? "-scale-x-100"
                                                 : ""
                                         }`}
                                     />
-                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                    <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                         {t(
                                             "verificationModal.chooseADifferentMethod",
                                         )}
@@ -598,10 +595,10 @@ export default function VerificationModal() {
                             <Spin>
                                 <Loader2
                                     size={32}
-                                    className="text-discord-accent"
+                                    className="text-zam-accent"
                                 />
                             </Spin>
-                            <Text className="text-center text-sm text-discord-textSecondary">
+                            <Text className="text-center text-sm text-zam-textSecondary">
                                 {confirmed
                                     ? t(
                                           "verificationModal.waitingForTheOtherSideTo",
@@ -613,7 +610,7 @@ export default function VerificationModal() {
 
                     {alertMsg ? (
                         <Text
-                            className="mt-3 text-xs text-discord-danger"
+                            className="mt-3 text-xs text-zam-danger"
                             role="alert"
                         >
                             {alertMsg}
@@ -623,9 +620,9 @@ export default function VerificationModal() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={closeActive}
-                        className="mt-5 w-full px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                        className="mt-5 w-full px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                     >
-                        <Text className="text-center text-discord-textPrimary text-sm">
+                        <Text className="text-center text-zam-textPrimary text-sm">
                             {kind === "success" || kind === "cancelled"
                                 ? t("common.close")
                                 : t("common.cancel")}

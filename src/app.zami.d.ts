@@ -40,6 +40,12 @@ declare global {
         /** False when calls can't bypass (OS proxy settings in use). */
         callBypassAvailable: boolean;
         error: string | null;
+        /** Android: false when the WebView can't override the proxy. */
+        supported?: boolean;
+        /** Proxy / call modes this platform offers; all when absent
+         *  (desktop). Android has no PAC and no "proxy" call mode. */
+        modes?: DesktopProxyPrefs["mode"][];
+        callModes?: DesktopProxyPrefs["calls"][];
     }
 
     interface DesktopRichPresenceStatus {
@@ -303,6 +309,16 @@ declare global {
                 ) => () => void;
                 /** Stop the share-audio capture. */
                 stopAudio?: () => void;
+                /** Native Windows capture helper, set up before each share
+                 *  (electron/ native-share). Its port comes separately, posted
+                 *  to the window as "zam:native-share-port". */
+                configureNative?: (cfg: {
+                    enabled: boolean;
+                    fps: number;
+                    bitrate: number;
+                    maxWidth: number;
+                    maxHeight: number;
+                }) => void;
             };
             notify?: {
                 flash: () => void;

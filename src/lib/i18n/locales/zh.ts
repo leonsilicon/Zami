@@ -599,6 +599,33 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.indexSyncOff": "索引同步未运行：需要开启加密房间索引。",
     "debugSettings.indexSyncNow": "立即同步",
     "debugSettings.indexSyncNever": "从未",
+    "debugSettings.searchIndex": "搜索索引",
+    "debugSettings.searchIndexHint":
+        "立即索引此设备上每个加密房间的完整历史记录，而不是在后台慢慢进行。运行期间会占用网络和存储。",
+    "debugSettings.searchIndexBuild": "立即构建完整索引",
+    "debugSettings.searchIndexCancel": "取消",
+    "debugSettings.searchIndexBar": "完整索引进度",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} 个房间，{messages} 条消息",
+    "debugSettings.searchIndexComplete": "完成：所有加密房间都已建立索引。",
+    "debugSettings.searchIndexPartial":
+        "已完成，但仍有 {failed} 个房间未完成，后台会重试。",
+    "debugSettings.searchIndexStorage": "已停止：存储空间快满了。",
+    "debugSettings.prefetchTitle": "后台下载（Android）",
+    "debugSettings.prefetchHint":
+        "应用不在前台时，在后台下载加密的历史消息页。索引读取之前，它们保持加密。",
+    "debugSettings.prefetchPages": "等待中的页面",
+    "debugSettings.prefetchSize": "大小",
+    "debugSettings.prefetchRooms": "房间",
+    "debugSettings.prefetchLastRun": "上次运行",
+    "debugSettings.prefetchLastResult": "上次结果",
+    "debugSettings.prefetchLastError": "上次错误",
+    "debugSettings.prefetchRefresh": "刷新",
+    "debugSettings.searchIndexAborted": "已取消。",
+    "debugSettings.searchIndexUnavailable": "已停止：索引在此设备上未运行。",
+    "debugSettings.searchIndexDisabled": "请先在隐私设置中开启加密房间索引。",
+    "debugSettings.searchIndexNotRunning":
+        "索引目前未运行，应用加载完成后会自动开始。",
     "debugSettings.indexSyncSessions": "会话",
     "debugSettings.indexSyncAsked": "已询问",
     "debugSettings.indexSyncRoomsMissing": "有缺口的房间",
@@ -770,6 +797,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "不进行直接连接，通话服务器也永远看不到你的 IP 地址：通话经代理，通过 TCP 或 TLS 连到通话服务器的 TURN 中继。如果服务器没有提供 TURN 中继，通话将无法连接。延迟会更高。",
     "proxySettings.callsDirectUnavailable":
         "通话无法绕过系统代理设置。请在此处设置代理（手动或 PAC）才能生效。",
+    "proxySettings.callsDirectUnavailableManual":
+        "通话无法绕过系统代理设置。请在此处设置代理（手动）才能生效。",
+    "proxySettings.androidBackgroundHint":
+        "通知和快速回复在 WebView 之外获取，只能通过 socks5:// 或 http:// 代理工作。",
+    "proxySettings.unsupported":
+        "此版本的 Android System WebView 无法设置代理。请从 Play 商店更新。",
     "proxySettings.callsDirectAddresses": "直连发送：",
     "proxySettings.save": "保存",
     "proxySettings.saved": "已保存",
@@ -1270,6 +1303,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.pinnedMessagesCount": "置顶消息（{count}）",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "回复时提醒",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "新的回复会像 @ 提及一样提醒你所回复消息的作者。你仍可在回复栏中为每条回复单独关闭。",
+    "messageInput.pingOn": "@ 开",
+    "messageInput.pingOff": "@ 关",
+    "messageInput.pingOnTitle": "提醒作者",
+    "messageInput.pingOffTitle": "不提醒作者",
     "messageInput.replyingTo": "回复 {replyTargetName}",
     "messageInput.cancelReplyEsc": "取消回复（Esc）",
     "messageInput.editAttachment": "编辑附件",
@@ -1315,6 +1355,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "原消息已删除",
     "messageItem.originalMessageUnavailable": "原消息不可用",
     "messageItem.replyPreviewSticker": "贴纸",
+    "messageItem.forwarded": "已转发",
+    "messageItem.forwardedFrom": "转发自 {name}",
+    "messageItem.forwardedEmoteActor": "发送者",
     "messageItem.requestKeys": "请求密钥",
     "messageItem.keysRequested": "已请求密钥",
     "messageItem.requestKeysHelp":
@@ -1855,6 +1898,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "请输入房间地址（#room:server.com）或房间 ID（!id:server.com）",
     "quickActions.couldNotSendTheJoinRequest": "无法发送加入申请",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "回应",
+    "reactionsViewer.count": "{count, plural, other {# 个回应}}",
+    "reactionsViewer.empty": "此消息没有回应。",
+    "reactionsViewer.removeYours": "移除你的回应",
+    "reactionsViewer.sending": "发送中…",
+    "reactionsViewer.couldNotRemove": "无法移除你的回应。",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "另有 {overflow} 人",
     "reactorPopover.reactedWith": "回应了 {label}",
@@ -2157,6 +2207,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "测得你的上传速度为 {upload}，因此上限为 {max}。",
     "screenShareQualityChips.bitrateUnmeasured":
         "尚未测量你的上传速度。它会在你发送视频时测量，因此目前上限为 {max}。",
+    "screenShareQualityChips.nativeCapture": "Windows 捕获辅助程序",
+    "screenShareQualityChips.nativeCaptureHint":
+        "在浏览器之外捕获并编码共享画面，因此占用大的游戏不会让共享卡顿。将应用于下一次共享。",
     "screenShareQualityChips.shareSystemAudio": "共享系统音频",
     "screenShareQualityChips.appliesToNextShare": "下次共享时生效",
     "screenShareQualityChips.shareSystemAudioAppliesToNext":
@@ -2393,6 +2446,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "设置颜色",
     "spaceSidebar.dissolveFolder": "解散文件夹",
     "spaceSidebar.somethingWentWrong": "出错了",
+    "spaceSidebar.folder": "文件夹",
+    "spaceSidebar.liveBadge": "直播",
+    "spaceSidebar.inVoiceCount": "{count} 人在语音中",
+    "spaceSidebar.moreParticipants": "+{count} 人",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "正在恢复会话…",
@@ -2434,7 +2491,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "消息显示",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "仅保存在此设备上，不会在你的账户间同步。",
-    "themeColorEditor.appTextSize": "应用文字大小：{round}%",
+    "themeColorEditor.interfaceScale": "界面缩放：{percent}%",
+    "themeColorEditor.messageTextScale": "消息文字大小：{percent}%",
+    "themeColorEditor.messageTextScaleHint": "仅缩放聊天消息和消息输入框。",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "缩放整个应用的所有文字和间距。",
     "themeColorEditor.font": "字体",
@@ -2461,6 +2520,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "加载更早的回复",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "语音频道",
+    "bridgedChannels.stage": "舞台频道",
+    "bridgedChannels.announcement": "公告频道",
+    "bridgedChannels.forum": "论坛",
+    "bridgedChannels.media": "媒体频道",
+    "bridgedChannels.privateThread": "私密消息列",
+    "bridgedThreads.joinFailed": "无法加入消息列。",
+    "bridgedThreads.joinThread": "加入消息列",
+    "bridgedThreads.threadRooms": "消息列房间",
+    "bridgedThreads.thread": "消息列",
+    "bridgedThreads.goToParent": "前往 {name}",
+    "bridgedThreads.memberCount": "{count, plural, other {# 位成员}}",
     "threadsListPanel.threads": "消息列",
     "threadsListPanel.closeThreadsPanel": "关闭消息列面板",
     "threadsListPanel.noThreadsInThisRoomYet": "此房间中还没有消息列。",
@@ -2688,6 +2759,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "私信会响铃。房间从不响铃，你需要在房间里自行加入。",
     "voiceAudioSettings.ringtoneVolume": "铃声音量",
+    "voiceAudioSettings.ringtone": "铃声",
+    "voiceAudioSettings.ringtoneDefault": "默认",
+    "voiceAudioSettings.ringtonePluginOption": "{name}（{plugin}）",
+    "voiceAudioSettings.ringtoneUnavailable": "插件铃声（插件未加载）",
     "voiceAudioSettings.fullScreenCalls": "在锁屏上显示通话",
     "voiceAudioSettings.fullScreenCallsHint":
         "让私信来电像电话一样唤醒屏幕并全屏响铃。Android 会单独请求此权限。",
@@ -2997,6 +3072,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "client.codecCouldNotBeDecoded":
         "此设备无法解码 {codec} 视频。改为请求 H.264。",
     "client.couldNotSwitchVideoCodec": "无法切换视频编解码器",
+    "client.androidShareNeedsWebView":
+        "在此房间共享屏幕需要更新版本的 Android System WebView。",
+    "client.screenShareStopped": "屏幕共享已停止。",
     "client.couldNotStartScreenShare": "无法开始屏幕共享",
     "client.couldNotShareScreenAudio": "屏幕共享已开始，但没有音频",
     "client.couldnTChangeScreenShareQuality": "无法更改屏幕共享画质",
@@ -3106,6 +3184,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "重写规则",
     "previewRewriter.rulesDescription":
         "按顺序应用于获取预览所用的地址。链接本身不会改变。",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "消息链接胶囊",
+    "messageLinkPill.description":
+        "将粘贴的消息链接显示为紧凑的胶囊，标明其指向的房间或私信，并在你悬停某个胶囊时高亮对应的预览。",
+    "messageLinkPill.viewMessage": "查看消息",
+    "messageLinkPill.viewMessageIn": "查看 {room} 中的引用消息",
+    "messageLinkPill.viewQuotedMessage": "查看引用消息",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour": "你的账户上还没有插件同步数据。",
@@ -3430,6 +3516,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "取消置顶",
     "messageActionsMenu.pin": "置顶",
     "messageActionsMenu.copyLink": "复制链接",
+    "messageActionsMenu.viewReactions": "查看回应",
     "messageActionsMenu.markUnread": "标为未读",
     "messageActionsMenu.couldNotMarkUnread": "无法标为未读",
     "messageActionsMenu.report": "举报",
@@ -3488,6 +3575,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturb": "请勿打扰",
     "presence.doNotDisturbDescription": "在你的所有设备上静音通知和来电",
     "presence.invisible": "隐身",
+    "presence.invisibleHidesActivity":
+        "隐身还会向其他用户隐藏你的已读回执和输入状态。",
+    "presence.unsupportedByServer":
+        "此服务器不支持在线状态，因此无法设置状态。",
     "presence.appearOfflineToOtherUsers": "向其他用户显示为离线",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -3844,6 +3935,8 @@ const messages: Partial<Record<MessageKey, string>> = {
 
     // src/routes/+page.svelte
     "rootPage.failedToReconnectPleaseLogIn": "重新连接失败。请重新登录。",
+    "rootPage.storageWipedSessionRecovered":
+        "浏览器重置了 Zam 的存储，可能是因为磁盘已满。你的登录已恢复，但部分设置可能已恢复为默认值。",
     "rootPage.sessionOpenInAnotherTab":
         "此会话在另一个标签页中打开。待那个标签页关闭后，此标签页将继续。",
     "rootPage.signedInButSyncingCouldNot": "已登录，但无法开始同步。请重试。",

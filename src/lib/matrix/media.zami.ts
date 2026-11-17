@@ -12,6 +12,7 @@ import type { ReusableMedia } from "$lib/matrix/favouriteFile";
 import { withRandomFileName } from "$lib/utils/randomFileName";
 import { gifToAnimatedWebp } from "$lib/utils/gifToWebp";
 import { isMidiAttachment, midiSendMimetype } from "$lib/utils/midi";
+import { animatedMime, isAnimatedImage } from "$lib/utils/tileImage";
 import {
     createImageThumbnail,
     fitThumbnail,
@@ -146,7 +147,13 @@ async function zamiImageThumbnail(
     const first = await imageThumbnailFor(file);
     if (!first) return null;
     const { w, h } = first;
-    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) return { blob: null, w, h };
+    // Zami: upstream's MSC4230 flag, from the same sniff. The animated WebP
+    // thumbnail itself is not ported (no ImageDecoder or OffscreenCanvas):
+    // the native thumbnail is the first frame, as upstream's fallback is.
+    const animated = await sniffAnimated(file);
+    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) {
+        return { blob: null, w, h, animated };
+    }
     const fit = await fitThumbnail(w, h, async (tw, th, quality) => {
         const made = await imageThumbnailFor(file, {
             maxEdge: Math.max(tw, th),
@@ -154,9 +161,24 @@ async function zamiImageThumbnail(
         });
         return made?.file ?? null;
     });
-    if (!fit || fit.blob.size >= file.size) return { blob: null, w, h };
-    return { ...fit, w, h };
+    if (!fit || fit.blob.size >= file.size) {
+        return { blob: null, w, h, animated };
+    }
+    return { ...fit, w, h, animated };
 }
+
+/** Zami: utils/imageThumbnail's sniffAnimation, which it doesn't export. */
+async function sniffAnimated(file: Blob): Promise<boolean> {
+    try {
+        const head = new Uint8Array(
+            await file.slice(0, ANIMATION_SNIFF_BYTES).arrayBuffer(),
+        );
+        return isAnimatedImage(head) && animatedMime(head) !== null;
+    } catch {
+        return false;
+    }
+}
+const ANIMATION_SNIFF_BYTES = 256 * 1024;
 
 // Zami: a JPEG's metadata comes off natively, byte for byte as utils/
 // stripMetadata's stripJpeg takes it off (its scan of the image data blocks the
@@ -426,6 +448,12 @@ export async function prepareFileContent(
         if (thumb) {
             info.w = thumb.w;
             info.h = thumb.h;
+            // MSC4230: lets receivers skip a server thumbnail that would
+            // freeze it. Only claimed for formats the sniff can read.
+            if (thumb.animated) {
+                info.is_animated = true;
+                info["org.matrix.msc4230.is_animated"] = true;
+            }
         }
         if (thumb?.blob) {
             ownedClientOrThrow(owner);
@@ -561,7 +589,8 @@ export async function sendGallery(
 
 /**
  * Send a file whose media is already on the server (a favourite starred from an
- * earlier message) by pointing a new `m.image` event at it, with no upload.
+ * earlier message) by pointing a new `m.image` (or, for a video, `m.video`)
+ * event at it, with no upload.
  * Resolves false, having sent nothing, when that can't be done safely: the
  * key of encrypted media sits in the event itself, so it may only go into an
  * encrypted room. The caller then uploads the bytes instead.
@@ -589,8 +618,11 @@ export async function sendExistingMedia(
     }
     ownedClientOrThrow(owner);
 
+    const mimetype = media.info.mimetype;
     const content = mediaEventContent(
-        "m.image",
+        typeof mimetype === "string" && mimetype.startsWith("video/")
+            ? "m.video"
+            : "m.image",
         name,
         attached,
         { ...media.info },

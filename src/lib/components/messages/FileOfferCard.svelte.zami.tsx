@@ -127,7 +127,7 @@ export default function FileOfferCard({ event }: Props) {
         return (
             <View className="mt-2">
                 <Text
-                    className="text-xs text-discord-textMuted"
+                    className="text-xs text-zam-textMuted"
                     accessibilityLiveRegion="polite"
                 >
                     {statusText(view)}
@@ -135,7 +135,7 @@ export default function FileOfferCard({ event }: Props) {
                 {isActive(view) && (
                     <View className="mt-1 flex-row items-center gap-2">
                         <View
-                            className="h-1 flex-1 rounded-full bg-discord-background overflow-hidden"
+                            className="h-1 flex-1 rounded-full bg-zam-background overflow-hidden"
                             accessibilityRole="progressbar"
                             accessibilityValue={{
                                 min: 0,
@@ -144,7 +144,7 @@ export default function FileOfferCard({ event }: Props) {
                             }}
                         >
                             <View
-                                className="h-full bg-discord-accent transition-[width]"
+                                className="h-full bg-zam-accent transition-[width]"
                                 style={{ width: `${percent(view)}%` }}
                             />
                         </View>
@@ -155,7 +155,7 @@ export default function FileOfferCard({ event }: Props) {
                                 cancelTransfer(view.id, offer.transferId)
                             }
                         >
-                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("fileOffer.cancel")}
                             </Text>
                         </Pressable>
@@ -166,9 +166,9 @@ export default function FileOfferCard({ event }: Props) {
     }
 
     return (
-        <View className="mt-1 max-w-md rounded-lg border border-discord-divider bg-discord-backgroundSecondary px-3 py-2.5">
+        <View className="mt-1 max-w-md rounded-lg border border-zam-divider bg-zam-backgroundSecondary px-3 py-2.5">
             {!offer ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("fileOffer.unavailable")}
                 </Text>
             ) : (
@@ -176,19 +176,19 @@ export default function FileOfferCard({ event }: Props) {
                     <View className="flex-row items-center gap-2.5">
                         <Send
                             size={20}
-                            className="flex-shrink-0 text-discord-textMuted"
+                            className="flex-shrink-0 text-zam-textMuted"
                         />
                         {/* Zami: `title` (the full name on hover) has no React
                             Native equivalent. `flex-shrink` is the web's default
                             for a flex item, which lets the name truncate. */}
                         <View className="min-w-0 flex-shrink">
                             <Text
-                                className="truncate text-sm font-semibold text-discord-textPrimary"
+                                className="truncate text-sm font-semibold text-zam-textPrimary"
                                 numberOfLines={1}
                             >
                                 {offer.name}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("fileOffer.details", {
                                     size: formatTransferBytes(offer.size),
                                 })}
@@ -200,7 +200,7 @@ export default function FileOfferCard({ event }: Props) {
                         <>
                             {outgoing.map((view) => (
                                 <Fragment key={view.id}>
-                                    <Text className="mt-2 text-xs text-discord-textPrimary">
+                                    <Text className="mt-2 text-xs text-zam-textPrimary">
                                         {t("fileOffer.sendingTo", {
                                             peer: displayName(view.peerUserId),
                                         })}
@@ -211,7 +211,7 @@ export default function FileOfferCard({ event }: Props) {
                             {stillOffered ? (
                                 <>
                                     {outgoing.length === 0 && (
-                                        <Text className="mt-2 text-xs text-discord-textMuted">
+                                        <Text className="mt-2 text-xs text-zam-textMuted">
                                             {expired
                                                 ? t("fileOffer.expired")
                                                 : t("fileOffer.waiting")}
@@ -221,7 +221,7 @@ export default function FileOfferCard({ event }: Props) {
                                         wide as its label. */}
                                     <Pressable
                                         accessibilityRole="button"
-                                        className="mt-2 self-start px-2.5 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                                        className="mt-2 self-start px-2.5 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                                         onPress={withdraw}
                                     >
                                         <Text className="text-white text-xs font-semibold">
@@ -230,7 +230,7 @@ export default function FileOfferCard({ event }: Props) {
                                     </Pressable>
                                 </>
                             ) : (
-                                <Text className="mt-2 text-xs text-discord-textMuted">
+                                <Text className="mt-2 text-xs text-zam-textMuted">
                                     {t("fileOffer.gone")}
                                 </Text>
                             )}
@@ -240,18 +240,18 @@ export default function FileOfferCard({ event }: Props) {
                             {incoming ? (
                                 progress(incoming)
                             ) : fromMyOtherDevice ? (
-                                <Text className="mt-2 text-xs text-discord-textMuted">
+                                <Text className="mt-2 text-xs text-zam-textMuted">
                                     {t("fileOffer.fromElsewhere")}
                                 </Text>
                             ) : expired ? (
-                                <Text className="mt-2 text-xs text-discord-textMuted">
+                                <Text className="mt-2 text-xs text-zam-textMuted">
                                     {t("fileOffer.expired")}
                                 </Text>
                             ) : null}
                             {canAccept && (
                                 <Pressable
                                     accessibilityRole="button"
-                                    className="mt-2 self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                                    className="mt-2 self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                                     onPress={accept}
                                 >
                                     <Text className="text-white text-xs font-semibold">

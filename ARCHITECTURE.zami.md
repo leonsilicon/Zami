@@ -2,7 +2,7 @@
 
 ## What this is
 
-**Zam**, a Discord-styled Matrix chat client. It's **SvelteKit + Svelte 5**, builds to static
+**Zam**, a Discord-like Matrix chat client. It's **SvelteKit + Svelte 5**, builds to static
 files, and ships from that one build to four targets: the web, an installable PWA, an **Electron**
 desktop app, and an **Android** app via Capacitor.
 
@@ -534,6 +534,8 @@ boundary-preserving slice of `client.ts` — `sendMessage` [2-arg], `sendEvent` 
 types), `sendMedia` (encrypts in encrypted rooms), `sendImage` (plaintext only), `sendSticker`,
 `react`, state and account data reads and writes (minus the types Zam's own settings, moderation and
 crypto own), profiles, presence, and plain room/member/event summaries, never live SDK objects),
+`ringtones` (incoming-call ringtones: a looping audio `src` or `start`/`stop` callbacks, shown in
+the Ringing picker and falling back to the built-in tone on failure; `audio/ringtoneChoice.ts`),
 `storage` (per-plugin namespaced key/value), `settings` (schema-driven — see
 below), and `unsafe` (`getClient()` — the escape hatch). The curated `matrix` API is a
 stability/ergonomics layer and a seam for a future sandbox, not a security cage.

@@ -37,20 +37,20 @@ export default function KeyboardShortcutsDialog({
             onClose={onClose}
             labelledBy="keyboard-shortcuts-title"
             layerClass="z-50 flex items-center justify-center p-4"
-            panelClass="relative w-full max-w-3xl max-h-[85vh] flex flex-col bg-discord-backgroundSecondary rounded-lg shadow-xl"
+            panelClass="relative w-full max-w-3xl max-h-[85vh] flex flex-col bg-zam-backgroundSecondary rounded-lg shadow-xl"
         >
-            <View className="flex-row items-center gap-3 px-6 pt-5 pb-3 border-b border-discord-divider">
+            <View className="flex-row items-center gap-3 px-6 pt-5 pb-3 border-b border-zam-divider">
                 <Text
                     nativeID="keyboard-shortcuts-title"
                     role="heading"
-                    className="flex-1 text-lg font-bold text-discord-textPrimary"
+                    className="flex-1 text-lg font-bold text-zam-textPrimary"
                 >
                     {t("keybinds.helpTitle")}
                 </Text>
                 <Pressable
                     accessibilityRole="button"
                     onPress={onCustomize}
-                    className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover"
+                    className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover"
                 >
                     <Text className="text-sm font-medium text-white">
                         {t("keybinds.customize")}
@@ -60,10 +60,10 @@ export default function KeyboardShortcutsDialog({
                     accessibilityRole="button"
                     onPress={onClose}
                     accessibilityLabel={t("common.closeDialog")}
-                    className="p-1.5 rounded hover:bg-discord-messageHover"
+                    className="p-1.5 rounded hover:bg-zam-messageHover"
                 >
                     <SvgIcon
-                        className="w-5 h-5 text-discord-textMuted"
+                        className="w-5 h-5 text-zam-textMuted"
                         d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"
                     />
                 </Pressable>
@@ -76,16 +76,16 @@ export default function KeyboardShortcutsDialog({
                     <View key={g.category} className="md:w-[48%]">
                         <Text
                             role="heading"
-                            className="mb-2 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="mb-2 text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {keybindCategoryLabel(g.category)}
                         </Text>
                         {g.rows.map((row) => (
                             <View
                                 key={row.id}
-                                className="flex-row items-center gap-3 py-1.5 border-b border-discord-divider"
+                                className="flex-row items-center gap-3 py-1.5 border-b border-zam-divider"
                             >
-                                <Text className="flex-1 text-sm text-discord-textPrimary">
+                                <Text className="flex-1 text-sm text-zam-textPrimary">
                                     {keybindLabel(row.id)}
                                 </Text>
                                 <KeyCaps binding={row.binding!} />

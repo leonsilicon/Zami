@@ -603,6 +603,37 @@ const messages: Partial<Record<MessageKey, string>> = {
         "La synchronisation de l'index est inactive : l'indexation des salons chiffrés doit être activée.",
     "debugSettings.indexSyncNow": "Synchroniser maintenant",
     "debugSettings.indexSyncNever": "jamais",
+    "debugSettings.searchIndex": "Index de recherche",
+    "debugSettings.searchIndexHint":
+        "Indexe maintenant tout l'historique de chaque salle chiffrée de cet appareil, au lieu de le faire lentement en arrière-plan. Utilise le réseau et le stockage pendant l'exécution.",
+    "debugSettings.searchIndexBuild": "Construire l'index complet maintenant",
+    "debugSettings.searchIndexCancel": "Annuler",
+    "debugSettings.searchIndexBar": "Progression de l'index complet",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} salles, {messages} messages",
+    "debugSettings.searchIndexComplete":
+        "Terminé : toutes les salles chiffrées sont indexées.",
+    "debugSettings.searchIndexPartial":
+        "Terminé, mais {failed} salles ne sont pas encore prêtes. Le robot d'arrière-plan réessaiera.",
+    "debugSettings.searchIndexStorage":
+        "Arrêté : le stockage est presque plein.",
+    "debugSettings.prefetchTitle": "Téléchargement en arrière-plan (Android)",
+    "debugSettings.prefetchHint":
+        "Télécharge des pages d'historique chiffrées en arrière-plan lorsque l'application n'est pas au premier plan. Elles restent chiffrées jusqu'à leur lecture par l'index.",
+    "debugSettings.prefetchPages": "Pages en attente",
+    "debugSettings.prefetchSize": "Taille",
+    "debugSettings.prefetchRooms": "Salons",
+    "debugSettings.prefetchLastRun": "Dernière exécution",
+    "debugSettings.prefetchLastResult": "Dernier résultat",
+    "debugSettings.prefetchLastError": "Dernière erreur",
+    "debugSettings.prefetchRefresh": "Actualiser",
+    "debugSettings.searchIndexAborted": "Annulé.",
+    "debugSettings.searchIndexUnavailable":
+        "Arrêté : l'index ne fonctionne pas sur cet appareil.",
+    "debugSettings.searchIndexDisabled":
+        "Activez d'abord l'indexation des salles chiffrées dans les paramètres de confidentialité.",
+    "debugSettings.searchIndexNotRunning":
+        "L'index ne fonctionne pas pour le moment. Il démarre une fois l'app chargée.",
     "debugSettings.indexSyncSessions": "Sessions",
     "debugSettings.indexSyncAsked": "Demandé",
     "debugSettings.indexSyncRoomsMissing": "Salons avec des trous",
@@ -788,6 +819,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aucune connexion directe, et les serveurs d'appel ne voient jamais votre adresse IP : les appels passent par le proxy vers le relais TURN du serveur d'appel en TCP ou TLS. Si le serveur ne propose pas de relais TURN, les appels ne se connecteront pas. Attendez-vous à plus de latence.",
     "proxySettings.callsDirectUnavailable":
         "Les appels ne peuvent pas contourner les paramètres de proxy du système. Réglez le proxy ici (Manuel ou PAC) pour que cela fonctionne.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Les appels ne peuvent pas contourner les paramètres de proxy du système. Réglez le proxy ici (Manuel) pour que cela fonctionne.",
+    "proxySettings.androidBackgroundHint":
+        "Les notifications et réponses rapides sont récupérées hors de la WebView et ne fonctionnent qu'avec des proxys socks5:// ou http://.",
+    "proxySettings.unsupported":
+        "Cette version d'Android System WebView ne peut pas définir de proxy. Mettez-la à jour depuis le Play Store.",
     "proxySettings.callsDirectAddresses": "Envoyé en direct :",
     "proxySettings.save": "Enregistrer",
     "proxySettings.saved": "Enregistré",
@@ -1209,6 +1246,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.pinnedMessagesCount": "Messages épinglés ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Notifier en répondant",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "Les nouvelles réponses notifient l'auteur du message auquel vous répondez, comme une mention @. Vous pouvez le désactiver pour chaque réponse depuis la barre de réponse.",
+    "messageInput.pingOn": "@ OUI",
+    "messageInput.pingOff": "@ NON",
+    "messageInput.pingOnTitle": "Notifier l'auteur",
+    "messageInput.pingOffTitle": "Ne pas notifier l'auteur",
     "messageInput.replyingTo": "En réponse à {replyTargetName}",
     "messageInput.cancelReplyEsc": "Annuler la réponse (Échap)",
     "messageInput.editAttachment": "Modifier la pièce jointe",
@@ -1262,6 +1306,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "Message d'origine supprimé",
     "messageItem.originalMessageUnavailable": "Message d'origine indisponible",
     "messageItem.replyPreviewSticker": "Autocollant",
+    "messageItem.forwarded": "Transféré",
+    "messageItem.forwardedFrom": "Transféré de {name}",
+    "messageItem.forwardedEmoteActor": "Expéditeur",
     "messageItem.requestKeys": "Demander les clés",
     "messageItem.keysRequested": "Clés demandées",
     "messageItem.requestKeysHelp":
@@ -1852,6 +1899,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "quickActions.couldNotSendTheJoinRequest":
         "Impossible d'envoyer la demande d'accès",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Réactions",
+    "reactionsViewer.count":
+        "{count, plural, one {# réaction} other {# réactions}}",
+    "reactionsViewer.empty": "Aucune réaction sur ce message.",
+    "reactionsViewer.removeYours": "Retirer votre réaction",
+    "reactionsViewer.sending": "envoi…",
+    "reactionsViewer.couldNotRemove": "Impossible de retirer votre réaction.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "+{overflow} autres",
     "reactorPopover.reactedWith": "A réagi avec {label}",
@@ -2171,6 +2226,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Votre débit montant mesure {upload}, donc ceci va jusqu'à {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Votre débit montant n'a pas encore été mesuré. Il l'est pendant que vous envoyez de la vidéo, donc ceci va jusqu'à {max} pour l'instant.",
+    "screenShareQualityChips.nativeCapture": "Assistant de capture Windows",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Capture et encode le partage hors du navigateur, pour qu'un jeu gourmand ne le saccade pas. S'applique au prochain partage.",
     "screenShareQualityChips.shareSystemAudio": "Partager le son du système",
     "screenShareQualityChips.appliesToNextShare":
         "S'applique au prochain partage",
@@ -2524,6 +2582,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "Définir la couleur",
     "spaceSidebar.dissolveFolder": "Dissoudre le dossier",
     "spaceSidebar.somethingWentWrong": "Une erreur s'est produite",
+    "spaceSidebar.folder": "Dossier",
+    "spaceSidebar.liveBadge": "EN DIRECT",
+    "spaceSidebar.inVoiceCount": "{count} en vocal",
+    "spaceSidebar.moreParticipants": "+{count} de plus",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restauration de la session…",
@@ -2567,7 +2629,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "Affichage des messages",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Enregistré sur cet appareil uniquement. Non synchronisé avec votre compte.",
-    "themeColorEditor.appTextSize": "Taille du texte : {round} %",
+    "themeColorEditor.interfaceScale": "Échelle de l'interface : {percent} %",
+    "themeColorEditor.messageTextScale":
+        "Taille du texte des messages : {percent} %",
+    "themeColorEditor.messageTextScaleHint":
+        "Ne modifie que les messages du chat et la zone de saisie.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Ajuste la taille de tout le texte et des espacements de l'application.",
     "themeColorEditor.font": "Police",
@@ -2596,6 +2662,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.loadOlderReplies": "Charger les réponses plus anciennes",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    "bridgedChannels.voice": "Salon vocal",
+    "bridgedChannels.stage": "Salon de conférence",
+    "bridgedChannels.announcement": "Salon d'annonces",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Salon multimédia",
+    "bridgedChannels.privateThread": "Fil privé",
+    "bridgedThreads.joinFailed": "Impossible de rejoindre le fil.",
+    "bridgedThreads.joinThread": "Rejoindre le fil",
+    "bridgedThreads.threadRooms": "Salons de fils",
+    "bridgedThreads.thread": "Fil",
+    "bridgedThreads.goToParent": "Aller à {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# membre} other {# membres}}",
     "threadsListPanel.threads": "Fils",
     "threadsListPanel.closeThreadsPanel": "Fermer le panneau des fils",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2846,6 +2925,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Les messages directs sonnent. Les salons jamais - vous les rejoignez depuis le salon lui-même.",
     "voiceAudioSettings.ringtoneVolume": "Volume de la sonnerie",
+    "voiceAudioSettings.ringtone": "Sonnerie",
+    "voiceAudioSettings.ringtoneDefault": "Par défaut",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Sonnerie du module (module non chargé)",
     "voiceAudioSettings.fullScreenCalls":
         "Afficher les appels sur l'écran de verrouillage",
     "voiceAudioSettings.fullScreenCallsHint":
@@ -3225,6 +3309,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "client.encryptedCallsUnsupported":
         "Cet appel est chiffré de bout en bout, et ce navigateur ne peut pas chiffrer les médias d'appel. Essayez une version récente de Chrome, Firefox ou Safari, ou l'application de bureau.",
     "client.couldNotSwitchVideoCodec": "Impossible de changer le codec vidéo",
+    "client.androidShareNeedsWebView":
+        "Le partage d'écran dans ce salon nécessite une version plus récente d'Android System WebView.",
+    "client.screenShareStopped": "Le partage d'écran s'est arrêté.",
     "client.couldNotStartScreenShare":
         "Impossible de démarrer le partage d'écran",
     "client.couldNotShareScreenAudio": "Partage d'écran lancé sans le son",
@@ -3355,6 +3442,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "Règles de réécriture",
     "previewRewriter.rulesDescription":
         "Appliquées dans l’ordre à l’adresse depuis laquelle un aperçu est chargé. Le lien lui-même n’est pas modifié.",
+
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Pastilles de liens de message",
+    "messageLinkPill.description":
+        "Affiche les liens de message collés sous forme de pastille compacte indiquant le salon ou le message direct visé, et met en surbrillance l’aperçu correspondant lorsque vous survolez une pastille.",
+    "messageLinkPill.viewMessage": "Voir le message",
+    "messageLinkPill.viewMessageIn": "Voir le message cité dans {room}",
+    "messageLinkPill.viewQuotedMessage": "Voir le message cité",
 
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":
@@ -3735,6 +3830,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Désépingler",
     "messageActionsMenu.pin": "Épingler",
     "messageActionsMenu.copyLink": "Copier le lien",
+    "messageActionsMenu.viewReactions": "Voir les réactions",
     "messageActionsMenu.markUnread": "Marquer comme non lu",
     "messageActionsMenu.couldNotMarkUnread":
         "Impossible de marquer comme non lu",
@@ -3799,6 +3895,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturbDescription":
         "Coupe les notifications et les appels sur tous vos appareils",
     "presence.invisible": "Invisible",
+    "presence.invisibleHidesActivity":
+        "Invisible masque aussi vos accusés de lecture et votre saisie aux autres.",
+    "presence.unsupportedByServer":
+        "Ce serveur ne prend pas en charge la présence, il n'y a donc aucun statut à définir.",
     "presence.appearOfflineToOtherUsers":
         "Apparaître hors ligne aux autres utilisateurs",
 
@@ -4193,6 +4293,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "rootLayout.linkCopied": "Lien copié",
 
     // src/routes/+page.svelte
+    "rootPage.storageWipedSessionRecovered":
+        "Votre navigateur a réinitialisé le stockage de Zam, probablement parce que le disque était plein. Votre connexion a été récupérée, mais certains réglages ont pu revenir à leurs valeurs par défaut.",
     "rootPage.sessionOpenInAnotherTab":
         "Cette session est ouverte dans un autre onglet. Cet onglet continuera une fois l'autre fermé.",
     "rootPage.failedToReconnectPleaseLogIn":

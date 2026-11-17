@@ -106,7 +106,7 @@ describe("classChoosesSize", () => {
   test("is true for Tailwind's sizes and bracketed lengths, with variants", () => {
     for (const className of [
       "text-sm",
-      "font-semibold text-xs text-discord-textMuted",
+      "font-semibold text-xs text-zam-textMuted",
       "md:text-base",
       "!text-2xl",
       "text-[10px]",
@@ -119,10 +119,10 @@ describe("classChoosesSize", () => {
   test("is false for colors, alignment and other text- utilities", () => {
     for (const className of [
       undefined,
-      "text-discord-textPrimary",
+      "text-zam-textPrimary",
       "text-white text-center",
       "text-[#e0e0e0]",
-      "text-[rgb(var(--discord-accent-rgb)_/_1)]",
+      "text-[rgb(var(--zam-accent-rgb)_/_1)]",
       "text-smaller",
     ]) {
       expect([className, classChoosesSize(className)]).toEqual([className, false]);

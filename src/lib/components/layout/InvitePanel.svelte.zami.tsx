@@ -102,9 +102,9 @@ export default function InvitePanel({
 
     return (
         <View className="gap-3">
-            <Text className="text-sm text-discord-textSecondary">
+            <Text className="text-sm text-zam-textSecondary">
                 {t("invitePanel.invitePeopleTo")}{" "}
-                <Text className="text-discord-textPrimary font-medium">
+                <Text className="text-zam-textPrimary font-medium">
                     {room?.name ??
                         (isSpace
                             ? t("invitePanel.thisSpace")
@@ -141,25 +141,22 @@ export default function InvitePanel({
                                 {o.ok ? (
                                     <Check
                                         size={14}
-                                        className="text-discord-textPositive"
+                                        className="text-zam-textPositive"
                                     />
                                 ) : (
-                                    <X
-                                        size={14}
-                                        className="text-discord-danger"
-                                    />
+                                    <X size={14} className="text-zam-danger" />
                                 )}
                             </View>
                             <Text
                                 numberOfLines={1}
-                                className="shrink text-sm text-discord-textSecondary"
+                                className="shrink text-sm text-zam-textSecondary"
                             >
                                 {o.userId}
                             </Text>
                             {!o.ok && o.error ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="shrink text-sm text-discord-textMuted"
+                                    className="shrink text-sm text-zam-textMuted"
                                 >
                                     - {o.error}
                                 </Text>
@@ -169,8 +166,8 @@ export default function InvitePanel({
                 </View>
             ) : null}
 
-            <View className="border-t border-discord-backgroundTertiary pt-3 gap-2">
-                <Text className="text-xs font-semibold uppercase text-discord-textMuted">
+            <View className="border-t border-zam-backgroundTertiary pt-3 gap-2">
+                <Text className="text-xs font-semibold uppercase text-zam-textMuted">
                     {t("invitePanel.inviteByEmail")}
                 </Text>
                 {emailState.available ? (
@@ -182,7 +179,7 @@ export default function InvitePanel({
                                 value={emailAddress}
                                 onChangeText={setEmailAddress}
                                 placeholder={t("invitePanel.nameExampleCom")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "invitePanel.inviteByEmail",
                                 )}
@@ -194,7 +191,7 @@ export default function InvitePanel({
                                 textContentType="emailAddress"
                                 autoCapitalize="none"
                                 autoCorrect={false}
-                                className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                             />
                             <Pressable
                                 accessibilityRole="button"
@@ -204,7 +201,7 @@ export default function InvitePanel({
                                     disabled:
                                         !emailAddress.trim() || emailInviting,
                                 }}
-                                className="justify-center px-4 py-2 bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                className="justify-center px-4 py-2 bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                             >
                                 <Text className="text-white font-medium text-sm">
                                     {emailInviting
@@ -214,7 +211,7 @@ export default function InvitePanel({
                             </Pressable>
                         </View>
                         {emailError ? (
-                            <Text className="text-xs text-discord-danger">
+                            <Text className="text-xs text-zam-danger">
                                 {emailError}
                             </Text>
                         ) : null}
@@ -233,25 +230,25 @@ export default function InvitePanel({
                                     {emailOutcome.ok ? (
                                         <Check
                                             size={14}
-                                            className="text-discord-textPositive"
+                                            className="text-zam-textPositive"
                                         />
                                     ) : (
                                         <X
                                             size={14}
-                                            className="text-discord-danger"
+                                            className="text-zam-danger"
                                         />
                                     )}
                                 </View>
                                 <Text
                                     numberOfLines={1}
-                                    className="shrink text-sm text-discord-textSecondary"
+                                    className="shrink text-sm text-zam-textSecondary"
                                 >
                                     {emailOutcome.address}
                                 </Text>
                                 {!emailOutcome.ok && emailOutcome.error ? (
                                     <Text
                                         numberOfLines={1}
-                                        className="shrink text-sm text-discord-textMuted"
+                                        className="shrink text-sm text-zam-textMuted"
                                     >
                                         - {emailOutcome.error}
                                     </Text>
@@ -260,7 +257,7 @@ export default function InvitePanel({
                         ) : null}
                     </>
                 ) : (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {emailState.reason}
                     </Text>
                 )}
@@ -273,7 +270,7 @@ export default function InvitePanel({
                         onPress={onClose}
                         className="px-4 py-2"
                     >
-                        <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary transition-colors">
+                        <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary transition-colors">
                             {t("common.close")}
                         </Text>
                     </Pressable>
@@ -285,7 +282,7 @@ export default function InvitePanel({
                     accessibilityState={{
                         disabled: !selected.length || inviting,
                     }}
-                    className="px-4 py-2 bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                    className="px-4 py-2 bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                 >
                     <Text className="text-white font-medium text-sm">
                         {inviting

@@ -53,17 +53,17 @@ export default function RoomTopicSheet({
                             draws emoji itself. */}
                         <Text
                             role="heading"
-                            className="flex-shrink font-semibold text-discord-textPrimary break-words min-w-0"
+                            className="flex-shrink font-semibold text-zam-textPrimary break-words min-w-0"
                         >
                             {roomName}
                         </Text>
                     </View>
-                    <Text className="text-xs font-semibold uppercase text-discord-textMuted mb-1">
+                    <Text className="text-xs font-semibold uppercase text-zam-textMuted mb-1">
                         {t("roomTopicSheet.description")}
                     </Text>
                     <Html
                         html={topicHtml}
-                        className="text-sm text-discord-textPrimary whitespace-pre-wrap break-words [&_a]:text-discord-accent [&_a]:underline"
+                        className="text-sm text-zam-textPrimary whitespace-pre-wrap break-words [&_a]:text-zam-accent [&_a]:underline"
                     />
                 </View>
             </BottomSheet>

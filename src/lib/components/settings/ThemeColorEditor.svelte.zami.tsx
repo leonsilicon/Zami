@@ -26,7 +26,8 @@ import {
     activeBase,
     getPresetColors,
     renameCustomPreset,
-    setMessageFontSize,
+    setInterfaceScale,
+    setMessageTextScale,
     setMessageFont,
     uploadCustomFont,
     removeCustomFont,
@@ -45,8 +46,14 @@ import {
     MESSAGE_FONTS,
     messageFontFamily,
     type MessageFontKey,
-    appTextScalePercent,
-    MSG_FONT_SIZE_DEFAULT,
+    INTERFACE_SCALE_MIN,
+    INTERFACE_SCALE_MAX,
+    INTERFACE_SCALE_STEP,
+    INTERFACE_SCALE_DEFAULT,
+    MESSAGE_TEXT_SCALE_MIN,
+    MESSAGE_TEXT_SCALE_MAX,
+    MESSAGE_TEXT_SCALE_STEP,
+    MESSAGE_TEXT_SCALE_DEFAULT,
 } from "$lib/utils/messageDisplay";
 import { encodeThemePreset, decodeThemePreset } from "$lib/utils/themeShare";
 import { orderedPresetNames, isBuiltinPreset } from "$lib/utils/themePreset";
@@ -103,7 +110,8 @@ export default function ThemeColorEditor() {
         [themePresets],
     );
     const currentBase = useRune(() => activeBase());
-    const messageFontSize = useRune(() => settingsState.messageFontSize);
+    const interfaceScale = useRune(() => settingsState.interfaceScale);
+    const messageTextScale = useRune(() => settingsState.messageTextScale);
     const messageFont = useRune(() => settingsState.messageFont);
     const customFontName = useRune(() => settingsState.customFontName);
     const previewFontFamily = usePreviewFontFamily(
@@ -285,15 +293,15 @@ export default function ThemeColorEditor() {
 
     return (
         <View>
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                 {t("themeColorEditor.themeColors")}
             </Text>
 
             {/* Top control row: Save | Import [Copy] */}
-            <View className="flex flex-col gap-3 mb-4 pb-4 border-b border-discord-divider">
+            <View className="flex flex-col gap-3 mb-4 pb-4 border-b border-zam-divider">
                 {/* Save section */}
                 <View>
-                    <Text className="text-xs text-discord-textMuted mb-1">
+                    <Text className="text-xs text-zam-textMuted mb-1">
                         {t("common.save")}
                     </Text>
                     <View className="flex-row items-center gap-2">
@@ -301,15 +309,15 @@ export default function ThemeColorEditor() {
                             value={saveNameInput}
                             onChangeText={setSaveNameInput}
                             placeholder={t("themeColorEditor.presetName")}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "themeColorEditor.presetName",
                             )}
-                            className="flex-1 px-2.5 py-1.5 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary border border-discord-divider focus:border-discord-accent"
+                            className="flex-1 px-2.5 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary border border-zam-divider focus:border-zam-accent"
                         />
                         <Pressable
                             accessibilityRole="button"
-                            className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accent/90 disabled:opacity-50 transition-colors"
+                            className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accent/90 disabled:opacity-50 transition-colors"
                             disabled={saveNameInput.trim() === ""}
                             onPress={handleSave}
                         >
@@ -322,7 +330,7 @@ export default function ThemeColorEditor() {
 
                 {/* Import + Copy section */}
                 <View>
-                    <Text className="text-xs text-discord-textMuted mb-1">
+                    <Text className="text-xs text-zam-textMuted mb-1">
                         {t("themeColorEditor.import")}
                     </Text>
                     <View className="flex-row items-center gap-2">
@@ -330,21 +338,21 @@ export default function ThemeColorEditor() {
                             value={importText}
                             onChangeText={setImportText}
                             placeholder={t("themeColorEditor.pasteThemeCode")}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "themeColorEditor.pasteThemeCode",
                             )}
                             autoCapitalize="none"
                             autoCorrect={false}
-                            className={`flex-1 px-2.5 py-1.5 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary border ${
+                            className={`flex-1 px-2.5 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary border ${
                                 importError
-                                    ? "border-discord-danger"
-                                    : "border-discord-divider focus:border-discord-accent"
+                                    ? "border-zam-danger"
+                                    : "border-zam-divider focus:border-zam-accent"
                             }`}
                         />
                         <Pressable
                             accessibilityRole="button"
-                            className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accent/90 disabled:opacity-50 transition-colors"
+                            className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accent/90 disabled:opacity-50 transition-colors"
                             disabled={importText.trim() === ""}
                             onPress={handleImport}
                         >
@@ -354,12 +362,12 @@ export default function ThemeColorEditor() {
                         </Pressable>
                         <Pressable
                             accessibilityRole="button"
-                            className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors"
                             onPress={() => {
                                 handleCopy();
                             }}
                         >
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {copied
                                     ? t("themeColorEditor.copied")
                                     : t("common.copy")}
@@ -370,14 +378,14 @@ export default function ThemeColorEditor() {
             </View>
 
             {importError ? (
-                <Text className="text-xs text-discord-danger mb-3">
+                <Text className="text-xs text-zam-danger mb-3">
                     {importError}
                 </Text>
             ) : null}
 
             {/* Presets list */}
             <View className="mb-4">
-                <Text className="text-sm text-discord-textPrimary mb-2">
+                <Text className="text-sm text-zam-textPrimary mb-2">
                     {t("themeColorEditor.presets")}
                 </Text>
                 <View className="flex flex-col gap-1">
@@ -397,8 +405,8 @@ export default function ThemeColorEditor() {
                                 accessible={false}
                                 className={`flex-row items-center gap-2 px-3 py-2 rounded ${
                                     isActive
-                                        ? "bg-discord-accent/20 border border-discord-accent"
-                                        : "border border-discord-divider hover:bg-discord-messageHover"
+                                        ? "bg-zam-accent/20 border border-zam-accent"
+                                        : "border border-zam-divider hover:bg-zam-messageHover"
                                 } transition-colors ${
                                     isRenaming ? "" : "cursor-pointer"
                                 }`}
@@ -415,7 +423,7 @@ export default function ThemeColorEditor() {
                                             accessibilityLabel={t(
                                                 "themeColorEditor.rename",
                                             )}
-                                            className="flex-1 px-2 py-1 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary border border-discord-accent"
+                                            className="flex-1 px-2 py-1 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary border border-zam-accent"
                                             onBlur={commitRename}
                                             onSubmitEditing={commitRename}
                                             // Zami: not ported: Escape to cancel
@@ -424,7 +432,7 @@ export default function ThemeColorEditor() {
                                         />
                                         <Pressable
                                             accessibilityRole="button"
-                                            className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                                            className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                                             onPressIn={() => {
                                                 // Press-in (the web's pointerdown)
                                                 // ends the rename first, so the
@@ -434,7 +442,7 @@ export default function ThemeColorEditor() {
                                                 cancelRename();
                                             }}
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                 {t("common.cancel")}
                                             </Text>
                                         </Pressable>
@@ -447,35 +455,35 @@ export default function ThemeColorEditor() {
                                                 selected: isActive,
                                             }}
                                             onPress={() => selectPreset(name)}
-                                            className="flex-1 text-sm text-discord-textPrimary"
+                                            className="flex-1 text-sm text-zam-textPrimary"
                                         >
                                             {name}
                                         </Text>
                                         {isBuiltin ? (
-                                            <Text className="px-2 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
+                                            <Text className="px-2 py-0.5 rounded bg-zam-backgroundTertiary text-xs text-zam-textMuted">
                                                 {t("common.default")}
                                             </Text>
                                         ) : deletePending === name ? (
                                             <>
-                                                <Text className="text-xs text-discord-textMuted">
+                                                <Text className="text-xs text-zam-textMuted">
                                                     {t(
                                                         "themeColorEditor.delete",
                                                     )}
                                                 </Text>
                                                 <Pressable
                                                     accessibilityRole="button"
-                                                    className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                                                    className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                                                     onPress={() => {
                                                         setDeletePending(null);
                                                     }}
                                                 >
-                                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                                    <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                         {t("common.cancel")}
                                                     </Text>
                                                 </Pressable>
                                                 <Pressable
                                                     accessibilityRole="button"
-                                                    className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                                                    className="px-2 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                                                     accessibilityLabel={t(
                                                         "themeColorEditor.confirmDelete",
                                                         { name },
@@ -496,19 +504,19 @@ export default function ThemeColorEditor() {
                                                     accessibilityLabel={t(
                                                         "themeColorEditor.rename",
                                                     )}
-                                                    className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                                                    className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                                                     onPress={() => {
                                                         startRename(name);
                                                     }}
                                                 >
                                                     <Pencil
                                                         size={12}
-                                                        className="text-xs text-discord-textMuted hover:text-discord-textPrimary"
+                                                        className="text-xs text-zam-textMuted hover:text-zam-textPrimary"
                                                     />
                                                 </Pressable>
                                                 <Pressable
                                                     accessibilityRole="button"
-                                                    className="px-2 py-1 rounded hover:bg-discord-danger transition-colors"
+                                                    className="px-2 py-1 rounded hover:bg-zam-danger transition-colors"
                                                     accessibilityLabel={t(
                                                         "themeColorEditor.delete2",
                                                         { name },
@@ -517,7 +525,7 @@ export default function ThemeColorEditor() {
                                                         setDeletePending(name);
                                                     }}
                                                 >
-                                                    <Text className="text-xs text-discord-danger">
+                                                    <Text className="text-xs text-zam-danger">
                                                         {t("common.delete")}
                                                     </Text>
                                                 </Pressable>
@@ -532,13 +540,13 @@ export default function ThemeColorEditor() {
             </View>
 
             {activeIsBuiltin && (
-                <View className="mb-4 p-3 rounded bg-discord-backgroundTertiary border border-discord-divider">
-                    <Text className="text-sm text-discord-textPrimary mb-2">
+                <View className="mb-4 p-3 rounded bg-zam-backgroundTertiary border border-zam-divider">
+                    <Text className="text-sm text-zam-textPrimary mb-2">
                         {t("themeColorEditor.builtInPresetsAreReadOnly")}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
-                        className="self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accent/90 transition-colors"
+                        className="self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accent/90 transition-colors"
                         onPress={handleDuplicate}
                     >
                         <Text className="text-sm text-white">
@@ -550,13 +558,13 @@ export default function ThemeColorEditor() {
 
             {/* Color pickers (grouped) */}
             <View className="mb-4">
-                <Text className="text-sm text-discord-textPrimary mb-3">
+                <Text className="text-sm text-zam-textPrimary mb-3">
                     {t("themeColorEditor.colors")}
                 </Text>
 
                 {/* Backgrounds */}
                 <View className="mb-4">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("themeColorEditor.backgrounds")}
                     </Text>
                     <View className="flex flex-col gap-2">
@@ -572,7 +580,7 @@ export default function ThemeColorEditor() {
 
                 {/* Text */}
                 <View className="mb-4">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("themeColorEditor.text")}
                     </Text>
                     <View className="flex flex-col gap-2">
@@ -588,7 +596,7 @@ export default function ThemeColorEditor() {
 
                 {/* Accents & semantics */}
                 <View className="mb-4">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("themeColorEditor.accentsSemantics")}
                     </Text>
                     <View className="flex flex-col gap-2">
@@ -606,7 +614,7 @@ export default function ThemeColorEditor() {
 
                 {/* Presence */}
                 <View className="mb-4">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("themeColorEditor.presence")}
                     </Text>
                     <View className="flex flex-col gap-2">
@@ -620,7 +628,7 @@ export default function ThemeColorEditor() {
 
                 {/* Details */}
                 <View className="mb-4">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("themeColorEditor.details")}
                     </Text>
                     <View className="flex flex-col gap-2">
@@ -639,7 +647,7 @@ export default function ThemeColorEditor() {
             {/* Contrast warnings */}
             {warnings.length > 0 && (
                 <View className="mb-4">
-                    <Text className="text-sm text-discord-textPrimary mb-2">
+                    <Text className="text-sm text-zam-textPrimary mb-2">
                         {t("themeColorEditor.contrastWarnings")}
                     </Text>
                     <View className="flex flex-col gap-1">
@@ -650,9 +658,9 @@ export default function ThemeColorEditor() {
                             >
                                 <TriangleAlert
                                     size={12}
-                                    className="text-discord-danger"
+                                    className="text-zam-danger"
                                 />
-                                <Text className="text-xs text-discord-danger">
+                                <Text className="text-xs text-zam-danger">
                                     {warning.label}: {warning.ratio}:1
                                 </Text>
                             </View>
@@ -662,49 +670,83 @@ export default function ThemeColorEditor() {
             )}
 
             {/* Message display */}
-            <View className="mt-6 pt-4 border-t border-discord-divider">
-                <Text className="text-sm font-semibold text-discord-textPrimary">
+            <View className="mt-6 pt-4 border-t border-zam-divider">
+                <Text className="text-sm font-semibold text-zam-textPrimary">
                     {t("themeColorEditor.messageDisplay")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mb-3">
+                <Text className="text-xs text-zam-textMuted mb-3">
                     {t("themeColorEditor.savedOnThisDeviceOnlyNot")}
                 </Text>
 
+                {/* Zami: not ported: either scale's effect. The interface scale
+                    is the root font size, which the document stand-in drops,
+                    and message text (Html) doesn't read --message-text-scale.
+                    Both are saved. */}
                 <View className="flex-row items-center justify-between mb-1">
-                    <Text className="text-sm text-discord-textPrimary">
-                        {t("themeColorEditor.appTextSize", {
-                            round: Math.round(
-                                appTextScalePercent(messageFontSize),
-                            ),
+                    <Text className="text-sm text-zam-textPrimary">
+                        {t("themeColorEditor.interfaceScale", {
+                            percent: interfaceScale,
                         })}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
-                        className="px-2 py-0.5 rounded hover:bg-discord-messageHover transition-colors"
+                        className="px-2 py-0.5 rounded hover:bg-zam-messageHover transition-colors"
                         onPress={() =>
-                            setMessageFontSize(MSG_FONT_SIZE_DEFAULT)
+                            setInterfaceScale(INTERFACE_SCALE_DEFAULT)
                         }
                     >
-                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                        <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                             {t("themeColorEditor.resetToDefault")}
                         </Text>
                     </Pressable>
                 </View>
                 <Range
-                    min={12}
-                    max={24}
-                    step={1}
-                    value={messageFontSize}
-                    onChange={(value) => setMessageFontSize(value)}
-                    accessibilityLabel={t("themeColorEditor.appTextSize", {
-                        round: Math.round(appTextScalePercent(messageFontSize)),
+                    min={INTERFACE_SCALE_MIN}
+                    max={INTERFACE_SCALE_MAX}
+                    step={INTERFACE_SCALE_STEP}
+                    value={interfaceScale}
+                    onChange={(value) => setInterfaceScale(value)}
+                    accessibilityLabel={t("themeColorEditor.interfaceScale", {
+                        percent: interfaceScale,
                     })}
                 />
-                <Text className="mt-1 text-xs text-discord-textMuted">
+                <Text className="mt-1 text-xs text-zam-textMuted">
                     {t("themeColorEditor.scalesAllTextAndSpacingAcross")}
                 </Text>
 
-                <Text className="text-sm text-discord-textPrimary mt-4 mb-1">
+                <View className="flex-row items-center justify-between mt-4 mb-1">
+                    <Text className="text-sm text-zam-textPrimary">
+                        {t("themeColorEditor.messageTextScale", {
+                            percent: messageTextScale,
+                        })}
+                    </Text>
+                    <Pressable
+                        accessibilityRole="button"
+                        className="px-2 py-0.5 rounded hover:bg-zam-messageHover transition-colors"
+                        onPress={() =>
+                            setMessageTextScale(MESSAGE_TEXT_SCALE_DEFAULT)
+                        }
+                    >
+                        <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
+                            {t("themeColorEditor.resetToDefault")}
+                        </Text>
+                    </Pressable>
+                </View>
+                <Range
+                    min={MESSAGE_TEXT_SCALE_MIN}
+                    max={MESSAGE_TEXT_SCALE_MAX}
+                    step={MESSAGE_TEXT_SCALE_STEP}
+                    value={messageTextScale}
+                    onChange={(value) => setMessageTextScale(value)}
+                    accessibilityLabel={t("themeColorEditor.messageTextScale", {
+                        percent: messageTextScale,
+                    })}
+                />
+                <Text className="mt-1 text-xs text-zam-textMuted">
+                    {t("themeColorEditor.messageTextScaleHint")}
+                </Text>
+
+                <Text className="text-sm text-zam-textPrimary mt-4 mb-1">
                     {t("themeColorEditor.font")}
                 </Text>
                 {/* Zami: `input-dark` (a plain CSS class in app.css) as utilities. */}
@@ -732,18 +774,18 @@ export default function ThemeColorEditor() {
                               ]
                             : []),
                     ]}
-                    className="bg-discord-backgroundSecondary border border-transparent rounded px-2 py-1 w-full"
+                    className="bg-zam-backgroundSecondary border border-transparent rounded px-2 py-1 w-full"
                 />
                 <View className="mt-2 flex-row flex-wrap items-center gap-2">
                     <Pressable
                         accessibilityRole="button"
-                        className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover disabled:opacity-50 transition-colors"
+                        className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
                         onPress={() => {
                             handleFontFile();
                         }}
                         disabled={fontUploadBusy}
                     >
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {customFontName
                                 ? t("themeColorEditor.replaceCustomFont")
                                 : t("themeColorEditor.uploadCustomFont")}
@@ -752,29 +794,29 @@ export default function ThemeColorEditor() {
                     {customFontName ? (
                         <Pressable
                             accessibilityRole="button"
-                            className="px-2 py-1 rounded hover:bg-discord-danger disabled:opacity-50 transition-colors"
+                            className="px-2 py-1 rounded hover:bg-zam-danger disabled:opacity-50 transition-colors"
                             onPress={() => {
                                 handleRemoveFont();
                             }}
                             disabled={fontUploadBusy}
                         >
-                            <Text className="text-xs text-discord-danger">
+                            <Text className="text-xs text-zam-danger">
                                 {t("common.remove")}
                             </Text>
                         </Pressable>
                     ) : null}
                 </View>
                 {fontUploadError ? (
-                    <Text className="mt-1 text-xs text-discord-danger">
+                    <Text className="mt-1 text-xs text-zam-danger">
                         {fontUploadError}
                     </Text>
                 ) : null}
-                <Text className="mt-1 text-xs text-discord-textMuted">
+                <Text className="mt-1 text-xs text-zam-textMuted">
                     {t("themeColorEditor.woff2TtfOrOtfUpTo")}
                 </Text>
 
                 <Text
-                    className="mt-3 text-discord-textPrimary"
+                    className="mt-3 text-zam-textPrimary"
                     style={{
                         fontSize: 14,
                         fontFamily: previewFontFamily,
@@ -823,12 +865,12 @@ function ColorRow({
         if (normalizeHex(text) !== value) setText(value);
     }
     return (
-        <View className="flex-row items-center gap-2 py-2 border-b border-discord-divider">
-            <Text className="flex-1 text-sm text-discord-textPrimary">
+        <View className="flex-row items-center gap-2 py-2 border-b border-zam-divider">
+            <Text className="flex-1 text-sm text-zam-textPrimary">
                 {token.label}
             </Text>
             <View
-                className={`w-10 h-8 rounded border border-discord-divider ${
+                className={`w-10 h-8 rounded border border-zam-divider ${
                     disabled ? "opacity-60" : ""
                 }`}
                 style={{ backgroundColor: value }}
@@ -846,18 +888,18 @@ function ColorRow({
                 autoCapitalize="none"
                 autoCorrect={false}
                 maxLength={7}
-                className="text-xs text-discord-textMuted font-mono w-20"
+                className="text-xs text-zam-textMuted font-mono w-20"
             />
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t("themeColorEditor.resetToDefault")}
-                className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-30 transition-colors"
+                className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-30 transition-colors"
                 onPress={onReset}
                 disabled={disabled}
             >
                 <X
                     size={14}
-                    className="text-discord-textMuted hover:text-discord-textPrimary"
+                    className="text-zam-textMuted hover:text-zam-textPrimary"
                 />
             </Pressable>
         </View>

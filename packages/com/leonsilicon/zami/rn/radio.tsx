@@ -39,7 +39,7 @@ export function Radio<T>({
   group,
   onChange,
   label,
-  labelClassName = "text-sm text-discord-textPrimary",
+  labelClassName = "text-sm text-zam-textPrimary",
   accessibilityLabel,
   disabled = false,
   className = "items-center gap-2",
@@ -62,12 +62,12 @@ export function Radio<T>({
     >
       <View
         className={`${inputClassName} rounded-full border items-center justify-center ${
-          checked ? "border-discord-accent" : "border-discord-textMuted"
+          checked ? "border-zam-accent" : "border-zam-textMuted"
         } ${disabled ? "opacity-50" : ""}`}
       >
         {checked ? (
           <View
-            className="rounded-full bg-discord-accent"
+            className="rounded-full bg-zam-accent"
             style={{ width: dotSize, height: dotSize }}
           />
         ) : null}

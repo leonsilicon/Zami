@@ -62,27 +62,21 @@ export default function ViewSourceDialog({ event }: Props) {
                 <View className="mb-1.5 flex-row items-center justify-between gap-2">
                     <Text
                         role="heading"
-                        className="text-xs font-bold uppercase text-discord-textSecondary"
+                        className="text-xs font-bold uppercase text-zam-textSecondary"
                     >
                         {title}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void copy(which, json)}
-                        className="flex-row items-center gap-1 rounded px-2 py-1 hover:bg-discord-messageHover"
+                        className="flex-row items-center gap-1 rounded px-2 py-1 hover:bg-zam-messageHover"
                     >
                         {copied === which ? (
-                            <Check
-                                size={14}
-                                className="text-discord-textMuted"
-                            />
+                            <Check size={14} className="text-zam-textMuted" />
                         ) : (
-                            <Copy
-                                size={14}
-                                className="text-discord-textMuted"
-                            />
+                            <Copy size={14} className="text-zam-textMuted" />
                         )}
-                        <Text className="text-xs font-medium text-discord-textMuted">
+                        <Text className="text-xs font-medium text-zam-textMuted">
                             {copied === which
                                 ? t("viewSource.copied")
                                 : t("common.copy")}
@@ -91,13 +85,13 @@ export default function ViewSourceDialog({ event }: Props) {
                 </View>
                 <ScrollView
                     nestedScrollEnabled
-                    className="grow-0 rounded bg-discord-backgroundTertiary"
+                    className="grow-0 rounded bg-zam-backgroundTertiary"
                     style={{ maxHeight: windowSize.height * 0.4 }}
                 >
                     <ScrollView horizontal contentContainerClassName="p-3">
                         <Text
                             selectable
-                            className="font-mono text-xs leading-relaxed text-discord-textPrimary"
+                            className="font-mono text-xs leading-relaxed text-zam-textPrimary"
                         >
                             {json}
                         </Text>
@@ -113,26 +107,26 @@ export default function ViewSourceDialog({ event }: Props) {
                 onClose={closeModal}
                 labelledBy="view-source-title"
                 layerClass="z-[90] flex items-center justify-center p-3"
-                panelClass="relative flex max-h-[90%] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-discord-divider bg-discord-backgroundSecondary shadow-2xl"
+                panelClass="relative flex max-h-[90%] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zam-divider bg-zam-backgroundSecondary shadow-2xl"
             >
                 <View className="max-h-[720px] shrink flex-col">
-                    <View className="flex-row items-center justify-between border-b border-discord-divider px-4 py-3">
+                    <View className="flex-row items-center justify-between border-b border-zam-divider px-4 py-3">
                         <Text
                             nativeID="view-source-title"
                             role="heading"
-                            className="text-base font-semibold text-discord-textPrimary"
+                            className="text-base font-semibold text-zam-textPrimary"
                         >
                             {t("viewSource.title")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={closeModal}
-                            className="p-1.5 rounded hover:bg-discord-messageHover"
+                            className="p-1.5 rounded hover:bg-zam-messageHover"
                             accessibilityLabel={t("common.close")}
                         >
                             <X
                                 size={20}
-                                className="text-discord-textMuted hover:text-discord-textPrimary"
+                                className="text-zam-textMuted hover:text-zam-textPrimary"
                             />
                         </Pressable>
                     </View>

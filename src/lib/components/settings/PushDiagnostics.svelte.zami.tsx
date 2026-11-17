@@ -28,25 +28,25 @@ export default function PushDiagnostics() {
 
     return (
         <View>
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                 {t("pushDiagnostics.pushGateway")}
             </Text>
-            <View className="py-2 border-b border-discord-divider">
-                <Text className="text-sm text-discord-textPrimary">
+            <View className="py-2 border-b border-zam-divider">
+                <Text className="text-sm text-zam-textPrimary">
                     {t("pushDiagnostics.notificationRelay")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mb-1">
+                <Text className="text-xs text-zam-textMuted mb-1">
                     {t(
                         "pushDiagnostics.pushNotificationsAreRelayedThroughThis",
                     )}
                 </Text>
-                <Text className="text-xs font-mono text-discord-textMuted break-all">
+                <Text className="text-xs font-mono text-zam-textMuted break-all">
                     {pushDebug.provider === "unifiedpush" && pushDebug.upGateway
                         ? pushDebug.upGateway
                         : PUSH_GATEWAY_NOTIFY_URL}
                 </Text>
                 {gatewayStatus?.status === "mismatch" ? (
-                    <Text className="text-xs text-discord-danger mt-1">
+                    <Text className="text-xs text-zam-danger mt-1">
                         {t(
                             "pushDiagnostics.warningYourHomeserverIsRoutingThis",
                             {
@@ -55,13 +55,13 @@ export default function PushDiagnostics() {
                         )}
                     </Text>
                 ) : gatewayStatus?.status === "verified" ? (
-                    <Text className="text-xs text-discord-textPositive mt-1">
+                    <Text className="text-xs text-zam-textPositive mt-1">
                         {t(
                             "pushDiagnostics.verifiedYourHomeserverRoutesNotificationsTo",
                         )}
                     </Text>
                 ) : gatewayStatus?.status === "none" ? (
-                    <Text className="text-xs text-discord-textMuted mt-1 italic">
+                    <Text className="text-xs text-zam-textMuted mt-1 italic">
                         {t(
                             "pushDiagnostics.noPushNotificationsAreRegisteredOn",
                         )}

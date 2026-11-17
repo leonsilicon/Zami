@@ -42,17 +42,17 @@ export default function UpdateBanner() {
     return (
         <View
             accessibilityLiveRegion="polite"
-            className="mx-2 mb-2 rounded-lg border border-discord-divider bg-discord-backgroundSecondary px-3 py-2 shadow-sm"
+            className="mx-2 mb-2 rounded-lg border border-zam-divider bg-zam-backgroundSecondary px-3 py-2 shadow-sm"
         >
             <View className="flex-row items-start gap-2">
-                <SvgIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-discord-accent">
+                <SvgIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-zam-accent">
                     <Path
                         d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
                         transform="rotate(180 12 12)"
                     />
                     <Path d="M12 16l4-5h-3V7h-2v4H8z" />
                 </SvgIcon>
-                <Text className="min-w-0 flex-1 text-sm text-discord-textPrimary">
+                <Text className="min-w-0 flex-1 text-sm text-zam-textPrimary">
                     {view.label}
                 </Text>
                 <Pressable
@@ -63,7 +63,7 @@ export default function UpdateBanner() {
                     )}
                     className="-me-1 flex-shrink-0"
                 >
-                    <X size={16} className="text-discord-textMuted" />
+                    <X size={16} className="text-zam-textMuted" />
                 </Pressable>
             </View>
             {view.action !== "none" && !!view.actionLabel && (
@@ -73,7 +73,7 @@ export default function UpdateBanner() {
                         accessibilityState={{ disabled: acting || view.busy }}
                         onPress={() => void onAction()}
                         disabled={acting || view.busy}
-                        className="rounded bg-discord-accent px-3 py-1 hover:opacity-90 disabled:opacity-60"
+                        className="rounded bg-zam-accent px-3 py-1 hover:opacity-90 disabled:opacity-60"
                     >
                         <Text className="text-sm font-medium text-white">
                             {view.actionLabel}

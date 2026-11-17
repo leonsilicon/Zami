@@ -3,6 +3,7 @@ import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
+import { displayContent } from "$lib/utils/displayContent";
 import type { MatrixEvent } from "matrix-js-sdk";
 import {
     getRoom,
@@ -40,7 +41,7 @@ interface DisplayItem {
 
 function fromServer(n: ServerNotification): DisplayItem {
     const e = n.event as MatrixEvent;
-    const content = e.getContent() as any;
+    const content = displayContent(e) as any;
     return {
         roomId: n.room_id,
         eventId: e.getId() ?? "",
@@ -149,19 +150,19 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
         <View
             className={`${
                 isMobile ? "" : "w-80"
-            } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+            } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
         >
-            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                 >
                     {t("common.notifications")}
                 </Text>
                 {(serverSupport === "no" || serverSupport === "error") &&
                 items.length > 0 ? (
                     <Pressable accessibilityRole="button" onPress={clearLocal}>
-                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                        <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                             {t("notificationsPanel.clearAll")}
                         </Text>
                     </Pressable>
@@ -181,9 +182,9 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => void refresh()}
-                                className="w-full px-4 py-2 bg-discord-backgroundTertiary"
+                                className="w-full px-4 py-2 bg-zam-backgroundTertiary"
                             >
-                                <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                     {t(
                                         "notificationsPanel.couldNotRefreshServerNotificationsTap",
                                     )}
@@ -225,10 +226,10 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
                                 body,
                             ].join(" ")}
                             onPress={() => jump(n.roomId, n.eventId)}
-                            className={`mx-2 p-2 rounded-lg hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors border-s-2 ${
+                            className={`mx-2 p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors border-s-2 ${
                                 n.read
-                                    ? "border-discord-warning/30 opacity-60"
-                                    : "border-discord-warning/70"
+                                    ? "border-zam-warning/30 opacity-60"
+                                    : "border-zam-warning/70"
                             }`}
                         >
                             <View className="flex-row items-center gap-2 mb-1">
@@ -240,23 +241,23 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs font-semibold text-discord-textPrimary"
+                                    className="flex-shrink text-xs font-semibold text-zam-textPrimary"
                                 >
                                     {name}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted ms-auto flex-shrink-0">
+                                <Text className="text-xs text-zam-textMuted ms-auto flex-shrink-0">
                                     {compactDateTime(n.ts)}
                                 </Text>
                             </View>
                             <Text
                                 numberOfLines={1}
-                                className="text-xs text-discord-textMuted mb-1"
+                                className="text-xs text-zam-textMuted mb-1"
                             >
                                 {t("notificationsPanel.in", { roomName })}
                             </Text>
                             <Text
                                 numberOfLines={3}
-                                className="text-xs text-discord-textPrimary"
+                                className="text-xs text-zam-textPrimary"
                             >
                                 {body}
                             </Text>
@@ -266,10 +267,10 @@ export default function NotificationsPanel({ onClose, onJumpTo }: Props) {
                 ListEmptyComponent={
                     showSpinner ? (
                         <View className="flex-row justify-center mt-8">
-                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                            <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                         </View>
                     ) : (
-                        <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                        <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                             {t("notificationsPanel.noNotifications")}
                         </Text>
                     )

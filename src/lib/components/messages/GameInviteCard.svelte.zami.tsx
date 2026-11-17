@@ -74,7 +74,7 @@ export default function GameInviteCard({ invite }: Props) {
     }
 
     return (
-        <View className="mt-1 max-w-md rounded-lg border border-discord-divider bg-discord-backgroundSecondary px-3 py-2.5">
+        <View className="mt-1 max-w-md rounded-lg border border-zam-divider bg-zam-backgroundSecondary px-3 py-2.5">
             <View className="flex-row items-center gap-2.5">
                 {iconUrl ? (
                     // Zami: `referrerpolicy="no-referrer"` and lazy loading
@@ -89,17 +89,17 @@ export default function GameInviteCard({ invite }: Props) {
                 ) : (
                     <Gamepad2
                         size={20}
-                        className="flex-shrink-0 text-discord-textMuted"
+                        className="flex-shrink-0 text-zam-textMuted"
                     />
                 )}
                 <View className="min-w-0 flex-1">
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("gameInvite.cardTitle")} ·{" "}
                         {t("gameInvite.sourceSteam")}
                     </Text>
                     <Text
                         numberOfLines={1}
-                        className="text-sm font-semibold text-discord-textPrimary"
+                        className="text-sm font-semibold text-zam-textPrimary"
                     >
                         {invite.name}
                     </Text>
@@ -109,17 +109,17 @@ export default function GameInviteCard({ invite }: Props) {
             {!!(invite.details || invite.state || invite.partySize) && (
                 <View className="mt-2 flex-col gap-0.5">
                     {!!invite.details && (
-                        <Text className="text-xs text-discord-textPrimary break-words">
+                        <Text className="text-xs text-zam-textPrimary break-words">
                             {invite.details}
                         </Text>
                     )}
                     {!!invite.state && (
-                        <Text className="text-xs text-discord-textMuted break-words">
+                        <Text className="text-xs text-zam-textMuted break-words">
                             {invite.state}
                         </Text>
                     )}
                     {invite.partySize && (
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gameInvite.partySize", {
                                 current: invite.partySize[0],
                                 max: invite.partySize[1],
@@ -130,22 +130,22 @@ export default function GameInviteCard({ invite }: Props) {
             )}
 
             {!!invite.note && (
-                <Text className="mt-2 text-sm text-discord-textPrimary whitespace-pre-wrap break-words">
+                <Text className="mt-2 text-sm text-zam-textPrimary whitespace-pre-wrap break-words">
                     {invite.note}
                 </Text>
             )}
 
             {joined ? (
-                <Text className="mt-2 text-xs text-discord-textMuted">
+                <Text className="mt-2 text-xs text-zam-textMuted">
                     {t("gameInvite.joinSent")}
                 </Text>
             ) : !canJoin ? (
-                <Text className="mt-2 text-xs text-discord-textMuted">
+                <Text className="mt-2 text-xs text-zam-textMuted">
                     {t("gameInvite.openInDesktop")}
                 </Text>
             ) : confirming ? (
                 <>
-                    <Text className="mt-2 text-xs text-discord-textPrimary break-all">
+                    <Text className="mt-2 text-xs text-zam-textPrimary break-all">
                         {confirmText}
                     </Text>
                     <View className="mt-2 flex-row items-center gap-2">
@@ -154,7 +154,7 @@ export default function GameInviteCard({ invite }: Props) {
                             disabled={joining}
                             accessibilityState={{ disabled: joining }}
                             onPress={() => void join()}
-                            className={`px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                            className={`px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                                 joining ? "opacity-50" : ""
                             }`}
                         >
@@ -171,7 +171,7 @@ export default function GameInviteCard({ invite }: Props) {
                             onPress={() => setConfirming(false)}
                             className="px-3 py-1.5 rounded"
                         >
-                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary transition-colors">
+                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary transition-colors">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
@@ -180,7 +180,7 @@ export default function GameInviteCard({ invite }: Props) {
             ) : (
                 <Pressable
                     accessibilityRole="button"
-                    className="mt-2 self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                    className="mt-2 self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                     onPress={() => {
                         setJoinError(null);
                         setConfirming(true);
@@ -194,7 +194,7 @@ export default function GameInviteCard({ invite }: Props) {
 
             {joinError && (
                 <Text
-                    className="mt-2 text-xs text-discord-danger"
+                    className="mt-2 text-xs text-zam-danger"
                     accessibilityRole="alert"
                 >
                     {t(joinError)}

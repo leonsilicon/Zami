@@ -519,10 +519,7 @@ export default function LinkPreview({ url }: Props) {
                 }`}
             >
                 {favourited ? (
-                    <SvgIcon
-                        d={STAR}
-                        className="w-4 h-4 text-discord-warning"
-                    />
+                    <SvgIcon d={STAR} className="w-4 h-4 text-zam-warning" />
                 ) : (
                     <SvgIcon
                         d={STAR}
@@ -728,7 +725,7 @@ export default function LinkPreview({ url }: Props) {
                 <DomMount
                     key={`${matchedEmbed.entryId}:${url}`}
                     className="mt-1"
-                    textClassName="text-sm text-discord-textPrimary"
+                    textClassName="text-sm text-zam-textPrimary"
                     resolveMxc={mxcToHttp}
                     document={document}
                     mount={(el) =>
@@ -745,7 +742,7 @@ export default function LinkPreview({ url }: Props) {
                 return (
                     <Animated.View
                         entering={SKELETON_DELAY}
-                        className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-discord-backgroundSecondary"
+                        className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-zam-backgroundSecondary"
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
                     />
@@ -760,22 +757,22 @@ export default function LinkPreview({ url }: Props) {
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
                 >
-                    <View className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary">
-                        <View className="w-1 flex-shrink-0 bg-discord-divider" />
+                    <View className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary">
+                        <View className="w-1 flex-shrink-0 bg-zam-divider" />
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-3">
                             <Pulse className="flex-1 min-w-0">
                                 <View className="h-4 mb-0.5 justify-center">
-                                    <View className="w-24 h-2.5 rounded bg-discord-divider" />
+                                    <View className="w-24 h-2.5 rounded bg-zam-divider" />
                                 </View>
                                 <View className="h-[19px] justify-center">
-                                    <View className="w-3/5 h-3 rounded bg-discord-divider" />
+                                    <View className="w-3/5 h-3 rounded bg-zam-divider" />
                                 </View>
                                 <View className="mt-1">
                                     <View className="h-[19.5px] justify-center">
-                                        <View className="w-full h-2.5 rounded bg-discord-divider" />
+                                        <View className="w-full h-2.5 rounded bg-zam-divider" />
                                     </View>
                                     <View className="h-[19.5px] justify-center">
-                                        <View className="w-4/5 h-2.5 rounded bg-discord-divider" />
+                                        <View className="w-4/5 h-2.5 rounded bg-zam-divider" />
                                     </View>
                                 </View>
                             </Pulse>
@@ -800,14 +797,14 @@ export default function LinkPreview({ url }: Props) {
             // (e.g. an fxtwitter/fixvx preview that carries og:video + og:title).
             return (
                 <View className="mt-2">
-                    <View className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary">
+                    <View className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary">
                         {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
+                        <View className="w-1 flex-shrink-0 bg-zam-accent" />
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-2">
                             {preview.siteName ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
                                     {preview.siteName}
                                 </Text>
@@ -819,7 +816,7 @@ export default function LinkPreview({ url }: Props) {
                                         openLink(preview.canonicalUrl || url)
                                     }
                                     numberOfLines={2}
-                                    className="text-sm font-semibold text-discord-accent leading-snug"
+                                    className="text-sm font-semibold text-zam-accent leading-snug"
                                 >
                                     {preview.title}
                                 </Text>
@@ -827,7 +824,7 @@ export default function LinkPreview({ url }: Props) {
                             {preview.description ? (
                                 <Text
                                     numberOfLines={4}
-                                    className="text-xs text-discord-textSecondary leading-relaxed"
+                                    className="text-xs text-zam-textSecondary leading-relaxed"
                                 >
                                     {preview.description}
                                 </Text>
@@ -905,10 +902,10 @@ export default function LinkPreview({ url }: Props) {
                     <Pressable
                         accessibilityRole="link"
                         onPress={() => openLink(preview.canonicalUrl || url)}
-                        className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors"
+                        className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors"
                     >
                         {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
+                        <View className="w-1 flex-shrink-0 bg-zam-accent" />
 
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-3">
                             {/* Text content */}
@@ -916,7 +913,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.siteName ? (
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs text-discord-textMuted mb-0.5"
+                                        className="text-xs text-zam-textMuted mb-0.5"
                                     >
                                         {preview.siteName}
                                     </Text>
@@ -924,7 +921,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.title ? (
                                     <Text
                                         numberOfLines={2}
-                                        className="text-sm font-semibold text-discord-accent leading-snug"
+                                        className="text-sm font-semibold text-zam-accent leading-snug"
                                     >
                                         {preview.title}
                                     </Text>
@@ -932,7 +929,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.description ? (
                                     <Text
                                         numberOfLines={3}
-                                        className="text-xs text-discord-textSecondary mt-1 leading-relaxed"
+                                        className="text-xs text-zam-textSecondary mt-1 leading-relaxed"
                                     >
                                         {preview.description}
                                     </Text>
@@ -1031,7 +1028,7 @@ export default function LinkPreview({ url }: Props) {
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => setRevealedFor(url)}
-                    className="mt-1 self-start flex-row items-center gap-1.5 rounded border border-discord-divider bg-discord-backgroundSecondary px-2 py-1 transition-colors hover:border-discord-accent/50"
+                    className="mt-1 self-start flex-row items-center gap-1.5 rounded border border-zam-divider bg-zam-backgroundSecondary px-2 py-1 transition-colors hover:border-zam-accent/50"
                 >
                     <SvgIcon
                         fill="none"
@@ -1039,13 +1036,13 @@ export default function LinkPreview({ url }: Props) {
                         strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="w-3.5 h-3.5 text-discord-textSecondary"
+                        className="w-3.5 h-3.5 text-zam-textSecondary"
                     >
                         {EYE.map((d) => (
                             <Path key={d} d={d} />
                         ))}
                     </SvgIcon>
-                    <Text className="text-xs text-discord-textSecondary">
+                    <Text className="text-xs text-zam-textSecondary">
                         {t("linkPreview.loadPreviewMedia")}
                     </Text>
                 </Pressable>

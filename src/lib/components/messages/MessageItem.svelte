@@ -32,6 +32,7 @@
     } from "$lib/matrix/progressiveImage";
     import { createFrameRelay, frameSink } from "$lib/utils/frameRelay";
     import { createTileImage } from "$lib/utils/tileImage";
+    import { isAnimatedImageInfo } from "$lib/utils/imageThumbnail";
     import {
         cacheDecryptedImage,
         cachedDecryptedImage,
@@ -59,13 +60,21 @@
         Check,
         Code,
         Forward,
+        CornerUpRight,
         Link,
         Lock,
         Reply,
         Pencil,
+        ChevronRight,
+        MessagesSquare,
     } from "lucide-svelte";
+    import {
+        bridgedThreadForEvent,
+        openBridgedThread,
+    } from "$lib/stores/bridgedThreads.svelte";
     import Reactions from "$lib/components/messages/Reactions.svelte";
     import ReactorPopover from "./ReactorPopover.svelte";
+    import ReactionsViewer from "./ReactionsViewer.svelte";
     import LinkPreview from "$lib/components/messages/LinkPreview.svelte";
     import MessageEmbed from "$lib/components/messages/MessageEmbed.svelte";
     import { orderReadReceipts } from "$lib/utils/readReceipts";
@@ -102,10 +111,14 @@
         seedRoomStateIfMissing,
         getRoomIdForAlias,
         getThreadSummary,
+        getReactions,
+        getRoomUnreadInfo,
         getThreadName,
         getHomeserverBaseUrl,
+        getRoomDisplayName,
         EventStatus,
     } from "$lib/matrix/client";
+    import { forwardEventPermalink, readForward } from "$lib/utils/forwarded";
     import MessageEditBox from "$lib/components/messages/MessageEditBox.svelte";
     import { emoticonsFromHtml } from "$lib/utils/messageBody";
     import { saveObjectUrl, revokeLater } from "$lib/utils/saveFile";
@@ -114,6 +127,7 @@
         isEmptyEdit,
         sendMessageEdit,
     } from "$lib/matrix/editMessage";
+    import { displayContent } from "$lib/utils/displayContent";
     import { resolveBubbleLayout } from "$lib/utils/bubbleLayout";
     import {
         parseMatrixLink,
@@ -391,6 +405,7 @@
     let pinning = $state(false);
     let showForwardDialog = $state(false);
     let showViewSourceDialog = $state(false);
+    let showReactionsViewer = $state(false);
 
     // Elements that own their own tap/gesture — a row tap/hold must defer to
     // them (links, buttons, media, reaction pills, the composer, etc.).
@@ -734,7 +749,7 @@
     // an async per-event decrypt, so an encrypted room keeps single-image opens.
     function isPageableImageUpload(e: MatrixEvent): boolean {
         if (e.getType() !== "m.room.message") return false;
-        const c = e.getContent() as {
+        const c = displayContent(e) as {
             msgtype?: string;
             url?: unknown;
             file?: unknown;
@@ -751,14 +766,15 @@
     }
 
     function uploadImageOf(e: MatrixEvent): GalleryImage {
-        const c = e.getContent() as {
+        const c = displayContent(e) as {
             url?: string;
             filename?: string;
             body?: string;
             info?: { w?: unknown; h?: unknown; mimetype?: string };
         };
         const sender = videoPoster(c as Record<string, unknown>);
-        const isGifUpload = c.info?.mimetype === "image/gif";
+        const isGifUpload =
+            c.info?.mimetype === "image/gif" || isAnimatedImageInfo(c.info);
         // An SVG is a vector: the server's raster thumbnail would be small and
         // soft, so the viewer's stand-ins come from the full file instead.
         const isVectorUpload = isSvg(
@@ -861,6 +877,8 @@
         // this tick then, so the indicator must too or the edited text shows
         // without it.
         void messagesState.timelineTick;
+        // Edits targeting a forward are ignored (MSC4553).
+        if (forward) return false;
         return !!event.replacingEvent();
     });
 
@@ -930,13 +948,62 @@
         // so depend on timelineTick — bumped on MatrixEventEvent.Decrypted — or
         // the encrypted envelope's (empty) content sticks after decryption.
         void messagesState.timelineTick;
-        return event.getContent();
+        // displayContent, not getContent(): an applied edit that is still
+        // encrypted (or failed to decrypt) leaves getContent() empty.
+        return displayContent(event);
     });
     // Likewise tick-dependent: getType() flips "m.room.encrypted" → the cleartext
     // type on decryption without changing the object reference, so a plain
     // $derived(event.getType()) would keep the UTD placeholder up forever.
     const eventType = $derived(
         (void messagesState.timelineTick, event.getType()),
+    );
+
+    // MSC4553 forward: `content` above is already the forwarded original
+    // (displayContent); this is the attribution drawn around it. All of it is
+    // the forwarder's claim, so names resolve from rooms we can see when we
+    // can, and the claimed room name is only a fallback.
+    const forward = $derived.by(() => {
+        reactionTick;
+        void messagesState.timelineTick;
+        if (event.isRedacted()) return null;
+        return readForward(event.getOriginalContent(), eventType);
+    });
+    function knownUserName(userId: string, roomId?: string): string {
+        if (room.getMember(userId)) return getMemberName(room, userId);
+        const source = roomId ? getRoom(roomId) : null;
+        if (source?.getMember(userId)) return getMemberName(source, userId);
+        return userId;
+    }
+    const forwardSenderName = $derived(
+        forward?.sender
+            ? (void roomsState.roomsTick,
+              knownUserName(forward.sender, forward.roomId))
+            : null,
+    );
+    const forwardRoomName = $derived.by(() => {
+        if (!forward) return null;
+        void roomsState.roomsTick;
+        const joined = forward.roomId ? getRoom(forward.roomId) : null;
+        return joined ? getRoomDisplayName(joined) : (forward.roomName ?? null);
+    });
+    const forwardLink = $derived.by(() => {
+        if (!forward?.roomId || !forward.eventId) return null;
+        const servers = forward.roomId.split(":").slice(1).join(":");
+        const target = parseMatrixLink(
+            forwardEventPermalink(
+                forward.roomId,
+                forward.eventId,
+                servers ? [servers] : [],
+            ),
+        );
+        return target && target.kind !== "user" ? target : null;
+    });
+    // An emote's actor: never the forwarder (MSC4553).
+    const emoteActor = $derived(
+        forward
+            ? (forwardSenderName ?? t("messageItem.forwardedEmoteActor"))
+            : displayName,
     );
 
     const msgtype = $derived(content?.msgtype ?? "");
@@ -972,6 +1039,7 @@
     const canEditMessage = $derived(
         isOwnMessage &&
             eventType === "m.room.message" &&
+            !forward &&
             isEditableContent(content),
     );
 
@@ -1170,6 +1238,13 @@
         showViewSourceDialog = true;
     }
 
+    function openReactionsViewer() {
+        slotToken = openModal("reactions-viewer", () => {
+            showReactionsViewer = false;
+        });
+        showReactionsViewer = true;
+    }
+
     async function copyMessageText() {
         try {
             await navigator.clipboard.writeText(copyableText);
@@ -1208,6 +1283,9 @@
                 break;
             case "view-source":
                 openViewSourceDialog();
+                break;
+            case "view-reactions":
+                openReactionsViewer();
                 break;
             case "thread":
                 onOpenThread?.(threadRootId);
@@ -1528,9 +1606,11 @@
     });
     const imageThumbUrl = $derived(() => {
         if (msgtype !== "m.image") return null;
-        // GIFs are served full-res in chat so they keep animating; the server
-        // thumbnail would (depending on homeserver) drop the animation.
-        if (isGif) return mxcToHttp(content?.url as string);
+        // GIFs, and anything flagged animated (MSC4230 / APNG), are served
+        // full-res in chat so they keep animating; the server thumbnail would
+        // (depending on homeserver) drop the animation.
+        if (isGif || isAnimatedImageInfo(content?.info))
+            return mxcToHttp(content?.url as string);
         // Homeservers generally can't thumbnail JPEG XL, so ask for the
         // original; utils/jxl transcodes it where the engine can't decode it.
         if (
@@ -2008,7 +2088,7 @@
         }
     });
 
-    // Reactively track whether the current image URL is favourited. The
+    // Reactively track whether this image or video is favourited. The
     // full-resolution URL is the favourite key (so the picker sends full quality).
     // An encrypted GIF has no usable URL, so it is keyed by a pointer to this
     // message instead (see favouriteFile.ts).
@@ -2027,18 +2107,34 @@
         validMxc((content?.file as { url?: unknown } | undefined)?.url),
     );
     const imageMediaMxc = $derived(validMxc(content?.url) ?? encryptedMxc);
-    const imageIsFavourited = $derived.by(() => {
+    // A video's full URL: the favourite key of a starred plaintext video.
+    const videoFullUrl = $derived(
+        msgtype === "m.video" ? mxcToHttp(content?.url as string) : null,
+    );
+    // The full URL of this message's media, whichever kind it is.
+    const mediaFullUrl = $derived(
+        msgtype === "m.video" ? videoFullUrl : imageFullUrl(),
+    );
+    const mediaIsFavourited = $derived.by(() => {
         favouritesState.gifs; // track
-        const src =
-            imageFullUrl() ?? eventFavouriteKey(encryptedFavouriteSource);
+        const src = mediaFullUrl ?? eventFavouriteKey(encryptedFavouriteSource);
         if (!!src && isFavouriteGif(src)) return true;
         return (
             !!imageMediaMxc && favouriteUrlForMxc(imageMediaMxc) !== undefined
         );
     });
 
-    function toggleImageFavourite(e: MouseEvent) {
+    // A starred video's poster, for its picker tile and the resent event.
+    // Plaintext only: an encrypted video's poster is read from its event.
+    const videoPosterUrl = $derived.by(() => {
+        if (msgtype !== "m.video") return null;
+        const poster = videoPoster(content as Record<string, unknown>);
+        return poster?.kind === "plain" ? mxcToHttp(poster.mxc) : null;
+    });
+
+    function toggleMediaFavourite(e: MouseEvent) {
         e.stopPropagation();
+        const isVideo = msgtype === "m.video";
         // Remove the favourite of this media first, whichever message starred it.
         const byMedia = imageMediaMxc
             ? favouriteUrlForMxc(imageMediaMxc)
@@ -2047,7 +2143,7 @@
             removeFavouriteGif(byMedia);
             return;
         }
-        const full = imageFullUrl();
+        const full = mediaFullUrl;
         if (!full) {
             const key = eventFavouriteKey(encryptedFavouriteSource);
             if (isFavouriteGif(key)) removeFavouriteGif(key);
@@ -2057,6 +2153,7 @@
                     previewUrl: key,
                     source: encryptedFavouriteSource,
                     ...(encryptedMxc ? { mxc: encryptedMxc } : {}),
+                    ...(isVideo ? { video: true } : {}),
                     ...favouriteSize(imgInfoW, imgInfoH),
                 });
             return;
@@ -2066,7 +2163,10 @@
         } else {
             addFavouriteGif({
                 url: full,
-                previewUrl: imageThumbUrl() ?? full,
+                previewUrl: isVideo
+                    ? (videoPosterUrl ?? "")
+                    : (imageThumbUrl() ?? full),
+                ...(isVideo ? { video: true } : {}),
                 // Kept so a GIF sent from the picker goes out under its name.
                 ...(typeof mediaFilename === "string" && mediaFilename
                     ? { name: mediaFilename }
@@ -2123,6 +2223,12 @@
     // Every action this message offers, with full names. Drives the mobile ⋯
     // / long-press sheet and the desktop right-click menu; the hover bar keeps
     // its icon buttons for the everyday ones.
+    const hasReactions = $derived.by(() => {
+        reactionTick;
+        return (
+            eventId.startsWith("$") && getReactions(room, eventId).length > 0
+        );
+    });
     const overflowRows = $derived(
         messageActionsMenu({
             canReact: eventId.startsWith("$") && !isFailed,
@@ -2139,6 +2245,7 @@
             canMarkUnread:
                 eventId.startsWith("$") && !isFailed && !isThreadReply,
             canViewSource: true,
+            canViewReactions: hasReactions,
             canReport: !isOwnMessage && !isFailed,
             canRedact: !isOwnMessage && !isFailed && canRedact,
             canDelete: isOwnMessage,
@@ -2167,6 +2274,47 @@
         if (!isThreadRoot) return null;
         void roomsState.roomsTick;
         return getThreadName(room, eventId);
+    });
+
+    // A Discord thread bridged by ZDMB that was started from this message
+    // (stores/bridgedThreads.svelte.ts). Memoised like threadSummary: one per
+    // row, and the lookup mints a fresh object on every roomsTick.
+    type BridgedChip = {
+        roomId: string;
+        name: string;
+        joined: boolean;
+        numMembers: number | null;
+        unread: boolean;
+        highlight: number;
+    };
+    let lastBridgedChip: BridgedChip | null = null;
+    const bridgedChip = $derived.by((): BridgedChip | null => {
+        void roomsState.roomsTick;
+        void roomsState.unreadTick;
+        const info = isThreadReply
+            ? null
+            : bridgedThreadForEvent(room.roomId, eventId);
+        if (!info) return (lastBridgedChip = null);
+        const counts = info.room
+            ? getRoomUnreadInfo(info.room)
+            : { unread: false, highlight: 0 };
+        const next: BridgedChip = {
+            roomId: info.roomId,
+            name: info.name,
+            joined: info.joined,
+            numMembers: info.numMembers,
+            unread: counts.unread,
+            highlight: counts.highlight,
+        };
+        const prev = lastBridgedChip;
+        if (
+            prev &&
+            (Object.keys(next) as (keyof BridgedChip)[]).every(
+                (k) => prev[k] === next[k],
+            )
+        )
+            return prev;
+        return (lastBridgedChip = next);
     });
 
     // Links to other messages render as an embed of that message instead of
@@ -2472,7 +2620,12 @@
                     closeModal();
                 }}
                 onSelectCustom={async (emoji) => {
-                    await sendReaction(room.roomId, eventId, emoji.mxcUrl);
+                    await sendReaction(
+                        room.roomId,
+                        eventId,
+                        emoji.mxcUrl,
+                        emoji.shortcode,
+                    );
                     closeModal();
                 }}
                 onClose={closeModal}
@@ -2493,11 +2646,11 @@
     bind:this={rootEl}
     class="group {interfaceState.isTouchscreen
         ? 'select-none [-webkit-touch-callout:none]'
-        : 'hover:bg-discord-messageHover'} relative px-4 py-0.5 rounded transition-colors touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-discord-accent {mentionHighlight
-        ? 'bg-discord-warning/10 border-s-2 border-discord-warning'
+        : 'hover:bg-zam-messageHover'} relative px-4 py-0.5 rounded transition-colors touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zam-accent {mentionHighlight
+        ? 'bg-zam-warning/10 border-s-2 border-zam-warning'
         : ''}"
     class:pt-3={showHeader}
-    class:bg-discord-messageHover={mobileSelected}
+    class:bg-zam-messageHover={mobileSelected}
     tabindex="0"
     onmouseenter={() => {
         if (!interfaceState.isTouchscreen) rowHovered = true;
@@ -2612,12 +2765,12 @@
                         }}
                         title={displayName}
                         style:color={nameColour}
-                        class="min-w-0 truncate font-semibold text-sm text-discord-textPrimary hover:underline cursor-pointer"
+                        class="min-w-0 truncate font-semibold text-sm text-zam-textPrimary hover:underline cursor-pointer"
                     >
                         {displayName}
                     </button>
                     <span
-                        class="text-xs text-discord-textMuted whitespace-nowrap flex-shrink-0"
+                        class="text-xs text-zam-textMuted whitespace-nowrap flex-shrink-0"
                         title={fullTimestamp(timestamp)}
                         >{messageTimestamp(timestamp)}</span
                     >
@@ -2629,7 +2782,7 @@
             {:else if bubble.showTimeOnlyHeader}
                 <div class="flex items-baseline gap-2 mb-0.5 justify-end">
                     <span
-                        class="text-xs text-discord-textMuted whitespace-nowrap flex-shrink-0"
+                        class="text-xs text-zam-textMuted whitespace-nowrap flex-shrink-0"
                         title={fullTimestamp(timestamp)}
                         >{messageTimestamp(timestamp)}</span
                     >
@@ -2670,7 +2823,7 @@
             -->
                 <button
                     type="button"
-                    class="flex w-full text-start items-start gap-1 mb-1 rounded cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-discord-accent"
+                    class="flex w-full text-start items-start gap-1 mb-1 rounded cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zam-accent"
                     onclick={(e) => {
                         e.preventDefault();
                         jumpToReply(replyTarget.getId()!);
@@ -2680,19 +2833,19 @@
                         >{t("messageItem.jumpToTheRepliedToMessage")}</span
                     >
                     <Reply
-                        class="w-3.5 h-3.5 text-discord-textMuted flex-shrink-0 self-center"
+                        class="w-3.5 h-3.5 text-zam-textMuted flex-shrink-0 self-center"
                     />
                     <div
-                        class="w-0.5 bg-discord-textMuted rounded-full self-stretch flex-shrink-0 opacity-60"
+                        class="w-0.5 bg-zam-textMuted rounded-full self-stretch flex-shrink-0 opacity-60"
                     ></div>
                     <div class="flex items-center gap-1.5 min-w-0">
                         <span
-                            class="text-xs font-semibold text-discord-textSecondary flex-shrink-0"
+                            class="text-xs font-semibold text-zam-textSecondary flex-shrink-0"
                         >
                             {replyTargetSender}
                         </span>
                         <span
-                            class="text-xs text-discord-textSecondary truncate opacity-80"
+                            class="text-xs text-zam-textSecondary truncate opacity-80"
                         >
                             {replyTargetBody}
                         </span>
@@ -2713,7 +2866,7 @@
                  from the keyboard and read identically to assistive tech. -->
                 <button
                     type="button"
-                    class="flex w-full text-start items-start gap-1 mb-1 rounded cursor-pointer opacity-60 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-discord-accent"
+                    class="flex w-full text-start items-start gap-1 mb-1 rounded cursor-pointer opacity-60 hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zam-accent"
                     onclick={(e) => {
                         e.preventDefault();
                         jumpToReply(inReplyToId);
@@ -2723,16 +2876,15 @@
                         >{t("messageItem.jumpToTheRepliedToMessage")}</span
                     >
                     <div
-                        class="w-0.5 bg-discord-textMuted rounded-full self-stretch flex-shrink-0"
+                        class="w-0.5 bg-zam-textMuted rounded-full self-stretch flex-shrink-0"
                     ></div>
                     <div class="flex items-center gap-1.5 min-w-0">
                         {#if fallbackLine}
                             <span
-                                class="text-xs font-semibold text-discord-textSecondary flex-shrink-0"
+                                class="text-xs font-semibold text-zam-textSecondary flex-shrink-0"
                                 >{fallbackLine.sender}</span
                             >
-                            <span
-                                class="text-xs text-discord-textMuted truncate"
+                            <span class="text-xs text-zam-textMuted truncate"
                                 >{fallbackLine.text || "…"}</span
                             >
                         {:else}
@@ -2742,7 +2894,7 @@
                                  or a non-message type (sticker/poll) — call that
                                  "unavailable", not "deleted", so a decrypting
                                  target is not mislabelled. No parent = not loaded. -->
-                            <span class="text-xs text-discord-textMuted italic"
+                            <span class="text-xs text-zam-textMuted italic"
                                 >{!replyTarget
                                     ? t("messageItem.originalMessageNotLoaded")
                                     : replyTarget.isRedacted()
@@ -2774,7 +2926,7 @@
                         onSave={saveEdit}
                         onCancel={cancelEdit}
                     />
-                    <p class="text-xs text-discord-textMuted mt-1">
+                    <p class="text-xs text-zam-textMuted mt-1">
                         <kbd class="font-mono">Enter</kbd>
                         {t("messageItem.toSave")}
                         <kbd class="font-mono">Esc</kbd>
@@ -2785,12 +2937,12 @@
                             onclick={saveEdit}
                             disabled={isSavingEdit ||
                                 (!editText.trim() && !hasCaption())}
-                            class="px-3 py-1 text-xs font-semibold bg-discord-accent hover:bg-discord-accentHover text-white rounded transition-colors disabled:opacity-50"
+                            class="px-3 py-1 text-xs font-semibold bg-zam-accent hover:bg-zam-accentHover text-white rounded transition-colors disabled:opacity-50"
                             >{t("common.save")}</button
                         >
                         <button
                             onclick={cancelEdit}
-                            class="px-3 py-1 text-xs font-semibold bg-discord-backgroundTertiary hover:bg-discord-messageHover text-discord-textPrimary rounded transition-colors"
+                            class="px-3 py-1 text-xs font-semibold bg-zam-backgroundTertiary hover:bg-zam-messageHover text-zam-textPrimary rounded transition-colors"
                             >{t("common.cancel")}</button
                         >
                     </div>
@@ -2801,7 +2953,7 @@
              modules sent as m.file. -->
             {#snippet audioCard()}
                 <div
-                    class="flex items-center gap-3 p-3 bg-discord-backgroundTertiary rounded-lg mt-1 max-w-sm w-full"
+                    class="flex items-center gap-3 p-3 bg-zam-backgroundTertiary rounded-lg mt-1 max-w-sm w-full"
                 >
                     <!-- MIDI's own player below takes over the play button. -->
                     {#if !(audioIsMidi && audioBlobUrl)}
@@ -2816,7 +2968,7 @@
                                     audioClicked = true;
                                 }
                             }}
-                            class="w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center disabled:opacity-50"
+                            class="w-8 h-8 rounded-full bg-zam-accent flex-shrink-0 flex items-center justify-center disabled:opacity-50"
                             disabled={audioLoading}
                         >
                             {#if audioLoading || (audioStreamUrl && !audioStreamReady)}
@@ -2844,14 +2996,14 @@
                     {/if}
                     <div class="flex-1 min-w-0">
                         <p
-                            class="text-discord-textPrimary text-xs font-medium truncate mb-1"
+                            class="text-zam-textPrimary text-xs font-medium truncate mb-1"
                         >
                             {mediaFilename || t("messageItem.audio")}
                         </p>
                         {#snippet audioBar()}
                             {#if audioProgress?.total}
                                 <div
-                                    class="mt-1 h-1 rounded-full bg-discord-backgroundSecondary overflow-hidden"
+                                    class="mt-1 h-1 rounded-full bg-zam-backgroundSecondary overflow-hidden"
                                     role="progressbar"
                                     aria-label={t("common.loading")}
                                     aria-valuemin="0"
@@ -2863,7 +3015,7 @@
                                     )}
                                 >
                                     <div
-                                        class="h-full bg-discord-accent transition-[width] duration-150"
+                                        class="h-full bg-zam-accent transition-[width] duration-150"
                                         style="width: {Math.round(
                                             (audioProgress.loaded /
                                                 audioProgress.total) *
@@ -2924,8 +3076,8 @@
                         {:else}
                             <p
                                 class="text-xs {audioMode === 'failed'
-                                    ? 'text-discord-danger'
-                                    : 'text-discord-textMuted'}"
+                                    ? 'text-zam-danger'
+                                    : 'text-zam-textMuted'}"
                             >
                                 {audioStatusLabel(audioMode)}
                             </p>
@@ -2937,7 +3089,7 @@
                     {#if msgtype !== "m.file" && (content?.file || content?.url)}
                         <button
                             onclick={downloadAttachment}
-                            class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             title={t("messageItem.download")}
                             aria-label={t("messageItem.download")}
                         >
@@ -2964,7 +3116,7 @@
                         use:matrixLinks
                         use:bodyImageGallery={{ onOpen: openBodyGallery }}
                         dir="auto"
-                        class="message-body text-sm text-discord-textPrimary leading-relaxed break-words"
+                        class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
                     >
                         {#if formattedBody()}
                             {@html withTwemoji(sanitize(formattedBody()!))}
@@ -2972,7 +3124,7 @@
                             {@html withTwemoji(plainToHtml(body()))}
                         {/if}
                         {#if isEdited}
-                            <span class="text-xs text-discord-textMuted ms-1"
+                            <span class="text-xs text-zam-textMuted ms-1"
                                 >{t("messageItem.edited")}</span
                             >
                         {/if}
@@ -2985,547 +3137,606 @@
                 {/if}
             {/snippet}
 
-            <!-- Message body -->
-            {#if isCallEvent}
-                {#if callSummary}
-                    <CallEventCard summary={callSummary} {room} />
-                {/if}
-            {:else if isPoll}
-                <PollBody {event} {room} />
-            {:else if isFileOffer}
-                <FileOfferCard {event} />
-            {:else if gameInvite}
-                <GameInviteCard invite={gameInvite} />
-            {:else if pluginRenderer && !decryptionPending && !isUtd}
-                {@const r = pluginRenderer}
-                {@const ctx = {
-                    roomId: room.roomId,
-                    eventId,
-                    sender: senderId,
-                    type: eventType,
-                    content: { ...(content ?? {}) },
-                    timestamp,
-                    isOwn: isOwnMessage,
-                }}
-                {#key pluginRenderKey}
-                    <div
-                        class="message-body"
-                        data-zam-plugin-render
-                        use:pluginMount={(el) => r.render(el, ctx)}
-                    ></div>
-                {/key}
-            {:else if decryptionPending}
-                <!-- Encrypted, not attempted/failed yet. Neutral copy: the
+            <!-- MSC4553 forward: a label, the original in a quoted block, and
+             where it came from. `contents` leaves a plain message's layout
+             untouched. -->
+            {#if forward}
+                <div
+                    class="forward-label flex min-w-0 items-center gap-1 text-xs italic text-zam-textMuted"
+                >
+                    <CornerUpRight size={12} class="flex-shrink-0" />
+                    <span class="truncate"
+                        >{forwardSenderName
+                            ? t("messageItem.forwardedFrom", {
+                                  name: forwardSenderName,
+                              })
+                            : t("messageItem.forwarded")}</span
+                    >
+                </div>
+            {/if}
+            <div
+                class={forward
+                    ? "forward-block mt-0.5 border-s-[3px] border-zam-divider ps-3 min-w-0"
+                    : "contents"}
+            >
+                <!-- Message body -->
+                {#if isCallEvent}
+                    {#if callSummary}
+                        <CallEventCard summary={callSummary} {room} />
+                    {/if}
+                {:else if isPoll}
+                    <PollBody {event} {room} />
+                {:else if isFileOffer}
+                    <FileOfferCard {event} />
+                {:else if gameInvite}
+                    <GameInviteCard invite={gameInvite} />
+                {:else if pluginRenderer && !decryptionPending && !isUtd}
+                    {@const r = pluginRenderer}
+                    {@const ctx = {
+                        roomId: room.roomId,
+                        eventId,
+                        sender: senderId,
+                        type: eventType,
+                        content: { ...(content ?? {}) },
+                        timestamp,
+                        isOwn: isOwnMessage,
+                    }}
+                    {#key pluginRenderKey}
+                        <div
+                            class="message-body"
+                            data-zam-plugin-render
+                            use:pluginMount={(el) => r.render(el, ctx)}
+                        ></div>
+                    {/key}
+                {:else if decryptionPending}
+                    <!-- Encrypted, not attempted/failed yet. Neutral copy: the
                  missing-keys line would be a claim we cannot make until the
                  decryption attempt actually fails. When it finishes the
                  decryption tick re-runs this derived timeline and the row
                  swaps to real content (or to the UTD branch below). -->
-                <div
-                    class="message-body flex items-center gap-1.5 text-sm italic text-discord-textMuted leading-relaxed animate-pulse"
-                >
-                    <Lock size={14} class="flex-shrink-0" />
-                    <span>{DECRYPTING_MESSAGE_TEXT}</span>
-                </div>
-            {:else if isUtd}
-                <!-- E2EE UTD (unable-to-decrypt) placeholder. The row chrome
+                    <div
+                        class="message-body flex items-center gap-1.5 text-sm italic text-zam-textMuted leading-relaxed animate-pulse"
+                    >
+                        <Lock size={14} class="flex-shrink-0" />
+                        <span>{DECRYPTING_MESSAGE_TEXT}</span>
+                    </div>
+                {:else if isUtd}
+                    <!-- E2EE UTD (unable-to-decrypt) placeholder. The row chrome
                  (avatar / sender / timestamp) is cleartext; only the body is
                  unavailable. When keys arrive mid-session the decryption tick
                  re-runs this derived timeline and the row swaps to real
                  content automatically. -->
-                <div
-                    class="message-body flex items-center gap-1.5 text-sm italic text-discord-textMuted leading-relaxed"
-                >
-                    <Lock size={14} class="flex-shrink-0" />
-                    <span>{utdText}</span>
-                    {#if utdRequestable}
-                        <button
-                            type="button"
-                            class="not-italic text-xs font-medium text-discord-accent hover:underline disabled:opacity-60 disabled:no-underline"
-                            title={t("messageItem.requestKeysHelp")}
-                            disabled={keyRequest !== "idle"}
-                            onclick={onRequestKeys}
-                            >{keyRequest === "idle"
-                                ? t("messageItem.requestKeys")
-                                : t("messageItem.keysRequested")}</button
-                        >
+                    <div
+                        class="message-body flex items-center gap-1.5 text-sm italic text-zam-textMuted leading-relaxed"
+                    >
+                        <Lock size={14} class="flex-shrink-0" />
+                        <span>{utdText}</span>
+                        {#if utdRequestable}
+                            <button
+                                type="button"
+                                class="not-italic text-xs font-medium text-zam-accent hover:underline disabled:opacity-60 disabled:no-underline"
+                                title={t("messageItem.requestKeysHelp")}
+                                disabled={keyRequest !== "idle"}
+                                onclick={onRequestKeys}
+                                >{keyRequest === "idle"
+                                    ? t("messageItem.requestKeys")
+                                    : t("messageItem.keysRequested")}</button
+                            >
+                        {/if}
+                    </div>
+                {:else if eventType === "m.sticker"}
+                    {#if mediaImgRetry.src && !mediaImgRetry.failed}
+                        {#if stickerBox}
+                            <img
+                                src={mediaImgRetry.src}
+                                alt={content?.body ?? "sticker"}
+                                width={stickerBox.width}
+                                height={stickerBox.height}
+                                class="max-w-full h-auto object-contain mt-1"
+                                loading="lazy"
+                                data-own-retry
+                                onerror={mediaImgRetry.onError}
+                            />
+                        {:else}
+                            <img
+                                src={mediaImgRetry.src}
+                                alt={content?.body ?? "sticker"}
+                                class="max-w-48 max-h-48 object-contain mt-1"
+                                loading="lazy"
+                                data-own-retry
+                                onerror={mediaImgRetry.onError}
+                                onload={learnImageSize(mediaSizeKey)}
+                            />
+                        {/if}
                     {/if}
-                </div>
-            {:else if eventType === "m.sticker"}
-                {#if mediaImgRetry.src && !mediaImgRetry.failed}
-                    {#if stickerBox}
-                        <img
-                            src={mediaImgRetry.src}
-                            alt={content?.body ?? "sticker"}
-                            width={stickerBox.width}
-                            height={stickerBox.height}
-                            class="max-w-full h-auto object-contain mt-1"
-                            loading="lazy"
-                            data-own-retry
-                            onerror={mediaImgRetry.onError}
-                        />
-                    {:else}
-                        <img
-                            src={mediaImgRetry.src}
-                            alt={content?.body ?? "sticker"}
-                            class="max-w-48 max-h-48 object-contain mt-1"
-                            loading="lazy"
-                            data-own-retry
-                            onerror={mediaImgRetry.onError}
-                            onload={learnImageSize(mediaSizeKey)}
-                        />
-                    {/if}
-                {/if}
-            {:else if isGallery}
-                {@render mediaCaption()}
-                <GalleryBody
-                    items={galleryItems(content)}
-                    {eventId}
-                    sender={senderId}
-                    ts={timestamp}
-                />
-            {:else if msgtype === "m.image"}
-                {@render mediaCaption()}
-                {@const file = content?.file as EncryptedFile | undefined}
-                {@const thumb = file ? encryptedImageThumbUrl : imageThumbUrl()}
-                {@const full = file ? encryptedImageFullUrl : imageFullUrl()}
-                {@const spoilerHidden =
-                    !spoilerRevealed && isSpoilerMedia(content)}
-                <div
-                    class="relative w-fit max-w-full {spoilerHidden
-                        ? 'min-w-48 min-h-24'
-                        : ''}"
-                >
-                    {#if spoilerHidden}
-                        <button
-                            type="button"
-                            class="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center rounded-lg bg-discord-backgroundDark text-sm font-bold uppercase tracking-wide text-discord-textPrimary hover:bg-discord-backgroundTertiary"
-                            aria-label={t("messageItem.revealSpoiler")}
-                            onclick={() => (spoilerRevealed = true)}
-                        >
-                            {t("messageItem.spoiler")}
-                        </button>
-                    {/if}
-                    <div inert={spoilerHidden} class="contents">
-                        {#if file && imageDecrypting}
-                            <!-- The canvas is always mounted (the effect paints into
+                {:else if isGallery}
+                    {@render mediaCaption()}
+                    <GalleryBody
+                        items={galleryItems(content)}
+                        {eventId}
+                        sender={senderId}
+                        ts={timestamp}
+                    />
+                {:else if msgtype === "m.image"}
+                    {@render mediaCaption()}
+                    {@const file = content?.file as EncryptedFile | undefined}
+                    {@const thumb = file
+                        ? encryptedImageThumbUrl
+                        : imageThumbUrl()}
+                    {@const full = file
+                        ? encryptedImageFullUrl
+                        : imageFullUrl()}
+                    {@const spoilerHidden =
+                        !spoilerRevealed && isSpoilerMedia(content)}
+                    <div
+                        class="relative w-fit max-w-full {spoilerHidden
+                            ? 'min-w-48 min-h-24'
+                            : ''}"
+                    >
+                        {#if spoilerHidden}
+                            <button
+                                type="button"
+                                class="absolute inset-x-0 bottom-0 top-1 z-10 flex items-center justify-center rounded-lg bg-zam-backgroundDark text-sm font-bold uppercase tracking-wide text-zam-textPrimary hover:bg-zam-backgroundTertiary"
+                                aria-label={t("messageItem.revealSpoiler")}
+                                onclick={() => (spoilerRevealed = true)}
+                            >
+                                {t("messageItem.spoiler")}
+                            </button>
+                        {/if}
+                        <div inert={spoilerHidden} class="contents">
+                            {#if file && imageDecrypting}
+                                <!-- The canvas is always mounted (the effect paints into
                      it) but only shown once a first partial frame is drawn.
                      With a sender thumbnail, that sits underneath at the
                      reserved size and the canvas paints over it. -->
-                            <div class="relative inline-block mt-1 max-w-full">
-                                {#if senderThumbUrl}
-                                    <button
-                                        type="button"
-                                        class="block cursor-pointer"
-                                        title={mediaFilename || undefined}
-                                        onclick={openImageUpload}
-                                    >
-                                        <img
-                                            src={senderThumbUrl}
-                                            alt={mediaFilename}
-                                            use:fullImage={imageOriginal}
-                                            width={imageBox?.width}
-                                            height={imageBox?.height}
-                                            class="block rounded-lg {imageBox
-                                                ? 'max-w-full h-auto'
-                                                : 'max-w-lg max-h-96 w-auto h-auto'}"
-                                        />
-                                    </button>
+                                <div
+                                    class="relative inline-block mt-1 max-w-full"
+                                >
+                                    {#if senderThumbUrl}
+                                        <button
+                                            type="button"
+                                            class="block cursor-pointer"
+                                            title={mediaFilename || undefined}
+                                            onclick={openImageUpload}
+                                        >
+                                            <img
+                                                src={senderThumbUrl}
+                                                alt={mediaFilename}
+                                                use:fullImage={imageOriginal}
+                                                width={imageBox?.width}
+                                                height={imageBox?.height}
+                                                class="block rounded-lg {imageBox
+                                                    ? 'max-w-full h-auto'
+                                                    : 'max-w-lg max-h-96 w-auto h-auto'}"
+                                            />
+                                        </button>
+                                    {/if}
+                                    <canvas
+                                        use:frameSink={{
+                                            relay: imagePreview,
+                                            onFrame: () =>
+                                                (imagePreviewing = true),
+                                        }}
+                                        class={senderThumbUrl
+                                            ? "absolute inset-0 w-full h-full rounded-lg pointer-events-none"
+                                            : "block max-w-lg max-h-96 w-auto h-auto rounded-lg"}
+                                        class:hidden={!imagePreviewing}
+                                    ></canvas>
+                                    {#if imagePreviewing || senderThumbUrl}
+                                        <div
+                                            class="absolute inset-x-2 bottom-2 pointer-events-none"
+                                        >
+                                            <MediaProgress
+                                                label={t(
+                                                    "messageItem.decryptingImage",
+                                                )}
+                                                progress={imageProgress}
+                                            />
+                                        </div>
+                                    {/if}
+                                </div>
+                                {#if !imagePreviewing && !senderThumbUrl}
+                                    <MediaProgress
+                                        label={t("messageItem.decryptingImage")}
+                                        progress={imageProgress}
+                                    />
                                 {/if}
-                                <canvas
-                                    use:frameSink={{
-                                        relay: imagePreview,
-                                        onFrame: () => (imagePreviewing = true),
-                                    }}
-                                    class={senderThumbUrl
-                                        ? "absolute inset-0 w-full h-full rounded-lg pointer-events-none"
-                                        : "block max-w-lg max-h-96 w-auto h-auto rounded-lg"}
-                                    class:hidden={!imagePreviewing}
-                                ></canvas>
-                                {#if imagePreviewing || senderThumbUrl}
-                                    <div
-                                        class="absolute inset-x-2 bottom-2 pointer-events-none"
+                            {:else if file && imageDecryptFailed}
+                                <div
+                                    class="flex items-center gap-2 p-3 bg-zam-backgroundSecondary rounded-lg mt-1 max-w-sm"
+                                >
+                                    <svg
+                                        class="w-4 h-4 text-zam-danger"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
                                     >
-                                        <MediaProgress
-                                            label={t(
-                                                "messageItem.decryptingImage",
+                                        <path
+                                            d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                                        />
+                                    </svg>
+                                    <span class="text-xs text-zam-danger"
+                                        >{t(
+                                            "messageItem.couldnTDecryptImage",
+                                        )}</span
+                                    >
+                                </div>
+                            {:else if thumb && !mediaImgRetry.failed}
+                                <div
+                                    class="relative inline-block group/img mt-1"
+                                >
+                                    <a
+                                        href={full}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onclick={(e) => {
+                                            e.preventDefault();
+                                            openImageUpload();
+                                        }}
+                                    >
+                                        {#if imageBox}
+                                            <img
+                                                src={mediaImgRetry.src}
+                                                alt={mediaFilename}
+                                                title={mediaFilename ||
+                                                    undefined}
+                                                width={imageBox.width}
+                                                height={imageBox.height}
+                                                class="max-w-full h-auto rounded-lg object-contain cursor-pointer block"
+                                                loading="lazy"
+                                                use:fullImage={imageOriginal}
+                                                data-own-retry
+                                                onerror={mediaImgRetry.onError}
+                                                style={imageTilePlaceholder}
+                                                onload={() =>
+                                                    (imageTileLoaded = true)}
+                                            />
+                                        {:else}
+                                            <img
+                                                src={mediaImgRetry.src}
+                                                alt={mediaFilename}
+                                                title={mediaFilename ||
+                                                    undefined}
+                                                class={isSvgImage
+                                                    ? "w-96 max-w-full max-h-96 h-auto rounded-lg object-contain cursor-pointer block"
+                                                    : "max-w-lg w-full max-h-96 rounded-lg object-contain cursor-pointer block"}
+                                                loading="lazy"
+                                                use:fullImage={imageOriginal}
+                                                data-own-retry
+                                                onerror={mediaImgRetry.onError}
+                                                style={imageTilePlaceholder}
+                                                onload={(e) => {
+                                                    imageTileLoaded = true;
+                                                    // A vector's size is its declared hint, not
+                                                    // its rendered size, so it is never learned.
+                                                    if (!isSvgImage)
+                                                        learnImageSize(
+                                                            mediaSizeKey,
+                                                        )(e);
+                                                }}
+                                            />
+                                        {/if}
+                                    </a>
+                                    {#if canFavouriteImage}
+                                        {@render favouriteStar(
+                                            mediaIsFavourited,
+                                            toggleMediaFavourite,
+                                            "top-1.5 end-1.5 opacity-0 group-hover/img:opacity-100",
+                                        )}
+                                    {/if}
+                                </div>
+                                {#if uploadGallery}
+                                    {@const ug = uploadGallery}
+                                    {@const unav = galleryNav(
+                                        ug.images.length,
+                                        ug.index,
+                                    )}
+                                    {@const ucur = ug.images[ug.index]}
+                                    {@const uprev = unav.prevIndex}
+                                    {@const unext = unav.nextIndex}
+                                    {#if ucur}
+                                        <Lightbox
+                                            src={ucur.src}
+                                            alt={ucur.alt}
+                                            placeholders={ucur.placeholders}
+                                            dims={ucur.dims}
+                                            mimetype={ucur.mimetype}
+                                            neighbours={{
+                                                prev:
+                                                    uprev !== null
+                                                        ? ug.images[uprev]
+                                                        : null,
+                                                next:
+                                                    unext !== null
+                                                        ? ug.images[unext]
+                                                        : null,
+                                            }}
+                                            onClose={() =>
+                                                (uploadGallery = null)}
+                                            onPrev={uprev !== null
+                                                ? () =>
+                                                      (uploadGallery = {
+                                                          images: ug.images,
+                                                          index: uprev,
+                                                      })
+                                                : undefined}
+                                            onNext={unext !== null
+                                                ? () =>
+                                                      (uploadGallery = {
+                                                          images: ug.images,
+                                                          index: unext,
+                                                      })
+                                                : undefined}
+                                            position={galleryPositionLabel(
+                                                ug.images.length,
+                                                ug.index,
                                             )}
-                                            progress={imageProgress}
                                         />
-                                    </div>
+                                    {/if}
                                 {/if}
-                            </div>
-                            {#if !imagePreviewing && !senderThumbUrl}
-                                <MediaProgress
-                                    label={t("messageItem.decryptingImage")}
-                                    progress={imageProgress}
-                                />
+                            {:else}
+                                <span class="text-xs text-zam-textMuted italic"
+                                    >{t("messageItem.imageUnavailable")}</span
+                                >
                             {/if}
-                        {:else if file && imageDecryptFailed}
-                            <div
-                                class="flex items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm"
+                        </div>
+                    </div>
+                    <!-- Outside the branches above so an encrypted image's viewer,
+                 opened on its thumbnail mid-decrypt, stays open when the
+                 full image lands. -->
+                    {#if imageLightboxOpen && (full || thumb || senderThumbUrl)}
+                        <Lightbox
+                            src={full ?? ""}
+                            alt={mediaFilename}
+                            filename={mediaFilename || undefined}
+                            placeholders={lightboxPlaceholders}
+                            preview={file ? imagePreview : null}
+                            dims={{ w: imgInfoW, h: imgInfoH }}
+                            mimetype={(
+                                content?.info as
+                                    { mimetype?: string } | undefined
+                            )?.mimetype}
+                            favourite={!canFavouriteImage
+                                ? undefined
+                                : file
+                                  ? {
+                                        url: eventFavouriteKey(
+                                            encryptedFavouriteSource,
+                                        ),
+                                        previewUrl: eventFavouriteKey(
+                                            encryptedFavouriteSource,
+                                        ),
+                                        source: encryptedFavouriteSource,
+                                        mxc: encryptedMxc,
+                                    }
+                                  : full
+                                    ? {
+                                          url: full,
+                                          previewUrl: thumb ?? full,
+                                          mxc: imageMediaMxc,
+                                          name: mediaFilename || undefined,
+                                      }
+                                    : undefined}
+                            onClose={() => (imageLightboxOpen = false)}
+                        />
+                    {/if}
+                {:else if msgtype === "m.video"}
+                    {@render mediaCaption()}
+                    <MessageVideo {content} filename={mediaFilename}>
+                        {#snippet overlay(where: "poster" | "player")}
+                            {@render favouriteStar(
+                                mediaIsFavourited,
+                                toggleMediaFavourite,
+                                where === "player"
+                                    ? "top-2 end-11 opacity-0 group-hover/vid:opacity-100 focus-visible:opacity-100"
+                                    : "top-1.5 end-1.5 opacity-0 group-hover/vid:opacity-100 focus-visible:opacity-100",
+                            )}
+                        {/snippet}
+                    </MessageVideo>
+                {:else if msgtype === "m.audio"}
+                    {@render mediaCaption()}
+                    {#if voiceMsg}
+                        {@const file = content?.file as
+                            EncryptedFile | undefined}
+                        <VoiceMessagePlayer
+                            mxcUrl={file ? undefined : (content?.url as string)}
+                            encryptedFile={file}
+                            mimetype={(
+                                content?.info as
+                                    { mimetype?: string } | undefined
+                            )?.mimetype}
+                            waveform={voiceMsg.waveform}
+                            durationMs={voiceMsg.durationMs}
+                        />
+                        {#if pluginAnnotation}
+                            <p
+                                class="mt-1 max-w-sm text-sm whitespace-pre-wrap text-gray-300 select-text"
+                                class:animate-pulse={pluginAnnotation.busy}
+                            >
+                                {pluginAnnotation.text ?? "…"}
+                            </p>
+                        {/if}
+                    {:else}
+                        {@render audioCard()}
+                    {/if}
+                {:else if isVerificationRequest}
+                    <VerificationRequestMessage
+                        {eventId}
+                        senderName={displayName}
+                        isOwn={isOwnMessage}
+                    />
+                {:else if msgtype === "m.location"}
+                    <LocationBody
+                        {content}
+                        senderName={displayName}
+                        senderAvatarUrl={avatarSrc}
+                        isSelf={isOwnMessage}
+                    />
+                {:else if msgtype === "m.file"}
+                    {@const file = content?.file as EncryptedFile | undefined}
+                    {@const fileUrl = file
+                        ? null
+                        : mxcToHttp(content?.url as string)}
+                    {@const fileSize = (content?.info as any)?.size}
+                    {@const fileName = mediaFilename}
+                    {@const isSwf = fileName.toLowerCase().endsWith(".swf")}
+                    {@render mediaCaption()}
+                    {#if isSwf && (file || fileUrl)}
+                        <SwfEmbed
+                            getSrc={() =>
+                                file
+                                    ? fetchDecryptedAttachmentBlob(
+                                          file,
+                                          (
+                                              content?.info as
+                                                  | { mimetype?: string }
+                                                  | undefined
+                                          )?.mimetype,
+                                      )
+                                    : fetchAttachmentBlob(fileUrl!)}
+                        />
+                    {/if}
+                    {#if audioIsTracker || audioIsMidi}
+                        {@render audioCard()}
+                    {/if}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <div
+                        class="flex items-center gap-2 p-3 bg-zam-backgroundSecondary rounded-lg mt-1 max-w-sm w-full"
+                    >
+                        <svg
+                            class="w-8 h-8 text-zam-accent flex-shrink-0"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"
+                            />
+                        </svg>
+                        <div class="min-w-0 flex-1">
+                            <p
+                                class="text-zam-textPrimary text-sm font-medium truncate"
+                            >
+                                {fileName}
+                            </p>
+                            <p class="text-zam-textMuted text-xs">
+                                {#if fileSize}{fileSize / 1024 < 1024
+                                        ? t("messageItem.kb", {
+                                              toFixed: (
+                                                  fileSize / 1024
+                                              ).toFixed(1),
+                                          })
+                                        : t("messageItem.mb", {
+                                              toFixed: (
+                                                  fileSize / 1048576
+                                              ).toFixed(1),
+                                          })}{:else}{t(
+                                        "messageItem.fileAttachment",
+                                    )}{/if}
+                            </p>
+                        </div>
+                        {#if fileUrl || file}
+                            <button
+                                onclick={downloadAttachment}
+                                class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors flex-shrink-0"
+                                title={t("messageItem.download")}
                             >
                                 <svg
-                                    class="w-4 h-4 text-discord-danger"
+                                    class="w-5 h-5"
                                     fill="currentColor"
                                     viewBox="0 0 24 24"
                                 >
                                     <path
-                                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+                                        d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
                                     />
                                 </svg>
-                                <span class="text-xs text-discord-danger"
-                                    >{t(
-                                        "messageItem.couldnTDecryptImage",
-                                    )}</span
-                                >
-                            </div>
-                        {:else if thumb && !mediaImgRetry.failed}
-                            <div class="relative inline-block group/img mt-1">
-                                <a
-                                    href={full}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onclick={(e) => {
-                                        e.preventDefault();
-                                        openImageUpload();
-                                    }}
-                                >
-                                    {#if imageBox}
-                                        <img
-                                            src={mediaImgRetry.src}
-                                            alt={mediaFilename}
-                                            title={mediaFilename || undefined}
-                                            width={imageBox.width}
-                                            height={imageBox.height}
-                                            class="max-w-full h-auto rounded-lg object-contain cursor-pointer block"
-                                            loading="lazy"
-                                            use:fullImage={imageOriginal}
-                                            data-own-retry
-                                            onerror={mediaImgRetry.onError}
-                                            style={imageTilePlaceholder}
-                                            onload={() =>
-                                                (imageTileLoaded = true)}
-                                        />
-                                    {:else}
-                                        <img
-                                            src={mediaImgRetry.src}
-                                            alt={mediaFilename}
-                                            title={mediaFilename || undefined}
-                                            class={isSvgImage
-                                                ? "w-96 max-w-full max-h-96 h-auto rounded-lg object-contain cursor-pointer block"
-                                                : "max-w-lg w-full max-h-96 rounded-lg object-contain cursor-pointer block"}
-                                            loading="lazy"
-                                            use:fullImage={imageOriginal}
-                                            data-own-retry
-                                            onerror={mediaImgRetry.onError}
-                                            style={imageTilePlaceholder}
-                                            onload={(e) => {
-                                                imageTileLoaded = true;
-                                                // A vector's size is its declared hint, not
-                                                // its rendered size, so it is never learned.
-                                                if (!isSvgImage)
-                                                    learnImageSize(
-                                                        mediaSizeKey,
-                                                    )(e);
-                                            }}
-                                        />
-                                    {/if}
-                                </a>
-                                {#if canFavouriteImage}
-                                    <button
-                                        onclick={toggleImageFavourite}
-                                        title={imageIsFavourited
-                                            ? t("common.removeFromFavourites")
-                                            : t("common.addToFavourites")}
-                                        class="absolute top-1.5 end-1.5 p-1 rounded-full bg-black/50 text-white opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-black/70"
-                                    >
-                                        {#if imageIsFavourited}
-                                            <svg
-                                                class="w-4 h-4 text-discord-warning"
-                                                fill="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                                                />
-                                            </svg>
-                                        {:else}
-                                            <svg
-                                                class="w-4 h-4"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                stroke-width="2"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                                                />
-                                            </svg>
-                                        {/if}
-                                    </button>
-                                {/if}
-                            </div>
-                            {#if uploadGallery}
-                                {@const ug = uploadGallery}
-                                {@const unav = galleryNav(
-                                    ug.images.length,
-                                    ug.index,
-                                )}
-                                {@const ucur = ug.images[ug.index]}
-                                {@const uprev = unav.prevIndex}
-                                {@const unext = unav.nextIndex}
-                                {#if ucur}
-                                    <Lightbox
-                                        src={ucur.src}
-                                        alt={ucur.alt}
-                                        placeholders={ucur.placeholders}
-                                        dims={ucur.dims}
-                                        mimetype={ucur.mimetype}
-                                        onClose={() => (uploadGallery = null)}
-                                        onPrev={uprev !== null
-                                            ? () =>
-                                                  (uploadGallery = {
-                                                      images: ug.images,
-                                                      index: uprev,
-                                                  })
-                                            : undefined}
-                                        onNext={unext !== null
-                                            ? () =>
-                                                  (uploadGallery = {
-                                                      images: ug.images,
-                                                      index: unext,
-                                                  })
-                                            : undefined}
-                                        position={galleryPositionLabel(
-                                            ug.images.length,
-                                            ug.index,
-                                        )}
-                                    />
-                                {/if}
-                            {/if}
-                        {:else}
-                            <span class="text-xs text-discord-textMuted italic"
-                                >{t("messageItem.imageUnavailable")}</span
-                            >
+                            </button>
                         {/if}
                     </div>
-                </div>
-                <!-- Outside the branches above so an encrypted image's viewer,
-                 opened on its thumbnail mid-decrypt, stays open when the
-                 full image lands. -->
-                {#if imageLightboxOpen && (full || thumb || senderThumbUrl)}
-                    <Lightbox
-                        src={full ?? ""}
-                        alt={mediaFilename}
-                        filename={mediaFilename || undefined}
-                        placeholders={lightboxPlaceholders}
-                        preview={file ? imagePreview : null}
-                        dims={{ w: imgInfoW, h: imgInfoH }}
-                        mimetype={(
-                            content?.info as { mimetype?: string } | undefined
-                        )?.mimetype}
-                        favourite={!canFavouriteImage
-                            ? undefined
-                            : file
-                              ? {
-                                    url: eventFavouriteKey(
-                                        encryptedFavouriteSource,
-                                    ),
-                                    previewUrl: eventFavouriteKey(
-                                        encryptedFavouriteSource,
-                                    ),
-                                    source: encryptedFavouriteSource,
-                                    mxc: encryptedMxc,
-                                }
-                              : full
-                                ? {
-                                      url: full,
-                                      previewUrl: thumb ?? full,
-                                      mxc: imageMediaMxc,
-                                      name: mediaFilename || undefined,
-                                  }
-                                : undefined}
-                        onClose={() => (imageLightboxOpen = false)}
-                    />
-                {/if}
-            {:else if msgtype === "m.video"}
-                {@render mediaCaption()}
-                <MessageVideo {content} filename={mediaFilename} />
-            {:else if msgtype === "m.audio"}
-                {@render mediaCaption()}
-                {#if voiceMsg}
-                    {@const file = content?.file as EncryptedFile | undefined}
-                    <VoiceMessagePlayer
-                        mxcUrl={file ? undefined : (content?.url as string)}
-                        encryptedFile={file}
-                        mimetype={(
-                            content?.info as { mimetype?: string } | undefined
-                        )?.mimetype}
-                        waveform={voiceMsg.waveform}
-                        durationMs={voiceMsg.durationMs}
-                    />
-                    {#if pluginAnnotation}
-                        <p
-                            class="mt-1 max-w-sm text-sm whitespace-pre-wrap text-gray-300 select-text"
-                            class:animate-pulse={pluginAnnotation.busy}
-                        >
-                            {pluginAnnotation.text ?? "…"}
-                        </p>
-                    {/if}
+                {:else if isEditing}
+                    {@render editBox()}
                 {:else}
-                    {@render audioCard()}
-                {/if}
-            {:else if isVerificationRequest}
-                <VerificationRequestMessage
-                    {eventId}
-                    senderName={displayName}
-                    isOwn={isOwnMessage}
-                />
-            {:else if msgtype === "m.location"}
-                <LocationBody
-                    {content}
-                    senderName={displayName}
-                    senderAvatarUrl={avatarSrc}
-                    isSelf={isOwnMessage}
-                />
-            {:else if msgtype === "m.file"}
-                {@const file = content?.file as EncryptedFile | undefined}
-                {@const fileUrl = file
-                    ? null
-                    : mxcToHttp(content?.url as string)}
-                {@const fileSize = (content?.info as any)?.size}
-                {@const fileName = mediaFilename}
-                {@const isSwf = fileName.toLowerCase().endsWith(".swf")}
-                {@render mediaCaption()}
-                {#if isSwf && (file || fileUrl)}
-                    <SwfEmbed
-                        getSrc={() =>
-                            file
-                                ? fetchDecryptedAttachmentBlob(
-                                      file,
-                                      (
-                                          content?.info as
-                                              { mimetype?: string } | undefined
-                                      )?.mimetype,
-                                  )
-                                : fetchAttachmentBlob(fileUrl!)}
-                    />
-                {/if}
-                {#if audioIsTracker || audioIsMidi}
-                    {@render audioCard()}
-                {/if}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                    class="flex items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full"
-                >
-                    <svg
-                        class="w-8 h-8 text-discord-accent flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"
-                        />
-                    </svg>
-                    <div class="min-w-0 flex-1">
-                        <p
-                            class="text-discord-textPrimary text-sm font-medium truncate"
+                    <div class={bubble.bubble ? "own-bubble" : "contents"}>
+                        <div
+                            use:spoilers
+                            use:matrixLinks
+                            use:bodyImageGallery={{ onOpen: openBodyGallery }}
+                            dir="auto"
+                            class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
+                            class:emoji-only={emojiOnly}
+                            class:italic={msgtype === "m.emote"}
+                            class:opacity-70={msgtype === "m.notice"}
                         >
-                            {fileName}
-                        </p>
-                        <p class="text-discord-textMuted text-xs">
-                            {#if fileSize}{fileSize / 1024 < 1024
-                                    ? t("messageItem.kb", {
-                                          toFixed: (fileSize / 1024).toFixed(1),
-                                      })
-                                    : t("messageItem.mb", {
-                                          toFixed: (fileSize / 1048576).toFixed(
-                                              1,
-                                          ),
-                                      })}{:else}{t(
-                                    "messageItem.fileAttachment",
-                                )}{/if}
-                        </p>
-                    </div>
-                    {#if fileUrl || file}
-                        <button
-                            onclick={downloadAttachment}
-                            class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors flex-shrink-0"
-                            title={t("messageItem.download")}
-                        >
-                            <svg
-                                class="w-5 h-5"
-                                fill="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"
-                                />
-                            </svg>
-                        </button>
-                    {/if}
-                </div>
-            {:else if isEditing}
-                {@render editBox()}
-            {:else}
-                <div class={bubble.bubble ? "own-bubble" : "contents"}>
-                    <div
-                        use:spoilers
-                        use:matrixLinks
-                        use:bodyImageGallery={{ onOpen: openBodyGallery }}
-                        dir="auto"
-                        class="message-body text-sm text-discord-textPrimary leading-relaxed break-words"
-                        class:emoji-only={emojiOnly}
-                        class:italic={msgtype === "m.emote"}
-                        class:opacity-70={msgtype === "m.notice"}
-                    >
-                        {#if msgtype === "m.emote"}
-                            <!-- m.emote: prefix the action with the sender's name so it
+                            {#if msgtype === "m.emote"}
+                                <!-- m.emote: prefix the action with the sender's name so it
                              reads "* Name does something" even in grouped messages
                              where the header is hidden. Uses the same member-name
                              helper as the header (displayName). Rendered as its own
                              span, NEVER concatenated into the {@html} body (that
                              would corrupt the sanitized/escaped output). -->
-                            <span>* {displayName}{" "}</span>
-                        {/if}
-                        {#if formattedBody()}
-                            {@html withTwemoji(sanitize(formattedBody()!))}
-                        {:else}
-                            {@html withTwemoji(plainToHtml(body()))}
-                        {/if}
-                        {#if isEdited}
-                            <span class="text-xs text-discord-textMuted ms-1"
-                                >{t("messageItem.edited")}</span
-                            >
-                        {/if}
-                        {#if receiptSpacerWidth > 0}
-                            <!-- Zero-height stand-in for the out-of-flow receipt
+                                <span>* {emoteActor}{" "}</span>
+                            {/if}
+                            {#if formattedBody()}
+                                {@html withTwemoji(sanitize(formattedBody()!))}
+                            {:else}
+                                {@html withTwemoji(plainToHtml(body()))}
+                            {/if}
+                            {#if isEdited}
+                                <span class="text-xs text-zam-textMuted ms-1"
+                                    >{t("messageItem.edited")}</span
+                                >
+                            {/if}
+                            {#if receiptSpacerWidth > 0}
+                                <!-- Zero-height stand-in for the out-of-flow receipt
                              cluster: free when the last line has room, and wraps
                              to its own line when the text would otherwise run
                              under the avatars at the row's bottom corner. -->
-                            <span
-                                aria-hidden="true"
-                                class="inline-block h-0 align-baseline"
-                                style="width: {receiptSpacerWidth}px"
-                            ></span>
-                        {/if}
+                                <span
+                                    aria-hidden="true"
+                                    class="inline-block h-0 align-baseline"
+                                    style="width: {receiptSpacerWidth}px"
+                                ></span>
+                            {/if}
+                        </div>
                     </div>
-                </div>
-                {#each eventLinks as link (link.href)}
-                    <MessageEmbed
-                        {link}
-                        currentRoomId={room.roomId}
-                        onOpen={() => openMatrixTarget(link)}
-                    />
-                {/each}
-                {#if settingsState.linkPreviewsEnabled}
-                    {#each linkedUrls as url (url)}
-                        <LinkPreview {url} />
+                    {#each eventLinks as link (link.href)}
+                        <MessageEmbed
+                            {link}
+                            currentRoomId={room.roomId}
+                            onOpen={() => openMatrixTarget(link)}
+                        />
                     {/each}
+                    {#if settingsState.linkPreviewsEnabled}
+                        {#each linkedUrls as url (url)}
+                            <LinkPreview {url} />
+                        {/each}
+                    {/if}
                 {/if}
-            {/if}
+                {#if forward && (forwardRoomName || forward.ts)}
+                    {@const fwdTs = forward.ts}
+                    {@const footer = [
+                        forwardRoomName,
+                        fwdTs ? messageTimestamp(fwdTs) : null,
+                    ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    {#if forwardLink}
+                        {@const link = forwardLink}
+                        <button
+                            type="button"
+                            class="forward-source mt-1 block max-w-full truncate text-start text-xs text-zam-textMuted hover:text-zam-textPrimary hover:underline"
+                            title={fwdTs ? fullTimestamp(fwdTs) : undefined}
+                            onclick={() => openMatrixTarget(link)}
+                            >{footer}</button
+                        >
+                    {:else}
+                        <p
+                            class="forward-source mt-1 truncate text-xs text-zam-textMuted"
+                            title={fwdTs ? fullTimestamp(fwdTs) : undefined}
+                        >
+                            {footer}
+                        </p>
+                    {/if}
+                {/if}
+            </div>
 
             <!-- Paged lightbox for this message's OWN inline body images. A single
              media image opens with no dead nav; ≥2 page with the chevrons /
@@ -3541,6 +3752,12 @@
                     <Lightbox
                         src={cur.src}
                         alt={cur.alt}
+                        placeholders={cur.placeholders}
+                        dims={cur.dims}
+                        neighbours={{
+                            prev: prev !== null ? g.images[prev] : null,
+                            next: next !== null ? g.images[next] : null,
+                        }}
                         onClose={() => (bodyGallery = null)}
                         onPrev={prev !== null
                             ? () =>
@@ -3570,7 +3787,7 @@
             {#if isThreadRoot && onOpenThread}
                 <button
                     onclick={() => onOpenThread?.(eventId)}
-                    class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs text-discord-textMuted bg-discord-backgroundSecondary border border-discord-divider hover:text-discord-textPrimary hover:border-discord-accent/50 transition-colors"
+                    class="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs text-zam-textMuted bg-zam-backgroundSecondary border border-zam-divider hover:text-zam-textPrimary hover:border-zam-accent/50 transition-colors"
                     title={t("messageItem.openThread")}
                 >
                     <svg
@@ -3584,17 +3801,62 @@
                     </svg>
                     {#if threadName}
                         <span
-                            class="font-semibold text-discord-textPrimary truncate max-w-48"
+                            class="font-semibold text-zam-textPrimary truncate max-w-48"
                             >{threadName}</span
                         >
                         <span>&middot;</span>
                     {/if}
                     {t("common.replyCount", { count: threadSummary.count })}
                     {#if threadSummary.latestTs > 0}
-                        <span class="text-discord-textMuted"
+                        <span class="text-zam-textMuted"
                             >&middot; {timeOnly(threadSummary.latestTs)}</span
                         >
                     {/if}
+                </button>
+            {/if}
+
+            <!-- Discord thread bridged by ZDMB from this message: opens (or
+                 joins, then opens) the thread's own room. -->
+            {#if bridgedChip}
+                {@const chip = bridgedChip}
+                <button
+                    onclick={() => void openBridgedThread(chip.roomId)}
+                    class="flex items-center gap-1.5 mt-0.5 max-w-full w-fit px-1.5 py-0.5 rounded text-xs text-zam-textMuted bg-zam-backgroundSecondary border border-zam-divider hover:text-zam-textPrimary hover:border-zam-accent/50 transition-colors"
+                    title={chip.joined
+                        ? t("messageItem.openThread")
+                        : t("bridgedThreads.joinThread")}
+                >
+                    <MessagesSquare size={12} class="flex-shrink-0" />
+                    <span
+                        class="font-semibold text-zam-textPrimary truncate max-w-48"
+                        >{chip.name}</span
+                    >
+                    {#if chip.numMembers !== null}
+                        <span class="flex-shrink-0">&middot;</span>
+                        <span class="flex-shrink-0"
+                            >{t("bridgedThreads.memberCount", {
+                                count: chip.numMembers,
+                            })}</span
+                        >
+                    {/if}
+                    {#if !chip.joined}
+                        <span class="flex-shrink-0">&middot;</span>
+                        <span class="flex-shrink-0 text-zam-accent"
+                            >{t("bridgedThreads.joinThread")}</span
+                        >
+                    {:else if chip.highlight > 0}
+                        <span
+                            class="flex-shrink-0 bg-zam-danger text-white font-bold rounded-full px-1.5 min-w-[1.2rem] text-center"
+                            >{chip.highlight > 99
+                                ? "99+"
+                                : chip.highlight}</span
+                        >
+                    {:else if chip.unread}
+                        <span
+                            class="flex-shrink-0 w-2 h-2 rounded-full bg-zam-textPrimary"
+                        ></span>
+                    {/if}
+                    <ChevronRight size={12} class="flex-shrink-0" />
                 </button>
             {/if}
 
@@ -3614,7 +3876,7 @@
             <!-- Failed-send indicator: retry or delete a NOT_SENT local echo -->
             {#if isFailed}
                 <div
-                    class="flex items-center gap-2 px-4 py-0.5 text-xs text-discord-danger"
+                    class="flex items-center gap-2 px-4 py-0.5 text-xs text-zam-danger"
                 >
                     <svg
                         class="w-4 h-4 flex-shrink-0"
@@ -3639,7 +3901,7 @@
                             ? t("messageItem.retrying")
                             : t("common.retry")}
                     </button>
-                    <span class="text-discord-textMuted">·</span>
+                    <span class="text-zam-textMuted">·</span>
                     <button
                         class="font-semibold underline hover:no-underline"
                         onclick={() => deleteFailedMessage(event)}
@@ -3686,7 +3948,7 @@
                         </span>
                     {/each}
                     {#if receiptCluster.overflow > 0}
-                        <span class="text-[10px] text-discord-textMuted ms-1"
+                        <span class="text-[10px] text-zam-textMuted ms-1"
                             >+{receiptCluster.overflow}</span
                         >
                     {/if}
@@ -3716,7 +3978,7 @@
                  longer time spills toward the row edge, not the content. -->
             {#if bubble.showInlineHoverTime}
                 <span
-                    class="absolute start-0 w-[60px] flex justify-end whitespace-nowrap top-1/2 -translate-y-1/2 text-xs text-discord-textMuted opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none select-none"
+                    class="absolute start-0 w-[60px] flex justify-end whitespace-nowrap top-1/2 -translate-y-1/2 text-xs text-zam-textMuted opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none select-none"
                 >
                     {timeOnly(timestamp)}
                 </span>
@@ -3733,10 +3995,10 @@
             <div
                 class="flex items-center justify-center w-9 h-9 rounded-full transition-colors {swipeRevealIcon ===
                 'edit'
-                    ? 'bg-discord-backgroundTertiary text-discord-textPrimary'
+                    ? 'bg-zam-backgroundTertiary text-zam-textPrimary'
                     : swipeRevealIcon === 'reply'
-                      ? 'bg-discord-accent text-white'
-                      : 'bg-discord-backgroundTertiary text-discord-textSecondary'} {swipeRevealIcon !==
+                      ? 'bg-zam-accent text-white'
+                      : 'bg-zam-backgroundTertiary text-zam-textSecondary'} {swipeRevealIcon !==
                     'none' && motionOK()
                     ? 'swipe-armed-pop'
                     : ''}"
@@ -3801,13 +4063,13 @@
                       isEditing
                           ? ''
                           : 'group-focus-visible:flex group-has-[:focus-visible]:flex'
-                  }`} absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg px-1 py-0.5 shadow-md z-20"
+                  }`} absolute end-4 top-0 -translate-y-1/2 items-center gap-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg px-1 py-0.5 shadow-md z-20"
         >
             {#if !interfaceState.isTouchscreen && canEditMessage}
                 <button
                     data-message-action
                     onclick={startEdit}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.editMessage")}
                     aria-label={t("messageItem.editMessage")}
                 >
@@ -3827,9 +4089,9 @@
                     data-message-action
                     onclick={togglePin}
                     disabled={pinning}
-                    class="p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed {isPinned
-                        ? 'text-discord-accent'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary'}"
+                    class="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed {isPinned
+                        ? 'text-zam-accent'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary'}"
                     title={isPinned
                         ? t("messageItem.unpinMessage")
                         : t("messageItem.pinMessage")}
@@ -3859,7 +4121,7 @@
                             openReactionPicker();
                         }
                     }}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.addReaction")}
                     aria-label={t("messageItem.addReaction")}
                     aria-expanded={showEmojiPicker}
@@ -3893,6 +4155,7 @@
                                     room.roomId,
                                     eventId,
                                     emoji.mxcUrl,
+                                    emoji.shortcode,
                                 );
                                 closeModal();
                             }}
@@ -3904,7 +4167,7 @@
             <button
                 data-message-action
                 onclick={() => onReply(event)}
-                class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                 title={t("messageItem.reply")}
                 aria-label={t("messageItem.reply")}
             >
@@ -3921,7 +4184,7 @@
                 <button
                     data-message-action
                     onclick={startEdit}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.editMessage")}
                     aria-label={t("messageItem.editMessage")}
                 >
@@ -3939,7 +4202,7 @@
                 <button
                     data-message-action
                     onclick={() => onOpenThread(threadRootId)}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={isThreadReply
                         ? t("messageItem.openThread")
                         : t("messageItem.replyInThread")}
@@ -3962,7 +4225,7 @@
                 <button
                     data-message-action
                     onclick={openForwardDialog}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.forwardMessage")}
                     aria-label={t("messageItem.forwardMessage")}
                 >
@@ -3974,7 +4237,7 @@
                     <button
                         data-message-action
                         onclick={() => handlePluginAction(view.key)}
-                        class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                        class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                         title={view.label}
                         aria-label={view.label}
                     >
@@ -3996,7 +4259,7 @@
                 <button
                     data-message-action
                     onclick={openActionsSheet}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.moreActions")}
                     aria-label={t("messageItem.moreActions")}
                     aria-haspopup="menu"
@@ -4016,7 +4279,7 @@
                 <button
                     data-message-action
                     onclick={copyMessageLink}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={linkCopied
                         ? t("messageItem.linkCopied")
                         : t("messageItem.copyMessageLink")}
@@ -4035,7 +4298,7 @@
                 <button
                     data-message-action
                     onclick={openViewSourceDialog}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors"
                     title={t("messageItem.viewSource")}
                     aria-label={t("messageItem.viewSource")}
                 >
@@ -4064,7 +4327,7 @@
                  redact on others', so it sits in the same place on both. -->
             {#if !interfaceState.isTouchscreen && isOwnMessage}
                 {#if confirmingDelete}
-                    <span class="text-xs text-discord-textMuted px-1"
+                    <span class="text-xs text-zam-textMuted px-1"
                         >{t("messageItem.delete")}</span
                     >
                     <!--
@@ -4079,7 +4342,7 @@
                         bind:this={deleteYesEl}
                         onclick={() => resolveDelete(true)}
                         onkeydown={onDeleteKeydown}
-                        class="px-2 py-1 rounded text-xs font-semibold text-white bg-discord-danger hover:bg-discord-dangerHover transition-colors focus:outline-none focus:ring-2 focus:ring-discord-danger"
+                        class="px-2 py-1 rounded text-xs font-semibold text-white bg-zam-danger hover:bg-zam-dangerHover transition-colors focus:outline-none focus:ring-2 focus:ring-zam-danger"
                         aria-label={t("messageItem.yesDeleteMessage")}
                         >{t("messageItem.yes")}</button
                     >
@@ -4087,7 +4350,7 @@
                         bind:this={deleteNoEl}
                         onclick={() => resolveDelete(false)}
                         onkeydown={onDeleteKeydown}
-                        class="px-2 py-1 rounded text-xs font-semibold text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                        class="px-2 py-1 rounded text-xs font-semibold text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors focus:outline-none focus:ring-2 focus:ring-zam-accent"
                         aria-label={t("messageItem.noKeepMessage")}
                         >{t("messageItem.no")}</button
                     >
@@ -4099,7 +4362,7 @@
                             if (e.shiftKey) resolveDelete(true);
                             else confirmingDelete = true;
                         }}
-                        class="p-1.5 rounded text-discord-textMuted hover:text-discord-danger hover:bg-discord-messageHover transition-colors"
+                        class="p-1.5 rounded text-zam-textMuted hover:text-zam-danger hover:bg-zam-messageHover transition-colors"
                         title={t("messageItem.deleteMessage")}
                         aria-label={t("messageItem.deleteMessage")}
                     >
@@ -4146,6 +4409,51 @@
     />
 {/if}
 
+{#snippet favouriteStar(
+    active: boolean,
+    toggle: (e: MouseEvent) => void,
+    position: string,
+)}
+    <button
+        type="button"
+        onclick={toggle}
+        title={active
+            ? t("common.removeFromFavourites")
+            : t("common.addToFavourites")}
+        aria-label={active
+            ? t("common.removeFromFavourites")
+            : t("common.addToFavourites")}
+        aria-pressed={active}
+        class="absolute z-10 p-1 rounded-full bg-black/50 text-white transition-opacity hover:bg-black/70 {position}"
+    >
+        {#if active}
+            <svg
+                class="w-4 h-4 text-zam-warning"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                />
+            </svg>
+        {:else}
+            <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                />
+            </svg>
+        {/if}
+    </button>
+{/snippet}
+
 {#snippet sheetPreviewBody()}
     <!-- The long-press sheet's preview: the same body markup the chat log
      renders (formatting, emoji, emote prefix, edited mark), so the sheet shows
@@ -4153,13 +4461,13 @@
     <div
         use:spoilers
         dir="auto"
-        class="message-body text-sm text-discord-textPrimary leading-relaxed break-words"
+        class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
         class:emoji-only={emojiOnly}
         class:italic={msgtype === "m.emote"}
         class:opacity-70={msgtype === "m.notice"}
     >
         {#if msgtype === "m.emote"}
-            <span>* {displayName}{" "}</span>
+            <span>* {emoteActor}{" "}</span>
         {/if}
         {#if formattedBody()}
             {@html withTwemoji(sanitize(formattedBody()!))}
@@ -4167,7 +4475,7 @@
             {@html withTwemoji(plainToHtml(body()))}
         {/if}
         {#if isEdited}
-            <span class="text-xs text-discord-textMuted ms-1"
+            <span class="text-xs text-zam-textMuted ms-1"
                 >{t("messageItem.edited")}</span
             >
         {/if}
@@ -4198,6 +4506,10 @@
     <ForwardMessageDialog {event} />
 {/if}
 
+{#if showReactionsViewer}
+    <ReactionsViewer {room} {eventId} onClose={closeModal} />
+{/if}
+
 {#if showViewSourceDialog}
     <ViewSourceDialog {event} />
 {/if}
@@ -4220,7 +4532,7 @@
     }
     /* Spoiler tags */
     :global([data-mx-spoiler]) {
-        background-color: var(--discord-spoiler-bg);
+        background-color: var(--zam-spoiler-bg);
         color: transparent;
         border-radius: 3px;
         padding: 0 3px;
@@ -4231,7 +4543,7 @@
             background-color 0.15s;
     }
     :global([data-mx-spoiler].revealed) {
-        background-color: var(--discord-spoiler-revealed-bg);
+        background-color: var(--zam-spoiler-revealed-bg);
         color: inherit;
         user-select: text;
     }
@@ -4280,14 +4592,14 @@
         overflow-x: auto;
         max-width: 100%;
         margin: 0.35rem 0;
-        border: 1px solid var(--discord-divider);
+        border: 1px solid var(--zam-divider);
         border-radius: 6px;
-        background: var(--discord-bg-tertiary);
+        background: var(--zam-bg-tertiary);
         padding: 0.75rem;
     }
     :global(.message-body pre code) {
         font-family: "Roboto Mono", Consolas, "Liberation Mono", monospace;
-        font-size: 0.8125rem;
+        font-size: calc(0.8125rem * var(--message-text-scale, 1));
         line-height: 1.5;
     }
     :global(.message-body .hljs-keyword),

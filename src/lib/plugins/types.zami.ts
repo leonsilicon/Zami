@@ -179,6 +179,15 @@ export interface SettingsPageRegistration {
     render(el: HTMLElement): void | (() => void);
 }
 
+/** A section of the Debug settings page, below Zam's own debug tools. For
+ *  developer tooling (inspecting or writing raw data), not user settings. */
+export interface DebugSectionRegistration {
+    id: string;
+    /** Heading shown above the section. */
+    title: string;
+    render(el: HTMLElement): void | (() => void);
+}
+
 /** What a member list row shows beside a user. `subtitle` is the second
  *  line (a status, say); `badge` a short tag after the name. */
 export interface MemberDecoration {
@@ -662,6 +671,37 @@ export interface PluginMidiPlayer {
     close(): void;
 }
 
+interface PluginRingtoneBase {
+    /** Stable within the plugin (letters, digits, `.`, `_`, `-`; max 64). The
+     *  user's choice is stored as `plugin:<pluginId>:<id>`. */
+    id: string;
+    /** Shown in the ringtone picker, as "name (Plugin Name)". */
+    name: string;
+}
+
+/** A ringtone that loops an audio file. `src` is an https:, blob: (e.g. from
+ *  zam.assets.url) or data: URL. Plays at the ringtone volume. */
+export interface PluginRingtoneAudio extends PluginRingtoneBase {
+    src: string;
+    start?: never;
+    stop?: never;
+}
+
+/** A ringtone the plugin makes itself (WebAudio, MIDI through zam.midi, ...).
+ *  `start` runs when the call rings and may return a promise; it has about two
+ *  seconds to start sounding. `stop` runs on answer, decline, the caller giving
+ *  up, the ring's ten-second limit, or the plugin unloading. If `start` throws,
+ *  rejects or hangs, Zam calls `stop` and rings the built-in tone instead, so a
+ *  call always rings. `stop` can run more than once, and before `start` has
+ *  settled, so make it idempotent. */
+export interface PluginRingtoneCallback extends PluginRingtoneBase {
+    src?: never;
+    start(): void | Promise<void>;
+    stop(): void;
+}
+
+export type PluginRingtone = PluginRingtoneAudio | PluginRingtoneCallback;
+
 /** The `zam` object a plugin's `onload` receives (spec §6). */
 export interface ZamPluginApi {
     app: { version: string };
@@ -793,12 +833,15 @@ export interface ZamPluginApi {
         /** A page of the app settings, for more than a `settings` schema
          *  can express. */
         addSettingsPage(page: SettingsPageRegistration): Disposable;
+        /** A section on the Debug settings page, for developer tools. Runs
+         *  each time the page is shown; the cleanup when it is left. */
+        addDebugSection(section: DebugSectionRegistration): Disposable;
         notify(opts: { title?: string; body: string }): void;
         /** Add CSS to the app (a theme, a tweak), after Zam's own styles and
          *  before the user's custom CSS. Removed when the returned handle is
          *  disposed or the plugin unloads. Call it again for a new stylesheet;
          *  each call is its own. The theme's colours are variables set on <html>
-         *  (`--discord-bg`, ...), so override them with `!important`. */
+         *  (`--zam-bg`, ...), so override them with `!important`. */
         addStyles(css: string): Disposable;
     };
 
@@ -964,6 +1007,13 @@ export interface ZamPluginApi {
     /** Needs the "audio" capability. */
     audio: {
         registerMicFilter(filter: MicFilter): Disposable;
+    };
+
+    /** Incoming-call ringtones. Each one shows in Settings > Voice & Audio >
+     *  Ringing once registered, and rings in place of the built-in tone while
+     *  it is selected. Throws on an invalid ringtone or a duplicate id. */
+    ringtones: {
+        register(ringtone: PluginRingtone): Disposable;
     };
 
     /** The plugin's own native code (manifest `native`): desktop and

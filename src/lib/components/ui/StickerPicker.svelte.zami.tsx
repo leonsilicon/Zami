@@ -437,7 +437,7 @@ export default function StickerPicker({
                     >
                         <Text
                             numberOfLines={1}
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {row.label}
                         </Text>
@@ -470,18 +470,18 @@ export default function StickerPicker({
         <View
             className={`${
                 isTouchscreen ? "w-full rounded-t-xl" : "rounded-xl"
-            } relative bg-discord-backgroundSecondary border border-discord-divider shadow-2xl flex flex-col`}
+            } relative bg-zam-backgroundSecondary border border-zam-divider shadow-2xl flex flex-col`}
             style={panelStyle}
         >
             {isTouchscreen && (onSwitchToEmoji || onSwitchToGif) ? (
-                <View className="flex-row border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row border-b border-zam-divider flex-shrink-0">
                     {onSwitchToEmoji ? (
                         <Pressable
                             onPress={onSwitchToEmoji}
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.emoji")}
                             </Text>
                         </Pressable>
@@ -489,9 +489,9 @@ export default function StickerPicker({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: true }}
-                        className="flex-1 py-2 items-center border-b-2 border-discord-accent"
+                        className="flex-1 py-2 items-center border-b-2 border-zam-accent"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("common.stickers")}
                         </Text>
                     </Pressable>
@@ -501,7 +501,7 @@ export default function StickerPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.gifs")}
                             </Text>
                         </Pressable>
@@ -517,7 +517,7 @@ export default function StickerPicker({
                     value={search}
                     onChangeText={setSearch}
                     placeholder={t("stickerPicker.searchStickers")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityRole="search"
                     accessibilityLabel={t("stickerPicker.searchStickers2")}
                     accessibilityState={{ expanded: hasOptions }}
@@ -527,7 +527,7 @@ export default function StickerPicker({
                     // Zami: Enter picks the selected sticker (onSearchKeydown)
                     // and otherwise does nothing, rather than blurring.
                     submitBehavior="submit"
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
 
@@ -535,7 +535,7 @@ export default function StickerPicker({
                 // flex-1 so the empty state centres in the now fixed-height
                 // touch drawer instead of hugging the top of a half-empty box.
                 <View className="flex-1 items-center justify-center py-8 px-4">
-                    <Text className="text-center text-discord-textMuted text-sm">
+                    <Text className="text-center text-zam-textMuted text-sm">
                         {t("stickerPicker.noStickerPacksAvailable")}
                     </Text>
                 </View>
@@ -579,7 +579,7 @@ export default function StickerPicker({
                                     }}
                                     className={`flex-shrink-0 p-1.5 rounded transition-colors ${
                                         activeTab === pack.id
-                                            ? "bg-discord-messageHover"
+                                            ? "bg-zam-messageHover"
                                             : "opacity-40"
                                     }`}
                                 >
@@ -595,7 +595,7 @@ export default function StickerPicker({
                                     ) : pack.id === "user" ? (
                                         <SvgIcon
                                             d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
-                                            className="w-5 h-5 text-discord-textPrimary"
+                                            className="w-5 h-5 text-zam-textPrimary"
                                         />
                                     ) : pack.avatarUrl ? (
                                         <Image
@@ -605,7 +605,7 @@ export default function StickerPicker({
                                             contentFit="cover"
                                         />
                                     ) : (
-                                        <View className="w-5 h-5 rounded-full bg-discord-accent flex items-center justify-center">
+                                        <View className="w-5 h-5 rounded-full bg-zam-accent flex items-center justify-center">
                                             <Text className="text-white text-xs font-bold">
                                                 {pack.name[0]?.toUpperCase() ??
                                                     "?"}
@@ -648,7 +648,7 @@ export default function StickerPicker({
                         contentContainerClassName="px-2 pb-2"
                         ListEmptyComponent={
                             search && !hasOptions ? (
-                                <Text className="text-center text-discord-textMuted text-sm py-8">
+                                <Text className="text-center text-zam-textMuted text-sm py-8">
                                     {t("common.noResults")}
                                 </Text>
                             ) : undefined
@@ -687,7 +687,7 @@ const StickerCell = memo(function StickerCell({
     selection,
     pick,
 }: StickerCellProps & { sticker: CustomSticker }) {
-    // Zami: `class:ring-2` / `class:ring-discord-accent` on the option the
+    // Zami: `class:ring-2` / `class:ring-zam-accent` on the option the
     // cursor is on.
     const selected = useSelected(selection, s);
     return (
@@ -697,8 +697,8 @@ const StickerCell = memo(function StickerCell({
             accessibilityLabel={s.shortcode}
             accessibilityState={{ selected }}
             style={{ width: cell, height: cell }}
-            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${
-                selected ? " border-2 border-discord-accent" : ""
+            className={`p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex items-center justify-center${
+                selected ? " border-2 border-zam-accent" : ""
             }`}
         >
             {/* Zami: `w-full h-full max-w-14 max-h-14`. */}

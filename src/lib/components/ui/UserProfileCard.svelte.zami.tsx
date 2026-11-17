@@ -309,10 +309,10 @@ export default function UserProfileCard({ room }: Props) {
 
     const toneClass = (tone: TrustTone) =>
         tone === "verified"
-            ? "bg-discord-online/20 text-discord-online"
+            ? "bg-zam-online/20 text-zam-online"
             : tone === "warning"
-              ? "bg-discord-warning/20 text-discord-warning"
-              : "bg-discord-messageHover text-discord-textMuted";
+              ? "bg-zam-warning/20 text-zam-warning"
+              : "bg-zam-messageHover text-zam-textMuted";
 
     async function loadTrust() {
         setUserTrust(null);
@@ -394,13 +394,13 @@ export default function UserProfileCard({ room }: Props) {
     // surface instead of the desktop card's.
     const bannerPull = asSheet ? "-mt-5" : "";
     const ringColor = asSheet
-        ? "border-discord-backgroundTertiary"
-        : "border-discord-backgroundSecondary";
+        ? "border-zam-backgroundTertiary"
+        : "border-zam-backgroundSecondary";
 
-    // Zami: the links' `color: var(--discord-link, var(--discord-accent-text))`.
+    // Zami: the links' `color: var(--zam-link, var(--zam-accent-text))`.
     const [linkVar, accentTextVar] = useCSSVariable([
-        "--discord-link",
-        "--discord-accent-text",
+        "--zam-link",
+        "--zam-accent-text",
     ]);
     const linkColour = (linkVar ?? accentTextVar) as string | undefined;
 
@@ -570,10 +570,7 @@ export default function UserProfileCard({ room }: Props) {
     }
 
     const refreshIcon = (
-        <SvgIcon
-            viewBox="0 0 20 20"
-            className="w-3.5 h-3.5 text-discord-textMuted"
-        >
+        <SvgIcon viewBox="0 0 20 20" className="w-3.5 h-3.5 text-zam-textMuted">
             <Path
                 fillRule="evenodd"
                 d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H3.989a.75.75 0 0 0-.75.75v4.242a.75.75 0 0 0 1.5 0v-2.43l.31.31a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm1.23-3.723a.75.75 0 0 0 .219-.53V2.929a.75.75 0 0 0-1.5 0V5.36l-.31-.31A7 7 0 0 0 3.239 8.188a.75.75 0 1 0 1.448.389A5.5 5.5 0 0 1 13.89 6.11l.311.31h-2.432a.75.75 0 0 0 0 1.5h4.243a.75.75 0 0 0 .53-.219Z"
@@ -589,10 +586,10 @@ export default function UserProfileCard({ room }: Props) {
                 <Image
                     source={mediaSource(bannerSrc)}
                     contentFit="cover"
-                    className={`h-16 w-full bg-discord-accent ${bannerPull}`}
+                    className={`h-16 w-full bg-zam-accent ${bannerPull}`}
                 />
             ) : (
-                <View className={`h-16 bg-discord-accent ${bannerPull}`} />
+                <View className={`h-16 bg-zam-accent ${bannerPull}`} />
             )}
 
             <View className="px-4 pb-4">
@@ -620,7 +617,7 @@ export default function UserProfileCard({ room }: Props) {
                 <View className="flex-row items-center gap-1.5 min-w-0">
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink text-base font-bold text-discord-textPrimary"
+                        className="flex-shrink text-base font-bold text-zam-textPrimary"
                         style={nameColour ? { color: nameColour } : undefined}
                     >
                         {displayName}
@@ -629,10 +626,10 @@ export default function UserProfileCard({ room }: Props) {
                         <Text
                             className={`flex-shrink-0 px-1.5 py-0.5 rounded overflow-hidden text-[10px] font-semibold uppercase ${
                                 trustBadge.tone === "verified"
-                                    ? "bg-discord-online/20 text-discord-online"
+                                    ? "bg-zam-online/20 text-zam-online"
                                     : trustBadge.tone === "warning"
-                                      ? "bg-discord-warning/20 text-discord-warning"
-                                      : "bg-discord-messageHover text-discord-textMuted"
+                                      ? "bg-zam-warning/20 text-zam-warning"
+                                      : "bg-zam-messageHover text-zam-textMuted"
                             }`}
                         >
                             {trustBadge.label}
@@ -642,7 +639,7 @@ export default function UserProfileCard({ room }: Props) {
                 <View className="flex-row items-center gap-1 min-w-0">
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink text-xs text-discord-textMuted"
+                        className="flex-shrink text-xs text-zam-textMuted"
                     >
                         {userId}
                     </Text>
@@ -650,16 +647,16 @@ export default function UserProfileCard({ room }: Props) {
                         accessibilityRole="button"
                         accessibilityLabel={t("userProfileCard.copyUserId")}
                         onPress={() => void copyUserId()}
-                        className="flex-shrink-0 p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                        className="flex-shrink-0 p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                     >
                         {copied ? (
-                            <Text className="text-xs text-discord-online">
+                            <Text className="text-xs text-zam-online">
                                 {t("userProfileCard.copied")}
                             </Text>
                         ) : (
                             <SvgIcon
                                 d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
-                                className="w-3.5 h-3.5 text-discord-textMuted"
+                                className="w-3.5 h-3.5 text-zam-textMuted"
                             />
                         )}
                     </Pressable>
@@ -667,7 +664,7 @@ export default function UserProfileCard({ room }: Props) {
                 {pronouns ? (
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textSecondary"
+                        className="text-xs text-zam-textSecondary"
                     >
                         {pronouns}
                     </Text>
@@ -675,7 +672,7 @@ export default function UserProfileCard({ room }: Props) {
                 {status && (
                     <Text
                         numberOfLines={1}
-                        className="mt-1 text-xs text-discord-textSecondary"
+                        className="mt-1 text-xs text-zam-textSecondary"
                     >
                         {formatStatusMessage(status)}
                     </Text>
@@ -683,7 +680,7 @@ export default function UserProfileCard({ room }: Props) {
                 {!status && callText ? (
                     <Text
                         numberOfLines={1}
-                        className="mt-1 text-xs text-discord-textSecondary"
+                        className="mt-1 text-xs text-zam-textSecondary"
                     >
                         {callText}
                     </Text>
@@ -692,7 +689,7 @@ export default function UserProfileCard({ room }: Props) {
                 !isSameStatus(presence.statusMsg, status) ? (
                     <Text
                         numberOfLines={1}
-                        className="mt-1 text-xs text-discord-textSecondary"
+                        className="mt-1 text-xs text-zam-textSecondary"
                     >
                         {presence.statusMsg}
                     </Text>
@@ -705,7 +702,7 @@ export default function UserProfileCard({ room }: Props) {
                         nestedScrollEnabled
                         className="mt-2 max-h-24 flex-grow-0"
                     >
-                        <Text className="text-xs text-discord-textSecondary">
+                        <Text className="text-xs text-zam-textSecondary">
                             {bio}
                         </Text>
                     </ScrollView>
@@ -727,7 +724,7 @@ export default function UserProfileCard({ room }: Props) {
                     />
                 ))}
                 {localTime ? (
-                    <Text className="mt-2 text-xs text-discord-textMuted">
+                    <Text className="mt-2 text-xs text-zam-textMuted">
                         {t("userProfileCard.localTime", {
                             localTime,
                             timezone,
@@ -756,7 +753,7 @@ export default function UserProfileCard({ room }: Props) {
                     </View>
                 )}
                 {member && (
-                    <Text className="mt-1 text-xs text-discord-textMuted">
+                    <Text className="mt-1 text-xs text-zam-textMuted">
                         {hasImmutableCreatorPower(room, member.userId)
                             ? t("userProfileCard.powerLevelCreator")
                             : t("userProfileCard.powerLevel", {
@@ -765,14 +762,14 @@ export default function UserProfileCard({ room }: Props) {
                     </Text>
                 )}
                 {!member && !isSelf && (
-                    <Text className="mt-1 text-xs text-discord-textMuted">
+                    <Text className="mt-1 text-xs text-zam-textMuted">
                         {t("userProfileCard.notAMemberOfThisRoom")}
                     </Text>
                 )}
 
                 {!isSelf && mutual.total > 0 && (
-                    <View className="mt-3 pt-3 border-t border-discord-divider">
-                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1">
+                    <View className="mt-3 pt-3 border-t border-zam-divider">
+                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1">
                             {t("userProfileCard.mutualRooms", {
                                 total: mutual.total,
                             })}
@@ -781,13 +778,13 @@ export default function UserProfileCard({ room }: Props) {
                             <Text
                                 key={name}
                                 numberOfLines={1}
-                                className="text-xs text-discord-textSecondary"
+                                className="text-xs text-zam-textSecondary"
                             >
                                 #{name}
                             </Text>
                         ))}
                         {mutual.moreCount > 0 && (
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("userProfileCard.more", {
                                     moreCount: mutual.moreCount,
                                 })}
@@ -797,7 +794,7 @@ export default function UserProfileCard({ room }: Props) {
                 )}
 
                 {isCryptoAvailable() && (
-                    <View className="mt-3 pt-3 border-t border-discord-divider">
+                    <View className="mt-3 pt-3 border-t border-zam-divider">
                         <View className="flex-row items-center gap-1">
                             <Pressable
                                 accessibilityRole="button"
@@ -809,7 +806,7 @@ export default function UserProfileCard({ room }: Props) {
                                     button's text color as `currentColor`. */}
                                 <SvgIcon
                                     viewBox="0 0 20 20"
-                                    className={`w-3 h-3 flex-shrink-0 transition-transform text-discord-textMuted ${
+                                    className={`w-3 h-3 flex-shrink-0 transition-transform text-zam-textMuted ${
                                         sessionsOpen
                                             ? "rotate-90"
                                             : "rtl:rotate-180"
@@ -823,7 +820,7 @@ export default function UserProfileCard({ room }: Props) {
                                 </SvgIcon>
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs font-semibold text-discord-textMuted uppercase tracking-wide hover:text-discord-textPrimary"
+                                    className="flex-shrink text-xs font-semibold text-zam-textMuted uppercase tracking-wide hover:text-zam-textPrimary"
                                 >
                                     {devices
                                         ? t("userProfileCard.sessionsCount", {
@@ -843,7 +840,7 @@ export default function UserProfileCard({ room }: Props) {
                                     accessibilityLabel={t(
                                         "userProfileCard.refreshSessions",
                                     )}
-                                    className={`flex-shrink-0 p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                                    className={`flex-shrink-0 p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                         devicesLoading ? "opacity-50" : ""
                                     }`}
                                 >
@@ -857,15 +854,15 @@ export default function UserProfileCard({ room }: Props) {
                         </View>
                         {sessionsOpen &&
                             (devices === null && devicesLoading ? (
-                                <Text className="mt-1 text-xs text-discord-textMuted">
+                                <Text className="mt-1 text-xs text-zam-textMuted">
                                     {t("common.loading")}
                                 </Text>
                             ) : devicesError && devices === null ? (
-                                <Text className="mt-1 text-xs text-discord-danger">
+                                <Text className="mt-1 text-xs text-zam-danger">
                                     {t("userProfileCard.couldNotLoadSessions")}
                                 </Text>
                             ) : devices && devices.length === 0 ? (
-                                <Text className="mt-1 text-xs text-discord-warning">
+                                <Text className="mt-1 text-xs text-zam-warning">
                                     {t("userProfileCard.noKnownSessions")}
                                 </Text>
                             ) : devices ? (
@@ -894,7 +891,7 @@ export default function UserProfileCard({ room }: Props) {
                                                     <View className="flex-1 min-w-0">
                                                         <Text
                                                             numberOfLines={1}
-                                                            className="text-xs text-discord-textSecondary"
+                                                            className="text-xs text-zam-textSecondary"
                                                         >
                                                             {device.displayName ||
                                                                 device.deviceId}
@@ -904,7 +901,7 @@ export default function UserProfileCard({ room }: Props) {
                                                                 numberOfLines={
                                                                     1
                                                                 }
-                                                                className="text-[10px] font-mono text-discord-textMuted"
+                                                                className="text-[10px] font-mono text-zam-textMuted"
                                                             >
                                                                 {
                                                                     device.deviceId
@@ -924,14 +921,14 @@ export default function UserProfileCard({ room }: Props) {
                                         })}
                                     </ScrollView>
                                     {devices.some((d) => d.keysChanged) && (
-                                        <Text className="mt-1 text-xs text-discord-warning">
+                                        <Text className="mt-1 text-xs text-zam-warning">
                                             {t(
                                                 "userProfileCard.keysChangedHint",
                                             )}
                                         </Text>
                                     )}
                                     {devicesError && (
-                                        <Text className="mt-1 text-xs text-discord-danger">
+                                        <Text className="mt-1 text-xs text-zam-danger">
                                             {t(
                                                 "userProfileCard.couldNotLoadSessions",
                                             )}
@@ -943,13 +940,13 @@ export default function UserProfileCard({ room }: Props) {
                 )}
 
                 {!isSelf && (
-                    <View className="mt-3 pt-3 border-t border-discord-divider gap-1.5">
+                    <View className="mt-3 pt-3 border-t border-zam-divider gap-1.5">
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void openDM()}
                             disabled={pending !== null}
                             accessibilityState={{ disabled: pending !== null }}
-                            className={`w-full px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors ${
+                            className={`w-full px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors ${
                                 pending !== null ? "opacity-50" : ""
                             }`}
                         >
@@ -967,11 +964,11 @@ export default function UserProfileCard({ room }: Props) {
                                 accessibilityState={{
                                     disabled: pending !== null,
                                 }}
-                                className={`w-full px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                                className={`w-full px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                     pending !== null ? "opacity-50" : ""
                                 }`}
                             >
-                                <Text className="text-center text-discord-textPrimary text-sm font-semibold">
+                                <Text className="text-center text-zam-textPrimary text-sm font-semibold">
                                     {pending === "verify"
                                         ? t("common.starting")
                                         : t("userProfileCard.verifyUser")}
@@ -983,15 +980,15 @@ export default function UserProfileCard({ room }: Props) {
                             onPress={() => void toggleBlock()}
                             disabled={pending !== null}
                             accessibilityState={{ disabled: pending !== null }}
-                            className={`w-full px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                            className={`w-full px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                 pending !== null ? "opacity-50" : ""
                             }`}
                         >
                             <Text
                                 className={`text-center text-sm font-semibold ${
                                     blocked
-                                        ? "text-discord-textPrimary"
-                                        : "text-discord-danger"
+                                        ? "text-zam-textPrimary"
+                                        : "text-zam-danger"
                                 }`}
                             >
                                 {pending === "block"
@@ -1013,11 +1010,11 @@ export default function UserProfileCard({ room }: Props) {
                                         accessibilityState={{
                                             disabled: pending !== null,
                                         }}
-                                        className={`flex-1 px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-warning/20 active:bg-discord-warning/20 transition-colors ${
+                                        className={`flex-1 px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-warning/20 active:bg-zam-warning/20 transition-colors ${
                                             pending !== null ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-center text-discord-warning text-sm font-semibold">
+                                        <Text className="text-center text-zam-warning text-sm font-semibold">
                                             {pending === "kick"
                                                 ? t("userProfileCard.kicking")
                                                 : confirming === "kick"
@@ -1036,11 +1033,11 @@ export default function UserProfileCard({ room }: Props) {
                                         accessibilityState={{
                                             disabled: pending !== null,
                                         }}
-                                        className={`flex-1 px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-danger/20 active:bg-discord-danger/20 transition-colors ${
+                                        className={`flex-1 px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-danger/20 active:bg-zam-danger/20 transition-colors ${
                                             pending !== null ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-center text-discord-danger text-sm font-semibold">
+                                        <Text className="text-center text-zam-danger text-sm font-semibold">
                                             {pending === "ban"
                                                 ? t("userProfileCard.banning")
                                                 : confirming === "ban"
@@ -1058,11 +1055,11 @@ export default function UserProfileCard({ room }: Props) {
 
                 {isSelf && (
                     // Same card others see, plus what only the owner can do.
-                    <View className="mt-3 pt-3 border-t border-discord-divider gap-1.5">
+                    <View className="mt-3 pt-3 border-t border-zam-divider gap-1.5">
                         <Pressable
                             accessibilityRole="button"
                             onPress={editOwnProfile}
-                            className="w-full px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors"
+                            className="w-full px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors"
                         >
                             <Text className="text-center text-white text-sm font-semibold">
                                 {t("userProfileCard.editProfile")}
@@ -1072,15 +1069,15 @@ export default function UserProfileCard({ room }: Props) {
                 )}
 
                 {pluginActions.length > 0 && (
-                    <View className="mt-3 pt-3 border-t border-discord-divider gap-1.5">
+                    <View className="mt-3 pt-3 border-t border-zam-divider gap-1.5">
                         {pluginActions.map((entry) => (
                             <Pressable
                                 key={entry.entryId}
                                 accessibilityRole="button"
                                 onPress={() => runPluginAction(entry.value)}
-                                className="w-full px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                className="w-full px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                             >
-                                <Text className="text-center text-discord-textPrimary text-sm font-semibold">
+                                <Text className="text-center text-zam-textPrimary text-sm font-semibold">
                                     {String(entry.value.label)}
                                 </Text>
                             </Pressable>
@@ -1089,7 +1086,7 @@ export default function UserProfileCard({ room }: Props) {
                 )}
 
                 {errorMsg && (
-                    <Text className="mt-2 text-xs text-discord-danger">
+                    <Text className="mt-2 text-xs text-zam-danger">
                         {errorMsg}
                     </Text>
                 )}
@@ -1116,7 +1113,7 @@ export default function UserProfileCard({ room }: Props) {
                     setCardW(e.nativeEvent.layout.width);
                     setCardH(e.nativeEvent.layout.height);
                 }}
-                className="z-50 bg-discord-backgroundSecondary border border-discord-divider shadow-xl overflow-hidden absolute w-72 rounded-lg"
+                className="z-50 bg-zam-backgroundSecondary border border-zam-divider shadow-xl overflow-hidden absolute w-72 rounded-lg"
                 style={{ left: position.left, top: position.top }}
             >
                 {cardBody()}

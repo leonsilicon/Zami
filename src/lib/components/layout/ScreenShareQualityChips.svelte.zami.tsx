@@ -9,9 +9,11 @@ import {
     setScreenShareResolution,
     setScreenShareFps,
     setShareSystemAudio,
+    setNativeScreenShare,
     setScreenShareBitrate,
     setUploadSpeedOverride,
 } from "$lib/stores/settings.svelte";
+import { nativeShareAvailable } from "$lib/desktopScreenShare";
 import {
     measuredUpload,
     screenShareBitrateCeiling,
@@ -43,10 +45,13 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
         () => settingsState.uploadSpeedOverride,
     );
     const shareSystemAudio = useRune(() => settingsState.shareSystemAudio);
+    const nativeScreenShare = useRune(() => settingsState.nativeScreenShare);
 
     // Live mode = a share is currently running and onQualityChange adjusts it.
     // Setup mode = pre-share settings, onQualityChange is undefined.
     const isLive = onQualityChange !== undefined;
+    // The Windows desktop app's capture helper (matrix/call/nativeShare).
+    const nativeOffered = nativeShareAvailable();
 
     function pickRes(key: string): void {
         setScreenShareResolution(key);
@@ -116,12 +121,12 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
     // Zami: the chip's text classes are split off onto its Text (`chipText`,
     // `chipTextOn`, `chipTextOff`), as text styles don't inherit here.
     const chipBase = "px-2.5 py-1 rounded border transition-colors";
-    const chipOn = "bg-discord-accent border-discord-accent";
+    const chipOn = "bg-zam-accent border-zam-accent";
     const chipOff =
-        "bg-discord-backgroundTertiary border-transparent hover:bg-discord-messageHover";
+        "bg-zam-backgroundTertiary border-transparent hover:bg-zam-messageHover";
     const chipText = "text-xs font-medium";
     const chipTextOn = "text-white";
-    const chipTextOff = "text-discord-textMuted";
+    const chipTextOff = "text-zam-textMuted";
 
     // Zami: the input's text while it is being edited. `onchange` (blur or
     // Return) commits it; until then the field shows the saved figure.
@@ -134,7 +139,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
     return (
         <View className="gap-3">
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                     {t("screenShareQualityChips.resolution")}
                 </Text>
                 <View className="flex-row flex-wrap gap-1.5">
@@ -166,7 +171,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                 </View>
             </View>
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                     {t("screenShareQualityChips.frameRate")}
                 </Text>
                 <View className="flex-row flex-wrap gap-1.5">
@@ -197,7 +202,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
             </View>
             {codecs && codecChoices.length > 0 && (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                         {t("screenShareQualityChips.videoCodec")}
                     </Text>
                     <View className="flex-row flex-wrap gap-1.5">
@@ -248,7 +253,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                             </Pressable>
                         ))}
                     </View>
-                    <Text className="text-xs text-discord-textMuted mt-0.5">
+                    <Text className="text-xs text-zam-textMuted mt-0.5">
                         {codecs.picked !== codecs.current
                             ? t(
                                   "screenShareQualityChips.codecEncryptedFallbackHint",
@@ -268,10 +273,10 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
             )}
             <View>
                 <View className="flex-row items-baseline justify-between gap-2 mb-1.5">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("screenShareQualityChips.bitrate")}
                     </Text>
-                    <Text className="text-xs text-discord-textPrimary tabular-nums">
+                    <Text className="text-xs text-zam-textPrimary tabular-nums">
                         {`${t("screenShareQualityChips.bitrateUpTo")} ${bitrateLabel(shownBitrate)}`}
                     </Text>
                 </View>
@@ -288,10 +293,10 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                     }
                     onChangeEnd={(position) => commitBitrate(position)}
                 />
-                <Text className="text-xs text-discord-textMuted mt-0.5">
+                <Text className="text-xs text-zam-textMuted mt-0.5">
                     {t("screenShareQualityChips.bitrateCapHint")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mt-0.5">
+                <Text className="text-xs text-zam-textMuted mt-0.5">
                     {overridden && measured !== null
                         ? t("screenShareQualityChips.bitrateOverridden", {
                               upload: bitrateLabel(measured),
@@ -307,7 +312,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                             })}
                 </Text>
                 <View className="flex-row items-center justify-between gap-2 mt-1.5">
-                    <Text className="flex-shrink text-xs text-discord-textMuted">
+                    <Text className="flex-shrink text-xs text-zam-textMuted">
                         {t("screenShareQualityChips.uploadOverride")}
                     </Text>
                     {/* Zami: `text-end` isn't React Native's; `inputmode="decimal"`
@@ -319,11 +324,11 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                         keyboardType="decimal-pad"
                         autoComplete="off"
                         autoCorrect={false}
-                        className="w-24 px-2 py-1 rounded text-xs bg-discord-backgroundTertiary text-discord-textPrimary border border-transparent focus:border-discord-accent outline-none"
+                        className="w-24 px-2 py-1 rounded text-xs bg-zam-backgroundTertiary text-zam-textPrimary border border-transparent focus:border-zam-accent outline-none"
                         placeholder={t(
                             "screenShareQualityChips.uploadOverrideAuto",
                         )}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         value={uploadText ?? savedUploadText}
                         onChangeText={setUploadText}
                         onEndEditing={(e) => {
@@ -332,17 +337,17 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                         }}
                     />
                 </View>
-                <Text className="text-xs text-discord-textMuted mt-0.5">
+                <Text className="text-xs text-zam-textMuted mt-0.5">
                     {t("screenShareQualityChips.uploadOverrideHint")}
                 </Text>
             </View>
             <View className="flex-row items-center justify-between gap-3">
                 <View className="flex-shrink">
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("screenShareQualityChips.shareSystemAudio")}
                     </Text>
                     {isLive && (
-                        <Text className="text-xs text-discord-textMuted mt-0.5">
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
                             {t("screenShareQualityChips.appliesToNextShare")}
                         </Text>
                     )}
@@ -359,6 +364,23 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                     }
                 />
             </View>
+            {nativeOffered && (
+                <View className="flex-row items-center justify-between gap-3">
+                    <View className="flex-shrink">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("screenShareQualityChips.nativeCapture")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
+                            {t("screenShareQualityChips.nativeCaptureHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={nativeScreenShare}
+                        onChange={(v) => setNativeScreenShare(v)}
+                        label={t("screenShareQualityChips.nativeCapture")}
+                    />
+                </View>
+            )}
         </View>
     );
 }

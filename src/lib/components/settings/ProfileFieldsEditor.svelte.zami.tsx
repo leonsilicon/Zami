@@ -97,12 +97,11 @@ function savedFields(extProfile: ExtendedProfile | null) {
 }
 
 const inputClass =
-    "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none";
+    "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none";
 const smallButtonClass =
-    "px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-30 transition-colors";
+    "px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-30 transition-colors";
 // Zami: the text half of smallButtonClass, for the Text inside.
-const smallButtonTextClass =
-    "text-discord-textMuted hover:text-discord-textPrimary";
+const smallButtonTextClass = "text-zam-textMuted hover:text-zam-textPrimary";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text; `block` is dropped. A
@@ -366,13 +365,13 @@ export default function ProfileFieldsEditor({
     if (!extProfile) return null;
     return (
         <View className="gap-4">
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                 {t("profileFieldsEditor.moreAboutYou")}
             </Text>
 
             {allowed(PROFILE_FIELDS.banner) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.banner")}
                     </Text>
                     {bannerSrc ? (
@@ -391,7 +390,7 @@ export default function ProfileFieldsEditor({
                             accessibilityRole="button"
                             onPress={selectBanner}
                             disabled={bannerUploading}
-                            className="px-3 py-1.5 bg-discord-accent rounded disabled:opacity-50"
+                            className="px-3 py-1.5 bg-zam-accent rounded disabled:opacity-50"
                         >
                             <Text className="text-white text-sm">
                                 {bannerUploading
@@ -403,9 +402,9 @@ export default function ProfileFieldsEditor({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setBannerMxc(null)}
-                                className="px-3 py-1.5 bg-discord-backgroundTertiary rounded"
+                                className="px-3 py-1.5 bg-zam-backgroundTertiary rounded"
                             >
-                                <Text className="text-discord-textPrimary text-sm">
+                                <Text className="text-zam-textPrimary text-sm">
                                     {t("common.remove")}
                                 </Text>
                             </Pressable>
@@ -417,10 +416,10 @@ export default function ProfileFieldsEditor({
             {allowed(PROFILE_FIELDS.call) && (
                 <View className="flex-row items-center gap-3">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("profileFieldsEditor.showWhenIAmInA")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("profileFieldsEditor.addsInACallToYour")}
                         </Text>
                     </View>
@@ -434,19 +433,19 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.pronouns) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.pronouns")}
                     </Text>
                     <TextInput
                         value={pronounsText}
                         onChangeText={setPronounsText}
                         placeholder={t("profileFieldsEditor.sheHerTheyThem")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         accessibilityLabel={t("profileFieldsEditor.pronouns")}
                         autoCapitalize="none"
                         className={`mt-1 ${inputClass}`}
                     />
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t(
                             "profileFieldsEditor.separateWithCommasMostPreferredFirst",
                         )}
@@ -456,7 +455,7 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.status) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.status")}
                     </Text>
                     <View className="mt-1 flex-row gap-2">
@@ -465,11 +464,11 @@ export default function ProfileFieldsEditor({
                             onChangeText={setStatusEmoji}
                             maxLength={MAX_STATUS_EMOJI_LENGTH}
                             placeholder="🌴"
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "profileFieldsEditor.statusEmoji",
                             )}
-                            className="w-16 bg-discord-backgroundTertiary text-discord-textPrimary text-sm text-center rounded px-2 py-2 outline-none"
+                            className="w-16 bg-zam-backgroundTertiary text-zam-textPrimary text-sm text-center rounded px-2 py-2 outline-none"
                         />
                         <Pressable
                             accessibilityRole="button"
@@ -478,11 +477,11 @@ export default function ProfileFieldsEditor({
                                 "profileFieldsEditor.pickAStatusEmoji",
                             )}
                             accessibilityState={{ expanded: emojiPickerOpen }}
-                            className="px-2 justify-center rounded bg-discord-backgroundTertiary"
+                            className="px-2 justify-center rounded bg-zam-backgroundTertiary"
                         >
                             <Smile
                                 size={18}
-                                className="text-discord-textMuted hover:text-discord-textPrimary"
+                                className="text-zam-textMuted hover:text-zam-textPrimary"
                             />
                         </Pressable>
                         <TextInput
@@ -492,11 +491,11 @@ export default function ProfileFieldsEditor({
                             placeholder={t(
                                 "profileFieldsEditor.onHolidayUntilThe23rd",
                             )}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "profileFieldsEditor.statusText",
                             )}
-                            className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
+                            className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none"
                         />
                     </View>
                     {/* Zami: the picker is a list, which can't sit inline in
@@ -535,7 +534,7 @@ export default function ProfileFieldsEditor({
                         </Portal>
                     )}
                     {statusIssue ? (
-                        <Text className="mt-1 text-xs text-discord-danger">
+                        <Text className="mt-1 text-xs text-zam-danger">
                             {statusIssue}
                         </Text>
                     ) : null}
@@ -544,7 +543,7 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.biography) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.bio")}
                     </Text>
                     {/* Zami: rows="4" → numberOfLines (Android) and a four-line
@@ -559,7 +558,7 @@ export default function ProfileFieldsEditor({
                         placeholder={t(
                             "profileFieldsEditor.tellPeopleAboutYourself",
                         )}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         accessibilityLabel={t("profileFieldsEditor.bio")}
                         className={`mt-1 min-h-24 ${inputClass}`}
                     />
@@ -568,7 +567,7 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.timezone) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.timezone")}
                     </Text>
                     <View className="mt-1 flex-row gap-2">
@@ -580,7 +579,7 @@ export default function ProfileFieldsEditor({
                                     accessibilityLabel={t(
                                         "profileFieldsEditor.timezoneRegion",
                                     )}
-                                    className="w-2/5 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-2 outline-none"
+                                    className="w-2/5 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-2 outline-none"
                                     options={[
                                         {
                                             value: "",
@@ -601,7 +600,7 @@ export default function ProfileFieldsEditor({
                                     accessibilityLabel={t(
                                         "profileFieldsEditor.timezoneCity",
                                     )}
-                                    className="flex-1 min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-2 outline-none disabled:opacity-50"
+                                    className="flex-1 min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-2 outline-none disabled:opacity-50"
                                     options={[
                                         {
                                             value: "",
@@ -626,27 +625,27 @@ export default function ProfileFieldsEditor({
                                 placeholder={t(
                                     "profileFieldsEditor.europeLondon",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "profileFieldsEditor.timezone",
                                 )}
                                 autoCapitalize="none"
                                 autoCorrect={false}
-                                className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
+                                className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none"
                             />
                         )}
                         <Pressable
                             accessibilityRole="button"
                             onPress={useBrowserTimezone}
-                            className="px-3 py-1.5 justify-center bg-discord-backgroundTertiary rounded"
+                            className="px-3 py-1.5 justify-center bg-zam-backgroundTertiary rounded"
                         >
-                            <Text className="text-discord-textPrimary text-sm">
+                            <Text className="text-zam-textPrimary text-sm">
                                 {t("profileFieldsEditor.useMine")}
                             </Text>
                         </Pressable>
                     </View>
                     {timezoneIssue ? (
-                        <Text className="mt-1 text-xs text-discord-danger">
+                        <Text className="mt-1 text-xs text-zam-danger">
                             {timezoneIssue}
                         </Text>
                     ) : null}
@@ -655,7 +654,7 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.usernameColour) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.usernameColour")}
                     </Text>
                     {colourDark && colourLight ? (
@@ -679,7 +678,7 @@ export default function ProfileFieldsEditor({
                                         {displayName || userId}
                                     </Text>
                                 </View>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("profileFieldsEditor.darkThemes")}
                                 </Text>
                             </View>
@@ -702,7 +701,7 @@ export default function ProfileFieldsEditor({
                                         {displayName || userId}
                                     </Text>
                                 </View>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("profileFieldsEditor.lightThemes")}
                                 </Text>
                             </View>
@@ -722,15 +721,15 @@ export default function ProfileFieldsEditor({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={chooseColour}
-                                className="px-3 py-1.5 bg-discord-backgroundTertiary rounded"
+                                className="px-3 py-1.5 bg-zam-backgroundTertiary rounded"
                             >
-                                <Text className="text-discord-textPrimary text-sm">
+                                <Text className="text-zam-textPrimary text-sm">
                                     {t("profileFieldsEditor.chooseAColour")}
                                 </Text>
                             </Pressable>
                         </View>
                     )}
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("profileFieldsEditor.oneColourForDarkThemesAnd")}
                     </Text>
                 </View>
@@ -738,7 +737,7 @@ export default function ProfileFieldsEditor({
 
             {allowed(PROFILE_FIELDS.connections) && (
                 <View>
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("profileFieldsEditor.links")}
                     </Text>
                     <View className="mt-1 gap-2">
@@ -751,11 +750,11 @@ export default function ProfileFieldsEditor({
                                     }
                                     maxLength={MAX_CONNECTION_DESCRIPTION}
                                     placeholder={t("profileFieldsEditor.label")}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     accessibilityLabel={t(
                                         "profileFieldsEditor.linkLabel",
                                     )}
-                                    className="w-1/3 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
+                                    className="w-1/3 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none"
                                 />
                                 <TextInput
                                     value={row.uri}
@@ -765,14 +764,14 @@ export default function ProfileFieldsEditor({
                                     placeholder={t(
                                         "profileFieldsEditor.httpsExampleOrg",
                                     )}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     accessibilityLabel={t(
                                         "profileFieldsEditor.linkAddress",
                                     )}
                                     keyboardType="url"
                                     autoCapitalize="none"
                                     autoCorrect={false}
-                                    className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
+                                    className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none"
                                 />
                                 <Pressable
                                     accessibilityRole="button"
@@ -793,15 +792,15 @@ export default function ProfileFieldsEditor({
                             accessibilityRole="button"
                             onPress={addConnection}
                             disabled={connectionRows.length >= MAX_CONNECTIONS}
-                            className="self-start px-3 py-1.5 bg-discord-backgroundTertiary rounded disabled:opacity-50"
+                            className="self-start px-3 py-1.5 bg-zam-backgroundTertiary rounded disabled:opacity-50"
                         >
-                            <Text className="text-discord-textPrimary text-sm">
+                            <Text className="text-zam-textPrimary text-sm">
                                 {t("profileFieldsEditor.addLink")}
                             </Text>
                         </Pressable>
                     </View>
                     {connectionsIssue ? (
-                        <Text className="mt-1 text-xs text-discord-danger">
+                        <Text className="mt-1 text-xs text-zam-danger">
                             {connectionsIssue}
                         </Text>
                     ) : null}
@@ -813,16 +812,16 @@ export default function ProfileFieldsEditor({
                     accessibilityRole="button"
                     onPress={save}
                     disabled={busy || !dirty || !!problem || bannerUploading}
-                    className="px-4 py-2 bg-discord-accent rounded disabled:opacity-50"
+                    className="px-4 py-2 bg-zam-accent rounded disabled:opacity-50"
                 >
                     <Text className="text-white text-sm">
                         {busy ? t("common.saving") : t("common.save")}
                     </Text>
                 </Pressable>
                 {error ? (
-                    <Text className="text-xs text-discord-danger">{error}</Text>
+                    <Text className="text-xs text-zam-danger">{error}</Text>
                 ) : saved ? (
-                    <Text className="text-xs text-discord-textPositive">
+                    <Text className="text-xs text-zam-textPositive">
                         {t("profileFieldsEditor.saved")}
                     </Text>
                 ) : null}
@@ -855,7 +854,7 @@ function ColourInput({
     return (
         <View className="flex-row items-center gap-1">
             <View
-                className="w-10 h-8 rounded border border-discord-divider"
+                className="w-10 h-8 rounded border border-zam-divider"
                 style={{ backgroundColor: value }}
             />
             <TextInput
@@ -870,7 +869,7 @@ function ColourInput({
                 autoCapitalize="none"
                 autoCorrect={false}
                 maxLength={7}
-                className="text-xs text-discord-textMuted font-mono w-16"
+                className="text-xs text-zam-textMuted font-mono w-16"
             />
         </View>
     );

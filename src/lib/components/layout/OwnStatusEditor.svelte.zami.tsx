@@ -103,7 +103,7 @@ export default function OwnStatusEditor({ onDone }: Props) {
                     onPress={() => setPickerOpen(!pickerOpen)}
                     accessibilityLabel={t("ownStatusEditor.pickAStatusEmoji")}
                     accessibilityState={{ expanded: pickerOpen }}
-                    className="w-9 flex-shrink-0 flex-row items-center justify-center rounded bg-discord-backgroundTertiary"
+                    className="w-9 flex-shrink-0 flex-row items-center justify-center rounded bg-zam-backgroundTertiary"
                 >
                     {emoji ? (
                         // Zami: renderPlainTextWithTwemoji → plain text; iOS
@@ -112,7 +112,7 @@ export default function OwnStatusEditor({ onDone }: Props) {
                     ) : (
                         <Smile
                             size={16}
-                            className="text-discord-textMuted hover:text-discord-textPrimary"
+                            className="text-zam-textMuted hover:text-zam-textPrimary"
                         />
                     )}
                 </Pressable>
@@ -121,13 +121,13 @@ export default function OwnStatusEditor({ onDone }: Props) {
                     onChangeText={setText}
                     maxLength={MAX_STATUS_TEXT_LENGTH}
                     placeholder={t("ownStatusEditor.whatSHappening")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("ownStatusEditor.statusText")}
                     // Zami: Enter → the return key.
                     onSubmitEditing={() => void save()}
                     submitBehavior="submit"
                     returnKeyType="done"
-                    className="flex-1 min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2.5 py-1.5"
+                    className="flex-1 min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2.5 py-1.5"
                 />
             </View>
             <View className="flex-row gap-1.5">
@@ -138,7 +138,7 @@ export default function OwnStatusEditor({ onDone }: Props) {
                     accessibilityState={{
                         disabled: busy || !dirty || !!problem,
                     }}
-                    className={`px-3 py-1 bg-discord-accent rounded ${
+                    className={`px-3 py-1 bg-zam-accent rounded ${
                         busy || !dirty || !!problem ? "opacity-50" : ""
                     }`}
                 >
@@ -152,23 +152,21 @@ export default function OwnStatusEditor({ onDone }: Props) {
                         onPress={() => void save(true)}
                         disabled={busy}
                         accessibilityState={{ disabled: busy }}
-                        className={`px-3 py-1 bg-discord-backgroundTertiary rounded ${
+                        className={`px-3 py-1 bg-zam-backgroundTertiary rounded ${
                             busy ? "opacity-50" : ""
                         }`}
                     >
-                        <Text className="text-discord-textPrimary text-xs font-medium">
+                        <Text className="text-zam-textPrimary text-xs font-medium">
                             {t("ownStatusEditor.clearStatus")}
                         </Text>
                     </Pressable>
                 )}
             </View>
             {problem && dirty ? (
-                <Text className="text-xs text-discord-textMuted">
-                    {problem}
-                </Text>
+                <Text className="text-xs text-zam-textMuted">{problem}</Text>
             ) : null}
             {error ? (
-                <Text className="text-xs text-discord-danger">{error}</Text>
+                <Text className="text-xs text-zam-danger">{error}</Text>
             ) : null}
 
             {picker && isTouchscreen ? <Portal>{picker}</Portal> : picker}

@@ -378,15 +378,15 @@ export default function CallParticipantMenu({
                 ref={profileButton}
                 accessibilityRole="button"
                 onPress={onProfile}
-                className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors"
+                className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors"
             >
-                <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                     {t("callParticipantMenu.profile")}
                 </Text>
             </Pressable>
             {isSelf && (
                 <>
-                    <View className="w-full h-px bg-discord-divider my-1" />
+                    <View className="w-full h-px bg-zam-divider my-1" />
 
                     {/* Input (Microphone) accordion */}
                     <Pressable
@@ -400,23 +400,23 @@ export default function CallParticipantMenu({
                         accessibilityState={{
                             expanded: openSection === "input",
                         }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2"
                     >
                         {/* Zami: `mirror:` (`:dir(rtl)`) → Uniwind's `rtl:`. */}
                         <ChevronRight
                             size={14}
-                            className={`text-discord-textSecondary transition-transform flex-shrink-0 ${
+                            className={`text-zam-textSecondary transition-transform flex-shrink-0 ${
                                 openSection === "input"
                                     ? "rotate-90"
                                     : "rtl:-scale-x-100"
                             }`}
                         />
-                        <Text className="flex-shrink-0 text-sm text-discord-textSecondary">
+                        <Text className="flex-shrink-0 text-sm text-zam-textSecondary">
                             {t("callParticipantMenu.input")}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
+                            className="flex-shrink text-xs text-zam-textMuted truncate ms-auto"
                         >
                             {activeDeviceLabel(mics, audioInputDeviceId)}
                         </Text>
@@ -429,18 +429,18 @@ export default function CallParticipantMenu({
                                 accessibilityState={{
                                     selected: !audioInputDeviceId,
                                 }}
-                                className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2 ps-6"
+                                className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2 ps-6"
                             >
                                 <View className="w-3 flex-row items-center justify-center">
                                     {!audioInputDeviceId && (
                                         <Circle
                                             size={8}
                                             fill="currentColor"
-                                            className="text-discord-textSecondary"
+                                            className="text-zam-textSecondary"
                                         />
                                     )}
                                 </View>
-                                <Text className="text-sm text-discord-textSecondary">
+                                <Text className="text-sm text-zam-textSecondary">
                                     {t("common.default")}
                                 </Text>
                             </Pressable>
@@ -452,20 +452,20 @@ export default function CallParticipantMenu({
                                     accessibilityState={{
                                         selected: audioInputDeviceId === m.id,
                                     }}
-                                    className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2 ps-6"
+                                    className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2 ps-6"
                                 >
                                     <View className="w-3 flex-row items-center justify-center">
                                         {audioInputDeviceId === m.id && (
                                             <Circle
                                                 size={8}
                                                 fill="currentColor"
-                                                className="text-discord-textSecondary"
+                                                className="text-zam-textSecondary"
                                             />
                                         )}
                                     </View>
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink truncate text-sm text-discord-textSecondary"
+                                        className="flex-shrink truncate text-sm text-zam-textSecondary"
                                     >
                                         {m.label}
                                     </Text>
@@ -474,7 +474,7 @@ export default function CallParticipantMenu({
                         </>
                     )}
 
-                    <View className="w-full h-px bg-discord-divider my-1" />
+                    <View className="w-full h-px bg-zam-divider my-1" />
 
                     {/* Output (Speaker) accordion */}
                     <Pressable
@@ -488,22 +488,22 @@ export default function CallParticipantMenu({
                         accessibilityState={{
                             expanded: openSection === "output",
                         }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2"
                     >
                         <ChevronRight
                             size={14}
-                            className={`text-discord-textSecondary transition-transform flex-shrink-0 ${
+                            className={`text-zam-textSecondary transition-transform flex-shrink-0 ${
                                 openSection === "output"
                                     ? "rotate-90"
                                     : "rtl:-scale-x-100"
                             }`}
                         />
-                        <Text className="flex-shrink-0 text-sm text-discord-textSecondary">
+                        <Text className="flex-shrink-0 text-sm text-zam-textSecondary">
                             {t("callParticipantMenu.output")}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
+                            className="flex-shrink text-xs text-zam-textMuted truncate ms-auto"
                         >
                             {activeDeviceLabel(speakers, audioOutputDeviceId)}
                         </Text>
@@ -516,18 +516,18 @@ export default function CallParticipantMenu({
                                 accessibilityState={{
                                     selected: !audioOutputDeviceId,
                                 }}
-                                className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2 ps-6"
+                                className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2 ps-6"
                             >
                                 <View className="w-3 flex-row items-center justify-center">
                                     {!audioOutputDeviceId && (
                                         <Circle
                                             size={8}
                                             fill="currentColor"
-                                            className="text-discord-textSecondary"
+                                            className="text-zam-textSecondary"
                                         />
                                     )}
                                 </View>
-                                <Text className="text-sm text-discord-textSecondary">
+                                <Text className="text-sm text-zam-textSecondary">
                                     {t("common.default")}
                                 </Text>
                             </Pressable>
@@ -539,20 +539,20 @@ export default function CallParticipantMenu({
                                     accessibilityState={{
                                         selected: audioOutputDeviceId === s.id,
                                     }}
-                                    className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2 ps-6"
+                                    className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2 ps-6"
                                 >
                                     <View className="w-3 flex-row items-center justify-center">
                                         {audioOutputDeviceId === s.id && (
                                             <Circle
                                                 size={8}
                                                 fill="currentColor"
-                                                className="text-discord-textSecondary"
+                                                className="text-zam-textSecondary"
                                             />
                                         )}
                                     </View>
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink truncate text-sm text-discord-textSecondary"
+                                        className="flex-shrink truncate text-sm text-zam-textSecondary"
                                     >
                                         {s.label}
                                     </Text>
@@ -569,9 +569,9 @@ export default function CallParticipantMenu({
                         onPress={onMessage}
                         disabled={pending !== null}
                         accessibilityState={{ disabled: pending !== null }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                     >
-                        <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                             {pending === "message"
                                 ? t("callParticipantMenu.opening")
                                 : t("callParticipantMenu.message")}
@@ -580,23 +580,23 @@ export default function CallParticipantMenu({
                     <Pressable
                         accessibilityRole="button"
                         onPress={onMention}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors"
                     >
-                        <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                             {t("callParticipantMenu.mention")}
                         </Text>
                     </Pressable>
 
-                    <View className="w-full h-px bg-discord-divider my-1" />
+                    <View className="w-full h-px bg-zam-divider my-1" />
 
                     {/* Zami: the `<label for>` names the slider, and the
                         `<datalist>` tick at 100% is the slider's `ticks`. */}
                     <View className="px-3 py-1.5">
                         <View className="flex-row items-center justify-between gap-2">
-                            <Text className="flex-shrink text-xs text-discord-textMuted uppercase font-semibold tracking-wide">
+                            <Text className="flex-shrink text-xs text-zam-textMuted uppercase font-semibold tracking-wide">
                                 {t("callParticipantMenu.userVolume")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted tabular-nums flex-shrink-0">
+                            <Text className="text-xs text-zam-textMuted tabular-nums flex-shrink-0">
                                 {Math.round(audio.volume * 100)}%
                             </Text>
                         </View>
@@ -617,10 +617,10 @@ export default function CallParticipantMenu({
                     </View>
                     <View className="px-3 py-1.5">
                         <View className="flex-row items-center justify-between gap-2">
-                            <Text className="flex-shrink text-xs text-discord-textMuted uppercase font-semibold tracking-wide">
+                            <Text className="flex-shrink text-xs text-zam-textMuted uppercase font-semibold tracking-wide">
                                 {t("callParticipantMenu.soundboardVolume")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted tabular-nums flex-shrink-0">
+                            <Text className="text-xs text-zam-textMuted tabular-nums flex-shrink-0">
                                 {Math.round(audio.soundVolume * 100)}%
                             </Text>
                         </View>
@@ -642,10 +642,10 @@ export default function CallParticipantMenu({
                     {sharesAudio && (
                         <View className="px-3 py-1.5">
                             <View className="flex-row items-center justify-between gap-2">
-                                <Text className="flex-shrink text-xs text-discord-textMuted uppercase font-semibold tracking-wide">
+                                <Text className="flex-shrink text-xs text-zam-textMuted uppercase font-semibold tracking-wide">
                                     {t("callParticipantMenu.shareVolume")}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted tabular-nums flex-shrink-0">
+                                <Text className="text-xs text-zam-textMuted tabular-nums flex-shrink-0">
                                     {Math.round(audio.shareVolume * 100)}%
                                 </Text>
                             </View>
@@ -669,18 +669,18 @@ export default function CallParticipantMenu({
                         accessibilityRole="button"
                         onPress={() => setUserLocalMute(userId, !audio.muted)}
                         accessibilityState={{ selected: audio.muted }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2"
                     >
                         <View className="w-3 flex-row items-center justify-center">
                             {audio.muted && (
                                 <Circle
                                     size={8}
                                     fill="currentColor"
-                                    className="text-discord-textSecondary"
+                                    className="text-zam-textSecondary"
                                 />
                             )}
                         </View>
-                        <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                             {t("common.mute")}
                         </Text>
                     </Pressable>
@@ -691,18 +691,18 @@ export default function CallParticipantMenu({
                                 setUserShareMute(userId, !audio.shareMuted)
                             }
                             accessibilityState={{ selected: audio.shareMuted }}
-                            className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                            className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2"
                         >
                             <View className="w-3 flex-row items-center justify-center">
                                 {audio.shareMuted && (
                                     <Circle
                                         size={8}
                                         fill="currentColor"
-                                        className="text-discord-textSecondary"
+                                        className="text-zam-textSecondary"
                                     />
                                 )}
                             </View>
-                            <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                                 {t("callParticipantMenu.muteShare")}
                             </Text>
                         </Pressable>
@@ -713,32 +713,32 @@ export default function CallParticipantMenu({
                             setUserVideoHidden(userId, !audio.videoHidden)
                         }
                         accessibilityState={{ selected: audio.videoHidden }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+                        className="w-full px-3 py-1.5 hover:bg-zam-messageHover transition-colors flex-row items-center gap-2"
                     >
                         <View className="w-3 flex-row items-center justify-center">
                             {audio.videoHidden && (
                                 <Circle
                                     size={8}
                                     fill="currentColor"
-                                    className="text-discord-textSecondary"
+                                    className="text-zam-textSecondary"
                                 />
                             )}
                         </View>
-                        <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                             {t("callParticipantMenu.hideVideo")}
                         </Text>
                     </Pressable>
 
-                    <View className="w-full h-px bg-discord-divider my-1" />
+                    <View className="w-full h-px bg-zam-divider my-1" />
 
                     <Pressable
                         accessibilityRole="button"
                         onPress={onToggleBlock}
                         disabled={pending !== null}
                         accessibilityState={{ disabled: pending !== null }}
-                        className="w-full px-3 py-1.5 hover:bg-discord-danger active:bg-discord-danger transition-colors disabled:opacity-50"
+                        className="w-full px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger transition-colors disabled:opacity-50"
                     >
-                        <Text className="text-sm text-discord-danger hover:text-white">
+                        <Text className="text-sm text-zam-danger hover:text-white">
                             {pending === "block"
                                 ? t("common.saving")
                                 : blocked
@@ -748,7 +748,7 @@ export default function CallParticipantMenu({
                     </Pressable>
 
                     {(gates.canKick || gates.canBan) && (
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                     )}
                     {gates.canKick && (
                         <Pressable
@@ -756,11 +756,11 @@ export default function CallParticipantMenu({
                             onPress={() => void onKick()}
                             disabled={pending !== null}
                             accessibilityState={{ disabled: pending !== null }}
-                            className="w-full px-3 py-1.5 hover:bg-discord-danger active:bg-discord-danger transition-colors disabled:opacity-50"
+                            className="w-full px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger transition-colors disabled:opacity-50"
                         >
                             <Text
                                 numberOfLines={1}
-                                className="text-sm text-discord-danger hover:text-white truncate"
+                                className="text-sm text-zam-danger hover:text-white truncate"
                             >
                                 {pending === "kick"
                                     ? t("callParticipantMenu.kicking")
@@ -780,11 +780,11 @@ export default function CallParticipantMenu({
                             onPress={() => void onBan()}
                             disabled={pending !== null}
                             accessibilityState={{ disabled: pending !== null }}
-                            className="w-full px-3 py-1.5 hover:bg-discord-danger active:bg-discord-danger transition-colors disabled:opacity-50"
+                            className="w-full px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger transition-colors disabled:opacity-50"
                         >
                             <Text
                                 numberOfLines={1}
-                                className="text-sm text-discord-danger hover:text-white truncate"
+                                className="text-sm text-zam-danger hover:text-white truncate"
                             >
                                 {pending === "ban"
                                     ? t("callParticipantMenu.banning")
@@ -802,7 +802,7 @@ export default function CallParticipantMenu({
     );
 
     const menuClass =
-        "absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl min-w-44 max-w-56";
+        "absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl min-w-44 max-w-56";
 
     return (
         <Portal>

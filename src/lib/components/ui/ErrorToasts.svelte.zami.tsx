@@ -69,12 +69,12 @@ export default function ErrorToasts() {
                         role={toast.tone === "accent" ? "status" : "alert"}
                         className={`w-[90%] sm:w-auto sm:max-w-md rounded-lg border-s-4 ${
                             toast.tone === "accent"
-                                ? "border-discord-accent"
-                                : "border-discord-danger"
-                        } bg-discord-backgroundTertiary shadow-lg px-4 py-2.5`}
+                                ? "border-zam-accent"
+                                : "border-zam-danger"
+                        } bg-zam-backgroundTertiary shadow-lg px-4 py-2.5`}
                     >
                         <View className="flex-row items-start gap-3">
-                            <Text className="min-w-0 flex-1 text-discord-textPrimary text-sm">
+                            <Text className="min-w-0 flex-1 text-zam-textPrimary text-sm">
                                 {toast.message}
                             </Text>
                             <Pressable
@@ -84,24 +84,21 @@ export default function ErrorToasts() {
                                 className="-me-1 shrink-0 transition-colors"
                                 onPress={() => dismissToast(toast.id)}
                             >
-                                <X
-                                    size={16}
-                                    className="text-discord-textMuted"
-                                />
+                                <X size={16} className="text-zam-textMuted" />
                             </Pressable>
                         </View>
                         {toast.action && (
                             <View className="mt-2 flex-row justify-end">
                                 <Pressable
                                     accessibilityRole="button"
-                                    className="shrink-0 px-2 py-1 rounded bg-discord-messageHover hover:bg-discord-accent transition-colors"
+                                    className="shrink-0 px-2 py-1 rounded bg-zam-messageHover hover:bg-zam-accent transition-colors"
                                     onPress={() => {
                                         const action = toast.action;
                                         dismissToast(toast.id);
                                         action?.run();
                                     }}
                                 >
-                                    <Text className="text-discord-textPrimary text-xs">
+                                    <Text className="text-zam-textPrimary text-xs">
                                         {toast.action.label}
                                     </Text>
                                 </Pressable>
