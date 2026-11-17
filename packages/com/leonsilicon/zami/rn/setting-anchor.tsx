@@ -59,7 +59,7 @@ export function SettingAnchor({ anchor, children, ...props }: SettingAnchorProps
       <Animated.View
         pointerEvents="none"
         style={wash}
-        className="absolute inset-0 bg-[rgb(var(--discord-mention-highlight-rgb)_/_0.35)]"
+        className="absolute inset-0 bg-[rgb(var(--zam-mention-highlight-rgb)_/_0.35)]"
       />
       {children}
     </View>

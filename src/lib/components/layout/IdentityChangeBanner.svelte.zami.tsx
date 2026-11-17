@@ -43,9 +43,9 @@ export default function IdentityChangeBanner() {
                         <View
                             key={alert.userId}
                             accessibilityRole="alert"
-                            className="flex-row items-center gap-3 rounded-lg border border-discord-danger/50 bg-discord-backgroundSecondary px-4 py-2.5 shadow-lg"
+                            className="flex-row items-center gap-3 rounded-lg border border-zam-danger/50 bg-zam-backgroundSecondary px-4 py-2.5 shadow-lg"
                         >
-                            <Text className="flex-shrink min-w-0 text-sm text-discord-textPrimary">
+                            <Text className="flex-shrink min-w-0 text-sm text-zam-textPrimary">
                                 {alert.own
                                     ? t("identityChange.own")
                                     : t("identityChange.other", {
@@ -61,7 +61,7 @@ export default function IdentityChangeBanner() {
                                                 alert.userId,
                                             )
                                         }
-                                        className="flex-shrink-0 rounded bg-discord-accent px-3 py-1 hover:opacity-90"
+                                        className="flex-shrink-0 rounded bg-zam-accent px-3 py-1 hover:opacity-90"
                                     >
                                         <Text className="text-sm font-medium text-white">
                                             {t("identityChange.accept")}
@@ -75,9 +75,9 @@ export default function IdentityChangeBanner() {
                                                     alert.userId,
                                                 )
                                             }
-                                            className="flex-shrink-0 rounded bg-discord-backgroundTertiary px-3 py-1"
+                                            className="flex-shrink-0 rounded bg-zam-backgroundTertiary px-3 py-1"
                                         >
-                                            <Text className="text-sm text-discord-textPrimary">
+                                            <Text className="text-sm text-zam-textPrimary">
                                                 {t("identityChange.withdraw")}
                                             </Text>
                                         </Pressable>
@@ -90,10 +90,7 @@ export default function IdentityChangeBanner() {
                                 accessibilityLabel={t("identityChange.dismiss")}
                                 className="flex-shrink-0"
                             >
-                                <X
-                                    size={14}
-                                    className="text-discord-textMuted"
-                                />
+                                <X size={14} className="text-zam-textMuted" />
                             </Pressable>
                         </View>
                     ))}

@@ -10,10 +10,10 @@ import {
 } from "#dom-style";
 
 const THEME: Record<string, string> = {
-  "--discord-divider": "#41444e",
-  "--discord-accent-rgb": "88 101 242",
-  "--discord-text-primary": "#dcddde",
-  "--alias": "var(--discord-divider)",
+  "--zam-divider": "#41444e",
+  "--zam-accent-rgb": "88 101 242",
+  "--zam-text-primary": "#dcddde",
+  "--alias": "var(--zam-divider)",
 };
 const ctx: StyleContext = {
   variable: (name) => THEME[name],
@@ -48,9 +48,7 @@ describe("parseDeclarations", () => {
 
 describe("values", () => {
   test("var() with fallbacks and nesting", () => {
-    expect(substituteVariables("rgb(var(--discord-accent-rgb))", ctx.variable)).toBe(
-      "rgb(88 101 242)",
-    );
+    expect(substituteVariables("rgb(var(--zam-accent-rgb))", ctx.variable)).toBe("rgb(88 101 242)");
     expect(substituteVariables("var(--missing, var(--alias))", ctx.variable)).toBe("#41444e");
     expect(substituteVariables("var(--missing)", ctx.variable)).toBe("");
   });
@@ -86,7 +84,7 @@ describe("values", () => {
 describe("computeStyle", () => {
   test("the emoji-stealer popover's root", () => {
     const s = style(
-      "width:300px;max-width:calc(100vw - 16px);padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--discord-text-primary);font-size:14px;",
+      "width:300px;max-width:calc(100vw - 16px);padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--zam-text-primary);font-size:14px;",
     );
     expect(s.display).toBe("flex");
     expect(s.box).toMatchObject({
@@ -104,7 +102,7 @@ describe("computeStyle", () => {
 
   test("borders, radii and backgrounds", () => {
     const s = style(
-      "border:1px solid var(--discord-divider);border-radius:4px 8px;background:rgb(var(--discord-accent-rgb));",
+      "border:1px solid var(--zam-divider);border-radius:4px 8px;background:rgb(var(--zam-accent-rgb));",
     );
     expect(s.box).toMatchObject({
       borderWidth: 1,
@@ -187,7 +185,7 @@ describe("computeStyle", () => {
     expect(style("display:none").display).toBe("none");
     expect(style("display:inline flex").display).toBe("inline-flex");
     expect(style("opacity:0.6").box.opacity).toBe(0.6);
-    expect(style("box-shadow: inset 3px 0 0 rgb(var(--discord-accent-rgb))").box.boxShadow).toBe(
+    expect(style("box-shadow: inset 3px 0 0 rgb(var(--zam-accent-rgb))").box.boxShadow).toBe(
       "inset 3px 0 0 rgba(88, 101, 242, 1)",
     );
     expect(style("object-fit: contain").objectFit).toBe("contain");

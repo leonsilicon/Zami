@@ -74,9 +74,12 @@ import {
     type ThemeBase,
 } from "$lib/utils/themePreset";
 import {
-    resolveMessageFontSize,
     resolveMessageFont,
-    applyAppTextScale,
+    resolveStoredInterfaceScale,
+    resolveInterfaceScale,
+    resolveMessageTextScale,
+    applyInterfaceScale,
+    applyMessageTextScale,
     applyMessageFont,
     type MessageFontKey,
 } from "$lib/utils/messageDisplay";
@@ -372,6 +375,10 @@ export const settingsState = $state({
      *  screen enlarged to fill it, instead of at their own size. The viewer's
      *  fit button flips it for the image being viewed. Default ON. */
     lightboxFitToScreen: readBool("lightboxFitToScreen", true),
+    /** Device-global: whether a new reply pings the author of the message
+     *  it answers (adds them to `m.mentions`). The reply bar's toggle
+     *  overrides it per reply. Default ON, like Discord. */
+    replyPingDefault: readBool("replyPingDefault", true),
     /** Device-global: which sound bank plays MIDI attachments (see
      *  utils/midiSoundBank). Default "bundled", the SoundFont Zam ships, so
      *  MIDI sounds the same everywhere. Local-only: a custom bank lives in
@@ -388,8 +395,16 @@ export const settingsState = $state({
      *  theme. Empty by default; the switch lets it be paused without losing it. */
     customCss: readString("customCss") ?? "",
     customCssEnabled: readBool("customCssEnabled", true),
-    /** Device-local app-wide text scale, stored as px (12-24, default 16 = 100%). Drives the root font-size so all text + spacing scale. NOT synced. */
-    messageFontSize: resolveMessageFontSize(readString("messageFontSize")),
+    /** Device-local whole-UI scale in percent (75-150, step 5, default 100).
+     *  Drives the root font-size. Falls back to migrating the legacy
+     *  `messageFontSize` px key when `interfaceScale` was never written. NOT synced. */
+    interfaceScale: resolveStoredInterfaceScale(
+        readString("interfaceScale"),
+        readString("messageFontSize"),
+    ),
+    /** Device-local chat message + composer text scale in percent (80-200,
+     *  step 10, default 100). Drives --message-text-scale. NOT synced. */
+    messageTextScale: resolveMessageTextScale(readString("messageTextScale")),
     /** Device-local message font family key ("system" | "inter" | "atkinson").
      *  NOT synced: a bundled font binary cannot ride the JSON theme sync. */
     messageFont: resolveMessageFont(readString("messageFont")),
@@ -495,6 +510,10 @@ export const settingsState = $state({
     excludeInsecureDevices: readAccountBool("excludeInsecureDevices", false),
     /** Presence advertised to the homeserver (Settings → Account). */
     ownPresence: readPresence("ownPresence", "online"),
+    /** The homeserver has presence off (matrix.org), found by probing after
+     *  login. Not persisted: the presence options hide and invisible stops
+     *  hiding receipts and typing. False until the probe says otherwise. */
+    presenceUnsupported: false,
     /** Do Not Disturb: silences notifications and ringing on every device
      *  (the account's master push rule) and shows as idle to others. */
     doNotDisturb: readAccountBool("doNotDisturb", false),
@@ -554,6 +573,10 @@ export const settingsState = $state({
     pushToTalk: readAccountBool("pushToTalk", true),
     /** Include system/tab audio when screen sharing. */
     shareSystemAudio: readAccountBool("shareSystemAudio", true),
+    /** Windows desktop: capture and encode a shared window or screen in the
+     *  native helper, not in Chromium (matrix/call/nativeShare). Only the
+     *  Windows desktop app offers it. */
+    nativeScreenShare: readAccountBool("nativeScreenShare", true),
     /** Screen-share capture target, applied when a share starts (a mid-share
      *  change would re-prompt the OS picker). Stored as strings for the
      *  <select>s; fps is parsed to a number at the call site. */
@@ -644,9 +667,10 @@ applyCustomCss();
 // their own attribute. The message editors set theirs explicitly.
 applySpellCheck(settingsState.spellCheckEnabled);
 
-// Boot apply: reflect the stored message text size + font onto the root so
-// the timeline is sized/styled before first paint, mirroring applyReduceMotion.
-applyAppTextScale(settingsState.messageFontSize);
+// Boot apply: reflect the stored interface + message text scales and font onto
+// the root so the UI is sized/styled before first paint, mirroring applyReduceMotion.
+applyInterfaceScale(settingsState.interfaceScale);
+applyMessageTextScale(settingsState.messageTextScale);
 applyMessageFont(settingsState.messageFont);
 
 // Boot apply: register the uploaded custom font (if any) from IndexedDB, then
@@ -865,6 +889,7 @@ export function reloadAccountSettings(): void {
         false,
     );
     settingsState.ownPresence = readPresence("ownPresence", "online");
+    settingsState.presenceUnsupported = false;
     settingsState.doNotDisturb = readAccountBool("doNotDisturb", false);
     settingsState.dmSortOrder = readDmSortOrder();
     settingsState.ownStatusMessage =
@@ -907,6 +932,10 @@ export function reloadAccountSettings(): void {
     settingsState.h264ProfileFix = readAccountBool("h264ProfileFix", true);
     settingsState.pushToTalk = readAccountBool("pushToTalk", true);
     settingsState.shareSystemAudio = readAccountBool("shareSystemAudio", true);
+    settingsState.nativeScreenShare = readAccountBool(
+        "nativeScreenShare",
+        true,
+    );
     settingsState.screenShareResolution =
         readAccountString("screenShareResolution") ?? "1080";
     settingsState.screenShareFps = readAccountString("screenShareFps") ?? "30";
@@ -1169,6 +1198,11 @@ export function setLightboxFitToScreen(value: boolean): void {
     writeBool("lightboxFitToScreen", value);
 }
 
+export function setReplyPingDefault(value: boolean): void {
+    settingsState.replyPingDefault = value;
+    writeBool("replyPingDefault", value);
+}
+
 export function setMidiSoundBank(value: MidiSoundBankChoice): void {
     settingsState.midiSoundBank = value;
     writeString("midiSoundBank", value);
@@ -1180,11 +1214,18 @@ export function setReduceMotion(value: boolean): void {
     applyReduceMotion(value);
 }
 
-export function setMessageFontSize(px: number): void {
-    const size = resolveMessageFontSize(px);
-    settingsState.messageFontSize = size;
-    writeString("messageFontSize", String(size));
-    applyAppTextScale(size);
+export function setInterfaceScale(percent: number): void {
+    const size = resolveInterfaceScale(percent);
+    settingsState.interfaceScale = size;
+    writeString("interfaceScale", String(size));
+    applyInterfaceScale(size);
+}
+
+export function setMessageTextScale(percent: number): void {
+    const size = resolveMessageTextScale(percent);
+    settingsState.messageTextScale = size;
+    writeString("messageTextScale", String(size));
+    applyMessageTextScale(size);
 }
 
 export function setMessageFont(key: MessageFontKey): void {
@@ -1493,6 +1534,11 @@ export function setPushToTalk(value: boolean): void {
 export function setShareSystemAudio(value: boolean): void {
     settingsState.shareSystemAudio = value;
     writeAccountBool("shareSystemAudio", value);
+}
+
+export function setNativeScreenShare(value: boolean): void {
+    settingsState.nativeScreenShare = value;
+    writeAccountBool("nativeScreenShare", value);
 }
 
 export function setScreenShareResolution(value: string): void {

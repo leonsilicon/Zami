@@ -60,22 +60,22 @@ export default function IncomingCallCard({
     const busy = useRune(() => voiceCallState.joinPendingRoomId !== null);
 
     return (
-        <View className="flex-row items-center gap-3 w-80 px-4 py-3 rounded-lg shadow-lg bg-discord-background border border-discord-divider">
+        <View className="flex-row items-center gap-3 w-80 px-4 py-3 rounded-lg shadow-lg bg-zam-background border border-zam-divider">
             <Avatar src={avatar} name={name} id={partnerId} size={40} />
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm font-semibold text-discord-textPrimary truncate"
+                    className="text-sm font-semibold text-zam-textPrimary truncate"
                 >
                     {name}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("incomingCallCard.incomingCall")}
                 </Text>
             </View>
             <Pressable
                 accessibilityRole="button"
-                className="p-2 rounded-full bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                className="p-2 rounded-full bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                 accessibilityLabel={t("incomingCallCard.declineCallFrom", {
                     name,
                 })}
@@ -85,7 +85,7 @@ export default function IncomingCallCard({
             </Pressable>
             <Pressable
                 accessibilityRole="button"
-                className="p-2 rounded-full bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-60"
+                className="p-2 rounded-full bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-60"
                 accessibilityLabel={t("incomingCallCard.acceptCallFrom", {
                     name,
                 })}

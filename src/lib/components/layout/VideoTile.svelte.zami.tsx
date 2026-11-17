@@ -75,7 +75,7 @@ export default function VideoTile({
                 <View className="absolute inset-0 flex-col items-center justify-center gap-2 p-2">
                     <EyeOff
                         size={compact ? 16 : 28}
-                        className="text-discord-textMuted"
+                        className="text-zam-textMuted"
                     />
                     {!compact && (
                         <>
@@ -85,7 +85,7 @@ export default function VideoTile({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={watch}
-                                className="relative z-20 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-discord-accent hover:opacity-90"
+                                className="relative z-20 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-zam-accent hover:opacity-90"
                             >
                                 <Eye size={16} className="text-white" />
                                 <Text className="text-white text-sm">
@@ -149,9 +149,7 @@ export default function VideoTile({
                                 <PictureInPicture2
                                     size={16}
                                     className={
-                                        inPip
-                                            ? "text-discord-accent"
-                                            : "text-white"
+                                        inPip ? "text-zam-accent" : "text-white"
                                     }
                                 />
                             </Pressable>

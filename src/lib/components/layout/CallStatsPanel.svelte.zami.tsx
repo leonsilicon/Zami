@@ -483,9 +483,9 @@ export default function CallStatsPanel({ onClose }: Props) {
         ) ?? false;
 
     const TONE_CLASS: Record<StatTone, string> = {
-        ok: "text-discord-textPrimary",
-        warn: "text-discord-warning",
-        bad: "text-discord-danger",
+        ok: "text-zam-textPrimary",
+        warn: "text-zam-warning",
+        bad: "text-zam-danger",
     };
 
     const anyTcp =
@@ -558,9 +558,7 @@ export default function CallStatsPanel({ onClose }: Props) {
             secret = false,
         ): ReactNode => (
             <View className="flex-row justify-between gap-3 py-0.5">
-                <Text className={`${size} text-discord-textMuted`}>
-                    {label}
-                </Text>
+                <Text className={`${size} text-zam-textMuted`}>{label}</Text>
                 {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                 <Text
                     className={`flex-shrink ${size} font-mono ${TONE_CLASS[tone]} ${
@@ -577,12 +575,12 @@ export default function CallStatsPanel({ onClose }: Props) {
         <View className="min-w-0 sm:flex-1">
             <Text
                 accessibilityRole="header"
-                className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted mb-1"
+                className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted mb-1"
             >
                 {title}
             </Text>
             {!s ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("callStats.noTransport")}
                 </Text>
             ) : (
@@ -646,13 +644,13 @@ export default function CallStatsPanel({ onClose }: Props) {
         return (
             <View
                 key={s.id}
-                className="min-w-0 sm:w-[48%] rounded bg-discord-backgroundSecondary px-3 py-2"
+                className="min-w-0 sm:w-[48%] rounded bg-zam-backgroundSecondary px-3 py-2"
             >
                 <View className="flex-row flex-wrap items-baseline gap-x-2 mb-1">
-                    <Text className="text-sm font-medium text-discord-textPrimary">
+                    <Text className="text-sm font-medium text-zam-textPrimary">
                         {streamTitle(s)}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {`${
                             s.direction === "send"
                                 ? t("callStats.sent")
@@ -736,9 +734,9 @@ export default function CallStatsPanel({ onClose }: Props) {
         return (
             <View
                 key={v.key}
-                className="min-w-0 sm:w-[48%] rounded bg-discord-backgroundSecondary px-3 py-2"
+                className="min-w-0 sm:w-[48%] rounded bg-zam-backgroundSecondary px-3 py-2"
             >
-                <Text className="text-sm font-medium text-discord-textPrimary mb-1">
+                <Text className="text-sm font-medium text-zam-textPrimary mb-1">
                     {videoTitle(v)}
                 </Text>
                 <Text className={`text-xs mb-1 ${TONE_CLASS[v.tone]}`}>
@@ -820,13 +818,13 @@ export default function CallStatsPanel({ onClose }: Props) {
             <ModalDialog
                 onClose={onClose}
                 labelledBy="call-stats-title"
-                panelClass="relative bg-discord-background rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90%]"
+                panelClass="relative bg-zam-background rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90%]"
             >
-                <View className="flex-row items-center gap-2 px-5 py-3 border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row items-center gap-2 px-5 py-3 border-b border-zam-divider flex-shrink-0">
                     <Text
                         nativeID="call-stats-title"
                         accessibilityRole="header"
-                        className="flex-shrink text-lg font-bold text-discord-textPrimary"
+                        className="flex-shrink text-lg font-bold text-zam-textPrimary"
                     >
                         {t("callStats.title")}
                     </Text>
@@ -835,19 +833,19 @@ export default function CallStatsPanel({ onClose }: Props) {
                         onPress={() => void copyJson()}
                         disabled={!connections?.length}
                         accessibilityState={{ disabled: !connections?.length }}
-                        className="ms-auto px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover disabled:opacity-50"
+                        className="ms-auto px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50"
                     >
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("callStats.copyJson")}
                         </Text>
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         onPress={onClose}
-                        className="p-1.5 rounded hover:bg-discord-messageHover"
+                        className="p-1.5 rounded hover:bg-zam-messageHover"
                         accessibilityLabel={t("common.closeDialog")}
                     >
-                        <X size={18} className="text-discord-textMuted" />
+                        <X size={18} className="text-zam-textMuted" />
                     </Pressable>
                 </View>
 
@@ -856,11 +854,11 @@ export default function CallStatsPanel({ onClose }: Props) {
                     contentContainerClassName="px-5 py-4 gap-4"
                 >
                     {connections === null ? (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("callStats.loading")}
                         </Text>
                     ) : connections.length === 0 ? (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("callStats.notInCall")}
                         </Text>
                     ) : (
@@ -868,9 +866,9 @@ export default function CallStatsPanel({ onClose }: Props) {
                             {serverSwitchedTcp ? (
                                 <View
                                     accessibilityLiveRegion="polite"
-                                    className="rounded px-3 py-2 bg-discord-danger/15"
+                                    className="rounded px-3 py-2 bg-zam-danger/15"
                                 >
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {t("callStats.serverSwitchedTcp")}
                                     </Text>
                                 </View>
@@ -878,9 +876,9 @@ export default function CallStatsPanel({ onClose }: Props) {
                                 anyTcp && (
                                     <View
                                         accessibilityLiveRegion="polite"
-                                        className="rounded px-3 py-2 bg-discord-danger/15"
+                                        className="rounded px-3 py-2 bg-zam-danger/15"
                                     >
-                                        <Text className="text-sm text-discord-textPrimary">
+                                        <Text className="text-sm text-zam-textPrimary">
                                             {t("callStats.tcpWarning")}
                                         </Text>
                                     </View>
@@ -889,9 +887,9 @@ export default function CallStatsPanel({ onClose }: Props) {
                             {cpuLimited && (
                                 <View
                                     accessibilityLiveRegion="polite"
-                                    className="rounded px-3 py-2 bg-discord-danger/15"
+                                    className="rounded px-3 py-2 bg-zam-danger/15"
                                 >
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {t("callStats.cpuLimitHint")}
                                     </Text>
                                 </View>
@@ -899,9 +897,9 @@ export default function CallStatsPanel({ onClose }: Props) {
                             {softwareEncode && (
                                 <View
                                     accessibilityLiveRegion="polite"
-                                    className="rounded px-3 py-2 bg-discord-warning/15"
+                                    className="rounded px-3 py-2 bg-zam-warning/15"
                                 >
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {t("callStats.softwareEncodeHint")}
                                     </Text>
                                 </View>
@@ -909,16 +907,16 @@ export default function CallStatsPanel({ onClose }: Props) {
                             {connections.map((c) => (
                                 <View
                                     key={c.raw.key}
-                                    className="rounded-lg border border-discord-divider p-3 gap-3"
+                                    className="rounded-lg border border-zam-divider p-3 gap-3"
                                 >
                                     <View className="flex-row flex-wrap items-baseline gap-x-2">
                                         <Text
                                             accessibilityRole="header"
-                                            className="text-sm font-semibold text-discord-textPrimary"
+                                            className="text-sm font-semibold text-zam-textPrimary"
                                         >
                                             {c.raw.server}
                                         </Text>
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {`${
                                                 c.raw.publishing
                                                     ? t("callStats.publishing")
@@ -962,7 +960,7 @@ export default function CallStatsPanel({ onClose }: Props) {
                                         <View>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted mb-1"
+                                                className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted mb-1"
                                             >
                                                 {t("callStats.proxyRoute")}
                                             </Text>
@@ -1003,7 +1001,7 @@ export default function CallStatsPanel({ onClose }: Props) {
                                         <View>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted mb-1"
+                                                className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted mb-1"
                                             >
                                                 {t("callStats.video")}
                                             </Text>
@@ -1025,34 +1023,34 @@ export default function CallStatsPanel({ onClose }: Props) {
                                         >
                                             <View className="w-full">
                                                 <View className="flex-row">
-                                                    <Text className="flex-1 min-w-28 max-w-[12rem] text-xs text-discord-textMuted font-medium py-1 pe-2">
+                                                    <Text className="flex-1 min-w-28 max-w-[12rem] text-xs text-zam-textMuted font-medium py-1 pe-2">
                                                         {t(
                                                             "callStats.participant",
                                                         )}
                                                     </Text>
-                                                    <Text className="w-24 text-xs text-discord-textMuted font-medium py-1 pe-2">
+                                                    <Text className="w-24 text-xs text-zam-textMuted font-medium py-1 pe-2">
                                                         {t(
                                                             "callStats.theirQuality",
                                                         )}
                                                     </Text>
-                                                    <Text className="w-16 text-xs text-discord-textMuted font-medium py-1 pe-2">
+                                                    <Text className="w-16 text-xs text-zam-textMuted font-medium py-1 pe-2">
                                                         {t("callStats.loss")}
                                                     </Text>
-                                                    <Text className="w-16 text-xs text-discord-textMuted font-medium py-1 pe-2">
+                                                    <Text className="w-16 text-xs text-zam-textMuted font-medium py-1 pe-2">
                                                         {t("callStats.jitter")}
                                                     </Text>
-                                                    <Text className="w-16 text-xs text-discord-textMuted font-medium py-1">
+                                                    <Text className="w-16 text-xs text-zam-textMuted font-medium py-1">
                                                         {t("callStats.buffer")}
                                                     </Text>
                                                 </View>
                                                 {c.participants.map((p) => (
                                                     <View
                                                         key={p.identity}
-                                                        className="flex-row border-t border-discord-divider"
+                                                        className="flex-row border-t border-zam-divider"
                                                     >
                                                         <Text
                                                             numberOfLines={1}
-                                                            className="flex-1 min-w-28 max-w-[12rem] py-1 pe-2 text-xs font-sans text-discord-textPrimary truncate"
+                                                            className="flex-1 min-w-28 max-w-[12rem] py-1 pe-2 text-xs font-sans text-zam-textPrimary truncate"
                                                         >
                                                             {p.name}
                                                         </Text>
@@ -1104,7 +1102,7 @@ export default function CallStatsPanel({ onClose }: Props) {
                                                                     null,
                                                             )}
                                                         </Text>
-                                                        <Text className="w-16 py-1 text-xs font-mono text-discord-textPrimary">
+                                                        <Text className="w-16 py-1 text-xs font-mono text-zam-textPrimary">
                                                             {ms(
                                                                 p.audio?.audioIn
                                                                     .jitterBufferMs ??
@@ -1120,7 +1118,7 @@ export default function CallStatsPanel({ onClose }: Props) {
                                         <View>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted mb-1"
+                                                className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted mb-1"
                                             >
                                                 {t("callStats.streams")}
                                             </Text>
@@ -1133,7 +1131,7 @@ export default function CallStatsPanel({ onClose }: Props) {
                                     )}
                                 </View>
                             ))}
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("callStats.legend")}
                             </Text>
                         </>

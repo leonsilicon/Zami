@@ -257,11 +257,11 @@ export default function SoundPackEditor({ room }: Props) {
                 <View className="gap-2">
                     <Text
                         accessibilityRole="header"
-                        className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                        className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                     >
                         {t("soundboard.add")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("soundboard.limits", {
                             seconds: MAX_SOUND_SECONDS,
                             kb: Math.round(MAX_SOUND_BYTES / 1024),
@@ -298,7 +298,7 @@ export default function SoundPackEditor({ room }: Props) {
                                                   ]
                                                 : []),
                                         ]}
-                                        className="w-full bg-discord-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                        className="w-full bg-zam-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                                     />
                                     {selectedKey === "__new" && (
                                         <TextInput
@@ -308,8 +308,8 @@ export default function SoundPackEditor({ room }: Props) {
                                             placeholder={t(
                                                 "soundboard.packName",
                                             )}
-                                            placeholderTextColorClassName="accent-discord-textMuted"
-                                            className="min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
+                                            className="min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                                         />
                                     )}
                                 </>
@@ -319,11 +319,11 @@ export default function SoundPackEditor({ room }: Props) {
                                 onChangeText={setName}
                                 editable={!uploading}
                                 placeholder={t("soundboard.name")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t("soundboard.name")}
                                 autoCapitalize="none"
                                 autoCorrect={false}
-                                className="min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                className="min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                             />
                         </View>
                         <Pressable
@@ -337,7 +337,7 @@ export default function SoundPackEditor({ room }: Props) {
                                     editablePacks.length === 0 &&
                                     !canCreate)
                             }
-                            className={`px-3 py-2 rounded bg-discord-accent self-start ${
+                            className={`px-3 py-2 rounded bg-zam-accent self-start ${
                                 uploading ||
                                 (room &&
                                     editablePacks.length === 0 &&
@@ -357,30 +357,30 @@ export default function SoundPackEditor({ room }: Props) {
             )}
 
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
             {notice ? (
-                <Text className="text-sm text-discord-textMuted">{notice}</Text>
+                <Text className="text-sm text-zam-textMuted">{notice}</Text>
             ) : null}
 
             <View className="gap-3">
                 {packs.map((pack) => (
                     <View
                         key={pack.id}
-                        className="rounded bg-discord-backgroundTertiary overflow-hidden"
+                        className="rounded bg-zam-backgroundTertiary overflow-hidden"
                     >
-                        <View className="flex-row items-center gap-2 px-3 py-2 border-b border-discord-divider">
+                        <View className="flex-row items-center gap-2 px-3 py-2 border-b border-zam-divider">
                             <View className="min-w-0 flex-1">
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm font-semibold text-discord-textPrimary"
+                                    className="text-sm font-semibold text-zam-textPrimary"
                                 >
                                     {pack.name}
                                 </Text>
                                 {pack.sourceName ? (
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs text-discord-textMuted"
+                                        className="text-xs text-zam-textMuted"
                                     >
                                         {pack.inherited
                                             ? t("soundboard.inheritedFrom", {
@@ -403,13 +403,13 @@ export default function SoundPackEditor({ room }: Props) {
                                         disabled={
                                             pending === `${pack.id}:global`
                                         }
-                                        className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                                        className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
                                     >
                                         <Text
                                             className={`text-xs ${
                                                 pack.global
-                                                    ? "text-discord-accent font-semibold"
-                                                    : "text-discord-textPrimary"
+                                                    ? "text-zam-accent font-semibold"
+                                                    : "text-zam-textPrimary"
                                             }`}
                                         >
                                             {pack.global
@@ -422,9 +422,9 @@ export default function SoundPackEditor({ room }: Props) {
                                         onPress={() => {
                                             addToMine(pack.sounds);
                                         }}
-                                        className="px-2 py-1 rounded hover:bg-discord-messageHover"
+                                        className="px-2 py-1 rounded hover:bg-zam-messageHover"
                                     >
-                                        <Text className="text-xs text-discord-textPrimary">
+                                        <Text className="text-xs text-zam-textPrimary">
                                             {t("soundboard.addToMine")}
                                         </Text>
                                     </Pressable>
@@ -437,9 +437,9 @@ export default function SoundPackEditor({ room }: Props) {
                                             disabled={
                                                 pending === `${pack.id}:pack`
                                             }
-                                            className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                                            className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
                                         >
-                                            <Text className="text-xs text-discord-danger">
+                                            <Text className="text-xs text-zam-danger">
                                                 {t("soundboard.deletePack")}
                                             </Text>
                                         </Pressable>
@@ -451,7 +451,7 @@ export default function SoundPackEditor({ room }: Props) {
                             {pack.sounds.map((sound) => (
                                 <View
                                     key={sound.name}
-                                    className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundSecondary"
+                                    className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundSecondary"
                                 >
                                     <Pressable
                                         accessibilityRole="button"
@@ -459,22 +459,22 @@ export default function SoundPackEditor({ room }: Props) {
                                             "soundboard.preview",
                                         )}
                                         onPress={() => previewSound(sound)}
-                                        className="p-2 rounded-full hover:bg-discord-messageHover"
+                                        className="p-2 rounded-full hover:bg-zam-messageHover"
                                     >
                                         <Play
                                             size={14}
-                                            className="text-discord-textPrimary"
+                                            className="text-zam-textPrimary"
                                         />
                                     </Pressable>
                                     <View className="flex-1 min-w-0">
                                         <Text
                                             numberOfLines={1}
-                                            className="text-sm font-medium text-discord-textPrimary"
+                                            className="text-sm font-medium text-zam-textPrimary"
                                         >
                                             {sound.name}
                                         </Text>
                                         {sound.info?.duration !== undefined ? (
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {formatDuration(
                                                     sound.info.duration,
                                                 )}
@@ -487,9 +487,9 @@ export default function SoundPackEditor({ room }: Props) {
                                             onPress={() => {
                                                 addToMine([sound]);
                                             }}
-                                            className="px-2 py-1 rounded hover:bg-discord-messageHover"
+                                            className="px-2 py-1 rounded hover:bg-zam-messageHover"
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                 {t("soundboard.addToMine")}
                                             </Text>
                                         </Pressable>
@@ -507,18 +507,18 @@ export default function SoundPackEditor({ room }: Props) {
                                                 pending ===
                                                 `${pack.id}:${sound.name}`
                                             }
-                                            className="p-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                                            className="p-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
                                         >
                                             <X
                                                 size={14}
-                                                className="text-discord-textMuted"
+                                                className="text-zam-textMuted"
                                             />
                                         </Pressable>
                                     )}
                                 </View>
                             ))}
                             {pack.sounds.length === 0 ? (
-                                <Text className="text-sm text-discord-textMuted text-center py-2">
+                                <Text className="text-sm text-zam-textMuted text-center py-2">
                                     {t("soundboard.noSounds")}
                                 </Text>
                             ) : null}

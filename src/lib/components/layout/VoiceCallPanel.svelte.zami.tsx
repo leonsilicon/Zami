@@ -42,8 +42,8 @@ import CallEncryptionBadge from "./CallEncryptionBadge.svelte";
 import CallStatsPanel from "./CallStatsPanel.svelte";
 
 export default function VoiceCallPanel() {
-    // Fixed for the session, same as CallView — hides share where unsupported.
-    const screenShareSupported = screenShareSupportedHere();
+    // Hides share where unsupported; reactive, as Android's answer comes late.
+    const screenShareSupported = useRune(() => screenShareSupportedHere());
 
     const roomId = useRune(() => voiceCallState.roomId);
     const connState = useRune(() => voiceCallState.connState);
@@ -121,12 +121,12 @@ export default function VoiceCallPanel() {
     if (!roomId) return null;
     return (
         <>
-            <View className="px-2 py-2 border-t border-discord-divider bg-discord-backgroundSecondary">
+            <View className="px-2 py-2 border-t border-zam-divider bg-zam-backgroundSecondary">
                 {playbackBlocked && (
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void resumeVoicePlayback()}
-                        className="w-full mb-1.5 px-2 py-1.5 rounded bg-discord-warning"
+                        className="w-full mb-1.5 px-2 py-1.5 rounded bg-zam-warning"
                     >
                         <Text className="text-center text-black text-xs font-semibold">
                             {t("voiceCallPanel.enableAudio")}
@@ -146,8 +146,8 @@ export default function VoiceCallPanel() {
                             <Text
                                 className={`text-xs font-semibold ${
                                     connState === "connected"
-                                        ? "text-discord-accent"
-                                        : "text-discord-warning"
+                                        ? "text-zam-accent"
+                                        : "text-zam-warning"
                                 }`}
                             >
                                 {connStateLabel(connState)}
@@ -156,14 +156,14 @@ export default function VoiceCallPanel() {
                                 <CallEncryptionBadge roomId={roomId} inline />
                             )}
                             {!!elapsed && (
-                                <Text className="ms-1 text-xs font-normal text-discord-textMuted">
+                                <Text className="ms-1 text-xs font-normal text-zam-textMuted">
                                     {elapsed}
                                 </Text>
                             )}
                         </View>
                         <Text
                             numberOfLines={1}
-                            className="text-xs text-discord-textMuted truncate"
+                            className="text-xs text-zam-textMuted truncate"
                         >
                             {locationLabel}
                         </Text>
@@ -171,10 +171,10 @@ export default function VoiceCallPanel() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => setStatsOpen(true)}
-                        className="p-1 rounded hover:bg-discord-messageHover flex-shrink-0"
+                        className="p-1 rounded hover:bg-zam-messageHover flex-shrink-0"
                         accessibilityLabel={t("voiceCallPanel.connectionStats")}
                     >
-                        <Signal size={16} className="text-discord-textMuted" />
+                        <Signal size={16} className="text-zam-textMuted" />
                     </Pressable>
                 </View>
                 {/* The full call view (video grid, screen shares) used to open only
@@ -183,13 +183,10 @@ export default function VoiceCallPanel() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={openCallView}
-                        className="mt-1.5 w-full flex-row items-center justify-center gap-1.5 px-2 py-1 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                        className="mt-1.5 w-full flex-row items-center justify-center gap-1.5 px-2 py-1 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                     >
-                        <Maximize2
-                            size={14}
-                            className="text-discord-textPrimary"
-                        />
-                        <Text className="text-xs font-medium text-discord-textPrimary">
+                        <Maximize2 size={14} className="text-zam-textPrimary" />
+                        <Text className="text-xs font-medium text-zam-textPrimary">
                             {videoTiles.some((t) => !t.isLocal)
                                 ? t("voiceCallPanel.openCallWithVideo", {
                                       n: videoTiles.filter((t) => !t.isLocal)
@@ -200,14 +197,14 @@ export default function VoiceCallPanel() {
                     </Pressable>
                 )}
                 {screenSharing && (
-                    <View className="mt-1.5 flex-row items-center gap-1 px-2 py-1 rounded bg-discord-accent/15">
+                    <View className="mt-1.5 flex-row items-center gap-1 px-2 py-1 rounded bg-zam-accent/15">
                         <MonitorUp
                             size={14}
-                            className="text-discord-accent flex-shrink-0"
+                            className="text-zam-accent flex-shrink-0"
                         />
                         <Text
                             numberOfLines={1}
-                            className="flex-1 min-w-0 truncate text-xs text-discord-textPrimary"
+                            className="flex-1 min-w-0 truncate text-xs text-zam-textPrimary"
                         >
                             {t("voiceCallPanel.sharingYourScreen")}
                         </Text>
@@ -222,13 +219,13 @@ export default function VoiceCallPanel() {
                         >
                             <Settings2
                                 size={14}
-                                className="text-discord-textMuted"
+                                className="text-zam-textMuted"
                             />
                         </Pressable>
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void toggleScreenShare()}
-                            className="px-1.5 py-0.5 rounded bg-discord-danger hover:bg-discord-dangerHover"
+                            className="px-1.5 py-0.5 rounded bg-zam-danger hover:bg-zam-dangerHover"
                         >
                             <Text className="text-xs text-white font-medium">
                                 {t("voiceCallPanel.stop")}
@@ -243,7 +240,7 @@ export default function VoiceCallPanel() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={toggleCallMute}
-                        className="p-1.5 rounded hover:bg-discord-messageHover"
+                        className="p-1.5 rounded hover:bg-zam-messageHover"
                         accessibilityLabel={
                             micMuted
                                 ? t("voiceCallPanel.unmute")
@@ -251,15 +248,15 @@ export default function VoiceCallPanel() {
                         }
                     >
                         {micMuted ? (
-                            <MicOff size={20} className="text-discord-danger" />
+                            <MicOff size={20} className="text-zam-danger" />
                         ) : (
-                            <Mic size={20} className="text-discord-textMuted" />
+                            <Mic size={20} className="text-zam-textMuted" />
                         )}
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         onPress={toggleCallDeafen}
-                        className="p-1.5 rounded hover:bg-discord-messageHover"
+                        className="p-1.5 rounded hover:bg-zam-messageHover"
                         accessibilityLabel={
                             deafened
                                 ? t("voiceCallPanel.undeafen")
@@ -269,12 +266,12 @@ export default function VoiceCallPanel() {
                         {deafened ? (
                             <HeadphoneOff
                                 size={20}
-                                className="text-discord-danger"
+                                className="text-zam-danger"
                             />
                         ) : (
                             <Headphones
                                 size={20}
-                                className="text-discord-textMuted"
+                                className="text-zam-textMuted"
                             />
                         )}
                     </Pressable>
@@ -282,7 +279,7 @@ export default function VoiceCallPanel() {
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void toggleCamera()}
-                            className="p-1.5 rounded hover:bg-discord-messageHover"
+                            className="p-1.5 rounded hover:bg-zam-messageHover"
                             accessibilityLabel={
                                 cameraOn
                                     ? t("common.turnOffCamera")
@@ -290,14 +287,11 @@ export default function VoiceCallPanel() {
                             }
                         >
                             {cameraOn ? (
-                                <Video
-                                    size={20}
-                                    className="text-discord-accent"
-                                />
+                                <Video size={20} className="text-zam-accent" />
                             ) : (
                                 <VideoOff
                                     size={20}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                             )}
                         </Pressable>
@@ -306,7 +300,7 @@ export default function VoiceCallPanel() {
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void toggleScreenShare()}
-                            className="p-1.5 rounded hover:bg-discord-messageHover"
+                            className="p-1.5 rounded hover:bg-zam-messageHover"
                             accessibilityLabel={
                                 screenSharing
                                     ? t("common.stopSharing")
@@ -317,8 +311,8 @@ export default function VoiceCallPanel() {
                                 size={20}
                                 className={
                                     screenSharing
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }
                             />
                         </Pressable>
@@ -326,17 +320,17 @@ export default function VoiceCallPanel() {
                     {soundboardRoom && (
                         <SoundboardButton
                             room={soundboardRoom}
-                            buttonClass="p-1.5 rounded hover:bg-discord-messageHover"
-                            idleClass="text-discord-textMuted hover:text-discord-textPrimary"
+                            buttonClass="p-1.5 rounded hover:bg-zam-messageHover"
+                            idleClass="text-zam-textMuted hover:text-zam-textPrimary"
                         />
                     )}
                     <Pressable
                         accessibilityRole="button"
                         onPress={leaveCall}
-                        className="ms-auto p-1.5 rounded hover:bg-discord-messageHover"
+                        className="ms-auto p-1.5 rounded hover:bg-zam-messageHover"
                         accessibilityLabel={t("voiceCallPanel.disconnect")}
                     >
-                        <PhoneOff size={20} className="text-discord-danger" />
+                        <PhoneOff size={20} className="text-zam-danger" />
                     </Pressable>
                 </View>
             </View>

@@ -230,7 +230,7 @@ export default function Reactions({ eventId, room, event }: Props) {
                 // Zami: the pill's text size, weight and color, on each text
                 // inside (they don't inherit).
                 const textClass = `text-xs font-medium ${
-                    group.isMine ? "text-white" : "text-discord-textSecondary"
+                    group.isMine ? "text-white" : "text-zam-textSecondary"
                 }`;
                 return (
                     <Pressable
@@ -255,8 +255,8 @@ export default function Reactions({ eventId, room, event }: Props) {
                         }}
                         className={`flex-row items-center gap-1 px-2 py-0.5 rounded-full border transition-colors ${
                             group.isMine
-                                ? "bg-discord-accent border-discord-accent"
-                                : "bg-discord-backgroundTertiary border-discord-divider hover:border-discord-accent"
+                                ? "bg-zam-accent border-zam-accent"
+                                : "bg-zam-backgroundTertiary border-zam-divider hover:border-zam-accent"
                         }`}
                     >
                         {imgSrc ? (

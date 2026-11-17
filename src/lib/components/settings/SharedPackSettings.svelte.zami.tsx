@@ -144,7 +144,7 @@ export default function SharedPackSettings() {
     return (
         <View className="gap-6 mt-6">
             <View className="gap-2">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("sharedPackSettings.yourPackDetails")}
                 </Text>
                 <View className="gap-2 sm:flex-row">
@@ -152,9 +152,9 @@ export default function SharedPackSettings() {
                         value={nameDraft ?? view.mine.name}
                         onChangeText={setNameDraft}
                         placeholder={t("imagePackEditor.packName")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         accessibilityLabel={t("imagePackEditor.packName")}
-                        className="min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary placeholder-discord-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50 sm:flex-1"
+                        className="min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary placeholder-zam-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50 sm:flex-1"
                     />
                     <TextInput
                         value={attributionDraft ?? view.mine.attribution ?? ""}
@@ -162,11 +162,11 @@ export default function SharedPackSettings() {
                         placeholder={t(
                             "imagePackEditor.attributionPlaceholder",
                         )}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         accessibilityLabel={t(
                             "imagePackEditor.attributionPlaceholder",
                         )}
-                        className="min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary placeholder-discord-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50 sm:flex-1"
+                        className="min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary placeholder-zam-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50 sm:flex-1"
                     />
                 </View>
                 <View className="flex-row items-center gap-2">
@@ -184,13 +184,13 @@ export default function SharedPackSettings() {
                             pickAvatar();
                         }}
                         disabled={avatarUploading}
-                        className={`cursor-pointer px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover ${
+                        className={`cursor-pointer px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover ${
                             avatarUploading
                                 ? "opacity-50 pointer-events-none"
                                 : ""
                         }`}
                     >
-                        <Text className="text-xs text-discord-textPrimary">
+                        <Text className="text-xs text-zam-textPrimary">
                             {t("imagePackEditor.uploadPackAvatar")}
                         </Text>
                     </Pressable>
@@ -199,7 +199,7 @@ export default function SharedPackSettings() {
                             accessibilityRole="button"
                             onPress={() => saveMine({ avatarMxc: null })}
                         >
-                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("imagePackEditor.removePackAvatar")}
                             </Text>
                         </Pressable>
@@ -220,7 +220,7 @@ export default function SharedPackSettings() {
                             busy === "mine" ||
                             (nameDraft === null && attributionDraft === null)
                         }
-                        className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
+                        className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover disabled:opacity-50"
                     >
                         <Text className="text-white text-xs font-semibold">
                             {t("common.save")}
@@ -230,32 +230,32 @@ export default function SharedPackSettings() {
             </View>
 
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
 
             <View className="gap-2">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("sharedPackSettings.enabledEverywhere")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("sharedPackSettings.enabledEverywhereHint")}
                 </Text>
                 {view.enabled.map((pack) => packRow(pack, true))}
                 {view.stale.map((ref) => (
                     <View
                         key={ref.roomId + ref.stateKey}
-                        className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
+                        className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary"
                     >
                         <View className="flex-1 min-w-0">
                             <Text
                                 numberOfLines={1}
-                                className="text-sm text-discord-textPrimary truncate"
+                                className="text-sm text-zam-textPrimary truncate"
                             >
                                 {ref.stateKey || ref.roomId}
                             </Text>
                             <Text
                                 numberOfLines={1}
-                                className="text-xs text-discord-textMuted truncate"
+                                className="text-xs text-zam-textMuted truncate"
                             >
                                 {t("sharedPackSettings.unavailable", {
                                     room: ref.roomId,
@@ -268,40 +268,40 @@ export default function SharedPackSettings() {
                                 toggle(ref.roomId, ref.stateKey, false)
                             }
                             disabled={busy === `${ref.roomId}:${ref.stateKey}`}
-                            className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover disabled:opacity-50"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50"
                         >
-                            <Text className="text-xs font-semibold text-discord-textPrimary">
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
                                 {t("sharedPackSettings.remove")}
                             </Text>
                         </Pressable>
                     </View>
                 ))}
                 {view.enabled.length === 0 && view.stale.length === 0 && (
-                    <Text className="text-sm text-discord-textMuted text-center py-2">
+                    <Text className="text-sm text-zam-textMuted text-center py-2">
                         {t("sharedPackSettings.noneEnabled")}
                     </Text>
                 )}
             </View>
 
             <View className="gap-2">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("sharedPackSettings.availableInYourRooms")}
                 </Text>
                 <TextInput
                     value={query}
                     onChangeText={setQuery}
                     placeholder={t("sharedPackSettings.searchPacks")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("sharedPackSettings.searchPacks")}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary placeholder-discord-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary placeholder-zam-textMuted text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                 />
                 {filtered
                     .slice(0, shownCount)
                     .map((pack) => packRow(pack, false))}
                 {filtered.length === 0 && (
-                    <Text className="text-sm text-discord-textMuted text-center py-2">
+                    <Text className="text-sm text-zam-textMuted text-center py-2">
                         {t("sharedPackSettings.noPacksFound")}
                     </Text>
                 )}
@@ -323,7 +323,7 @@ const PackRow = memo(function PackRow({
     onToggle: (roomId: string, stateKey: string, enabled: boolean) => void;
 }) {
     return (
-        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary">
+        <View className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary">
             {pack.avatarUrl ? (
                 <Image
                     source={mediaSource(pack.avatarUrl)}
@@ -335,13 +335,13 @@ const PackRow = memo(function PackRow({
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm text-discord-textPrimary truncate"
+                    className="text-sm text-zam-textPrimary truncate"
                 >
                     {pack.name}
                 </Text>
                 <Text
                     numberOfLines={1}
-                    className="text-xs text-discord-textMuted truncate"
+                    className="text-xs text-zam-textMuted truncate"
                 >
                     {t("sharedPackSettings.packSummary", {
                         room: pack.sourceName ?? "",
@@ -351,7 +351,7 @@ const PackRow = memo(function PackRow({
                 {pack.attribution ? (
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted truncate"
+                        className="text-xs text-zam-textMuted truncate"
                     >
                         {t("imagePackEditor.attribution", {
                             value: pack.attribution,
@@ -367,13 +367,13 @@ const PackRow = memo(function PackRow({
                 disabled={busy}
                 className={`px-3 py-1.5 rounded disabled:opacity-50 ${
                     enabled
-                        ? "bg-discord-backgroundSecondary hover:bg-discord-messageHover"
-                        : "bg-discord-accent hover:bg-discord-accentHover"
+                        ? "bg-zam-backgroundSecondary hover:bg-zam-messageHover"
+                        : "bg-zam-accent hover:bg-zam-accentHover"
                 }`}
             >
                 <Text
                     className={`text-xs font-semibold ${
-                        enabled ? "text-discord-textPrimary" : "text-white"
+                        enabled ? "text-zam-textPrimary" : "text-white"
                     }`}
                 >
                     {enabled

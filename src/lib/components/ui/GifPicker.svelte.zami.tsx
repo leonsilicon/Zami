@@ -479,19 +479,19 @@ export default function GifPicker({
         <View
             className={`${
                 isTouchscreen ? "w-full rounded-t-xl" : "rounded-xl"
-            } relative bg-discord-backgroundSecondary border border-discord-divider shadow-2xl flex flex-col`}
+            } relative bg-zam-backgroundSecondary border border-zam-divider shadow-2xl flex flex-col`}
             style={panelStyle}
         >
             {isTouchscreen ? (
                 // Outer picker tabs (Emoji / Stickers / GIFs)
-                <View className="flex-row border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row border-b border-zam-divider flex-shrink-0">
                     {onSwitchToEmoji ? (
                         <Pressable
                             onPress={onSwitchToEmoji}
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.emoji")}
                             </Text>
                         </Pressable>
@@ -502,7 +502,7 @@ export default function GifPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.stickers")}
                             </Text>
                         </Pressable>
@@ -510,9 +510,9 @@ export default function GifPicker({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: true }}
-                        className="flex-1 py-2 items-center border-b-2 border-discord-accent"
+                        className="flex-1 py-2 items-center border-b-2 border-zam-accent"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("common.gifs")}
                         </Text>
                     </Pressable>
@@ -534,7 +534,7 @@ export default function GifPicker({
                         accessibilityRole="button"
                         accessibilityState={{ selected: tab === value }}
                         className={`flex-1 py-1.5 rounded transition-colors ${
-                            tab === value ? "bg-discord-backgroundTertiary" : ""
+                            tab === value ? "bg-zam-backgroundTertiary" : ""
                         }`}
                     >
                         <View className="flex-row items-center justify-center gap-1">
@@ -543,16 +543,16 @@ export default function GifPicker({
                                     size={14}
                                     className={
                                         tab === value
-                                            ? "text-discord-textPrimary"
-                                            : "text-discord-textMuted"
+                                            ? "text-zam-textPrimary"
+                                            : "text-zam-textMuted"
                                     }
                                 />
                             ) : null}
                             <Text
                                 className={`text-xs font-semibold ${
                                     tab === value
-                                        ? "text-discord-textPrimary"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-textPrimary"
+                                        : "text-zam-textMuted"
                                 }`}
                             >
                                 {label}
@@ -575,7 +575,7 @@ export default function GifPicker({
                             ? t("gifPicker.searchFavourites")
                             : t("gifPicker.searchKlipy")
                     }
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityRole="search"
                     accessibilityLabel={
                         tab === "favourites"
@@ -589,7 +589,7 @@ export default function GifPicker({
                     // Zami: Enter picks the selected GIF (onSearchKeydown) and
                     // otherwise does nothing, rather than blurring.
                     submitBehavior="submit"
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
 
@@ -606,7 +606,7 @@ export default function GifPicker({
             >
                 {tab === "favourites" ? (
                     visibleFavourites.length === 0 ? (
-                        <Text className="text-center text-discord-textMuted text-sm py-8 px-4">
+                        <Text className="text-center text-zam-textMuted text-sm py-8 px-4">
                             {favourites.length === 0
                                 ? t("gifPicker.noFavouriteGifsYetStarA")
                                 : t("common.noResults")}
@@ -670,12 +670,12 @@ export default function GifPicker({
                         accessibilityRole="button"
                         className="w-full py-8 px-4"
                     >
-                        <Text className="text-center text-discord-textMuted text-sm">
+                        <Text className="text-center text-zam-textMuted text-sm">
                             {error}
                         </Text>
                     </Pressable>
                 ) : items.length === 0 && !loading ? (
-                    <Text className="text-center text-discord-textMuted text-sm py-8 px-4">
+                    <Text className="text-center text-zam-textMuted text-sm py-8 px-4">
                         {t("common.noResults")}
                     </Text>
                 ) : (
@@ -726,7 +726,7 @@ export default function GifPicker({
                         ListFooterComponent={
                             <>
                                 {loading ? (
-                                    <Text className="text-center text-discord-textMuted text-xs py-3">
+                                    <Text className="text-center text-zam-textMuted text-xs py-3">
                                         {t("common.loading")}
                                     </Text>
                                 ) : null}
@@ -736,7 +736,7 @@ export default function GifPicker({
                                         accessibilityRole="button"
                                         className="w-full py-3"
                                     >
-                                        <Text className="text-center text-discord-textMuted text-xs">
+                                        <Text className="text-center text-zam-textMuted text-xs">
                                             {error}
                                         </Text>
                                     </Pressable>
@@ -748,8 +748,8 @@ export default function GifPicker({
             </View>
 
             {tab !== "favourites" ? (
-                <View className="px-3 py-1.5 flex-shrink-0 border-t border-discord-divider">
-                    <Text className="text-[10px] text-discord-textMuted text-right">
+                <View className="px-3 py-1.5 flex-shrink-0 border-t border-zam-divider">
+                    <Text className="text-[10px] text-zam-textMuted text-right">
                         {t("gifPicker.poweredByKlipy")}
                     </Text>
                 </View>
@@ -820,14 +820,14 @@ function FavouriteTile({
                 }
                 accessibilityState={{ selected }}
                 className={`relative w-full rounded overflow-hidden active:opacity-80 transition-opacity${
-                    selected ? " border-2 border-discord-accent" : ""
+                    selected ? " border-2 border-zam-accent" : ""
                 }`}
             >
                 {source ? (
                     <FavouriteFileImg
                         source={source}
                         video={!!gif.video}
-                        class="w-full rounded bg-discord-backgroundTertiary pointer-events-none"
+                        class="w-full rounded bg-zam-backgroundTertiary pointer-events-none"
                         style={aspectStyle}
                     />
                 ) : gif.video ? (
@@ -836,7 +836,7 @@ function FavouriteTile({
                     <Video
                         src={favouriteMediaHttpUrl(gif.url)}
                         poster={gif.previewUrl || undefined}
-                        className="w-full rounded bg-discord-backgroundTertiary"
+                        className="w-full rounded bg-zam-backgroundTertiary"
                         style={{
                             aspectRatio: cssAspectRatio(aspectStyle) ?? 1,
                         }}
@@ -853,7 +853,7 @@ function FavouriteTile({
                     <Image
                         source={mediaSource(gif.previewUrl)}
                         accessible={false}
-                        className="w-full rounded bg-discord-backgroundTertiary"
+                        className="w-full rounded bg-zam-backgroundTertiary"
                         style={{ aspectRatio: cssAspectRatio(aspectStyle) }}
                         onLoad={(e) =>
                             learnGifAspect(
@@ -902,7 +902,7 @@ function FavouriteTile({
                 >
                     <SvgIcon
                         d={STAR}
-                        className="w-3.5 h-3.5 text-discord-warning"
+                        className="w-3.5 h-3.5 text-zam-warning"
                     />
                 </Pressable>
             </View>
@@ -927,12 +927,12 @@ function FavouriteTile({
                         autoFocus
                         selectTextOnFocus
                         placeholder={t("gifPicker.catFunny")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         autoCapitalize="none"
                         returnKeyType="done"
-                        className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-xs rounded px-1.5 py-1 border border-transparent focus:border-discord-accent/30"
+                        className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-xs rounded px-1.5 py-1 border border-transparent focus:border-zam-accent/30"
                     />
-                    <Text className="text-[10px] text-discord-textMuted">
+                    <Text className="text-[10px] text-zam-textMuted">
                         {t("gifPicker.commaSeparatedEnterToSave")}
                     </Text>
                 </View>
@@ -977,7 +977,7 @@ function ResultTile({
                 })}
                 accessibilityState={{ selected }}
                 className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
-                    selected ? " border-2 border-discord-accent" : ""
+                    selected ? " border-2 border-zam-accent" : ""
                 }`}
             >
                 {/* Zami: the animated preview through expo-image, rather than
@@ -988,7 +988,7 @@ function ResultTile({
                 <Image
                     source={mediaSource(r.previewUrl)}
                     accessible={false}
-                    className="w-full rounded bg-discord-backgroundTertiary"
+                    className="w-full rounded bg-zam-backgroundTertiary"
                     style={{
                         aspectRatio:
                             cssAspectRatio(
@@ -1011,7 +1011,7 @@ function ResultTile({
                 <SvgIcon
                     d={STAR}
                     className={`w-3.5 h-3.5 ${
-                        favourited ? "text-discord-warning" : "text-white"
+                        favourited ? "text-zam-warning" : "text-white"
                     }`}
                 />
             </Pressable>

@@ -177,7 +177,7 @@ export default function PluginPopoverHost() {
                 onLayout={onCardLayout}
                 style={positionCard()}
                 entering={motionOK() ? scaleIn(120) : undefined}
-                className="absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl overflow-hidden"
+                className="absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl overflow-hidden"
             >
                 {/* Zami: the plugin builds DOM into the element (pluginMount),
                     which DomView shows. */}

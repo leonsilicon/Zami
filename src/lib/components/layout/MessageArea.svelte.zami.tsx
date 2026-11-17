@@ -3074,21 +3074,21 @@ export default function MessageArea({
     // Zami: a header button's icon color, which upstream's button sets as its
     // text color (`currentColor`).
     const headerIconClass = (active: boolean) =>
-        active ? "text-discord-accent" : "text-discord-textMuted";
+        active ? "text-zam-accent" : "text-zam-textMuted";
     const headerButtonClass = (active: boolean) =>
         `p-1.5 rounded transition-colors ${
-            active ? "bg-discord-messageHover" : "hover:bg-discord-messageHover"
+            active ? "bg-zam-messageHover" : "hover:bg-zam-messageHover"
         }`;
 
     const threadBadge =
         threadRollup.mentions > 0 ? (
-            <View className="absolute -top-1 -end-1 flex-shrink-0 bg-discord-danger rounded-full min-w-[16px] h-4 px-1 flex-row items-center justify-center ring-2 ring-discord-backgroundSecondary">
+            <View className="absolute -top-1 -end-1 flex-shrink-0 bg-zam-danger rounded-full min-w-[16px] h-4 px-1 flex-row items-center justify-center ring-2 ring-zam-backgroundSecondary">
                 <Text className="text-white text-[10px] leading-none font-bold">
                     {threadRollup.mentions > 99 ? "99+" : threadRollup.mentions}
                 </Text>
             </View>
         ) : threadRollup.anyUnread ? (
-            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-accent ring-2 ring-discord-backgroundSecondary" />
+            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-accent ring-2 ring-zam-backgroundSecondary" />
         ) : null;
     // Zami: what the badge's `title` said, for screen readers.
     const threadBadgeLabel =
@@ -3161,12 +3161,12 @@ export default function MessageArea({
                             {/* Zami: not ported: `data-zam-region="room-header"`,
                                 the DOM hook plugins find it by (pluginDom.ts);
                                 there's no DOM for them to query. */}
-                            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
+                            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-zam-divider shadow-sm flex-shrink-0">
                                 {isMobile ? (
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={onMenuOpen}
-                                        className="relative p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                                        className="relative p-1.5 -ms-1 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                                         accessibilityLabel={
                                             hasAnyLoud
                                                 ? `${t("common.openRoomList")}, ${t("messageArea.unreadNotifications")}`
@@ -3174,11 +3174,11 @@ export default function MessageArea({
                                         }
                                     >
                                         <SvgIcon
-                                            className="w-5 h-5 text-discord-textMuted"
+                                            className="w-5 h-5 text-zam-textMuted"
                                             d={MENU_PATH}
                                         />
                                         {hasAnyLoud ? (
-                                            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-danger border border-discord-background" />
+                                            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-danger border border-zam-background" />
                                         ) : null}
                                     </Pressable>
                                 ) : null}
@@ -3205,25 +3205,25 @@ export default function MessageArea({
                                                     "text"
                                                 }
                                                 size={20}
-                                                class="flex-shrink-0 text-discord-textMuted"
+                                                class="flex-shrink-0 text-zam-textMuted"
                                             />
                                             <Text
                                                 numberOfLines={1}
-                                                className="flex-shrink font-semibold text-discord-textMuted"
+                                                className="flex-shrink font-semibold text-zam-textMuted"
                                             >
                                                 {threadParentRoom.name}
                                             </Text>
                                         </Pressable>
                                         <ChevronRight
                                             size={16}
-                                            className="hidden sm:flex text-discord-textMuted flex-shrink-0 rtl:-scale-x-100"
+                                            className="hidden sm:flex text-zam-textMuted flex-shrink-0 rtl:-scale-x-100"
                                         />
                                     </>
                                 ) : null}
                                 <ChannelTypeIcon
                                     kind={headerIconKind}
                                     size={20}
-                                    class="text-discord-textMuted flex-shrink-0"
+                                    class="text-zam-textMuted flex-shrink-0"
                                 />
                                 {/* 5rem floor below md only: the header's buttons cannot shrink, so
                                     without a floor the name and topic each get a proportional share of
@@ -3233,7 +3233,7 @@ export default function MessageArea({
                                 <Text
                                     accessibilityRole="header"
                                     numberOfLines={1}
-                                    className="flex-shrink font-semibold text-discord-textPrimary min-w-[5rem] md:min-w-0"
+                                    className="flex-shrink font-semibold text-zam-textPrimary min-w-[5rem] md:min-w-0"
                                 >
                                     {roomName}
                                 </Text>
@@ -3247,13 +3247,13 @@ export default function MessageArea({
                                     >
                                         <Lock
                                             size={16}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </View>
                                 ) : null}
                                 {topic ? (
                                     <>
-                                        <View className="w-px h-5 bg-discord-divider" />
+                                        <View className="w-px h-5 bg-zam-divider" />
                                         {isMobile ? (
                                             <Pressable
                                                 accessibilityRole="button"
@@ -3265,7 +3265,7 @@ export default function MessageArea({
                                             >
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="text-sm text-discord-textMuted"
+                                                    className="text-sm text-zam-textMuted"
                                                 >
                                                     {topic}
                                                 </Text>
@@ -3273,7 +3273,7 @@ export default function MessageArea({
                                         ) : (
                                             <Text
                                                 numberOfLines={1}
-                                                className="text-sm text-discord-textMuted flex-auto min-w-0"
+                                                className="text-sm text-zam-textMuted flex-auto min-w-0"
                                             >
                                                 {topic}
                                             </Text>
@@ -3293,20 +3293,20 @@ export default function MessageArea({
                                             disabled:
                                                 joinPendingRoomId !== null,
                                         }}
-                                        className="p-1.5 rounded transition-colors hover:bg-discord-messageHover disabled:opacity-50"
+                                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover disabled:opacity-50"
                                         accessibilityLabel={callLabel}
                                     >
                                         {joining ? (
                                             <Pulse>
                                                 <Phone
                                                     size={20}
-                                                    className="text-discord-textMuted"
+                                                    className="text-zam-textMuted"
                                                 />
                                             </Pulse>
                                         ) : (
                                             <Phone
                                                 size={20}
-                                                className="text-discord-textMuted"
+                                                className="text-zam-textMuted"
                                             />
                                         )}
                                     </Pressable>
@@ -3318,14 +3318,14 @@ export default function MessageArea({
                                         onPress={() =>
                                             showCallView(room.roomId)
                                         }
-                                        className="p-1.5 rounded transition-colors hover:bg-discord-messageHover"
+                                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
                                         accessibilityLabel={t(
                                             "messageArea.showCall",
                                         )}
                                     >
                                         <Maximize2
                                             size={20}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </Pressable>
                                 ) : null}
@@ -3645,13 +3645,13 @@ export default function MessageArea({
                                                 ? void rejoinLive()
                                                 : scrollToBottom(false)
                                         }
-                                        className="bg-discord-backgroundSecondary hover:bg-discord-messageHover px-3 py-1.5 rounded-full shadow-lg border border-discord-divider transition-colors flex-row items-center gap-1.5"
+                                        className="bg-zam-backgroundSecondary hover:bg-zam-messageHover px-3 py-1.5 rounded-full shadow-lg border border-zam-divider transition-colors flex-row items-center gap-1.5"
                                     >
                                         <SvgIcon
-                                            className="w-4 h-4 text-discord-textPrimary"
+                                            className="w-4 h-4 text-zam-textPrimary"
                                             d={CHEVRON_DOWN_PATH}
                                         />
-                                        <Text className="text-discord-textPrimary text-sm font-medium">
+                                        <Text className="text-zam-textPrimary text-sm font-medium">
                                             {t("messageArea.jumpToPresent")}
                                         </Text>
                                     </Pressable>
@@ -3665,9 +3665,9 @@ export default function MessageArea({
                                     className="absolute start-0 end-0 flex-row justify-center z-10"
                                     style={{ bottom: composerHeight + 12 }}
                                 >
-                                    <View className="bg-discord-backgroundSecondary px-3 py-1.5 rounded-full shadow-lg border border-discord-divider flex-row items-center gap-2">
-                                        <Spin className="w-3.5 h-3.5 border-2 border-discord-accent border-t-transparent rounded-full" />
-                                        <Text className="text-discord-textMuted text-sm">
+                                    <View className="bg-zam-backgroundSecondary px-3 py-1.5 rounded-full shadow-lg border border-zam-divider flex-row items-center gap-2">
+                                        <Spin className="w-3.5 h-3.5 border-2 border-zam-accent border-t-transparent rounded-full" />
+                                        <Text className="text-zam-textMuted text-sm">
                                             {t(
                                                 "messageArea.searchingForMessage",
                                             )}
@@ -3679,7 +3679,7 @@ export default function MessageArea({
                             {/* Unread bar: how much arrived since last visit, with a jump back to
                                 the divider and a way to dismiss it without scrolling down. */}
                             {unreadSummary ? (
-                                <View className="absolute top-12 start-0 end-0 mx-4 z-10 flex-row items-stretch rounded-b-lg overflow-hidden shadow-lg bg-discord-accent">
+                                <View className="absolute top-12 start-0 end-0 mx-4 z-10 flex-row items-stretch rounded-b-lg overflow-hidden shadow-lg bg-zam-accent">
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={() =>
@@ -3722,12 +3722,12 @@ export default function MessageArea({
                                     pointerEvents="box-none"
                                     className="absolute top-12 start-0 end-0 flex-row justify-center z-10"
                                 >
-                                    <View className="bg-discord-warning/20 px-3 py-1.5 rounded-full shadow-lg border border-discord-warning/40 flex-row items-center gap-2">
+                                    <View className="bg-zam-warning/20 px-3 py-1.5 rounded-full shadow-lg border border-zam-warning/40 flex-row items-center gap-2">
                                         <SvgIcon
-                                            className="w-3.5 h-3.5 flex-shrink-0 text-discord-warning"
+                                            className="w-3.5 h-3.5 flex-shrink-0 text-zam-warning"
                                             d={INFO_PATH}
                                         />
-                                        <Text className="text-discord-warning text-sm">
+                                        <Text className="text-zam-warning text-sm">
                                             {t(
                                                 "messageArea.viewingMessageContext",
                                             )}
@@ -3737,7 +3737,7 @@ export default function MessageArea({
                                             onPress={() => void rejoinLive()}
                                             className="ms-1"
                                         >
-                                            <Text className="text-discord-warning text-sm underline">
+                                            <Text className="text-zam-warning text-sm underline">
                                                 {t("messageArea.returnToLive")}
                                             </Text>
                                         </Pressable>
@@ -3757,9 +3757,9 @@ export default function MessageArea({
                                         direction: uiDir,
                                         marginBottom: 16 + bottomInset,
                                     }}
-                                    className="flex-shrink-0 mx-4 rounded-lg border border-discord-backgroundModifier bg-discord-backgroundSecondary px-4 py-3"
+                                    className="flex-shrink-0 mx-4 rounded-lg border border-zam-backgroundModifier bg-zam-backgroundSecondary px-4 py-3"
                                 >
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t("messageArea.cachedRoomHint")}
                                     </Text>
                                 </View>
@@ -3837,7 +3837,7 @@ export default function MessageArea({
                                     />
                                 </Animated.View>
                                 <Animated.View
-                                    className="absolute inset-y-0 right-0 z-40 h-full bg-discord-backgroundSecondary"
+                                    className="absolute inset-y-0 right-0 z-40 h-full bg-zam-backgroundSecondary"
                                     style={[
                                         {
                                             width: PINNED_WIDTH,
@@ -3893,7 +3893,7 @@ export default function MessageArea({
                                     />
                                 </Animated.View>
                                 <Animated.View
-                                    className="absolute inset-y-0 right-0 z-40 h-full bg-discord-backgroundSecondary"
+                                    className="absolute inset-y-0 right-0 z-40 h-full bg-zam-backgroundSecondary"
                                     style={[
                                         {
                                             width: MEMBER_WIDTH,
@@ -3931,36 +3931,36 @@ export default function MessageArea({
                             rendering touched. Title is escaped text; body is the plugin's own DOM
                             mounted via pluginMount (cleanup runs on unmount/close/supersede). */}
                         {currentPluginPanel ? (
-                            // Zami: `bg-discord-background`: upstream's
-                            // `bg-discord-backgroundPrimary` names no color
+                            // Zami: `bg-zam-background`: upstream's
+                            // `bg-zam-backgroundPrimary` names no color
                             // (tailwind.config.js has `background`), which
                             // leaves the full-screen panel see-through.
                             <View
                                 style={{ direction: uiDir }}
                                 className={
                                     isMobile
-                                        ? "absolute inset-0 z-40 flex-col bg-discord-background"
-                                        : "w-80 flex-shrink-0 flex-col border-l border-discord-divider bg-discord-backgroundSecondary"
+                                        ? "absolute inset-0 z-40 flex-col bg-zam-background"
+                                        : "w-80 flex-shrink-0 flex-col border-l border-zam-divider bg-zam-backgroundSecondary"
                                 }
                             >
-                                <View className="flex-row items-center justify-between px-4 h-12 flex-shrink-0 border-b border-discord-divider">
+                                <View className="flex-row items-center justify-between px-4 h-12 flex-shrink-0 border-b border-zam-divider">
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink font-semibold text-discord-textPrimary"
+                                        className="flex-shrink font-semibold text-zam-textPrimary"
                                     >
                                         {currentPluginPanel.title}
                                     </Text>
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={closeSidebar}
-                                        className="p-1.5 rounded hover:bg-discord-messageHover"
+                                        className="p-1.5 rounded hover:bg-zam-messageHover"
                                         accessibilityLabel={t(
                                             "messageArea.closePanel",
                                         )}
                                     >
                                         <X
                                             size={20}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </Pressable>
                                 </View>
@@ -4277,20 +4277,20 @@ const TimelineRow = memo(function TimelineRow({
         <View onTouchStart={() => onRowTouch(event.getId() ?? "")}>
             {sepTs !== null ? (
                 <View className="flex-row items-center gap-4 px-4 my-4">
-                    <View className="flex-1 h-px bg-discord-divider" />
-                    <Text className="text-xs font-semibold text-discord-textMuted">
+                    <View className="flex-1 h-px bg-zam-divider" />
+                    <Text className="text-xs font-semibold text-zam-textMuted">
                         {daySeparator(sepTs)}
                     </Text>
-                    <View className="flex-1 h-px bg-discord-divider" />
+                    <View className="flex-1 h-px bg-zam-divider" />
                 </View>
             ) : null}
             {unreadHere ? (
                 <View className="flex-row items-center gap-3 px-4 my-2">
-                    <View className="flex-1 h-px bg-discord-danger/60" />
-                    <Text className="text-xs font-semibold text-discord-danger uppercase tracking-wide">
+                    <View className="flex-1 h-px bg-zam-danger/60" />
+                    <Text className="text-xs font-semibold text-zam-danger uppercase tracking-wide">
                         {t("messageArea.newMessages")}
                     </Text>
-                    <View className="flex-1 h-px bg-discord-danger/60" />
+                    <View className="flex-1 h-px bg-zam-danger/60" />
                 </View>
             ) : null}
             {rawDebug ? (
@@ -4298,17 +4298,17 @@ const TimelineRow = memo(function TimelineRow({
             ) : blocked ? (
                 <View className="px-4 py-1.5 flex-row items-center gap-2">
                     <SvgIcon
-                        className="w-3.5 h-3.5 flex-shrink-0 text-discord-textMuted"
+                        className="w-3.5 h-3.5 flex-shrink-0 text-zam-textMuted"
                         d={BLOCKED_PATH}
                     />
-                    <Text className="text-xs text-discord-textMuted italic">
+                    <Text className="text-xs text-zam-textMuted italic">
                         {t("messageArea.messageFromABlockedUser")}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => onRevealBlocked(event.getId() ?? "")}
                     >
-                        <Text className="text-xs text-discord-accent font-medium">
+                        <Text className="text-xs text-zam-accent font-medium">
                             {t("messageArea.showBlockedMessage")}
                         </Text>
                     </Pressable>
@@ -4438,7 +4438,7 @@ function HistoryEdge({
             {state === "loading" ? (
                 <View className="flex-row justify-center py-4">
                     <Spin
-                        className="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full"
+                        className="w-6 h-6 border-2 border-zam-accent border-t-transparent rounded-full"
                         accessibilityRole="progressbar"
                         accessibilityLabel={t("messageArea.loadingHistory")}
                     />
@@ -4448,17 +4448,17 @@ function HistoryEdge({
             {/* Chat start, shown only once the room's m.room.create is loaded */}
             {state === "start" ? (
                 <View className="px-4 pb-4">
-                    <View className="w-16 h-16 rounded-full bg-discord-accent flex-row items-center justify-center mb-4">
+                    <View className="w-16 h-16 rounded-full bg-zam-accent flex-row items-center justify-center mb-4">
                         <Text className="text-3xl font-bold text-white">#</Text>
                     </View>
                     <Text
                         accessibilityRole="header"
-                        className="text-2xl font-bold text-discord-textPrimary mb-1"
+                        className="text-2xl font-bold text-zam-textPrimary mb-1"
                     >
                         {t("messageArea.welcomeTo")}
                         {roomName}!
                     </Text>
-                    <Text className="text-discord-textMuted">
+                    <Text className="text-zam-textMuted">
                         {t("messageArea.thisIsTheBeginningOfThe")}
                         {roomName} {t("messageArea.room")}
                     </Text>
@@ -4482,19 +4482,16 @@ function TombstoneBanner({
     onJoin: () => void;
 }) {
     return (
-        <View className="mx-4 mt-2 mb-4 p-3 rounded-lg bg-discord-backgroundTertiary border border-discord-warning flex-row items-center gap-3">
+        <View className="mx-4 mt-2 mb-4 p-3 rounded-lg bg-zam-backgroundTertiary border border-zam-warning flex-row items-center gap-3">
             <SvgIcon
-                className="w-5 h-5 text-discord-warning flex-shrink-0"
+                className="w-5 h-5 text-zam-warning flex-shrink-0"
                 d={WARNING_PATH}
             />
             <View className="flex-1 min-w-0">
-                <Text className="text-sm font-semibold text-discord-textPrimary">
+                <Text className="text-sm font-semibold text-zam-textPrimary">
                     {t("messageArea.thisRoomHasBeenUpgraded")}
                 </Text>
-                <Text
-                    numberOfLines={1}
-                    className="text-xs text-discord-textMuted"
-                >
+                <Text numberOfLines={1} className="text-xs text-zam-textMuted">
                     {body}
                 </Text>
             </View>
@@ -4503,7 +4500,7 @@ function TombstoneBanner({
                 onPress={onJoin}
                 disabled={joining}
                 accessibilityState={{ disabled: joining }}
-                className="flex-shrink-0 px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                className="flex-shrink-0 px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
             >
                 <Text className="text-white text-sm font-semibold">
                     {alreadyJoined
@@ -4541,7 +4538,7 @@ function MessageHighlight({ n }: { n: number }) {
         <Animated.View
             pointerEvents="none"
             style={style}
-            className="absolute inset-0 bg-[rgb(var(--discord-mention-highlight-rgb)_/_0.35)]"
+            className="absolute inset-0 bg-[rgb(var(--zam-mention-highlight-rgb)_/_0.35)]"
         />
     );
 }

@@ -105,25 +105,25 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
 
     return (
         <View className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
+            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-zam-divider shadow-sm flex-shrink-0">
                 {isMobile ? (
                     // Zami: the button's `title` is its only name, so it's
                     // the accessibility label.
                     <Pressable
                         accessibilityRole="button"
                         onPress={onMenuOpen}
-                        className="p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                        className="p-1.5 -ms-1 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                         accessibilityLabel={t("common.openRoomList")}
                     >
                         <SvgIcon
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                             d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
                         />
                     </Pressable>
                 ) : null}
                 <Text
                     accessibilityRole="header"
-                    className="font-semibold text-discord-textPrimary"
+                    className="font-semibold text-zam-textPrimary"
                 >
                     {t("inboxPanel.inbox")}
                 </Text>
@@ -144,7 +144,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                         return (
                             <Text
                                 accessibilityRole="header"
-                                className={`${column} text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1 ${
+                                className={`${column} text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1 ${
                                     row.spaced ? "mt-3" : ""
                                 }`}
                             >
@@ -159,7 +159,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                         const topic = getRoomTopic(room);
                         return (
                             <View
-                                className={`${column} flex-row items-center gap-4 p-4 rounded-lg bg-discord-backgroundSecondary border border-discord-divider`}
+                                className={`${column} flex-row items-center gap-4 p-4 rounded-lg bg-zam-backgroundSecondary border border-zam-divider`}
                             >
                                 <Avatar
                                     src={getRoomAvatar(room)}
@@ -169,12 +169,12 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                 <View className="flex-1 min-w-0">
                                     <Text
                                         numberOfLines={1}
-                                        className="font-semibold text-discord-textPrimary"
+                                        className="font-semibold text-zam-textPrimary"
                                     >
                                         {getRoomDisplayName(room)}
                                     </Text>
                                     {sender ? (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {t("inboxPanel.invitedBy", {
                                                 sender,
                                             })}
@@ -183,7 +183,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                     {topic ? (
                                         <Text
                                             numberOfLines={2}
-                                            className="text-sm text-discord-textMuted mt-0.5"
+                                            className="text-sm text-zam-textMuted mt-0.5"
                                         >
                                             {topic}
                                         </Text>
@@ -195,11 +195,11 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                         onPress={() => void reject(room.roomId)}
                                         disabled={busy}
                                         accessibilityState={{ disabled: busy }}
-                                        className={`px-3 py-1.5 rounded border border-discord-divider hover:bg-discord-danger hover:border-discord-danger transition-colors ${
+                                        className={`px-3 py-1.5 rounded border border-zam-divider hover:bg-zam-danger hover:border-zam-danger transition-colors ${
                                             busy ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-sm font-semibold text-discord-textMuted">
+                                        <Text className="text-sm font-semibold text-zam-textMuted">
                                             {t("inboxPanel.ignore")}
                                         </Text>
                                     </Pressable>
@@ -208,7 +208,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                         onPress={() => void accept(room.roomId)}
                                         disabled={busy}
                                         accessibilityState={{ disabled: busy }}
-                                        className={`px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors flex-row items-center gap-1.5 ${
+                                        className={`px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors flex-row items-center gap-1.5 ${
                                             busy ? "opacity-50" : ""
                                         }`}
                                     >
@@ -225,7 +225,7 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                     }
                     return (
                         <View
-                            className={`${column} flex-row items-center gap-4 p-4 rounded-lg bg-discord-backgroundSecondary border border-discord-divider`}
+                            className={`${column} flex-row items-center gap-4 p-4 rounded-lg bg-zam-backgroundSecondary border border-zam-divider`}
                         >
                             <Avatar
                                 src={getRoomAvatar(room)}
@@ -235,11 +235,11 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                             <View className="flex-1 min-w-0">
                                 <Text
                                     numberOfLines={1}
-                                    className="font-semibold text-discord-textPrimary"
+                                    className="font-semibold text-zam-textPrimary"
                                 >
                                     {getRoomDisplayName(room)}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("inboxPanel.youAskedToJoinWaitingFor")}
                                 </Text>
                             </View>
@@ -251,14 +251,14 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                                     }
                                     disabled={busy}
                                     accessibilityState={{ disabled: busy }}
-                                    className={`px-3 py-1.5 rounded border border-discord-divider hover:bg-discord-danger hover:border-discord-danger transition-colors flex-row items-center gap-1.5 ${
+                                    className={`px-3 py-1.5 rounded border border-zam-divider hover:bg-zam-danger hover:border-zam-danger transition-colors flex-row items-center gap-1.5 ${
                                         busy ? "opacity-50" : ""
                                     }`}
                                 >
                                     {busy ? (
-                                        <Spin className="w-3.5 h-3.5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
+                                        <Spin className="w-3.5 h-3.5 border-2 border-zam-textMuted border-t-transparent rounded-full" />
                                     ) : null}
-                                    <Text className="text-sm font-semibold text-discord-textMuted">
+                                    <Text className="text-sm font-semibold text-zam-textMuted">
                                         {t("inboxPanel.cancelRequest")}
                                     </Text>
                                 </Pressable>
@@ -268,16 +268,16 @@ export default function InboxPanel({ isMobile = false, onMenuOpen }: Props) {
                 }}
                 ListEmptyComponent={
                     <View className="flex-1 flex-col items-center justify-center py-16">
-                        <View className="w-16 h-16 rounded-full bg-discord-backgroundSecondary flex-row items-center justify-center mb-4">
+                        <View className="w-16 h-16 rounded-full bg-zam-backgroundSecondary flex-row items-center justify-center mb-4">
                             <SvgIcon
-                                className="w-8 h-8 text-discord-textMuted"
+                                className="w-8 h-8 text-zam-textMuted"
                                 d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"
                             />
                         </View>
-                        <Text className="text-discord-textPrimary font-semibold mb-1 text-center">
+                        <Text className="text-zam-textPrimary font-semibold mb-1 text-center">
                             {t("inboxPanel.noPendingInvites")}
                         </Text>
-                        <Text className="text-discord-textMuted text-sm text-center">
+                        <Text className="text-zam-textMuted text-sm text-center">
                             {t("inboxPanel.roomInvitesWillAppearHere")}
                         </Text>
                     </View>

@@ -568,7 +568,7 @@ export default function EmojiPicker({
                     >
                         <Text
                             numberOfLines={1}
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {row.label}
                         </Text>
@@ -603,17 +603,17 @@ export default function EmojiPicker({
         <View
             className={`${
                 isTouchscreen ? "w-full rounded-t-xl" : "rounded-xl"
-            } relative bg-discord-backgroundSecondary border border-discord-divider shadow-2xl flex flex-col`}
+            } relative bg-zam-backgroundSecondary border border-zam-divider shadow-2xl flex flex-col`}
             style={panelStyle}
         >
             {isTouchscreen && (onSwitchToSticker || onSwitchToGif) ? (
-                <View className="flex-row border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row border-b border-zam-divider flex-shrink-0">
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: true }}
-                        className="flex-1 py-2 items-center border-b-2 border-discord-accent"
+                        className="flex-1 py-2 items-center border-b-2 border-zam-accent"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("common.emoji")}
                         </Text>
                     </Pressable>
@@ -623,7 +623,7 @@ export default function EmojiPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.stickers")}
                             </Text>
                         </Pressable>
@@ -634,7 +634,7 @@ export default function EmojiPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.gifs")}
                             </Text>
                         </Pressable>
@@ -650,7 +650,7 @@ export default function EmojiPicker({
                     value={search}
                     onChangeText={setSearch}
                     placeholder={t("emojiPicker.searchEmoji")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityRole="search"
                     accessibilityLabel={t("emojiPicker.searchEmoji2")}
                     accessibilityState={{ expanded: hasOptions }}
@@ -660,7 +660,7 @@ export default function EmojiPicker({
                     // Zami: Enter picks the selected emoji (onSearchKeydown)
                     // and otherwise does nothing, rather than blurring.
                     submitBehavior="submit"
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
 
@@ -700,7 +700,7 @@ export default function EmojiPicker({
                             }}
                             className={`flex-shrink-0 p-1.5 rounded transition-colors ${
                                 activeTab === tab.id
-                                    ? "bg-discord-messageHover"
+                                    ? "bg-zam-messageHover"
                                     : "opacity-40"
                             }`}
                         >
@@ -717,7 +717,7 @@ export default function EmojiPicker({
                                 ) : tab.id === "user" ? (
                                     <SvgIcon
                                         d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
-                                        className="w-5 h-5 text-discord-textPrimary"
+                                        className="w-5 h-5 text-zam-textPrimary"
                                     />
                                 ) : tab.avatarUrl ? (
                                     <Image
@@ -727,7 +727,7 @@ export default function EmojiPicker({
                                         contentFit="cover"
                                     />
                                 ) : (
-                                    <View className="w-5 h-5 rounded-full bg-discord-accent flex items-center justify-center">
+                                    <View className="w-5 h-5 rounded-full bg-zam-accent flex items-center justify-center">
                                         <Text className="text-white text-xs font-bold">
                                             {tab.label[0]?.toUpperCase() ?? "?"}
                                         </Text>
@@ -781,7 +781,7 @@ export default function EmojiPicker({
                 contentContainerClassName="px-2 pb-2"
                 ListEmptyComponent={
                     search && !hasOptions ? (
-                        <Text className="text-center text-discord-textMuted text-sm py-8">
+                        <Text className="text-center text-zam-textMuted text-sm py-8">
                             {t("common.noResults")}
                         </Text>
                     ) : undefined
@@ -830,10 +830,10 @@ const EmojiCell = memo(function EmojiCell({
     pick,
     pickCustom,
 }: EmojiCellProps & { item: FlatItem }) {
-    // Zami: `class:ring-2` / `class:ring-discord-accent` on the option the
+    // Zami: `class:ring-2` / `class:ring-zam-accent` on the option the
     // cursor is on.
     const selected = useSelected(selection, item);
-    const ring = selected ? " border-2 border-discord-accent" : "";
+    const ring = selected ? " border-2 border-zam-accent" : "";
     return item.kind === "custom" ? (
         <Pressable
             onPress={() => pickCustom(item.data)}
@@ -841,7 +841,7 @@ const EmojiCell = memo(function EmojiCell({
             accessibilityLabel={item.data.shortcode}
             accessibilityState={{ selected }}
             style={{ width: cell, height: cell }}
-            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
+            className={`p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex items-center justify-center${ring}`}
         >
             <Image
                 source={mediaSource(
@@ -863,7 +863,7 @@ const EmojiCell = memo(function EmojiCell({
             accessibilityLabel={item.data.name}
             accessibilityState={{ selected }}
             style={{ width: cell, height: cell }}
-            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${ring}`}
+            className={`p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex items-center justify-center${ring}`}
         >
             <Text
                 allowFontScaling={false}

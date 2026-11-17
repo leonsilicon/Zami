@@ -342,13 +342,13 @@ export default function ThreadPanel({
             <View
                 className={`${
                     fullscreen ? "w-full" : "w-80 border-l"
-                } h-full flex-shrink-0 flex flex-col border-discord-divider bg-discord-background overflow-hidden`}
+                } h-full flex-shrink-0 flex flex-col border-zam-divider bg-zam-background overflow-hidden`}
             >
                 {/* Header */}
-                <View className="h-12 px-4 flex-row items-center justify-between border-b border-discord-divider flex-shrink-0">
+                <View className="h-12 px-4 flex-row items-center justify-between border-b border-zam-divider flex-shrink-0">
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink font-semibold text-discord-textPrimary text-sm min-w-0"
+                        className="flex-shrink font-semibold text-zam-textPrimary text-sm min-w-0"
                     >
                         {threadName ?? t("threadPanel.thread")}
                     </Text>
@@ -357,11 +357,11 @@ export default function ThreadPanel({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={openRename}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                                 accessibilityLabel={titleLabel}
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-textMuted"
+                                    className="w-4 h-4 text-zam-textMuted"
                                     d={RENAME_PATH}
                                 />
                             </Pressable>
@@ -370,7 +370,7 @@ export default function ThreadPanel({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={onToggleFullscreen}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                                 accessibilityLabel={
                                     fullscreen
                                         ? t("threadPanel.collapseThread")
@@ -379,12 +379,12 @@ export default function ThreadPanel({
                             >
                                 {fullscreen ? (
                                     <SvgIcon
-                                        className="w-4 h-4 text-discord-textMuted"
+                                        className="w-4 h-4 text-zam-textMuted"
                                         d={COLLAPSE_PATH}
                                     />
                                 ) : (
                                     <SvgIcon
-                                        className="w-4 h-4 text-discord-textMuted"
+                                        className="w-4 h-4 text-zam-textMuted"
                                         d={EXPAND_PATH}
                                     />
                                 )}
@@ -393,11 +393,11 @@ export default function ThreadPanel({
                         <Pressable
                             accessibilityRole="button"
                             onPress={onClose}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                             accessibilityLabel={t("threadPanel.closeThread")}
                         >
                             <SvgIcon
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                                 d={CLOSE_PATH}
                             />
                         </Pressable>
@@ -409,7 +409,7 @@ export default function ThreadPanel({
                     replies off screen. */}
                 {rootEvent ? (
                     <ScrollView
-                        className="border-b border-discord-divider flex-shrink-0 flex-grow-0 bg-discord-backgroundSecondary max-h-60"
+                        className="border-b border-zam-divider flex-shrink-0 flex-grow-0 bg-zam-backgroundSecondary max-h-60"
                         contentContainerClassName="py-1"
                     >
                         <MessageItem
@@ -447,7 +447,7 @@ export default function ThreadPanel({
                     ListFooterComponent={
                         <>
                             {messages.length === 0 ? (
-                                <Text className="text-xs text-discord-textMuted text-center mt-4 px-4">
+                                <Text className="text-xs text-zam-textMuted text-center mt-4 px-4">
                                     {t(
                                         "threadPanel.noRepliesYetStartTheThread",
                                     )}
@@ -464,7 +464,7 @@ export default function ThreadPanel({
                                         disabled={loadingOlder}
                                         className="disabled:opacity-40 transition-colors"
                                     >
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {loadingOlder
                                                 ? t("common.loading")
                                                 : t(
@@ -629,7 +629,7 @@ function MessageHighlight({ n }: { n: number }) {
         <Animated.View
             pointerEvents="none"
             style={style}
-            className="absolute inset-0 bg-[rgb(var(--discord-mention-highlight-rgb)_/_0.35)]"
+            className="absolute inset-0 bg-[rgb(var(--zam-mention-highlight-rgb)_/_0.35)]"
         />
     );
 }

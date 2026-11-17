@@ -450,7 +450,7 @@ export default function VoiceRecorder({
     }, []);
 
     return (
-        <View className="input-box relative flex-row items-center gap-3 bg-discord-backgroundSecondary rounded-lg px-3 py-2.5 border border-transparent">
+        <View className="input-box relative flex-row items-center gap-3 bg-zam-backgroundSecondary rounded-lg px-3 py-2.5 border border-transparent">
             {phase === "recording" ? (
                 <>
                     {/* Cancel */}
@@ -461,7 +461,7 @@ export default function VoiceRecorder({
                         accessibilityLabel={t("voiceRecorder.cancelRecording")}
                     >
                         <SvgIcon
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                             d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                         />
                     </Pressable>
@@ -472,18 +472,18 @@ export default function VoiceRecorder({
                         importantForAccessibility="no-hide-descendants"
                         accessibilityElementsHidden
                     >
-                        <View className="w-3 h-3 rounded-full flex-shrink-0 bg-discord-danger" />
+                        <View className="w-3 h-3 rounded-full flex-shrink-0 bg-zam-danger" />
                     </Animated.View>
 
                     {/* Elapsed time */}
-                    <Text className="flex-shrink-0 text-sm font-mono tabular-nums text-discord-textPrimary">
+                    <Text className="flex-shrink-0 text-sm font-mono tabular-nums text-zam-textPrimary">
                         {formatCallDuration(elapsedMs)}
                     </Text>
 
                     {/* Live level meter */}
-                    <View className="flex-1 min-w-0 h-2 rounded-full bg-discord-backgroundTertiary overflow-hidden">
+                    <View className="flex-1 min-w-0 h-2 rounded-full bg-zam-backgroundTertiary overflow-hidden">
                         <View
-                            className="h-full rounded-full bg-discord-accent"
+                            className="h-full rounded-full bg-zam-accent"
                             style={{ width: `${level * 100}%` }}
                         />
                     </View>
@@ -492,7 +492,7 @@ export default function VoiceRecorder({
                     <Pressable
                         accessibilityRole="button"
                         onPress={stop}
-                        className="flex-shrink-0 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-discord-accent hover:opacity-90 transition-opacity"
+                        className="flex-shrink-0 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-zam-accent hover:opacity-90 transition-opacity"
                     >
                         <SvgIcon className="w-4 h-4 text-white">
                             <Rect x="6" y="6" width="12" height="12" rx="1.5" />
@@ -513,7 +513,7 @@ export default function VoiceRecorder({
                         accessibilityLabel={t("voiceRecorder.discardRecording")}
                     >
                         <SvgIcon
-                            className="w-5 h-5 text-discord-textMuted"
+                            className="w-5 h-5 text-zam-textMuted"
                             d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
                         />
                     </Pressable>
@@ -524,21 +524,21 @@ export default function VoiceRecorder({
                             waveform.map((bar, i) => (
                                 <View
                                     key={i}
-                                    className="flex-1 min-w-[2px] rounded-full bg-discord-accent/80"
+                                    className="flex-1 min-w-[2px] rounded-full bg-zam-accent/80"
                                     style={{
                                         height: `${Math.max(8, (bar / 1024) * 100)}%`,
                                     }}
                                 />
                             ))
                         ) : (
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("voiceRecorder.voiceMessage")}
                             </Text>
                         )}
                     </View>
 
                     {/* Duration */}
-                    <Text className="flex-shrink-0 text-sm font-mono tabular-nums text-discord-textMuted">
+                    <Text className="flex-shrink-0 text-sm font-mono tabular-nums text-zam-textMuted">
                         {formatCallDuration(previewDurationMs)}
                     </Text>
 
@@ -549,16 +549,16 @@ export default function VoiceRecorder({
                             accessibilityRole="button"
                             accessibilityLabel={t("voiceRecorder.voiceMessage")}
                             onPress={togglePreview}
-                            className="flex-shrink-0 w-8 h-8 rounded-full bg-discord-backgroundTertiary items-center justify-center"
+                            className="flex-shrink-0 w-8 h-8 rounded-full bg-zam-backgroundTertiary items-center justify-center"
                         >
                             {previewStatus.playing ? (
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-textPrimary"
+                                    className="w-4 h-4 text-zam-textPrimary"
                                     d="M6 5h4v14H6zM14 5h4v14h-4z"
                                 />
                             ) : (
                                 <SvgIcon
-                                    className="w-4 h-4 ms-0.5 text-discord-textPrimary"
+                                    className="w-4 h-4 ms-0.5 text-zam-textPrimary"
                                     d="M8 5v14l11-7z"
                                 />
                             )}
@@ -570,7 +570,7 @@ export default function VoiceRecorder({
                         accessibilityRole="button"
                         onPress={() => void send()}
                         disabled={phase === "sending"}
-                        className="flex-shrink-0 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-discord-accent hover:opacity-90 transition-opacity disabled:opacity-60"
+                        className="flex-shrink-0 flex-row items-center gap-1.5 px-3 py-1.5 rounded bg-zam-accent hover:opacity-90 transition-opacity disabled:opacity-60"
                     >
                         {phase === "sending" ? (
                             <>

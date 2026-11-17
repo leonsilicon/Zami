@@ -57,14 +57,14 @@ export default function ReconnectPill({ syncState }: Props) {
             >
                 <View
                     accessibilityLiveRegion="polite"
-                    className="flex-row items-center gap-2 rounded-full bg-discord-backgroundTertiary/95 px-3 py-1.5 shadow-lg ring-1 ring-black/20"
+                    className="flex-row items-center gap-2 rounded-full bg-zam-backgroundTertiary/95 px-3 py-1.5 shadow-lg ring-1 ring-black/20"
                 >
                     {offline ? (
-                        <View className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-danger" />
+                        <View className="h-2 w-2 flex-shrink-0 rounded-full bg-zam-danger" />
                     ) : (
-                        <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-discord-warning" />
+                        <Pulse className="h-2 w-2 flex-shrink-0 rounded-full bg-zam-warning" />
                     )}
-                    <Text className="text-xs font-medium text-discord-textSecondary">
+                    <Text className="text-xs font-medium text-zam-textSecondary">
                         {status.label}
                     </Text>
                 </View>

@@ -135,14 +135,14 @@ export default function ReactorPopover({
                     />
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink text-sm text-discord-textPrimary truncate"
+                        className="flex-shrink text-sm text-zam-textPrimary truncate"
                     >
                         {r.name}
                     </Text>
                 </View>
             ))}
             {overflow > 0 && (
-                <Text className="px-3 py-1 text-xs text-discord-textMuted">
+                <Text className="px-3 py-1 text-xs text-zam-textMuted">
                     {t("reactorPopover.more", { overflow })}
                 </Text>
             )}
@@ -156,11 +156,11 @@ export default function ReactorPopover({
             <Portal>
                 <BottomSheet onClose={() => onClose?.()}>
                     {label ? (
-                        <Text className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-discord-textMuted border-b border-discord-divider">
+                        <Text className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zam-textMuted border-b border-zam-divider">
                             {t("reactorPopover.reactedWith", { label })}
                         </Text>
                     ) : dialogLabel && !label ? (
-                        <Text className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-discord-textMuted border-b border-discord-divider">
+                        <Text className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zam-textMuted border-b border-zam-divider">
                             {dialogLabel}
                         </Text>
                     ) : null}
@@ -186,7 +186,7 @@ export default function ReactorPopover({
                         onLayout={onCardLayout}
                         style={positionCard({ x, y })}
                         entering={duration ? scaleIn(duration) : undefined}
-                        className="absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl py-1 min-w-40 max-w-64"
+                        className="absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl py-1 min-w-40 max-w-64"
                         role="dialog"
                         accessibilityViewIsModal
                         onAccessibilityEscape={() => onClose?.()}
@@ -203,7 +203,7 @@ export default function ReactorPopover({
                     style={positionCard({ x, y })}
                     entering={duration ? scaleIn(duration) : undefined}
                     pointerEvents="none"
-                    className="absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl py-1 min-w-40 max-w-64"
+                    className="absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl py-1 min-w-40 max-w-64"
                 >
                     {rows()}
                 </Animated.View>

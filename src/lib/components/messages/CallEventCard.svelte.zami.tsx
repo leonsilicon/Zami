@@ -27,34 +27,29 @@ export default function CallEventCard({
     // text and icon that inherit them on the web. `inline-flex` → `self-start`.
     const tone =
         summary.outcome === "missed"
-            ? "text-discord-danger"
-            : "text-discord-textPrimary";
+            ? "text-zam-danger"
+            : "text-zam-textPrimary";
 
     return (
-        <View className="mt-1 flex-row self-start items-center gap-2 rounded-lg border border-discord-backgroundTertiary bg-discord-backgroundSecondary px-3 py-2">
+        <View className="mt-1 flex-row self-start items-center gap-2 rounded-lg border border-zam-backgroundTertiary bg-zam-backgroundSecondary px-3 py-2">
             {summary.outcome === "missed" ? (
                 <PhoneMissed size={16} className={`flex-shrink-0 ${tone}`} />
             ) : summary.outcome === "ongoing" ? (
                 <PhoneCall
                     size={16}
-                    className="flex-shrink-0 text-discord-online"
+                    className="flex-shrink-0 text-zam-online"
                 />
             ) : (
-                <Phone
-                    size={16}
-                    className="flex-shrink-0 text-discord-textMuted"
-                />
+                <Phone size={16} className="flex-shrink-0 text-zam-textMuted" />
             )}
             <Text className={`text-sm font-medium ${tone}`}>{label}</Text>
             {names.length > 0 && (
-                <Text className="flex-shrink text-sm text-discord-textMuted">
+                <Text className="flex-shrink text-sm text-zam-textMuted">
                     · {names.join(", ")}
                 </Text>
             )}
             {duration ? (
-                <Text className="text-sm text-discord-textMuted">
-                    · {duration}
-                </Text>
+                <Text className="text-sm text-zam-textMuted">· {duration}</Text>
             ) : null}
         </View>
     );

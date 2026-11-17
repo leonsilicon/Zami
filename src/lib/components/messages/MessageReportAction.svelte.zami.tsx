@@ -131,16 +131,16 @@ export default function MessageReportAction({
                     : below
                       ? "absolute top-full end-0 mt-1 z-50 w-72"
                       : "absolute bottom-full end-0 mb-1 z-50 w-72"
-            } bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl p-3`}
+            } bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl p-3`}
             style={isTouchscreen ? { bottom: keyboardOffset + 8 } : undefined}
         >
             {status === "sent" ? (
-                <Text className="text-sm text-discord-textPrimary">
+                <Text className="text-sm text-zam-textPrimary">
                     {t("messageReportAction.reportSent")}
                 </Text>
             ) : (
                 <>
-                    <Text className="text-xs font-semibold uppercase text-discord-textMuted mb-2">
+                    <Text className="text-xs font-semibold uppercase text-zam-textMuted mb-2">
                         {t("messageReportAction.reportMessage")}
                     </Text>
                     <TextInput
@@ -151,11 +151,11 @@ export default function MessageReportAction({
                         placeholder={t(
                             "messageReportAction.whyAreYouReportingThisMessage",
                         )}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         editable={status !== "sending"}
                         textAlignVertical="top"
                         // Zami: `rows="3"`: three 20px lines, the padding and the border.
-                        className="w-full min-h-[78px] resize-none rounded bg-discord-backgroundSecondary border border-discord-divider p-2 text-sm text-discord-textPrimary focus:outline-none focus:border-discord-accent"
+                        className="w-full min-h-[78px] resize-none rounded bg-zam-backgroundSecondary border border-zam-divider p-2 text-sm text-zam-textPrimary focus:outline-none focus:border-zam-accent"
                     />
                     <Checkbox
                         checked={offensive}
@@ -164,11 +164,11 @@ export default function MessageReportAction({
                         label={t(
                             "messageReportAction.markAsExtremelyOffensive",
                         )}
-                        labelClassName="text-xs text-discord-textMuted"
+                        labelClassName="text-xs text-zam-textMuted"
                         className="items-center gap-2 mt-2 select-none cursor-pointer"
                     />
                     {status === "error" && (
-                        <Text className="text-xs text-discord-danger mt-2">
+                        <Text className="text-xs text-zam-danger mt-2">
                             {error}
                         </Text>
                     )}
@@ -176,9 +176,9 @@ export default function MessageReportAction({
                         <Pressable
                             accessibilityRole="button"
                             onPress={closeModal}
-                            className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                            className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                         >
-                            <Text className="text-xs font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-xs font-semibold text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
@@ -193,7 +193,7 @@ export default function MessageReportAction({
                             disabled={
                                 !canSubmitReport(reason) || status === "sending"
                             }
-                            className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-2 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Text className="text-xs font-semibold text-white">
                                 {status === "sending"
@@ -222,11 +222,11 @@ export default function MessageReportAction({
                     accessibilityLabel={t("messageReportAction.reportMessage")}
                     accessibilityState={{ expanded: open }}
                     onPress={() => (open ? closeModal() : show())}
-                    className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                    className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                 >
                     <SvgIcon
                         d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"
-                        className="w-4 h-4 text-discord-textMuted"
+                        className="w-4 h-4 text-zam-textMuted"
                     />
                 </Pressable>
             )}

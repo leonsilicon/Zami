@@ -54,8 +54,8 @@ import { Video } from "#video";
 
 const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
 const ROOT_FONT_SIZE = 16;
-const DEFAULT_TEXT_CLASS = "text-base text-discord-textPrimary";
-const ACCENT = "--discord-accent";
+const DEFAULT_TEXT_CLASS = "text-base text-zam-textPrimary";
+const ACCENT = "--zam-accent";
 
 // ---------------------------------------------------------------------------
 // The detached DOM: events, listeners, and the gaps plugins hit

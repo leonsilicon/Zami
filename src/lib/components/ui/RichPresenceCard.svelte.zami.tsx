@@ -99,7 +99,7 @@ export default function RichPresenceCard({ entries }: Props) {
                 return (
                     <View
                         key={entry.id}
-                        className="mt-2 flex-row gap-2 rounded bg-discord-backgroundTertiary p-2"
+                        className="mt-2 flex-row gap-2 rounded bg-zam-backgroundTertiary p-2"
                     >
                         {art && (
                             <View className="relative h-12 w-12 flex-shrink-0">
@@ -115,7 +115,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                 {entry.kind === "activity" &&
                                     entry.smallIconUrl && (
                                         <Image
-                                            className="absolute -bottom-1 -end-1 h-5 w-5 rounded-full border-2 border-discord-backgroundTertiary"
+                                            className="absolute -bottom-1 -end-1 h-5 w-5 rounded-full border-2 border-zam-backgroundTertiary"
                                             contentFit="cover"
                                             source={mediaSource(
                                                 mxcToHttp(
@@ -134,7 +134,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                 <>
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs font-semibold text-discord-textPrimary"
+                                        className="text-xs font-semibold text-zam-textPrimary"
                                     >
                                         {t("richPresenceCard.playing", {
                                             name: entry.name,
@@ -143,7 +143,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                     {entry.details && (
                                         <Text
                                             numberOfLines={1}
-                                            className="text-xs text-discord-textSecondary"
+                                            className="text-xs text-zam-textSecondary"
                                         >
                                             {entry.details}
                                         </Text>
@@ -151,7 +151,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                     {entry.state && (
                                         <Text
                                             numberOfLines={1}
-                                            className="text-xs text-discord-textSecondary"
+                                            className="text-xs text-zam-textSecondary"
                                         >
                                             {entry.state}
                                         </Text>
@@ -161,14 +161,14 @@ export default function RichPresenceCard({ entries }: Props) {
                                 <>
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs font-semibold text-discord-textPrimary"
+                                        className="text-xs font-semibold text-zam-textPrimary"
                                     >
                                         {entry.track}
                                     </Text>
                                     {entry.artist && (
                                         <Text
                                             numberOfLines={1}
-                                            className="text-xs text-discord-textSecondary"
+                                            className="text-xs text-zam-textSecondary"
                                         >
                                             {entry.artist}
                                         </Text>
@@ -176,7 +176,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                     {entry.album && (
                                         <Text
                                             numberOfLines={1}
-                                            className="text-xs text-discord-textSecondary"
+                                            className="text-xs text-zam-textSecondary"
                                         >
                                             {entry.album}
                                         </Text>
@@ -184,7 +184,7 @@ export default function RichPresenceCard({ entries }: Props) {
                                     {entry.playerName && (
                                         <Text
                                             numberOfLines={1}
-                                            className="text-xs text-discord-textMuted"
+                                            className="text-xs text-zam-textMuted"
                                         >
                                             {t("richPresenceCard.listening", {
                                                 name: entry.playerName,
@@ -197,7 +197,7 @@ export default function RichPresenceCard({ entries }: Props) {
                             {span?.since !== undefined &&
                             span?.until !== undefined ? (
                                 <View
-                                    className="mt-1 h-1 overflow-hidden rounded bg-discord-backgroundSecondary"
+                                    className="mt-1 h-1 overflow-hidden rounded bg-zam-backgroundSecondary"
                                     role="progressbar"
                                     accessibilityValue={{
                                         min: 0,
@@ -209,20 +209,20 @@ export default function RichPresenceCard({ entries }: Props) {
                                     }}
                                 >
                                     <View
-                                        className="h-full bg-discord-accent"
+                                        className="h-full bg-zam-accent"
                                         style={{
                                             width: `${fraction(span.since, span.until) * 100}%`,
                                         }}
                                     />
                                 </View>
                             ) : span?.since !== undefined ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("richPresenceCard.elapsed", {
                                         time: clock(now - span.since),
                                     })}
                                 </Text>
                             ) : span?.until !== undefined ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("richPresenceCard.remaining", {
                                         time: clock(span.until - now),
                                     })}
@@ -235,12 +235,12 @@ export default function RichPresenceCard({ entries }: Props) {
                                         <Pressable
                                             key={button.label + button.url}
                                             accessibilityRole="button"
-                                            className="rounded bg-discord-backgroundSecondary px-2 py-0.5 hover:bg-discord-backgroundSecondaryAlt active:bg-discord-backgroundSecondaryAlt"
+                                            className="rounded bg-zam-backgroundSecondary px-2 py-0.5 hover:bg-zam-backgroundSecondaryAlt active:bg-zam-backgroundSecondaryAlt"
                                             onPress={() =>
                                                 void onButton(entry, button)
                                             }
                                         >
-                                            <Text className="text-xs text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textPrimary">
                                                 {button.label}
                                             </Text>
                                         </Pressable>
@@ -253,7 +253,7 @@ export default function RichPresenceCard({ entries }: Props) {
             })}
 
             {failed && (
-                <Text className="mt-1 text-xs text-discord-danger">
+                <Text className="mt-1 text-xs text-zam-danger">
                     {t("richPresenceCard.openFailed")}
                 </Text>
             )}
@@ -262,30 +262,30 @@ export default function RichPresenceCard({ entries }: Props) {
                 <ModalDialog
                     onClose={() => setPending(null)}
                     labelledBy="rpc-open-title"
-                    panelClass="relative w-full max-w-sm mx-4 rounded-lg bg-discord-backgroundSecondary p-4 shadow-xl"
+                    panelClass="relative w-full max-w-sm mx-4 rounded-lg bg-zam-backgroundSecondary p-4 shadow-xl"
                 >
                     <Text
                         nativeID="rpc-open-title"
                         role="heading"
-                        className="mb-2 text-base font-semibold text-discord-textPrimary"
+                        className="mb-2 text-base font-semibold text-zam-textPrimary"
                     >
                         {t("richPresenceCard.openLinkTitle")}
                     </Text>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("richPresenceCard.openLinkBody", {
                             name: pending.appName,
                         })}
                     </Text>
                     <ScrollView
-                        className="my-2 max-h-32 flex-grow-0 rounded bg-discord-backgroundTertiary"
+                        className="my-2 max-h-32 flex-grow-0 rounded bg-zam-backgroundTertiary"
                         contentContainerClassName="p-2"
                     >
-                        <Text className="break-all text-xs text-discord-textPrimary">
+                        <Text className="break-all text-xs text-zam-textPrimary">
                             {pending.url}
                         </Text>
                     </ScrollView>
                     {pending.openid && (
-                        <Text className="mb-2 text-xs text-discord-danger">
+                        <Text className="mb-2 text-xs text-zam-danger">
                             {t("richPresenceCard.openidWarning")}
                         </Text>
                     )}
@@ -295,13 +295,13 @@ export default function RichPresenceCard({ entries }: Props) {
                             className="px-3 py-1"
                             onPress={() => setPending(null)}
                         >
-                            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
                         <Pressable
                             accessibilityRole="button"
-                            className="rounded bg-discord-accent px-3 py-1"
+                            className="rounded bg-zam-accent px-3 py-1"
                             onPress={confirmOpen}
                         >
                             <Text className="text-sm text-white">

@@ -61,7 +61,7 @@ export default function ExtendedProfileDebug() {
 
     return (
         <View>
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                 {t("extendedProfileDebug.extendedProfile")}
             </Text>
             <View className="flex-row gap-2 mb-2">
@@ -69,7 +69,7 @@ export default function ExtendedProfileDebug() {
                     accessibilityRole="button"
                     onPress={load}
                     disabled={loading}
-                    className="px-3 py-1.5 bg-discord-accent rounded disabled:opacity-50"
+                    className="px-3 py-1.5 bg-zam-accent rounded disabled:opacity-50"
                 >
                     <Text className="text-white text-sm">
                         {loading
@@ -81,19 +81,19 @@ export default function ExtendedProfileDebug() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={copy}
-                        className="px-3 py-1.5 bg-discord-backgroundTertiary rounded"
+                        className="px-3 py-1.5 bg-zam-backgroundTertiary rounded"
                     >
-                        <Text className="text-discord-textPrimary text-sm">
+                        <Text className="text-zam-textPrimary text-sm">
                             {t("common.copy")}
                         </Text>
                     </Pressable>
                 )}
             </View>
             {error ? (
-                <Text className="text-xs text-discord-danger">{error}</Text>
+                <Text className="text-xs text-zam-danger">{error}</Text>
             ) : null}
             {profile === null ? (
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("extendedProfileDebug.thisServerDoesNotSupportExtended")}
                 </Text>
             ) : profile ? (
@@ -102,17 +102,17 @@ export default function ExtendedProfileDebug() {
                         line breaks and indentation. */}
                     <ScrollView
                         nestedScrollEnabled
-                        className="bg-discord-backgroundTertiary rounded max-h-96 grow-0"
+                        className="bg-zam-backgroundTertiary rounded max-h-96 grow-0"
                         contentContainerClassName="p-3"
                     >
                         <Text
                             selectable
-                            className="text-xs font-mono text-discord-textSecondary"
+                            className="text-xs font-mono text-zam-textSecondary"
                         >
                             {profileJson}
                         </Text>
                     </ScrollView>
-                    <Text className="mt-2 text-xs text-discord-textMuted">
+                    <Text className="mt-2 text-xs text-zam-textMuted">
                         {t(
                             "extendedProfileDebug.presenceGetPresenceStraightFromThe",
                             {
@@ -124,7 +124,7 @@ export default function ExtendedProfileDebug() {
                             },
                         )}
                     </Text>
-                    <Text className="mt-1 text-xs text-discord-textMuted">
+                    <Text className="mt-1 text-xs text-zam-textMuted">
                         {t(
                             "extendedProfileDebug.serverRulesForFieldsMProfile",
                             {

@@ -78,7 +78,7 @@ export default function SpaceHoverCard({ anchor, name, getVoice }: Props) {
 
             {voice.active ? (
                 <>
-                    <Text className="text-xs text-discord-textMuted mt-0.5">
+                    <Text className="text-xs text-zam-textMuted mt-0.5">
                         {t("spaceSidebar.inVoiceCount", { count })}
                     </Text>
 
@@ -93,7 +93,7 @@ export default function SpaceHoverCard({ anchor, name, getVoice }: Props) {
                                 <View className="flex-row items-center gap-1.5 min-w-0">
                                     <Volume2
                                         size={12}
-                                        className="flex-shrink-0 text-discord-textMuted"
+                                        className="flex-shrink-0 text-zam-textMuted"
                                     />
                                     <Text
                                         numberOfLines={1}
@@ -116,12 +116,12 @@ export default function SpaceHoverCard({ anchor, name, getVoice }: Props) {
                                             />
                                             <Text
                                                 numberOfLines={1}
-                                                className="flex-shrink text-xs text-discord-textSecondary min-w-0"
+                                                className="flex-shrink text-xs text-zam-textSecondary min-w-0"
                                             >
                                                 {p.name}
                                             </Text>
                                             {p.live ? (
-                                                <View className="ms-auto flex-shrink-0 h-3.5 px-1 rounded-sm bg-discord-danger justify-center">
+                                                <View className="ms-auto flex-shrink-0 h-3.5 px-1 rounded-sm bg-zam-danger justify-center">
                                                     <Text className="text-white text-[9px] font-bold leading-[14px] tracking-wide">
                                                         {t(
                                                             "spaceSidebar.liveBadge",
@@ -132,7 +132,7 @@ export default function SpaceHoverCard({ anchor, name, getVoice }: Props) {
                                         </View>
                                     ))}
                                     {extra > 0 ? (
-                                        <Text className="text-xs text-discord-textMuted ps-7">
+                                        <Text className="text-xs text-zam-textMuted ps-7">
                                             {t(
                                                 "spaceSidebar.moreParticipants",
                                                 {

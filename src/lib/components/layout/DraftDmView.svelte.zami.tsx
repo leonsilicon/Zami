@@ -197,16 +197,16 @@ export default function DraftDmView({
             style={{ flex: 1, minWidth: 0 }}
         >
             <View className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
+                <View className="h-12 px-4 flex-row items-center gap-3 border-b border-zam-divider shadow-sm flex-shrink-0">
                     {isMobile ? (
                         <Pressable
                             accessibilityRole="button"
                             onPress={onMenuOpen}
-                            className="p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            className="p-1.5 -ms-1 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             accessibilityLabel={t("common.openRoomList")}
                         >
                             <SvgIcon
-                                className="w-5 h-5 text-discord-textMuted"
+                                className="w-5 h-5 text-zam-textMuted"
                                 d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
                             />
                         </Pressable>
@@ -220,7 +220,7 @@ export default function DraftDmView({
                     <Text
                         accessibilityRole="header"
                         numberOfLines={1}
-                        className="flex-shrink font-semibold text-discord-textPrimary"
+                        className="flex-shrink font-semibold text-zam-textPrimary"
                     >
                         {name}
                     </Text>
@@ -230,19 +230,16 @@ export default function DraftDmView({
                             accessibilityLabel={t("draftDm.encrypted")}
                             className="flex-shrink-0"
                         >
-                            <Lock
-                                size={16}
-                                className="text-discord-textMuted"
-                            />
+                            <Lock size={16} className="text-zam-textMuted" />
                         </View>
                     ) : null}
                     <Pressable
                         accessibilityRole="button"
                         onPress={closeDraftDm}
-                        className="ms-auto p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                        className="ms-auto p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                         accessibilityLabel={t("draftDm.discard")}
                     >
-                        <X size={18} className="text-discord-textMuted" />
+                        <X size={18} className="text-zam-textMuted" />
                     </Pressable>
                 </View>
 
@@ -258,18 +255,18 @@ export default function DraftDmView({
                             id={userId}
                             size={80}
                         />
-                        <Text className="mt-3 text-2xl font-bold text-discord-textPrimary">
+                        <Text className="mt-3 text-2xl font-bold text-zam-textPrimary">
                             {name}
                         </Text>
                         {profile.displayName ? (
-                            <Text className="text-discord-textMuted text-sm">
+                            <Text className="text-zam-textMuted text-sm">
                                 {userId}
                             </Text>
                         ) : null}
-                        <Text className="mt-3 text-discord-textSecondary">
+                        <Text className="mt-3 text-zam-textSecondary">
                             {t("draftDm.intro", { name })}
                         </Text>
-                        <Text className="mt-1 text-sm text-discord-textMuted">
+                        <Text className="mt-1 text-sm text-zam-textMuted">
                             {t("draftDm.lazyNote", { name })}
                         </Text>
                     </View>
@@ -284,12 +281,12 @@ export default function DraftDmView({
                     {error ? (
                         <Text
                             accessibilityRole="alert"
-                            className="mb-2 text-sm text-discord-danger"
+                            className="mb-2 text-sm text-zam-danger"
                         >
                             {error}
                         </Text>
                     ) : null}
-                    <View className="flex-row items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5">
+                    <View className="flex-row items-end gap-2 bg-zam-backgroundSecondary rounded-lg px-2.5 py-2.5">
                         {/* Zami: a multiline TextInput grows with its content, as
                         `field-sizing: content` does; `dir="auto"` is the
                         native default. */}
@@ -307,11 +304,11 @@ export default function DraftDmView({
                             autoCorrect={spellCheckEnabled}
                             editable={!sending}
                             placeholder={t("draftDm.placeholder", { name })}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t("draftDm.placeholder", {
                                 name,
                             })}
-                            className={`flex-1 min-w-0 bg-transparent text-discord-textPrimary text-[16px] leading-relaxed py-[3px] max-h-48 ${
+                            className={`flex-1 min-w-0 bg-transparent text-zam-textPrimary text-[16px] leading-relaxed py-[3px] max-h-48 ${
                                 sending ? "opacity-60" : ""
                             }`}
                         />
@@ -335,12 +332,12 @@ export default function DraftDmView({
                                 <Spin
                                     accessibilityElementsHidden
                                     importantForAccessibility="no-hide-descendants"
-                                    className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full"
+                                    className="w-5 h-5 border-2 border-zam-textMuted border-t-transparent rounded-full"
                                 />
                             ) : (
                                 <Send
                                     size={20}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                             )}
                         </Pressable>

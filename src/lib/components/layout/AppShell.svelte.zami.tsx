@@ -134,6 +134,7 @@ import {
     savePendingRoute,
     takePendingRoute,
 } from "$lib/utils/pendingNotificationRoute";
+import { requestPersistentStorage } from "$lib/utils/persistentStorage";
 import { switchToAccount } from "$lib/stores/accountSwitch";
 import { syncServiceWorkerAccounts } from "$lib/swAccounts";
 import {
@@ -1762,11 +1763,22 @@ export default function AppShell() {
     const privateReadReceipts = useRune(
         () => settingsState.privateReadReceipts,
     );
+    const ownPresence = useRune(() => settingsState.ownPresence);
+    const presenceUnsupported = useRune(
+        () => settingsState.presenceUnsupported,
+    );
     useEffect(() => {
         void receiptOverrides;
         void privateReadReceipts;
+        void ownPresence;
+        void presenceUnsupported;
         scheduleReceiptMirror();
-    }, [receiptOverrides, privateReadReceipts]);
+    }, [
+        receiptOverrides,
+        privateReadReceipts,
+        ownPresence,
+        presenceUnsupported,
+    ]);
 
     // MSC4153: surface changed cross-signing identities among the open room's
     // members.
@@ -2078,6 +2090,13 @@ export default function AppShell() {
     // Zami: a no-op without Electron's bridge.
     useEffect(installDesktopSaveImage, []);
     useEffect(installDesktopMessageMenu, []);
+    // Keep the browser from evicting this origin's storage (crypto store,
+    // account backup) when the disk runs low. See persistentStorage.ts.
+    // Zami: "unsupported" here (no navigator.storage); the app's storage isn't
+    // evicted like a browser origin's.
+    useEffect(() => {
+        void requestPersistentStorage();
+    }, []);
 
     // Tell the main process when video plays (it weighs GPU crashes by it).
     // Zami: a no-op without Electron's bridge.
@@ -3285,15 +3304,15 @@ export default function AppShell() {
             {!isAuthenticated ? (
                 <View
                     accessibilityLiveRegion="polite"
-                    className="flex-1 flex-row items-center justify-center bg-discord-backgroundTertiary"
+                    className="flex-1 flex-row items-center justify-center bg-zam-backgroundTertiary"
                 >
                     <View className="flex-row items-center gap-3">
                         <Spin
                             accessibilityElementsHidden
                             importantForAccessibility="no-hide-descendants"
-                            className="w-6 h-6 border-2 border-discord-textMuted border-t-transparent rounded-full"
+                            className="w-6 h-6 border-2 border-zam-textMuted border-t-transparent rounded-full"
                         />
-                        <Text className="text-discord-textMuted">
+                        <Text className="text-zam-textMuted">
                             {t("appShell.redirecting")}
                         </Text>
                     </View>
@@ -3316,7 +3335,7 @@ export default function AppShell() {
                         onAccessibilityEscape={() => {
                             dismissTopmost();
                         }}
-                        className="flex-1 flex-row overflow-hidden bg-discord-background"
+                        className="flex-1 flex-row overflow-hidden bg-zam-background"
                         style={{
                             direction: "ltr",
                             paddingTop: insets.top,
@@ -3336,7 +3355,7 @@ export default function AppShell() {
                             // Zami: its width follows the resize grip's drag on
                             // the UI thread (roomListColumnStyle).
                             <Animated.View
-                                className="relative flex-col flex-shrink-0 min-h-0 bg-discord-backgroundTertiary"
+                                className="relative flex-col flex-shrink-0 min-h-0 bg-zam-backgroundTertiary"
                                 style={[
                                     { paddingBottom: insets.bottom },
                                     roomListColumnStyle,
@@ -3394,7 +3413,7 @@ export default function AppShell() {
                                                 e.nativeEvent.actionName,
                                             )
                                         }
-                                        className="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-discord-accent/40 focus-visible:bg-discord-accent/40 transition-colors"
+                                        className="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-zam-accent/40 focus-visible:bg-zam-accent/40 transition-colors"
                                     />
                                 </GestureDetector>
                             </Animated.View>
@@ -3439,7 +3458,7 @@ export default function AppShell() {
                                             e.nativeEvent.layout.width,
                                         )
                                     }
-                                    className={`absolute top-0 bottom-0 left-0 z-40 flex-col w-[19.5rem] bg-discord-backgroundTertiary ${
+                                    className={`absolute top-0 bottom-0 left-0 z-40 flex-col w-[19.5rem] bg-zam-backgroundTertiary ${
                                         leftDrawerClosed ? "" : "shadow-2xl"
                                     }`}
                                     style={[
@@ -3503,7 +3522,7 @@ export default function AppShell() {
                             (upstream's `env(safe-area-inset-bottom)` in
                             MessageInput), so the room pane's chat doesn't. */}
                         <View
-                            className="flex-row flex-1 min-w-0 overflow-hidden bg-discord-background"
+                            className="flex-row flex-1 min-w-0 overflow-hidden bg-zam-background"
                             style={{
                                 direction: uiDir,
                                 paddingBottom:
@@ -3551,8 +3570,8 @@ export default function AppShell() {
                                 />
                             ) : (
                                 <View className="flex-1 flex-col items-center justify-center p-8">
-                                    <View className="w-24 h-24 rounded-full bg-discord-backgroundSecondary flex-row items-center justify-center mb-6">
-                                        <Text className="text-5xl font-bold text-discord-textMuted">
+                                    <View className="w-24 h-24 rounded-full bg-zam-backgroundSecondary flex-row items-center justify-center mb-6">
+                                        <Text className="text-5xl font-bold text-zam-textMuted">
                                             #
                                         </Text>
                                     </View>
@@ -3563,11 +3582,11 @@ export default function AppShell() {
                                         <>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-2xl font-bold text-discord-textPrimary mb-2 text-center"
+                                                className="text-2xl font-bold text-zam-textPrimary mb-2 text-center"
                                             >
                                                 {t("appShell.noRoomsYet")}
                                             </Text>
-                                            <Text className="text-base text-discord-textMuted max-w-sm text-center">
+                                            <Text className="text-base text-zam-textMuted max-w-sm text-center">
                                                 {t(
                                                     "appShell.createARoomOrStartA",
                                                 )}
@@ -3577,11 +3596,11 @@ export default function AppShell() {
                                         <>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-2xl font-bold text-discord-textPrimary mb-2 text-center"
+                                                className="text-2xl font-bold text-zam-textPrimary mb-2 text-center"
                                             >
                                                 {t("appShell.nothingInHome")}
                                             </Text>
-                                            <Text className="text-base text-discord-textMuted max-w-sm text-center">
+                                            <Text className="text-base text-zam-textMuted max-w-sm text-center">
                                                 {t(
                                                     "appShell.allOfYourRoomsLiveIn",
                                                 )}
@@ -3594,7 +3613,7 @@ export default function AppShell() {
                                             onPress={() =>
                                                 (interfaceState.leftOpen = true)
                                             }
-                                            className="mt-6 px-5 py-2.5 bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover rounded-lg transition-colors"
+                                            className="mt-6 px-5 py-2.5 bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover rounded-lg transition-colors"
                                         >
                                             <Text className="text-white text-sm font-semibold">
                                                 {t("appShell.openRoomList")}

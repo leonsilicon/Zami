@@ -93,12 +93,12 @@ export default function MessageEmbed({ link, currentRoomId, onOpen }: Props) {
         <Pressable
             accessibilityRole="button"
             accessibilityHint={t("messageEmbed.jumpToMessage")}
-            className="mt-2 flex-row w-full max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+            className="mt-2 flex-row w-full max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
             onPress={() => {
                 onOpen();
             }}
         >
-            <View className="w-1 flex-shrink-0 bg-discord-accent" />
+            <View className="w-1 flex-shrink-0 bg-zam-accent" />
             <View className="flex-1 min-w-0 flex-col p-2.5 gap-1">
                 <View className="flex-row items-center gap-1.5 min-w-0">
                     <Avatar
@@ -109,25 +109,25 @@ export default function MessageEmbed({ link, currentRoomId, onOpen }: Props) {
                     />
                     <Text
                         numberOfLines={1}
-                        className="shrink text-xs font-semibold text-discord-textPrimary"
+                        className="shrink text-xs font-semibold text-zam-textPrimary"
                     >
                         {senderName}
                     </Text>
                     {roomLabel ? (
                         <Text
                             numberOfLines={1}
-                            className="shrink text-xs text-discord-textMuted"
+                            className="shrink text-xs text-zam-textMuted"
                         >
                             {t("messageEmbed.inRoom", { room: roomLabel })}
                         </Text>
                     ) : null}
-                    <Text className="text-xs text-discord-textMuted flex-shrink-0 ms-auto">
+                    <Text className="text-xs text-zam-textMuted flex-shrink-0 ms-auto">
                         {messageTimestamp(target.getTs())}
                     </Text>
                 </View>
                 <Text
                     numberOfLines={4}
-                    className={`text-sm text-discord-textSecondary leading-snug ${
+                    className={`text-sm text-zam-textSecondary leading-snug ${
                         target.isRedacted() ? "italic" : ""
                     }`}
                 >

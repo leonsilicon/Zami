@@ -175,37 +175,34 @@ export default function QrSignInPanel({
         <ModalDialog
             onClose={close}
             labelledBy="qr-signin-title"
-            panelClass="relative z-10 w-[92vw] max-w-[24rem] rounded-lg bg-discord-backgroundSecondary border border-discord-divider p-5 shadow-xl"
+            panelClass="relative z-10 w-[92vw] max-w-[24rem] rounded-lg bg-zam-backgroundSecondary border border-zam-divider p-5 shadow-xl"
         >
             <Text
                 nativeID="qr-signin-title"
                 role="heading"
-                className="text-lg font-semibold text-discord-textPrimary"
+                className="text-lg font-semibold text-zam-textPrimary"
             >
                 {t("qrLogin.signInTitle")}
             </Text>
 
             {error ? (
-                <Text className="mt-4 text-sm text-discord-danger" role="alert">
+                <Text className="mt-4 text-sm text-zam-danger" role="alert">
                     {error}
                 </Text>
             ) : step === "preparing" ? (
                 <>
                     <View className="mt-5 flex-row justify-center">
                         <Spin>
-                            <Loader2
-                                size={28}
-                                className="text-discord-accent"
-                            />
+                            <Loader2 size={28} className="text-zam-accent" />
                         </Spin>
                     </View>
-                    <Text className="mt-2 text-center text-xs text-discord-textMuted">
+                    <Text className="mt-2 text-center text-xs text-zam-textMuted">
                         {t("qrLogin.preparing")}
                     </Text>
                 </>
             ) : step === "code" && code ? (
                 <>
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.signInSteps")}
                     </Text>
                     <View className="mt-4 flex-row justify-center">
@@ -218,15 +215,15 @@ export default function QrSignInPanel({
                     </View>
                     {userCode ? (
                         <>
-                            <Text className="mt-3 text-center text-xs text-discord-textMuted">
+                            <Text className="mt-3 text-center text-xs text-zam-textMuted">
                                 {t("qrLogin.orEnterCode")}
                             </Text>
-                            <Text className="mt-2 text-center text-xs text-discord-textMuted">
+                            <Text className="mt-2 text-center text-xs text-zam-textMuted">
                                 {t("qrLogin.matchCode")}
                             </Text>
                             <Text
                                 selectable
-                                className="text-center text-2xl font-semibold tracking-widest text-discord-textPrimary"
+                                className="text-center text-2xl font-semibold tracking-widest text-zam-textPrimary"
                             >
                                 {userCode}
                             </Text>
@@ -238,7 +235,7 @@ export default function QrSignInPanel({
                             onPress={switchToScan}
                             className="mt-3 w-full py-2"
                         >
-                            <Text className="text-center text-sm text-discord-accent hover:underline">
+                            <Text className="text-center text-sm text-zam-accent hover:underline">
                                 {t("qrLogin.scanInstead")}
                             </Text>
                         </Pressable>
@@ -246,7 +243,7 @@ export default function QrSignInPanel({
                 </>
             ) : step === "scan" ? (
                 <>
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.scanIntro")}
                     </Text>
                     <View className="mt-4 flex-col items-center gap-2">
@@ -259,7 +256,7 @@ export default function QrSignInPanel({
                     </View>
                     {scanError ? (
                         <Text
-                            className="mt-3 text-sm text-discord-danger"
+                            className="mt-3 text-sm text-zam-danger"
                             role="alert"
                         >
                             {scanError}
@@ -270,7 +267,7 @@ export default function QrSignInPanel({
                         onPress={switchToShow}
                         className="mt-3 w-full py-2"
                     >
-                        <Text className="text-center text-sm text-discord-accent hover:underline">
+                        <Text className="text-center text-sm text-zam-accent hover:underline">
                             {t("qrLogin.showInstead")}
                         </Text>
                     </Pressable>
@@ -278,11 +275,11 @@ export default function QrSignInPanel({
             ) : step === "scanNumber" ? (
                 shownNumber ? (
                     <>
-                        <Text className="mt-3 text-sm text-discord-textSecondary">
+                        <Text className="mt-3 text-sm text-zam-textSecondary">
                             {t("qrLogin.scanShowNumber")}
                         </Text>
                         <Text
-                            className="mt-2 text-center text-4xl font-semibold tracking-widest text-discord-textPrimary"
+                            className="mt-2 text-center text-4xl font-semibold tracking-widest text-zam-textPrimary"
                             accessibilityLiveRegion="polite"
                         >
                             {shownNumber}
@@ -291,21 +288,18 @@ export default function QrSignInPanel({
                 ) : (
                     <View className="mt-5 flex-row justify-center">
                         <Spin>
-                            <Loader2
-                                size={28}
-                                className="text-discord-accent"
-                            />
+                            <Loader2 size={28} className="text-zam-accent" />
                         </Spin>
                     </View>
                 )
             ) : step === "number" ? (
                 <View className="mt-3 flex-col gap-3">
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("qrLogin.enterNumber")}
                     </Text>
                     <Text
                         nativeID="qr-number-label"
-                        className="text-xs text-discord-textMuted"
+                        className="text-xs text-zam-textMuted"
                     >
                         {t("qrLogin.numberLabel")}
                     </Text>
@@ -322,7 +316,7 @@ export default function QrSignInPanel({
                         autoFocus
                         returnKeyType="done"
                         onSubmitEditing={submitNumber}
-                        className="w-24 px-3 py-2 text-lg tracking-widest text-center bg-discord-backgroundTertiary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent focus:outline-none"
+                        className="w-24 px-3 py-2 text-lg tracking-widest text-center bg-zam-backgroundTertiary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent focus:outline-none"
                     />
                     <Pressable
                         accessibilityRole="button"
@@ -331,7 +325,7 @@ export default function QrSignInPanel({
                         }}
                         disabled={typed.trim().length === 0}
                         onPress={submitNumber}
-                        className="py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60"
+                        className="py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60"
                     >
                         <Text className="text-center text-white font-semibold text-sm">
                             {t("qrLogin.confirm")}
@@ -342,13 +336,10 @@ export default function QrSignInPanel({
                 <>
                     <View className="mt-5 flex-row justify-center">
                         <Spin>
-                            <Loader2
-                                size={28}
-                                className="text-discord-accent"
-                            />
+                            <Loader2 size={28} className="text-zam-accent" />
                         </Spin>
                     </View>
-                    <Text className="mt-2 text-center text-sm text-discord-textSecondary">
+                    <Text className="mt-2 text-center text-sm text-zam-textSecondary">
                         {t("qrLogin.waitingApproval")}
                     </Text>
                 </>
@@ -356,13 +347,10 @@ export default function QrSignInPanel({
                 <>
                     <View className="mt-5 flex-row justify-center">
                         <Spin>
-                            <Loader2
-                                size={28}
-                                className="text-discord-accent"
-                            />
+                            <Loader2 size={28} className="text-zam-accent" />
                         </Spin>
                     </View>
-                    <Text className="mt-2 text-center text-sm text-discord-textSecondary">
+                    <Text className="mt-2 text-center text-sm text-zam-textSecondary">
                         {t("qrLogin.signingIn")}
                     </Text>
                 </>
@@ -371,9 +359,9 @@ export default function QrSignInPanel({
             <Pressable
                 accessibilityRole="button"
                 onPress={close}
-                className="mt-5 w-full py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                className="mt-5 w-full py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
             >
-                <Text className="text-center text-discord-textPrimary text-sm">
+                <Text className="text-center text-zam-textPrimary text-sm">
                     {t("qrLogin.cancel")}
                 </Text>
             </Pressable>

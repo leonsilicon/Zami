@@ -37,18 +37,18 @@ export default function ServerSettings() {
         if (support === "yes") {
             return {
                 text: t("serverSettings.supported"),
-                cls: "text-discord-textPositive",
+                cls: "text-zam-textPositive",
             };
         }
         if (support === "no") {
             return {
                 text: t("serverSettings.notSupported"),
-                cls: "text-discord-danger",
+                cls: "text-zam-danger",
             };
         }
         return {
             text: t("serverSettings.unknown"),
-            cls: "text-discord-textMuted",
+            cls: "text-zam-textMuted",
         };
     }
 
@@ -134,34 +134,34 @@ export default function ServerSettings() {
     return (
         <View className="gap-6">
             {loading ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("serverSettings.scanningServer")}
                 </Text>
             ) : error ? (
                 <View className="gap-2">
-                    <Text className="text-sm text-discord-danger">{error}</Text>
+                    <Text className="text-sm text-zam-danger">{error}</Text>
                     <Pressable
                         accessibilityRole="button"
                         onPress={load}
-                        className="self-start px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                        className="self-start px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                     >
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("common.retry")}
                         </Text>
                     </Pressable>
                 </View>
             ) : (
                 <>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("serverSettings.what")}{" "}
-                        <Text className="text-xs text-discord-textSecondary">
+                        <Text className="text-xs text-zam-textSecondary">
                             {homeserverUrl}
                         </Text>{" "}
                         {t("serverSettings.advertisesItemsMarkedUnknownArenT")}
                     </Text>
 
                     <View>
-                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                             {t("serverSettings.accountMessaging")}
                         </Text>
                         {features.map((feature, i) => {
@@ -169,9 +169,9 @@ export default function ServerSettings() {
                             return (
                                 <View
                                     key={i}
-                                    className="flex-row justify-between items-center gap-2 py-2 border-b border-discord-divider"
+                                    className="flex-row justify-between items-center gap-2 py-2 border-b border-zam-divider"
                                 >
-                                    <Text className="shrink text-sm text-discord-textSecondary">
+                                    <Text className="shrink text-sm text-zam-textSecondary">
                                         {feature.label}
                                     </Text>
                                     <Text className={`text-xs ${status.cls}`}>
@@ -183,7 +183,7 @@ export default function ServerSettings() {
                     </View>
 
                     <View>
-                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                             {t("serverSettings.voiceVideoCallingMatrixrtc")}
                         </Text>
                         {callingFeatures.map((feature, i) => {
@@ -191,9 +191,9 @@ export default function ServerSettings() {
                             return (
                                 <View
                                     key={i}
-                                    className="flex-row justify-between items-center gap-2 py-2 border-b border-discord-divider"
+                                    className="flex-row justify-between items-center gap-2 py-2 border-b border-zam-divider"
                                 >
-                                    <Text className="shrink text-sm text-discord-textSecondary">
+                                    <Text className="shrink text-sm text-zam-textSecondary">
                                         {feature.label}
                                     </Text>
                                     <Text className={`text-xs ${status.cls}`}>
@@ -205,23 +205,23 @@ export default function ServerSettings() {
                     </View>
 
                     <View>
-                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                             {t("serverSettings.server")}
                         </Text>
-                        <View className="flex-row justify-between items-center gap-2 py-2 border-b border-discord-divider">
-                            <Text className="shrink text-sm text-discord-textMuted">
+                        <View className="flex-row justify-between items-center gap-2 py-2 border-b border-zam-divider">
+                            <Text className="shrink text-sm text-zam-textMuted">
                                 {t("serverSettings.latestSpecVersion")}
                             </Text>
-                            <Text className="text-discord-textPrimary text-xs font-mono">
+                            <Text className="text-zam-textPrimary text-xs font-mono">
                                 {specVersions.at(-1) ?? "-"}
                             </Text>
                         </View>
                         {roomVersion ? (
-                            <View className="flex-row justify-between items-center gap-2 py-2 border-b border-discord-divider">
-                                <Text className="shrink text-sm text-discord-textMuted">
+                            <View className="flex-row justify-between items-center gap-2 py-2 border-b border-zam-divider">
+                                <Text className="shrink text-sm text-zam-textMuted">
                                     {t("serverSettings.defaultRoomVersion")}
                                 </Text>
-                                <Text className="text-discord-textPrimary text-xs font-mono">
+                                <Text className="text-zam-textPrimary text-xs font-mono">
                                     {roomVersion}
                                 </Text>
                             </View>
@@ -230,7 +230,7 @@ export default function ServerSettings() {
 
                     {unstableLabels.length > 0 && (
                         <View>
-                            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                                 {t("serverSettings.advertisedFeatures", {
                                     length: unstableLabels.length,
                                 })}
@@ -239,7 +239,7 @@ export default function ServerSettings() {
                                 {unstableLabels.map((feature, i) => (
                                     <Text
                                         key={i}
-                                        className="px-2 py-0.5 rounded text-xs bg-discord-backgroundTertiary text-discord-textSecondary border border-discord-divider"
+                                        className="px-2 py-0.5 rounded text-xs bg-zam-backgroundTertiary text-zam-textSecondary border border-zam-divider"
                                     >
                                         {feature}
                                     </Text>

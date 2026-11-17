@@ -254,9 +254,9 @@ export default function UserPicker({
                     {selected.map((userId) => (
                         <View
                             key={userId}
-                            className="flex-row items-center gap-1 bg-discord-backgroundTertiary rounded px-2 py-1"
+                            className="flex-row items-center gap-1 bg-zam-backgroundTertiary rounded px-2 py-1"
                         >
-                            <Text className="text-discord-textPrimary text-xs">
+                            <Text className="text-zam-textPrimary text-xs">
                                 {userId}
                             </Text>
                             <Pressable
@@ -268,10 +268,7 @@ export default function UserPicker({
                                 hitSlop={8}
                                 className="flex-row items-center"
                             >
-                                <X
-                                    size={14}
-                                    className="text-discord-textMuted"
-                                />
+                                <X size={14} className="text-zam-textMuted" />
                             </Pressable>
                         </View>
                     ))}
@@ -292,18 +289,18 @@ export default function UserPicker({
                 submitBehavior="submit"
                 autoFocus={autofocus}
                 placeholder={placeholder}
-                placeholderTextColorClassName="accent-discord-textMuted"
+                placeholderTextColorClassName="accent-zam-textMuted"
                 accessibilityLabel={placeholder}
                 accessibilityState={{ expanded: optionCount > 0 }}
                 autoCapitalize="none"
                 autoCorrect={false}
-                className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
             />
 
             {searchError ? (
                 <Text
                     accessibilityRole="alert"
-                    className="text-xs text-discord-textMuted"
+                    className="text-xs text-zam-textMuted"
                 >
                     {searchError}
                 </Text>
@@ -327,31 +324,31 @@ export default function UserPicker({
                                 disabled: disabled || candidateExcluded,
                                 selected: activeIndex === 0,
                             }}
-                            className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                            className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                 disabled || candidateExcluded
                                     ? "opacity-50"
                                     : ""
                             } ${
                                 activeIndex === 0
-                                    ? "border border-discord-accent"
+                                    ? "border border-zam-accent"
                                     : ""
                             }`}
                         >
-                            <View className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-discord-backgroundTertiary">
-                                <Text className="text-discord-textMuted text-sm">
+                            <View className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zam-backgroundTertiary">
+                                <Text className="text-zam-textMuted text-sm">
                                     @
                                 </Text>
                             </View>
                             <View className="min-w-0 shrink">
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm text-discord-textPrimary"
+                                    className="text-sm text-zam-textPrimary"
                                 >
                                     {t("userPicker.invite", { candidateShown })}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
                                     {candidateExcluded
                                         ? selected.includes(candidateShown)
@@ -383,7 +380,7 @@ export default function UserPicker({
                             scrollEventThrottle={16}
                             nestedScrollEnabled
                             keyboardShouldPersistTaps="handled"
-                            className="max-h-56 flex-grow-0 rounded bg-discord-backgroundSecondary"
+                            className="max-h-56 flex-grow-0 rounded bg-zam-backgroundSecondary"
                         >
                             {visibleResults.map((user, i) => (
                                 <Pressable
@@ -402,14 +399,14 @@ export default function UserPicker({
                                         selected:
                                             i + resultOffset === activeIndex,
                                     }}
-                                    // `divide-y divide-discord-divider`
-                                    className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                                    // `divide-y divide-zam-divider`
+                                    className={`w-full flex-row items-center gap-2.5 px-2.5 py-2 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                         i > 0
-                                            ? "border-t border-discord-divider"
+                                            ? "border-t border-zam-divider"
                                             : ""
                                     } ${disabled ? "opacity-50" : ""} ${
                                         i + resultOffset === activeIndex
-                                            ? "border border-discord-accent"
+                                            ? "border border-zam-accent"
                                             : ""
                                     }`}
                                 >
@@ -422,14 +419,14 @@ export default function UserPicker({
                                     <View className="min-w-0 shrink">
                                         <Text
                                             numberOfLines={1}
-                                            className="text-sm text-discord-textPrimary"
+                                            className="text-sm text-zam-textPrimary"
                                         >
                                             {user.displayName ?? user.userId}
                                         </Text>
                                         {user.displayName ? (
                                             <Text
                                                 numberOfLines={1}
-                                                className="text-xs text-discord-textMuted"
+                                                className="text-xs text-zam-textMuted"
                                             >
                                                 {user.userId}
                                             </Text>
@@ -446,9 +443,9 @@ export default function UserPicker({
             searched &&
             !searching &&
             input.trim().length >= 2 ? (
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("userPicker.noMatchesTypeAFullUser")}{" "}
-                    <Text className="text-discord-textSecondary">
+                    <Text className="text-zam-textSecondary">
                         {t("userPicker.userServer")}
                     </Text>{" "}
                     {t("userPicker.toInviteSomeoneTheDirectoryDoesn")}

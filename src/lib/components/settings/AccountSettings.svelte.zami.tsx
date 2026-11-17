@@ -71,7 +71,7 @@ async function pickAvatar(): Promise<File | null> {
 }
 
 const inputClass =
-    "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none";
+    "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. Text classes sit on each Text. `<a target="_blank">`
@@ -81,6 +81,9 @@ export default function AccountSettings({ onLogout }: Props) {
     const homeserverUrl = useRune(() => auth.homeserverUrl);
     const syncState = useRune(() => auth.syncState);
     const ownPresence = useRune(() => settingsState.ownPresence);
+    const presenceUnsupported = useRune(
+        () => settingsState.presenceUnsupported,
+    );
     const doNotDisturb = useRune(() => settingsState.doNotDisturb);
     const streamerMode = useRune(() => settingsState.streamerMode);
 
@@ -356,18 +359,18 @@ export default function AccountSettings({ onLogout }: Props) {
                     <View className="gap-3">
                         <Text
                             accessibilityRole="header"
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {t("qrLogin.loginSectionTitle")}
                         </Text>
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("qrLogin.loginSectionIntro")}
                         </Text>
                         <View className="flex-row flex-wrap gap-2">
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setLinkMode("scan")}
-                                className="px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover"
+                                className="px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover"
                             >
                                 <Text className="text-sm text-white font-medium">
                                     {t("qrLogin.linkButton")}
@@ -376,9 +379,9 @@ export default function AccountSettings({ onLogout }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setLinkMode("code")}
-                                className="px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                                className="px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                             >
-                                <Text className="text-sm text-discord-textPrimary font-medium">
+                                <Text className="text-sm text-zam-textPrimary font-medium">
                                     {t("qrLogin.codeButton")}
                                 </Text>
                             </Pressable>
@@ -386,9 +389,9 @@ export default function AccountSettings({ onLogout }: Props) {
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={() => setLinkMode("show")}
-                                    className="px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                                    className="px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                                 >
-                                    <Text className="text-sm text-discord-textPrimary font-medium">
+                                    <Text className="text-sm text-zam-textPrimary font-medium">
                                         {t("qrLogin.showButton")}
                                     </Text>
                                 </Pressable>
@@ -397,7 +400,7 @@ export default function AccountSettings({ onLogout }: Props) {
                     </View>
                 ) : null}
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("accountSettings.profile")}
                     </Text>
                     <View className="flex-row items-center gap-4">
@@ -411,7 +414,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                 className="w-20 h-20 rounded-full flex-shrink-0"
                             />
                         ) : (
-                            <View className="w-20 h-20 rounded-full bg-discord-accent/80 flex-row items-center justify-center flex-shrink-0">
+                            <View className="w-20 h-20 rounded-full bg-zam-accent/80 flex-row items-center justify-center flex-shrink-0">
                                 <Text className="text-white text-2xl font-semibold">
                                     {(displayName || userId || "?")
                                         .replace(/^@/, "")
@@ -439,7 +442,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                     );
                                 }}
                                 disabled={avatarUploading}
-                                className={`px-3 py-1.5 bg-discord-accent rounded ${
+                                className={`px-3 py-1.5 bg-zam-accent rounded ${
                                     avatarUploading ? "opacity-50" : ""
                                 }`}
                             >
@@ -457,9 +460,9 @@ export default function AccountSettings({ onLogout }: Props) {
                                     }}
                                     onPress={() => void removeAvatar()}
                                     disabled={avatarUploading}
-                                    className="px-3 py-1.5 bg-discord-backgroundTertiary rounded"
+                                    className="px-3 py-1.5 bg-zam-backgroundTertiary rounded"
                                 >
-                                    <Text className="text-discord-textPrimary text-sm">
+                                    <Text className="text-zam-textPrimary text-sm">
                                         {t("common.remove")}
                                     </Text>
                                 </Pressable>
@@ -472,11 +475,11 @@ export default function AccountSettings({ onLogout }: Props) {
                             onChangeText={setDisplayName}
                             maxLength={255}
                             placeholder={t("accountSettings.yourDisplayName")}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "accountSettings.yourDisplayName",
                             )}
-                            className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none"
+                            className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none"
                         />
                         <Pressable
                             accessibilityRole="button"
@@ -485,7 +488,7 @@ export default function AccountSettings({ onLogout }: Props) {
                             }}
                             onPress={() => void saveName()}
                             disabled={savingName || !nameChanged}
-                            className={`justify-center px-4 py-2 bg-discord-accent rounded ${
+                            className={`justify-center px-4 py-2 bg-zam-accent rounded ${
                                 savingName || !nameChanged ? "opacity-50" : ""
                             }`}
                         >
@@ -497,11 +500,11 @@ export default function AccountSettings({ onLogout }: Props) {
                         </Pressable>
                     </View>
                     {profileError ? (
-                        <Text className="mt-2 text-xs text-discord-danger">
+                        <Text className="mt-2 text-xs text-zam-danger">
                             {profileError}
                         </Text>
                     ) : profileSaved ? (
-                        <Text className="mt-2 text-xs text-discord-textPositive">
+                        <Text className="mt-2 text-xs text-zam-textPositive">
                             {t("accountSettings.saved")}
                         </Text>
                     ) : null}
@@ -513,63 +516,78 @@ export default function AccountSettings({ onLogout }: Props) {
                 />
 
                 <View className="gap-2">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("accountSettings.account")}
                     </Text>
-                    <View className="flex-row justify-between gap-3 py-2 border-b border-discord-divider">
-                        <Text className="text-sm text-discord-textMuted">
+                    <View className="flex-row justify-between gap-3 py-2 border-b border-zam-divider">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("accountSettings.userId")}
                         </Text>
                         {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
-                        <Text className="flex-shrink text-right text-discord-textPrimary font-mono text-xs">
+                        <Text className="flex-shrink text-right text-zam-textPrimary font-mono text-xs">
                             {userId ? shownUserId(userId, streamerMode) : ""}
                         </Text>
                     </View>
-                    <View className="flex-row justify-between gap-3 py-2 border-b border-discord-divider">
-                        <Text className="text-sm text-discord-textMuted">
+                    <View className="flex-row justify-between gap-3 py-2 border-b border-zam-divider">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("accountSettings.homeserver")}
                         </Text>
                         {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
-                        <Text className="flex-shrink text-right text-discord-textPrimary text-xs">
+                        <Text className="flex-shrink text-right text-zam-textPrimary text-xs">
                             {homeserverUrl
                                 ? shownHomeserver(homeserverUrl, streamerMode)
                                 : ""}
                         </Text>
                     </View>
-                    <View className="flex-row justify-between gap-3 py-2 border-b border-discord-divider">
-                        <Text className="text-sm text-discord-textMuted">
+                    <View className="flex-row justify-between gap-3 py-2 border-b border-zam-divider">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("accountSettings.connection")}
                         </Text>
-                        <Text className="flex-shrink text-right text-discord-textPrimary text-xs">
+                        <Text className="flex-shrink text-right text-zam-textPrimary text-xs">
                             {syncStatus.label}
                         </Text>
                     </View>
                 </View>
 
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("accountSettings.presence")}
                     </Text>
-                    <View className="flex-row items-center gap-3">
-                        <OptionSelector
-                            value={ownPresence}
-                            options={OWN_PRESENCE_OPTIONS}
-                            onChange={(value) => void setPresence(value)}
-                            ariaLabel={t("accountSettings.presence")}
-                        />
-                        <Text className="flex-1 text-xs text-discord-textMuted">
-                            {selectedPresence?.description}
+                    {!presenceUnsupported ? (
+                        <>
+                            <View className="flex-row items-center gap-3">
+                                <OptionSelector
+                                    value={ownPresence}
+                                    options={OWN_PRESENCE_OPTIONS}
+                                    onChange={(value) =>
+                                        void setPresence(value)
+                                    }
+                                    ariaLabel={t("accountSettings.presence")}
+                                />
+                                <Text className="flex-1 text-xs text-zam-textMuted">
+                                    {selectedPresence?.description}
+                                </Text>
+                            </View>
+                            {ownPresence === "offline" && (
+                                <Text className="mt-2 text-xs text-zam-textMuted">
+                                    {t("presence.invisibleHidesActivity")}
+                                </Text>
+                            )}
+                        </>
+                    ) : (
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("presence.unsupportedByServer")}
                         </Text>
-                    </View>
+                    )}
                     <Checkbox
                         checked={doNotDisturb}
                         onChange={() => void toggleDoNotDisturb()}
                         label={
                             <View className="flex-1">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t("presence.doNotDisturb")}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("presence.doNotDisturbDescription")}
                                 </Text>
                             </View>
@@ -579,26 +597,26 @@ export default function AccountSettings({ onLogout }: Props) {
                         inputClassName="mt-1 w-3.5 h-3.5 rounded-sm"
                     />
                     {presenceError ? (
-                        <Text className="mt-2 text-xs text-discord-danger">
+                        <Text className="mt-2 text-xs text-zam-danger">
                             {presenceError}
                         </Text>
                     ) : null}
                 </View>
 
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("accountSettings.password")}
                     </Text>
                     {oauthSession ? (
                         <>
-                            <Text className="text-sm text-discord-textMuted mb-3">
+                            <Text className="text-sm text-zam-textMuted mb-3">
                                 {t("accountSettings.managedByProvider")}
                             </Text>
                             {accountUrl ? (
                                 <Pressable
                                     accessibilityRole="link"
                                     onPress={() => openLink(accountUrl)}
-                                    className="self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded"
+                                    className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded"
                                 >
                                     <Text className="text-white text-sm">
                                         {t("accountSettings.manageAccount")}
@@ -619,7 +637,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                 placeholder={t(
                                     "accountSettings.currentPassword",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "accountSettings.currentPassword",
                                 )}
@@ -634,7 +652,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 placeholder={t("accountSettings.newPassword")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "accountSettings.newPassword",
                                 )}
@@ -651,14 +669,14 @@ export default function AccountSettings({ onLogout }: Props) {
                                 placeholder={t(
                                     "accountSettings.confirmNewPassword",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "accountSettings.confirmNewPassword",
                                 )}
                                 className={inputClass}
                             />
                             <View className="flex-row items-center justify-between gap-3">
-                                <Text className="flex-shrink text-sm text-discord-textPrimary">
+                                <Text className="flex-shrink text-sm text-zam-textPrimary">
                                     {t(
                                         "accountSettings.signOutAllOtherSessions",
                                     )}
@@ -682,7 +700,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                 disabled={
                                     passwordBusy || passwordProblem !== null
                                 }
-                                className={`self-start px-4 py-2 bg-discord-accent rounded ${
+                                className={`self-start px-4 py-2 bg-zam-accent rounded ${
                                     passwordBusy || passwordProblem !== null
                                         ? "opacity-50"
                                         : ""
@@ -695,24 +713,24 @@ export default function AccountSettings({ onLogout }: Props) {
                                 </Text>
                             </Pressable>
                             {passwordError ? (
-                                <Text className="text-xs text-discord-danger">
+                                <Text className="text-xs text-zam-danger">
                                     {passwordError}
                                 </Text>
                             ) : passwordChanged ? (
-                                <Text className="text-xs text-discord-textPositive">
+                                <Text className="text-xs text-zam-textPositive">
                                     {t("accountSettings.passwordChanged")}
                                 </Text>
                             ) : passwordProblem &&
                               (currentPassword ||
                                   newPassword ||
                                   confirmPassword) ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {passwordProblem}
                                 </Text>
                             ) : null}
                         </View>
                     ) : (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t(
                                 "accountSettings.thisServerDoesNotAllowChanging",
                             )}
@@ -721,15 +739,15 @@ export default function AccountSettings({ onLogout }: Props) {
                 </View>
 
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("accountSettings.emailPhoneNumbers")}
                     </Text>
                     {!securityLoaded ? (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t("common.loading")}
                         </Text>
                     ) : threePids.length === 0 ? (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t(
                                 "accountSettings.noEmailAddressesOrPhoneNumbers",
                             )}
@@ -738,22 +756,22 @@ export default function AccountSettings({ onLogout }: Props) {
                         threePids.map((identifier) => (
                             <View
                                 key={identifier.medium + identifier.address}
-                                className="flex-row justify-between gap-3 py-2 border-b border-discord-divider"
+                                className="flex-row justify-between gap-3 py-2 border-b border-zam-divider"
                             >
-                                <Text className="text-sm text-discord-textMuted">
+                                <Text className="text-sm text-zam-textMuted">
                                     {identifier.medium === "email"
                                         ? t("accountSettings.email")
                                         : t("accountSettings.phone")}
                                 </Text>
                                 {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
-                                <Text className="flex-shrink text-right text-discord-textPrimary font-mono text-xs">
+                                <Text className="flex-shrink text-right text-zam-textPrimary font-mono text-xs">
                                     {identifier.address}
                                 </Text>
                             </View>
                         ))
                     )}
                     {securityLoaded && !canManageThreePids ? (
-                        <Text className="mt-2 text-xs text-discord-textMuted">
+                        <Text className="mt-2 text-xs text-zam-textMuted">
                             {t(
                                 "accountSettings.thisServerDoesNotAllowManaging",
                             )}
@@ -763,13 +781,13 @@ export default function AccountSettings({ onLogout }: Props) {
 
                 {lastDeviceWarning ? (
                     <View
-                        className="p-3 rounded border border-discord-danger bg-discord-backgroundSecondary gap-3"
+                        className="p-3 rounded border border-zam-danger bg-zam-backgroundSecondary gap-3"
                         accessibilityRole="alert"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("accountSettings.lastDeviceTitle")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {lastDeviceBackedUp
                                 ? t("accountSettings.lastDeviceBackedUp")
                                 : t("accountSettings.lastDeviceNoBackup")}
@@ -778,7 +796,7 @@ export default function AccountSettings({ onLogout }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={onLogout}
-                                className="px-4 py-2 bg-discord-danger rounded"
+                                className="px-4 py-2 bg-zam-danger rounded"
                             >
                                 <Text className="text-white font-medium text-sm">
                                     {t("accountSettings.logOutAnyway")}
@@ -787,9 +805,9 @@ export default function AccountSettings({ onLogout }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setLastDeviceWarning(false)}
-                                className="px-4 py-2 rounded bg-discord-backgroundTertiary"
+                                className="px-4 py-2 rounded bg-zam-backgroundTertiary"
                             >
-                                <Text className="font-medium text-sm text-discord-textPrimary">
+                                <Text className="font-medium text-sm text-zam-textPrimary">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>
@@ -801,7 +819,7 @@ export default function AccountSettings({ onLogout }: Props) {
                         accessibilityState={{ disabled: checkingDevices }}
                         onPress={() => void requestLogout()}
                         disabled={checkingDevices}
-                        className={`self-start px-4 py-2 bg-discord-danger rounded ${
+                        className={`self-start px-4 py-2 bg-zam-danger rounded ${
                             checkingDevices ? "opacity-50" : ""
                         }`}
                     >
@@ -812,8 +830,8 @@ export default function AccountSettings({ onLogout }: Props) {
                 )}
 
                 {!oauthSession || deactivateUrl || accountUrl ? (
-                    <View className="pt-4 border-t border-discord-divider gap-3">
-                        <Text className="text-xs font-semibold text-discord-danger uppercase tracking-wide">
+                    <View className="pt-4 border-t border-zam-divider gap-3">
+                        <Text className="text-xs font-semibold text-zam-danger uppercase tracking-wide">
                             {t("accountSettings.dangerZone")}
                         </Text>
                         {oauthSession ? (
@@ -823,9 +841,9 @@ export default function AccountSettings({ onLogout }: Props) {
                                     onPress={() =>
                                         openLink((deactivateUrl ?? accountUrl)!)
                                     }
-                                    className="self-start px-4 py-2 border border-discord-danger rounded"
+                                    className="self-start px-4 py-2 border border-zam-danger rounded"
                                 >
-                                    <Text className="text-discord-danger text-sm">
+                                    <Text className="text-zam-danger text-sm">
                                         {t("accountSettings.deactivateAccount")}
                                     </Text>
                                 </Pressable>
@@ -834,15 +852,15 @@ export default function AccountSettings({ onLogout }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setDeactivateOpen(true)}
-                                className="self-start px-4 py-2 border border-discord-danger rounded"
+                                className="self-start px-4 py-2 border border-zam-danger rounded"
                             >
-                                <Text className="text-discord-danger text-sm">
+                                <Text className="text-zam-danger text-sm">
                                     {t("accountSettings.deactivateAccount")}
                                 </Text>
                             </Pressable>
                         ) : (
                             <View className="gap-3 max-w-sm">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t(
                                         "accountSettings.deactivationIsPermanentAndCannotBe",
                                     )}
@@ -853,9 +871,9 @@ export default function AccountSettings({ onLogout }: Props) {
                                     autoCapitalize="none"
                                     autoCorrect={false}
                                     placeholder={userId ?? ""}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     accessibilityLabel={userId ?? ""}
-                                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2"
+                                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2"
                                 />
                                 <TextInput
                                     secureTextEntry
@@ -868,14 +886,14 @@ export default function AccountSettings({ onLogout }: Props) {
                                     placeholder={t(
                                         "accountSettings.currentPassword",
                                     )}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     accessibilityLabel={t(
                                         "accountSettings.currentPassword",
                                     )}
-                                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2"
+                                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2"
                                 />
                                 <View className="flex-row items-center justify-between gap-3">
-                                    <Text className="flex-shrink text-sm text-discord-textPrimary">
+                                    <Text className="flex-shrink text-sm text-zam-textPrimary">
                                         {t(
                                             "accountSettings.eraseMessagesWherePossible",
                                         )}
@@ -902,7 +920,7 @@ export default function AccountSettings({ onLogout }: Props) {
                                         disabled={
                                             !deactivateArmed || deactivateBusy
                                         }
-                                        className={`px-4 py-2 bg-discord-danger rounded ${
+                                        className={`px-4 py-2 bg-zam-danger rounded ${
                                             !deactivateArmed || deactivateBusy
                                                 ? "opacity-50"
                                                 : ""
@@ -925,15 +943,15 @@ export default function AccountSettings({ onLogout }: Props) {
                                         }}
                                         onPress={cancelDeactivation}
                                         disabled={deactivateBusy}
-                                        className="px-4 py-2 bg-discord-backgroundTertiary rounded"
+                                        className="px-4 py-2 bg-zam-backgroundTertiary rounded"
                                     >
-                                        <Text className="text-discord-textPrimary text-sm">
+                                        <Text className="text-zam-textPrimary text-sm">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
                                 </View>
                                 {deactivateError ? (
-                                    <Text className="text-xs text-discord-danger">
+                                    <Text className="text-xs text-zam-danger">
                                         {deactivateError}
                                     </Text>
                                 ) : null}

@@ -65,7 +65,7 @@ export default function MidiPlayer({ midiUrl, onfail }: Props) {
 
     if (!ready)
         return (
-            <Text className="text-xs text-discord-textMuted">
+            <Text className="text-xs text-zam-textMuted">
                 {t("common.loading")}
             </Text>
         );
@@ -90,7 +90,7 @@ export default function MidiPlayer({ midiUrl, onfail }: Props) {
                     accessibilityLabel={t(
                         playing ? "midiPlayer.pause" : "midiPlayer.play",
                     )}
-                    className="w-7 h-7 rounded-full bg-discord-accent items-center justify-center"
+                    className="w-7 h-7 rounded-full bg-zam-accent items-center justify-center"
                     onPress={() => {
                         if (playing) audio.pause();
                         else void audio.play().catch(() => {});
@@ -102,7 +102,7 @@ export default function MidiPlayer({ midiUrl, onfail }: Props) {
                         <Play size={14} className="text-white" />
                     )}
                 </Pressable>
-                <Text className="text-discord-textMuted text-xs tabular-nums">
+                <Text className="text-zam-textMuted text-xs tabular-nums">
                     {formatCallDuration(audio.currentTime * 1000)} /{" "}
                     {formatCallDuration(duration * 1000)}
                 </Text>

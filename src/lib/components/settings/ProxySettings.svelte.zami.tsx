@@ -5,12 +5,12 @@ import { t } from "$lib/i18n";
 import { proxyBridge } from "$lib/proxyBridge";
 
 const selectClass =
-    "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+    "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
 const inputClass =
-    "w-full px-3 py-2 rounded text-sm bg-discord-backgroundTertiary text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-1 focus:ring-discord-accent";
+    "w-full px-3 py-2 rounded text-sm bg-zam-backgroundTertiary text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-1 focus:ring-zam-accent";
 // Zami: `block` dropped; a Text is a block in a column already.
-const labelClass = "text-sm text-discord-textPrimary mb-1";
-const hintClass = "text-xs text-discord-textMuted mt-1";
+const labelClass = "text-sm text-zam-textPrimary mb-1";
+const hintClass = "text-xs text-zam-textMuted mt-1";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
 // spaces the children instead. `data-setting-anchor` (settings search scrolls to it)
@@ -103,17 +103,17 @@ export default function ProxySettings() {
     if (info?.supported === false)
         return (
             <View className="gap-2">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("proxySettings.network")}
                 </Text>
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("proxySettings.unsupported")}
                 </Text>
             </View>
         );
     return (
         <View className="gap-4">
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                 {t("proxySettings.network")}
             </Text>
 
@@ -151,7 +151,7 @@ export default function ProxySettings() {
                 {draft.mode === "system" && info?.launchFlags.length ? (
                     <Text className={hintClass}>
                         {t("proxySettings.launchFlagsInUse")}{" "}
-                        <Text className="text-xs text-discord-textMuted font-mono">
+                        <Text className="text-xs text-zam-textMuted font-mono">
                             {info.launchFlags.join(" ")}
                         </Text>
                     </Text>
@@ -168,7 +168,7 @@ export default function ProxySettings() {
                             nativeID="proxy-rules"
                             accessibilityLabel={t("proxySettings.server")}
                             className={inputClass}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             spellCheck={false}
                             autoCorrect={false}
                             autoCapitalize="none"
@@ -194,7 +194,7 @@ export default function ProxySettings() {
                             nativeID="proxy-bypass"
                             accessibilityLabel={t("proxySettings.bypass")}
                             className={inputClass}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             spellCheck={false}
                             autoCorrect={false}
                             autoCapitalize="none"
@@ -214,7 +214,7 @@ export default function ProxySettings() {
                         nativeID="proxy-pac"
                         accessibilityLabel={t("proxySettings.pacUrl")}
                         className={inputClass}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         spellCheck={false}
                         autoCorrect={false}
                         autoCapitalize="none"
@@ -261,7 +261,7 @@ export default function ProxySettings() {
                           : t("proxySettings.callsDefaultHint")}
                 </Text>
                 {bypassUnavailable && (
-                    <Text className="text-xs text-discord-warning mt-1">
+                    <Text className="text-xs text-zam-warning mt-1">
                         {android
                             ? t("proxySettings.callsDirectUnavailableManual")
                             : t("proxySettings.callsDirectUnavailable")}
@@ -270,7 +270,7 @@ export default function ProxySettings() {
                 {info?.calls === "direct" && info.callBypassAddresses.length ? (
                     <Text className={hintClass}>
                         {t("proxySettings.callsDirectAddresses")}{" "}
-                        <Text className="text-xs text-discord-textMuted font-mono">
+                        <Text className="text-xs text-zam-textMuted font-mono">
                             {info.callBypassAddresses.join(", ")}
                         </Text>
                     </Text>
@@ -280,7 +280,7 @@ export default function ProxySettings() {
             <View className="flex-row items-center gap-3">
                 <Pressable
                     accessibilityRole="button"
-                    className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
+                    className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover disabled:opacity-50"
                     disabled={!dirty || saving}
                     onPress={() => void save()}
                 >
@@ -289,16 +289,16 @@ export default function ProxySettings() {
                     </Text>
                 </Pressable>
                 {info?.error ? (
-                    <Text className="shrink text-xs text-discord-danger">
+                    <Text className="shrink text-xs text-zam-danger">
                         {t("proxySettings.applyFailed", { error: info.error })}
                     </Text>
                 ) : saved && !dirty ? (
-                    <Text className="shrink text-xs text-discord-textMuted">
+                    <Text className="shrink text-xs text-zam-textMuted">
                         {t("proxySettings.saved")}
                     </Text>
                 ) : null}
                 {loadError ? (
-                    <Text className="shrink text-xs text-discord-danger">
+                    <Text className="shrink text-xs text-zam-danger">
                         {loadError}
                     </Text>
                 ) : null}

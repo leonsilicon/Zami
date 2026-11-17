@@ -62,7 +62,7 @@ export interface HtmlProps {
 const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
 // `.message-body`'s 0.875rem, which is React Native's default too.
 const DEFAULT_FONT_SIZE = 14;
-const LINK_CLASS = "text-discord-accent";
+const LINK_CLASS = "text-zam-accent";
 const MARGIN: Readonly<Record<string, number>> = {
   blockquote: 4,
   h1: 4,
@@ -369,10 +369,7 @@ function Link({
 /** `<span data-mx-spoiler>`: covered until pressed, and pressing again covers it, as in Zam. */
 function Spoiler({ element, context }: { element: HtmlElement; context: Context }): ReactNode {
   const [revealed, setRevealed] = useState(false);
-  const [cover, uncovered] = useCSSVariable([
-    "--discord-spoiler-bg",
-    "--discord-spoiler-revealed-bg",
-  ]);
+  const [cover, uncovered] = useCSSVariable(["--zam-spoiler-bg", "--zam-spoiler-revealed-bg"]);
   const hidden = context.hidden || !revealed;
   const color = element.attrs["data-mx-color"];
   return (
@@ -575,9 +572,9 @@ interface BlockProps {
 }
 
 function Blockquote({ block, context, spacing }: BlockProps): ReactNode {
-  const { color } = useResolveClassNames("text-discord-textSecondary");
+  const { color } = useResolveClassNames("text-zam-textSecondary");
   return (
-    <View className="border-discord-divider" style={[styles.blockquote, spacing]}>
+    <View className="border-zam-divider" style={[styles.blockquote, spacing]}>
       {renderBlocks(block.children, color === undefined ? context : withText(context, { color }))}
     </View>
   );
@@ -603,10 +600,7 @@ function CodeBlock({ block, context, spacing }: BlockProps): ReactNode {
     syntax,
   };
   return (
-    <View
-      className="bg-discord-backgroundTertiary border-discord-divider"
-      style={[styles.pre, spacing]}
-    >
+    <View className="bg-zam-backgroundTertiary border-zam-divider" style={[styles.pre, spacing]}>
       <ScrollView horizontal contentContainerStyle={styles.preContent}>
         <View>{renderBlocks(block.children, code)}</View>
       </ScrollView>

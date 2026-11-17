@@ -103,15 +103,15 @@ export default function PrivacySafetySettings() {
     return (
         <View className="gap-6">
             <SettingAnchor anchor="notif-privacy">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("privacySafetySettings.privacy")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.streamerMode")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("privacySafetySettings.streamerModeHint")}
                         </Text>
                     </View>
@@ -121,12 +121,12 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.streamerMode")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.privateReadReceipts")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.hideYourReadReceiptsFromOther",
                             )}{" "}
@@ -139,12 +139,12 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.privateReadReceipts")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.sendTypingIndicators")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("privacySafetySettings.letOthersInARoomSee")}
                         </Text>
                     </View>
@@ -154,12 +154,12 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.sendTypingIndicators")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.indexEncryptedRooms")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("privacySafetySettings.indexEncryptedRoomsHint")}
                         </Text>
                     </View>
@@ -169,14 +169,14 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.indexEncryptedRooms")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "privacySafetySettings.hideMessageTextInNotifications",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.notificationsOnThisDeviceSayWho",
                             )}
@@ -192,10 +192,10 @@ export default function PrivacySafetySettings() {
                 </View>
                 <View className="flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.linkPreviewMedia")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.previewImagesAndVideosUsuallyCome",
                             )}
@@ -212,7 +212,7 @@ export default function PrivacySafetySettings() {
 
             <Text
                 accessibilityRole="header"
-                className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
             >
                 {t("privacySafetySettings.blockedUsers")}
             </Text>

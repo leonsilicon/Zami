@@ -8,7 +8,6 @@ import {
     Maximize2,
 } from "lucide-svelte";
 import type { Room } from "matrix-js-sdk";
-import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -44,8 +43,9 @@ interface Props {
 // Zami: `title` (a hover tooltip) has no React Native equivalent: the icon-only
 // buttons carry it as their label.
 export default function ActiveCallBanner({ room }: Props) {
-    // Fixed for the session, same as CallView and VoiceCallPanel.
-    const [screenShareSupported] = useState(screenShareSupportedHere);
+    // A rune read, as upstream's $derived: support can change once (Android's
+    // plugin answers asynchronously).
+    const screenShareSupported = useRune(() => screenShareSupportedHere());
 
     const participants = useRune(() => {
         void voiceCallState.voiceTick;
@@ -101,7 +101,7 @@ export default function ActiveCallBanner({ room }: Props) {
     if (!decision.visible) return null;
     const joining = joinPendingRoomId === room.roomId;
     return (
-        <View className="flex-row items-center gap-3 px-4 py-2 bg-discord-backgroundSecondary border-b border-discord-divider">
+        <View className="flex-row items-center gap-3 px-4 py-2 bg-zam-backgroundSecondary border-b border-zam-divider">
             {/* Body opens the call view (peek without joining); Leave/Join stays
                 a separate action on the right. Same target as the roster rows and
                 the VoiceCallPanel — the banner is rendered only for the active
@@ -110,7 +110,7 @@ export default function ActiveCallBanner({ room }: Props) {
                 accessibilityRole="button"
                 accessibilityHint={t("activeCallBanner.openCall")}
                 onPress={() => showCallView(room.roomId)}
-                className="flex-row items-center gap-3 min-w-0 flex-1 overflow-hidden -mx-1 px-1 py-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                className="flex-row items-center gap-3 min-w-0 flex-1 overflow-hidden -mx-1 px-1 py-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
             >
                 {/* Zami: `-space-x-1.5` → a negative start margin on every
                     avatar after the first. */}
@@ -120,7 +120,7 @@ export default function ActiveCallBanner({ room }: Props) {
                             key={p.userId}
                             className={`rounded-full ring-2 ${
                                 speaking.has(p.userId)
-                                    ? "ring-discord-accent"
+                                    ? "ring-zam-accent"
                                     : "ring-transparent"
                             } ${i > 0 ? "-ms-1.5" : ""}`}
                         >
@@ -135,7 +135,7 @@ export default function ActiveCallBanner({ room }: Props) {
                 </View>
                 <Text
                     numberOfLines={1}
-                    className="shrink text-sm text-discord-textSecondary min-w-0"
+                    className="shrink text-sm text-zam-textSecondary min-w-0"
                 >
                     {ringingOut
                         ? t("activeCallBanner.ringing")
@@ -159,17 +159,17 @@ export default function ActiveCallBanner({ room }: Props) {
                                         : t("common.turnOnCamera")
                                 }
                                 onPress={() => void toggleCamera()}
-                                className="p-1.5 rounded hover:bg-discord-messageHover active:bg-discord-messageHover"
+                                className="p-1.5 rounded hover:bg-zam-messageHover active:bg-zam-messageHover"
                             >
                                 {cameraOn ? (
                                     <Video
                                         size={16}
-                                        className="text-discord-accent"
+                                        className="text-zam-accent"
                                     />
                                 ) : (
                                     <VideoOff
                                         size={16}
-                                        className="text-discord-textMuted hover:text-discord-textPrimary"
+                                        className="text-zam-textMuted hover:text-zam-textPrimary"
                                     />
                                 )}
                             </Pressable>
@@ -183,14 +183,14 @@ export default function ActiveCallBanner({ room }: Props) {
                                         : t("common.shareYourScreen")
                                 }
                                 onPress={() => void toggleScreenShare()}
-                                className="p-1.5 rounded hover:bg-discord-messageHover active:bg-discord-messageHover"
+                                className="p-1.5 rounded hover:bg-zam-messageHover active:bg-zam-messageHover"
                             >
                                 <MonitorUp
                                     size={16}
                                     className={
                                         screenSharing
-                                            ? "text-discord-accent"
-                                            : "text-discord-textMuted hover:text-discord-textPrimary"
+                                            ? "text-zam-accent"
+                                            : "text-zam-textMuted hover:text-zam-textPrimary"
                                     }
                                 />
                             </Pressable>
@@ -198,8 +198,8 @@ export default function ActiveCallBanner({ room }: Props) {
                         <SoundboardButton
                             room={room}
                             size={16}
-                            buttonClass="p-1.5 rounded hover:bg-discord-messageHover"
-                            idleClass="text-discord-textMuted hover:text-discord-textPrimary"
+                            buttonClass="p-1.5 rounded hover:bg-zam-messageHover"
+                            idleClass="text-zam-textMuted hover:text-zam-textPrimary"
                         />
                     </View>
                     {/* The body above opens the call too, but nothing said so: users
@@ -208,20 +208,17 @@ export default function ActiveCallBanner({ room }: Props) {
                         accessibilityRole="button"
                         accessibilityLabel={t("activeCallBanner.openCall")}
                         onPress={() => showCallView(room.roomId)}
-                        className="flex-row items-center gap-1.5 px-2.5 py-1 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex-shrink-0"
+                        className="flex-row items-center gap-1.5 px-2.5 py-1 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex-shrink-0"
                     >
-                        <Maximize2
-                            size={14}
-                            className="text-discord-textPrimary"
-                        />
-                        <Text className="hidden sm:flex text-discord-textPrimary text-sm font-medium">
+                        <Maximize2 size={14} className="text-zam-textPrimary" />
+                        <Text className="hidden sm:flex text-zam-textPrimary text-sm font-medium">
                             {t("activeCallBanner.open")}
                         </Text>
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         onPress={leaveCall}
-                        className="flex-row items-center gap-1.5 px-3 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover active:bg-discord-dangerHover transition-colors flex-shrink-0"
+                        className="flex-row items-center gap-1.5 px-3 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover active:bg-zam-dangerHover transition-colors flex-shrink-0"
                     >
                         <PhoneOff size={14} className="text-white" />
                         <Text className="text-white text-sm font-medium">
@@ -237,13 +234,10 @@ export default function ActiveCallBanner({ room }: Props) {
                         accessibilityRole="button"
                         accessibilityLabel={t("activeCallBanner.openCall")}
                         onPress={() => showCallView(room.roomId)}
-                        className="flex-row items-center gap-1.5 px-2.5 py-1 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex-shrink-0"
+                        className="flex-row items-center gap-1.5 px-2.5 py-1 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex-shrink-0"
                     >
-                        <Maximize2
-                            size={14}
-                            className="text-discord-textPrimary"
-                        />
-                        <Text className="hidden sm:flex text-discord-textPrimary text-sm font-medium">
+                        <Maximize2 size={14} className="text-zam-textPrimary" />
+                        <Text className="hidden sm:flex text-zam-textPrimary text-sm font-medium">
                             {t("activeCallBanner.open")}
                         </Text>
                     </Pressable>
@@ -254,7 +248,7 @@ export default function ActiveCallBanner({ room }: Props) {
                         accessibilityState={{
                             disabled: joinPendingRoomId !== null,
                         }}
-                        className={`flex-row items-center gap-1.5 px-3 py-1 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors ${
+                        className={`flex-row items-center gap-1.5 px-3 py-1 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors ${
                             joinPendingRoomId !== null ? "opacity-60" : ""
                         }`}
                     >

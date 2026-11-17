@@ -38,7 +38,7 @@ interface Props {
 }
 
 const inputClass =
-    "w-full px-2.5 py-1.5 rounded bg-discord-backgroundSecondary text-sm text-discord-textPrimary border border-discord-divider focus:border-discord-accent outline-none";
+    "w-full px-2.5 py-1.5 rounded bg-zam-backgroundSecondary text-sm text-zam-textPrimary border border-zam-divider focus:border-zam-accent outline-none";
 const selectClass = inputClass;
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -127,12 +127,12 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                     accessibilityRole="button"
                     onPress={onBack}
                     accessibilityLabel={t("pluginSettingsForm.backToPlugins")}
-                    className="-ms-2 p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                    className="-ms-2 p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                 >
                     {/* Zami: `mirror:-scale-x-100`, from I18nManager. */}
                     <ArrowLeft
                         size={20}
-                        className="text-discord-textMuted hover:text-discord-textPrimary"
+                        className="text-zam-textMuted hover:text-zam-textPrimary"
                         style={
                             I18nManager.isRTL
                                 ? { transform: [{ scaleX: -1 }] }
@@ -143,14 +143,14 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                 <Text
                     accessibilityRole="header"
                     numberOfLines={1}
-                    className="flex-shrink text-base font-bold text-discord-textPrimary min-w-0 truncate"
+                    className="flex-shrink text-base font-bold text-zam-textPrimary min-w-0 truncate"
                 >
                     {t("pluginSettingsForm.settings", { pluginName })}
                 </Text>
             </View>
 
             {schema.length === 0 ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("pluginSettingsForm.thisPluginHasNoSettings")}
                 </Text>
             ) : (
@@ -162,11 +162,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                 className="flex-row items-center gap-3"
                             >
                                 <View className="flex-1 min-w-0">
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {field.label}
                                     </Text>
                                     {field.description ? (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {field.description}
                                         </Text>
                                     ) : null}
@@ -181,11 +181,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                             </View>
                         ) : field.type === "text" ? (
                             <View key={field.key}>
-                                <Text className="text-sm text-discord-textPrimary mb-1">
+                                <Text className="text-sm text-zam-textPrimary mb-1">
                                     {field.label}
                                 </Text>
                                 {field.description ? (
-                                    <Text className="text-xs text-discord-textMuted mb-1">
+                                    <Text className="text-xs text-zam-textMuted mb-1">
                                         {field.description}
                                     </Text>
                                 ) : null}
@@ -194,7 +194,7 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                     accessibilityLabel={field.label}
                                     className={inputClass}
                                     placeholder={field.placeholder ?? ""}
-                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                    placeholderTextColorClassName="accent-zam-textMuted"
                                     value={String(values[field.key] ?? "")}
                                     onChangeText={(text) =>
                                         setScalar(field.key, text)
@@ -203,11 +203,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                             </View>
                         ) : field.type === "number" ? (
                             <View key={field.key}>
-                                <Text className="text-sm text-discord-textPrimary mb-1">
+                                <Text className="text-sm text-zam-textPrimary mb-1">
                                     {field.label}
                                 </Text>
                                 {field.description ? (
-                                    <Text className="text-xs text-discord-textMuted mb-1">
+                                    <Text className="text-xs text-zam-textMuted mb-1">
                                         {field.description}
                                     </Text>
                                 ) : null}
@@ -223,11 +223,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                             </View>
                         ) : field.type === "select" ? (
                             <View key={field.key}>
-                                <Text className="text-sm text-discord-textPrimary mb-1">
+                                <Text className="text-sm text-zam-textPrimary mb-1">
                                     {field.label}
                                 </Text>
                                 {field.description ? (
-                                    <Text className="text-xs text-discord-textMuted mb-1">
+                                    <Text className="text-xs text-zam-textMuted mb-1">
                                         {field.description}
                                     </Text>
                                 ) : null}
@@ -244,11 +244,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                             </View>
                         ) : field.type === "list" ? (
                             <View key={field.key}>
-                                <Text className="text-sm text-discord-textPrimary mb-1">
+                                <Text className="text-sm text-zam-textPrimary mb-1">
                                     {field.label}
                                 </Text>
                                 {field.description ? (
-                                    <Text className="text-xs text-discord-textMuted mb-2">
+                                    <Text className="text-xs text-zam-textMuted mb-2">
                                         {field.description}
                                     </Text>
                                 ) : null}
@@ -256,7 +256,7 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                     {rowsOf(field.key).map((row, i) => (
                                         <View
                                             key={i}
-                                            className="flex-row items-start gap-2 p-2 rounded bg-discord-backgroundTertiary"
+                                            className="flex-row items-start gap-2 p-2 rounded bg-zam-backgroundTertiary"
                                         >
                                             <View className="flex-1 min-w-0 gap-2">
                                                 {field.fields.map((sub) => {
@@ -266,7 +266,7 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                                                 key={sub.key}
                                                                 className="flex-row items-center gap-2"
                                                             >
-                                                                <Text className="flex-1 text-xs text-discord-textMuted">
+                                                                <Text className="flex-1 text-xs text-zam-textMuted">
                                                                     {sub.label}
                                                                 </Text>
                                                                 <ToggleSwitch
@@ -382,7 +382,7 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                                                           textField.label)
                                                                         : textField.label
                                                                 }
-                                                                placeholderTextColorClassName="accent-discord-textMuted"
+                                                                placeholderTextColorClassName="accent-zam-textMuted"
                                                                 value={String(
                                                                     row[
                                                                         textField
@@ -417,11 +417,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                                     accessibilityState={{
                                                         disabled: i === 0,
                                                     }}
-                                                    className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                                                    className="p-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
                                                 >
                                                     <ChevronUp
                                                         size={14}
-                                                        className="text-discord-textMuted hover:text-discord-textPrimary"
+                                                        className="text-zam-textMuted hover:text-zam-textPrimary"
                                                     />
                                                 </Pressable>
                                                 <Pressable
@@ -445,11 +445,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                                                 .length -
                                                                 1,
                                                     }}
-                                                    className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                                                    className="p-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
                                                 >
                                                     <ChevronDown
                                                         size={14}
-                                                        className="text-discord-textMuted hover:text-discord-textPrimary"
+                                                        className="text-zam-textMuted hover:text-zam-textPrimary"
                                                     />
                                                 </Pressable>
                                                 <Pressable
@@ -460,11 +460,11 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                                     accessibilityLabel={t(
                                                         "pluginSettingsForm.removeRow",
                                                     )}
-                                                    className="p-1 rounded hover:bg-discord-messageHover transition-colors"
+                                                    className="p-1 rounded hover:bg-zam-messageHover transition-colors"
                                                 >
                                                     <Trash2
                                                         size={14}
-                                                        className="text-discord-textMuted hover:text-discord-danger"
+                                                        className="text-zam-textMuted hover:text-zam-danger"
                                                     />
                                                 </Pressable>
                                             </View>
@@ -474,13 +474,13 @@ export default function PluginSettingsForm({ pluginId, onBack }: Props) {
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={() => addRow(field)}
-                                    className="mt-2 flex-row self-start items-center gap-1.5 px-2.5 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                                    className="mt-2 flex-row self-start items-center gap-1.5 px-2.5 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                                 >
                                     <Plus
                                         size={14}
-                                        className="text-discord-textPrimary"
+                                        className="text-zam-textPrimary"
                                     />
-                                    <Text className="text-xs font-semibold text-discord-textPrimary">
+                                    <Text className="text-xs font-semibold text-zam-textPrimary">
                                         {t("common.add")}
                                     </Text>
                                 </Pressable>
@@ -529,7 +529,7 @@ function NumberInput({
             accessibilityLabel={accessibilityLabel}
             className={className}
             placeholder={placeholder}
-            placeholderTextColorClassName="accent-discord-textMuted"
+            placeholderTextColorClassName="accent-zam-textMuted"
             keyboardType={
                 Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric"
             }

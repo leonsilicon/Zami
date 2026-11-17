@@ -603,6 +603,37 @@ const messages: Partial<Record<MessageKey, string>> = {
         "La synchronisation de l'index est inactive : l'indexation des salons chiffrés doit être activée.",
     "debugSettings.indexSyncNow": "Synchroniser maintenant",
     "debugSettings.indexSyncNever": "jamais",
+    "debugSettings.searchIndex": "Index de recherche",
+    "debugSettings.searchIndexHint":
+        "Indexe maintenant tout l'historique de chaque salle chiffrée de cet appareil, au lieu de le faire lentement en arrière-plan. Utilise le réseau et le stockage pendant l'exécution.",
+    "debugSettings.searchIndexBuild": "Construire l'index complet maintenant",
+    "debugSettings.searchIndexCancel": "Annuler",
+    "debugSettings.searchIndexBar": "Progression de l'index complet",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} salles, {messages} messages",
+    "debugSettings.searchIndexComplete":
+        "Terminé : toutes les salles chiffrées sont indexées.",
+    "debugSettings.searchIndexPartial":
+        "Terminé, mais {failed} salles ne sont pas encore prêtes. Le robot d'arrière-plan réessaiera.",
+    "debugSettings.searchIndexStorage":
+        "Arrêté : le stockage est presque plein.",
+    "debugSettings.prefetchTitle": "Téléchargement en arrière-plan (Android)",
+    "debugSettings.prefetchHint":
+        "Télécharge des pages d'historique chiffrées en arrière-plan lorsque l'application n'est pas au premier plan. Elles restent chiffrées jusqu'à leur lecture par l'index.",
+    "debugSettings.prefetchPages": "Pages en attente",
+    "debugSettings.prefetchSize": "Taille",
+    "debugSettings.prefetchRooms": "Salons",
+    "debugSettings.prefetchLastRun": "Dernière exécution",
+    "debugSettings.prefetchLastResult": "Dernier résultat",
+    "debugSettings.prefetchLastError": "Dernière erreur",
+    "debugSettings.prefetchRefresh": "Actualiser",
+    "debugSettings.searchIndexAborted": "Annulé.",
+    "debugSettings.searchIndexUnavailable":
+        "Arrêté : l'index ne fonctionne pas sur cet appareil.",
+    "debugSettings.searchIndexDisabled":
+        "Activez d'abord l'indexation des salles chiffrées dans les paramètres de confidentialité.",
+    "debugSettings.searchIndexNotRunning":
+        "L'index ne fonctionne pas pour le moment. Il démarre une fois l'app chargée.",
     "debugSettings.indexSyncSessions": "Sessions",
     "debugSettings.indexSyncAsked": "Demandé",
     "debugSettings.indexSyncRoomsMissing": "Salons avec des trous",
@@ -1215,6 +1246,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.pinnedMessagesCount": "Messages épinglés ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Notifier en répondant",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "Les nouvelles réponses notifient l'auteur du message auquel vous répondez, comme une mention @. Vous pouvez le désactiver pour chaque réponse depuis la barre de réponse.",
+    "messageInput.pingOn": "@ OUI",
+    "messageInput.pingOff": "@ NON",
+    "messageInput.pingOnTitle": "Notifier l'auteur",
+    "messageInput.pingOffTitle": "Ne pas notifier l'auteur",
     "messageInput.replyingTo": "En réponse à {replyTargetName}",
     "messageInput.cancelReplyEsc": "Annuler la réponse (Échap)",
     "messageInput.editAttachment": "Modifier la pièce jointe",
@@ -1861,6 +1899,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "quickActions.couldNotSendTheJoinRequest":
         "Impossible d'envoyer la demande d'accès",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Réactions",
+    "reactionsViewer.count":
+        "{count, plural, one {# réaction} other {# réactions}}",
+    "reactionsViewer.empty": "Aucune réaction sur ce message.",
+    "reactionsViewer.removeYours": "Retirer votre réaction",
+    "reactionsViewer.sending": "envoi…",
+    "reactionsViewer.couldNotRemove": "Impossible de retirer votre réaction.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "+{overflow} autres",
     "reactorPopover.reactedWith": "A réagi avec {label}",
@@ -2180,6 +2226,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Votre débit montant mesure {upload}, donc ceci va jusqu'à {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Votre débit montant n'a pas encore été mesuré. Il l'est pendant que vous envoyez de la vidéo, donc ceci va jusqu'à {max} pour l'instant.",
+    "screenShareQualityChips.nativeCapture": "Assistant de capture Windows",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Capture et encode le partage hors du navigateur, pour qu'un jeu gourmand ne le saccade pas. S'applique au prochain partage.",
     "screenShareQualityChips.shareSystemAudio": "Partager le son du système",
     "screenShareQualityChips.appliesToNextShare":
         "S'applique au prochain partage",
@@ -2580,7 +2629,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "Affichage des messages",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Enregistré sur cet appareil uniquement. Non synchronisé avec votre compte.",
-    "themeColorEditor.appTextSize": "Taille du texte : {round} %",
+    "themeColorEditor.interfaceScale": "Échelle de l'interface : {percent} %",
+    "themeColorEditor.messageTextScale":
+        "Taille du texte des messages : {percent} %",
+    "themeColorEditor.messageTextScaleHint":
+        "Ne modifie que les messages du chat et la zone de saisie.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Ajuste la taille de tout le texte et des espacements de l'application.",
     "themeColorEditor.font": "Police",
@@ -3256,6 +3309,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "client.encryptedCallsUnsupported":
         "Cet appel est chiffré de bout en bout, et ce navigateur ne peut pas chiffrer les médias d'appel. Essayez une version récente de Chrome, Firefox ou Safari, ou l'application de bureau.",
     "client.couldNotSwitchVideoCodec": "Impossible de changer le codec vidéo",
+    "client.androidShareNeedsWebView":
+        "Le partage d'écran dans ce salon nécessite une version plus récente d'Android System WebView.",
+    "client.screenShareStopped": "Le partage d'écran s'est arrêté.",
     "client.couldNotStartScreenShare":
         "Impossible de démarrer le partage d'écran",
     "client.couldNotShareScreenAudio": "Partage d'écran lancé sans le son",
@@ -3774,6 +3830,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "Désépingler",
     "messageActionsMenu.pin": "Épingler",
     "messageActionsMenu.copyLink": "Copier le lien",
+    "messageActionsMenu.viewReactions": "Voir les réactions",
     "messageActionsMenu.markUnread": "Marquer comme non lu",
     "messageActionsMenu.couldNotMarkUnread":
         "Impossible de marquer comme non lu",
@@ -3838,6 +3895,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "presence.doNotDisturbDescription":
         "Coupe les notifications et les appels sur tous vos appareils",
     "presence.invisible": "Invisible",
+    "presence.invisibleHidesActivity":
+        "Invisible masque aussi vos accusés de lecture et votre saisie aux autres.",
+    "presence.unsupportedByServer":
+        "Ce serveur ne prend pas en charge la présence, il n'y a donc aucun statut à définir.",
     "presence.appearOfflineToOtherUsers":
         "Apparaître hors ligne aux autres utilisateurs",
 
@@ -4232,6 +4293,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "rootLayout.linkCopied": "Lien copié",
 
     // src/routes/+page.svelte
+    "rootPage.storageWipedSessionRecovered":
+        "Votre navigateur a réinitialisé le stockage de Zam, probablement parce que le disque était plein. Votre connexion a été récupérée, mais certains réglages ont pu revenir à leurs valeurs par défaut.",
     "rootPage.sessionOpenInAnotherTab":
         "Cette session est ouverte dans un autre onglet. Cet onglet continuera une fois l'autre fermé.",
     "rootPage.failedToReconnectPleaseLogIn":

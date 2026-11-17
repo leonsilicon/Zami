@@ -383,7 +383,7 @@ export default function NotificationSettings() {
     // Zami: a <select> is as wide as its longest option; Select's label fills
     // its box instead, so a box beside a label needs a width (`w-40`).
     const selectClass =
-        "flex-shrink-0 w-40 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+        "flex-shrink-0 w-40 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
 
     const ruleLevels = useRune(() => {
         void defaultRulesTick;
@@ -527,17 +527,17 @@ export default function NotificationSettings() {
         <View className="gap-6">
             <View>
                 <View
-                    className={`flex-row items-center gap-3 py-2 border-b border-discord-divider ${
+                    className={`flex-row items-center gap-3 py-2 border-b border-zam-divider ${
                         accountNotificationsOff
-                            ? "rounded-md p-3 bg-discord-warning/20"
+                            ? "rounded-md p-3 bg-zam-warning/20"
                             : ""
                     }`}
                 >
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("notificationSettings.accountNotifications")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {accountNotificationsOff
                                 ? t(
                                       "notificationSettings.accountNotificationsOffDetail",
@@ -558,12 +558,12 @@ export default function NotificationSettings() {
             </View>
 
             <View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("notificationSettings.thisDeviceNotifications")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "notificationSettings.thisDeviceNotificationsDetail",
                             )}
@@ -583,22 +583,22 @@ export default function NotificationSettings() {
 
             <Text
                 accessibilityRole="header"
-                className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
             >
                 {t("notificationSettings.thisDevice")}
             </Text>
 
             {permission !== "granted" ? (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("notificationSettings.systemPermission")}
                     </Text>
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("notificationSettings.pushNotifications")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {permission === "denied"
                                     ? t(
                                           "notificationSettings.permissionIsBlockedInSystemSettings",
@@ -620,7 +620,7 @@ export default function NotificationSettings() {
                                 permission === "denied" ||
                                 permission === "unsupported"
                             }
-                            className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-discord-accent flex-row items-center gap-2 flex-shrink-0"
+                            className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zam-accent flex-row items-center gap-2 flex-shrink-0"
                         >
                             <Text className="text-sm font-semibold text-white">
                                 {permissionLoading
@@ -638,15 +638,15 @@ export default function NotificationSettings() {
 
             {pushServiceSupported && upStatus ? (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("notificationSettings.pushService")}
                     </Text>
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("notificationSettings.pushServiceLabel")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t(
                                     "notificationSettings.pushServiceDescription",
                                 )}
@@ -688,7 +688,7 @@ export default function NotificationSettings() {
                         />
                     </View>
                     <Text
-                        className="text-xs text-discord-textMuted mt-2"
+                        className="text-xs text-zam-textMuted mt-2"
                         accessibilityLiveRegion="polite"
                     >
                         {activeProvider === "unifiedpush"
@@ -709,7 +709,7 @@ export default function NotificationSettings() {
                                 : null}
                     </Text>
                     {upStatus.distributors.length === 0 ? (
-                        <Text className="text-xs text-discord-textMuted mt-1">
+                        <Text className="text-xs text-zam-textMuted mt-1">
                             {t("notificationSettings.pushServiceNoDistributor")}
                         </Text>
                     ) : null}
@@ -717,15 +717,15 @@ export default function NotificationSettings() {
             ) : null}
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("notificationSettings.sound")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("notificationSettings.notificationSound")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "notificationSettings.playASoundForLoudNotifications",
                             )}
@@ -741,14 +741,14 @@ export default function NotificationSettings() {
 
             {!nativeApp ? (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {taskbarFlash
                             ? t("notificationSettings.desktopAlerts")
                             : t("notificationSettings.popUps")}
                     </Text>
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {taskbarFlash
                                     ? t(
                                           "notificationSettings.popUpAndTaskbarFlash",
@@ -757,7 +757,7 @@ export default function NotificationSettings() {
                                           "notificationSettings.popUpNotifications",
                                       )}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {taskbarFlash
                                     ? t(
                                           "notificationSettings.whichNotificationsShowASystemPop",
@@ -782,15 +782,15 @@ export default function NotificationSettings() {
             ) : null}
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("notificationSettings.multipleDevices")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("notificationSettings.quietOnMyOtherDevices")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "notificationSettings.whileYouReActivelyUsingOne",
                             )}
@@ -828,7 +828,7 @@ export default function NotificationSettings() {
                             <TextInput
                                 keyboardType="decimal-pad"
                                 returnKeyType="done"
-                                className="w-24 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                                className="w-24 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                                 value={customMinutes}
                                 onChangeText={setCustomMinutes}
                                 onSubmitEditing={() => void saveCustomGrace()}
@@ -836,7 +836,7 @@ export default function NotificationSettings() {
                                     "notificationSettings.customQuietDurationInMinutes",
                                 )}
                             />
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("notificationSettings.minutesMax", {
                                     MAX_CUSTOM_GRACE_MINUTES,
                                 })}
@@ -845,9 +845,9 @@ export default function NotificationSettings() {
                                 accessibilityRole="button"
                                 onPress={() => void saveCustomGrace()}
                                 disabled={graceSavePending}
-                                className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
+                                className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
                             >
-                                <Text className="text-xs font-semibold text-discord-textPrimary">
+                                <Text className="text-xs font-semibold text-zam-textPrimary">
                                     {graceSavePending
                                         ? t("common.saving")
                                         : t("common.save")}
@@ -856,7 +856,7 @@ export default function NotificationSettings() {
                         </View>
                         {customError ? (
                             <Text
-                                className="text-xs text-discord-danger mt-1 text-right"
+                                className="text-xs text-zam-danger mt-1 text-right"
                                 accessibilityLiveRegion="polite"
                             >
                                 {customError}
@@ -867,7 +867,7 @@ export default function NotificationSettings() {
                 {graceSaveError ? (
                     <View className="flex-row items-start gap-2 mt-2">
                         <Text
-                            className="flex-1 min-w-0 text-sm text-discord-danger"
+                            className="flex-1 min-w-0 text-sm text-zam-danger"
                             accessibilityLiveRegion="polite"
                         >
                             {t("notificationSettings.couldnTSaveToYourAccount")}
@@ -883,9 +883,9 @@ export default function NotificationSettings() {
                             accessibilityLabel={t(
                                 "notificationSettings.retrySavingTheOtherDeviceQuiet",
                             )}
-                            className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
+                            className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50 flex-shrink-0"
                         >
-                            <Text className="text-xs font-semibold text-discord-textPrimary">
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
                                 {graceSavePending
                                     ? t("notificationSettings.retrying")
                                     : t("common.retry")}
@@ -897,29 +897,29 @@ export default function NotificationSettings() {
 
             <Text
                 accessibilityRole="header"
-                className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
             >
                 {t("notificationSettings.rules")}
             </Text>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1">
                     {t("notificationSettings.notificationRules")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mb-3">
+                <Text className="text-xs text-zam-textMuted mb-3">
                     {t("notificationSettings.loudNotifyWithSoundSilentNotify")}
                 </Text>
                 <View className="gap-1">
                     {DEFAULT_PUSH_RULES.map((rule) => (
                         <View
                             key={rule.ruleId}
-                            className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                            className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
                         >
                             <View className="flex-1 min-w-0">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {rule.label}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {rule.description}
                                 </Text>
                             </View>
@@ -941,16 +941,16 @@ export default function NotificationSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1">
                     {t("notificationSettings.keywordHighlights")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mb-3">
+                <Text className="text-xs text-zam-textMuted mb-3">
                     {t("notificationSettings.getNotifiedWhenAMessageContains")}{" "}
-                    <Text className="text-xs text-discord-textMuted font-mono">
+                    <Text className="text-xs text-zam-textMuted font-mono">
                         *
                     </Text>{" "}
                     {t("notificationSettings.and")}{" "}
-                    <Text className="text-xs text-discord-textMuted font-mono">
+                    <Text className="text-xs text-zam-textMuted font-mono">
                         ?
                     </Text>{" "}
                     {t("notificationSettings.areWildcards")}
@@ -966,17 +966,17 @@ export default function NotificationSettings() {
                         autoCapitalize="none"
                         autoCorrect={false}
                         placeholder={t("notificationSettings.addAKeyword")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         accessibilityLabel={t(
                             "notificationSettings.newKeyword",
                         )}
-                        className="flex-1 min-w-0 px-3 py-1.5 rounded text-sm bg-discord-backgroundTertiary text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-1 focus:ring-discord-accent"
+                        className="flex-1 min-w-0 px-3 py-1.5 rounded text-sm bg-zam-backgroundTertiary text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-1 focus:ring-zam-accent"
                     />
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void addKeyword()}
                         disabled={addPending}
-                        className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                        className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                     >
                         <Text className="text-sm font-semibold text-white">
                             {t("common.add")}
@@ -984,12 +984,12 @@ export default function NotificationSettings() {
                     </Pressable>
                 </View>
                 {keywordError ? (
-                    <Text className="text-sm text-discord-danger mb-2">
+                    <Text className="text-sm text-zam-danger mb-2">
                         {keywordError}
                     </Text>
                 ) : null}
                 {keywordRules.length === 0 ? (
-                    <Text className="text-sm text-discord-textMuted italic">
+                    <Text className="text-sm text-zam-textMuted italic">
                         {t("notificationSettings.noKeywordRulesYet")}
                     </Text>
                 ) : (
@@ -1000,11 +1000,11 @@ export default function NotificationSettings() {
                             // so below `sm` the pattern takes its own line.
                             <View
                                 key={rule.ruleId}
-                                className="flex-row flex-wrap items-center gap-3 py-2 border-b border-discord-divider"
+                                className="flex-row flex-wrap items-center gap-3 py-2 border-b border-zam-divider"
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="w-full sm:w-auto sm:flex-1 min-w-0 text-sm text-discord-textPrimary font-mono"
+                                    className="w-full sm:w-auto sm:flex-1 min-w-0 text-sm text-zam-textPrimary font-mono"
                                 >
                                     {rule.pattern}
                                 </Text>
@@ -1034,9 +1034,9 @@ export default function NotificationSettings() {
                                         void removeKeyword(rule.ruleId)
                                     }
                                     disabled={rowPending === rule.ruleId}
-                                    className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                    className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-textPrimary">
+                                    <Text className="text-xs font-semibold text-zam-textPrimary">
                                         {t("common.delete")}
                                     </Text>
                                 </Pressable>

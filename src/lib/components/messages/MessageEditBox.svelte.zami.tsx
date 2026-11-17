@@ -386,7 +386,7 @@ export default function MessageEditBox({
                 {...(spellCheckEnabled ? {} : { autoCorrect: false })}
                 textAlignVertical="top"
                 // Zami: `.composer-editor`'s min-height (1.625rem).
-                className="w-full min-h-[26px] max-h-[200px] bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 focus:ring-1 focus:ring-discord-accent/50"
+                className="w-full min-h-[26px] max-h-[200px] bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 focus:ring-1 focus:ring-zam-accent/50"
             />
             {emojiQuery && emojiCandidates.length > 0 && (
                 <EmojiSuggestions

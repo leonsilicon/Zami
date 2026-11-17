@@ -15,7 +15,7 @@ export default function ReleaseNotesBody({ body }: { body: string }) {
     return (
         <Html
             html={html}
-            className="text-sm leading-relaxed text-discord-textPrimary"
+            className="text-sm leading-relaxed text-zam-textPrimary"
         />
     );
 }

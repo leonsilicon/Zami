@@ -64,7 +64,7 @@ import {
 const AUTO_WAIT_MS = 30_000;
 
 const inputClass =
-    "w-full px-3 py-2.5 bg-discord-backgroundSecondary text-discord-textPrimary placeholder-discord-textMuted rounded border border-discord-divider focus:border-discord-accent focus:outline-none text-sm disabled:opacity-60";
+    "w-full px-3 py-2.5 bg-zam-backgroundSecondary text-zam-textPrimary placeholder-zam-textMuted rounded border border-zam-divider focus:border-zam-accent focus:outline-none text-sm disabled:opacity-60";
 
 // The `primary` snippet.
 function Primary({
@@ -82,7 +82,7 @@ function Primary({
             accessibilityState={{ disabled }}
             onPress={onPress}
             disabled={disabled}
-            className="w-full py-2.5 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full py-2.5 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60 disabled:cursor-not-allowed"
         >
             <Text className="text-center text-white font-semibold text-sm">
                 {label}
@@ -107,9 +107,9 @@ function Secondary({
             accessibilityState={{ disabled }}
             onPress={onPress}
             disabled={disabled}
-            className="w-full py-2.5 bg-discord-backgroundSecondary hover:bg-discord-messageHover rounded border border-discord-divider disabled:opacity-60"
+            className="w-full py-2.5 bg-zam-backgroundSecondary hover:bg-zam-messageHover rounded border border-zam-divider disabled:opacity-60"
         >
-            <Text className="text-center text-discord-textPrimary font-semibold text-sm">
+            <Text className="text-center text-zam-textPrimary font-semibold text-sm">
                 {label}
             </Text>
         </Pressable>
@@ -432,15 +432,15 @@ export default function EncryptionSetupDialog() {
     function approvalPrompt(): ReactNode {
         if (!approval) return null;
         return (
-            <View className="gap-2 rounded border border-discord-divider p-3">
-                <Text className="text-sm font-medium text-discord-textPrimary">
+            <View className="gap-2 rounded border border-zam-divider p-3">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {t("securitySettings.approveOnAccountPage")}
                 </Text>
                 <Text
                     className={`text-xs ${
                         approval.retry
-                            ? "text-discord-warning"
-                            : "text-discord-textMuted"
+                            ? "text-zam-warning"
+                            : "text-zam-textMuted"
                     }`}
                 >
                     {approval.retry
@@ -451,7 +451,7 @@ export default function EncryptionSetupDialog() {
                     <Pressable
                         accessibilityRole="link"
                         onPress={() => openLink(approval.url)}
-                        className="px-3 py-1.5 bg-discord-accent rounded"
+                        className="px-3 py-1.5 bg-zam-accent rounded"
                     >
                         <Text className="text-white text-sm">
                             {t("securitySettings.openAccountPage")}
@@ -460,18 +460,18 @@ export default function EncryptionSetupDialog() {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => answerApproval(true)}
-                        className="px-3 py-1.5 bg-discord-messageHover rounded"
+                        className="px-3 py-1.5 bg-zam-messageHover rounded"
                     >
-                        <Text className="text-discord-textPrimary text-sm">
+                        <Text className="text-zam-textPrimary text-sm">
                             {t("securitySettings.iVeApprovedIt")}
                         </Text>
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => answerApproval(false)}
-                        className="px-3 py-1.5 bg-discord-messageHover rounded"
+                        className="px-3 py-1.5 bg-zam-messageHover rounded"
                     >
-                        <Text className="text-discord-textPrimary text-sm">
+                        <Text className="text-zam-textPrimary text-sm">
                             {t("common.cancel")}
                         </Text>
                     </Pressable>
@@ -484,13 +484,13 @@ export default function EncryptionSetupDialog() {
         if (flow === "show-key")
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("encryptionSetup.saveKeyBody")}
                     </Text>
-                    <View className="bg-discord-backgroundTertiary rounded px-3 py-2.5">
+                    <View className="bg-zam-backgroundTertiary rounded px-3 py-2.5">
                         <Text
                             selectable
-                            className="font-mono text-sm text-discord-textPrimary break-all select-all"
+                            className="font-mono text-sm text-zam-textPrimary break-all select-all"
                         >
                             {formatRecoveryKey(recoveryKey)}
                         </Text>
@@ -499,16 +499,16 @@ export default function EncryptionSetupDialog() {
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void copyKey()}
-                            className="flex-1 py-2 bg-discord-backgroundSecondary hover:bg-discord-messageHover rounded border border-discord-divider"
+                            className="flex-1 py-2 bg-zam-backgroundSecondary hover:bg-zam-messageHover rounded border border-zam-divider"
                         >
                             <View className="flex-row items-center justify-center gap-1">
                                 {copied ? (
                                     <Check
                                         size={14}
-                                        className="text-discord-textPrimary"
+                                        className="text-zam-textPrimary"
                                     />
                                 ) : null}
-                                <Text className="text-center text-discord-textPrimary text-sm">
+                                <Text className="text-center text-zam-textPrimary text-sm">
                                     {copied
                                         ? t("securitySettings.copied")
                                         : t("securitySettings.copyKey")}
@@ -518,9 +518,9 @@ export default function EncryptionSetupDialog() {
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void downloadKey()}
-                            className="flex-1 py-2 bg-discord-backgroundSecondary hover:bg-discord-messageHover rounded border border-discord-divider"
+                            className="flex-1 py-2 bg-zam-backgroundSecondary hover:bg-zam-messageHover rounded border border-zam-divider"
                         >
-                            <Text className="text-center text-discord-textPrimary text-sm">
+                            <Text className="text-center text-zam-textPrimary text-sm">
                                 {t("encryptionSetup.downloadKey")}
                             </Text>
                         </Pressable>
@@ -529,7 +529,7 @@ export default function EncryptionSetupDialog() {
                         checked={saved}
                         onChange={setSaved}
                         label={t("securitySettings.iVeSavedMyRecoveryKey")}
-                        labelClassName="flex-1 text-sm text-discord-textSecondary"
+                        labelClassName="flex-1 text-sm text-zam-textSecondary"
                         className="items-start gap-2 cursor-pointer"
                         inputClassName="mt-0.5 w-4 h-4 rounded-sm"
                     />
@@ -543,7 +543,7 @@ export default function EncryptionSetupDialog() {
         if (flow === "finished" || plan.kind === "done")
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("encryptionSetup.doneBody")}
                     </Text>
                     <Primary label={t("common.close")} onPress={close} />
@@ -564,15 +564,15 @@ export default function EncryptionSetupDialog() {
                                 disabled={flow === "unlock-working"}
                                 className={`px-2 py-1 rounded ${
                                     effectiveMode === "key"
-                                        ? "bg-discord-accent"
-                                        : "bg-discord-messageHover"
+                                        ? "bg-zam-accent"
+                                        : "bg-zam-messageHover"
                                 }`}
                             >
                                 <Text
                                     className={`text-xs ${
                                         effectiveMode === "key"
                                             ? "text-white"
-                                            : "text-discord-textPrimary"
+                                            : "text-zam-textPrimary"
                                     }`}
                                 >
                                     {t("securitySettings.recoveryKey2")}
@@ -588,15 +588,15 @@ export default function EncryptionSetupDialog() {
                                 disabled={flow === "unlock-working"}
                                 className={`px-2 py-1 rounded ${
                                     effectiveMode === "passphrase"
-                                        ? "bg-discord-accent"
-                                        : "bg-discord-messageHover"
+                                        ? "bg-zam-accent"
+                                        : "bg-zam-messageHover"
                                 }`}
                             >
                                 <Text
                                     className={`text-xs ${
                                         effectiveMode === "passphrase"
                                             ? "text-white"
-                                            : "text-discord-textPrimary"
+                                            : "text-zam-textPrimary"
                                     }`}
                                 >
                                     {t("securitySettings.passphrase")}
@@ -604,7 +604,7 @@ export default function EncryptionSetupDialog() {
                             </Pressable>
                         </View>
                     )}
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {effectiveMode === "key"
                             ? t("encryptionSetup.enterKeyBody")
                             : t("encryptionSetup.enterPassphraseBody")}
@@ -617,7 +617,7 @@ export default function EncryptionSetupDialog() {
                             value={unlockKey}
                             onChangeText={setUnlockKey}
                             placeholder="EsTx xxxx xxxx …"
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             autoComplete="off"
                             autoCapitalize="none"
                             autoCorrect={false}
@@ -642,7 +642,7 @@ export default function EncryptionSetupDialog() {
                             placeholder={t(
                                 "securitySettings.recoveryPassphrase",
                             )}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             autoComplete="current-password"
                             textContentType="password"
                             autoCapitalize="none"
@@ -661,13 +661,13 @@ export default function EncryptionSetupDialog() {
                         <View className="gap-1.5">
                             <Text
                                 accessibilityLiveRegion="polite"
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {progressView.label}
                             </Text>
-                            <View className="h-1.5 w-full rounded bg-discord-backgroundTertiary overflow-hidden">
+                            <View className="h-1.5 w-full rounded bg-zam-backgroundTertiary overflow-hidden">
                                 <View
-                                    className="h-full bg-discord-accent transition-all"
+                                    className="h-full bg-zam-accent transition-all"
                                     style={{
                                         width: `${progressView.percent ?? 15}%`,
                                     }}
@@ -701,9 +701,9 @@ export default function EncryptionSetupDialog() {
                     <Spin
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
-                        className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full"
+                        className="w-4 h-4 border-2 border-zam-accent border-t-transparent rounded-full"
                     />
-                    <Text className="shrink text-sm text-discord-textMuted">
+                    <Text className="shrink text-sm text-zam-textMuted">
                         {t("encryptionSetup.checking")}
                     </Text>
                 </View>
@@ -711,7 +711,7 @@ export default function EncryptionSetupDialog() {
         if (plan.kind === "unavailable" || plan.kind === "error")
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {plan.kind === "unavailable"
                             ? (getCryptoInitError() ??
                               t("verificationStatus.encryptionUnavailable"))
@@ -730,7 +730,7 @@ export default function EncryptionSetupDialog() {
         if (plan.kind === "advanced")
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("securitySettings.keysNotOnServerHint")}
                     </Text>
                     <Primary
@@ -743,7 +743,7 @@ export default function EncryptionSetupDialog() {
             const RecoveryKeyButton = plan.withDevice ? Secondary : Primary;
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("encryptionSetup.confirmBody")}
                     </Text>
                     <View className="gap-2">
@@ -760,7 +760,7 @@ export default function EncryptionSetupDialog() {
                             />
                         )}
                     </View>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {plan.withDevice
                             ? t("encryptionSetup.anotherDeviceHint")
                             : t("encryptionSetup.recoveryKeyHint")}
@@ -771,12 +771,12 @@ export default function EncryptionSetupDialog() {
                             onPress={openSecuritySettings}
                             className="shrink"
                         >
-                            <Text className="text-xs text-discord-textMuted underline hover:text-discord-textPrimary">
+                            <Text className="text-xs text-zam-textMuted underline hover:text-zam-textPrimary">
                                 {t("encryptionSetup.cantConfirm")}
                             </Text>
                         </Pressable>
                         <Pressable accessibilityRole="button" onPress={close}>
-                            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("encryptionSetup.later")}
                             </Text>
                         </Pressable>
@@ -787,7 +787,7 @@ export default function EncryptionSetupDialog() {
         if (plan.kind === "connect-backup")
             return (
                 <>
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("encryptionSetup.connectBackupBody")}
                     </Text>
                     <Primary
@@ -803,7 +803,7 @@ export default function EncryptionSetupDialog() {
         // setup
         return (
             <>
-                <Text className="text-sm text-discord-textSecondary">
+                <Text className="text-sm text-zam-textSecondary">
                     {t("encryptionSetup.setupBody")}
                 </Text>
                 {(flow === "setup-password" ||
@@ -813,11 +813,11 @@ export default function EncryptionSetupDialog() {
                     <View className="gap-1.5">
                         <Text
                             nativeID="setup-password-label"
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {t("securitySettings.accountPassword")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("encryptionSetup.passwordBody")}
                         </Text>
                         <TextInput
@@ -877,7 +877,7 @@ export default function EncryptionSetupDialog() {
         <ModalDialog
             onClose={() => closable && close()}
             labelledBy="encryption-setup-title"
-            panelClass="relative w-full max-w-md mx-4 max-h-[90vh] overflow-hidden bg-discord-background rounded-lg shadow-2xl"
+            panelClass="relative w-full max-w-md mx-4 max-h-[90vh] overflow-hidden bg-zam-background rounded-lg shadow-2xl"
         >
             <ScrollView
                 keyboardShouldPersistTaps="handled"
@@ -888,19 +888,19 @@ export default function EncryptionSetupDialog() {
                     <View
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
-                        className="flex-shrink-0 w-10 h-10 rounded-full bg-discord-accent/15 flex-row items-center justify-center"
+                        className="flex-shrink-0 w-10 h-10 rounded-full bg-zam-accent/15 flex-row items-center justify-center"
                     >
                         {flow === "finished" || plan.kind === "done" ? (
-                            <Check size={22} className="text-discord-accent" />
+                            <Check size={22} className="text-zam-accent" />
                         ) : (
-                            <Lock size={20} className="text-discord-accent" />
+                            <Lock size={20} className="text-zam-accent" />
                         )}
                     </View>
                     <View className="min-w-0 shrink">
                         <Text
                             nativeID="encryption-setup-title"
                             role="heading"
-                            className="text-lg font-bold text-discord-textPrimary"
+                            className="text-lg font-bold text-zam-textPrimary"
                         >
                             {flow === "show-key"
                                 ? t("encryptionSetup.saveKeyTitle")
@@ -923,7 +923,7 @@ export default function EncryptionSetupDialog() {
                 {body()}
 
                 {error ? (
-                    <Text className="text-sm text-discord-danger" role="alert">
+                    <Text className="text-sm text-zam-danger" role="alert">
                         {error}
                     </Text>
                 ) : null}

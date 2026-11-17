@@ -165,7 +165,7 @@ export default function ComposerActionsMenu({
 
     return (
         <View
-            className="w-52 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg py-1"
+            className="w-52 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg py-1"
             accessibilityRole="menu"
         >
             {items.map((item) => (
@@ -173,13 +173,13 @@ export default function ComposerActionsMenu({
                     key={"entryId" in item ? item.entryId : item.key}
                     accessibilityRole="menuitem"
                     onPress={() => choose(item.run)}
-                    className="w-full flex-row items-center gap-2.5 px-3 py-2 hover:bg-discord-messageHover transition-colors"
+                    className="w-full flex-row items-center gap-2.5 px-3 py-2 hover:bg-zam-messageHover transition-colors"
                 >
                     <SvgIcon
                         d={item.icon}
-                        className="w-5 h-5 text-discord-textMuted flex-shrink-0"
+                        className="w-5 h-5 text-zam-textMuted flex-shrink-0"
                     />
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {item.label}
                     </Text>
                 </Pressable>

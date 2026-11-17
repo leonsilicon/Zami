@@ -146,18 +146,18 @@ export default function RoomDirectory() {
         <ModalDialog
             onClose={closeModal}
             labelledBy="room-directory-title"
-            panelClass="relative bg-discord-background rounded-lg shadow-xl w-full max-w-2xl mx-4 p-6 flex flex-col gap-4 max-h-[85vh]"
+            panelClass="relative bg-zam-background rounded-lg shadow-xl w-full max-w-2xl mx-4 p-6 flex flex-col gap-4 max-h-[85vh]"
         >
             <View className="flex-row items-start justify-between">
                 <View className="flex-shrink">
                     <Text
                         nativeID="room-directory-title"
                         accessibilityRole="header"
-                        className="text-lg font-bold text-discord-textPrimary"
+                        className="text-lg font-bold text-zam-textPrimary"
                     >
                         {t("roomDirectory.exploreRooms")}
                     </Text>
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("roomDirectory.publicRooms", {
                             value: serverInput.trim()
                                 ? `on ${normalizeServerInput(serverInput)}`
@@ -176,7 +176,7 @@ export default function RoomDirectory() {
                     className="transition-colors p-1"
                     accessibilityLabel={t("common.close")}
                 >
-                    <X size={20} className="text-discord-textMuted" />
+                    <X size={20} className="text-zam-textMuted" />
                 </Pressable>
             </View>
 
@@ -190,9 +190,9 @@ export default function RoomDirectory() {
                     onSubmitEditing={() => void search()}
                     returnKeyType="search"
                     placeholder={t("roomDirectory.searchRooms")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("roomDirectory.searchRooms")}
-                    className="flex-1 px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                    className="flex-1 px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                 />
                 <TextInput
                     value={serverInput}
@@ -202,16 +202,16 @@ export default function RoomDirectory() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder={t("roomDirectory.serverOptional")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("roomDirectory.serverOptional")}
-                    className="w-44 px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                    className="w-44 px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                 />
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => void search()}
                     disabled={loading}
                     accessibilityState={{ disabled: loading }}
-                    className={`px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors justify-center ${
+                    className={`px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors justify-center ${
                         loading ? "opacity-50" : ""
                     }`}
                 >
@@ -222,7 +222,7 @@ export default function RoomDirectory() {
             </View>
 
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
 
             {/* Zami: `flex-1` in a panel only `max-h` bounds → `flex-shrink`:
@@ -237,7 +237,7 @@ export default function RoomDirectory() {
                 // `gap-1`
                 ItemSeparatorComponent={RowGap}
                 renderItem={({ item: entry }) => (
-                    <View className="flex-row items-center gap-3 px-3 py-2 rounded hover:bg-discord-messageHover transition-colors">
+                    <View className="flex-row items-center gap-3 px-3 py-2 rounded hover:bg-zam-messageHover transition-colors">
                         <Avatar
                             src={mxcToHttp(entry.avatarMxc, 64)}
                             name={entry.name}
@@ -249,13 +249,13 @@ export default function RoomDirectory() {
                             <View className="flex-row items-center gap-2">
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-sm font-semibold text-discord-textPrimary"
+                                    className="flex-shrink text-sm font-semibold text-zam-textPrimary"
                                 >
                                     {entry.name}
                                 </Text>
                                 {entry.isSpace ? (
-                                    <View className="px-1.5 py-0.5 rounded bg-discord-backgroundSecondary flex-shrink-0">
-                                        <Text className="text-[10px] font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <View className="px-1.5 py-0.5 rounded bg-zam-backgroundSecondary flex-shrink-0">
+                                        <Text className="text-[10px] font-semibold uppercase tracking-wide text-zam-textMuted">
                                             {t("roomDirectory.space")}
                                         </Text>
                                     </View>
@@ -263,7 +263,7 @@ export default function RoomDirectory() {
                             </View>
                             <Text
                                 numberOfLines={1}
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {entry.alias ? `${entry.alias} · ` : ""}
                                 {t("common.memberCount", {
@@ -274,7 +274,7 @@ export default function RoomDirectory() {
                             {joinError?.roomId === entry.roomId ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="text-xs text-discord-danger"
+                                    className="text-xs text-zam-danger"
                                 >
                                     {joinError.message}
                                 </Text>
@@ -284,9 +284,9 @@ export default function RoomDirectory() {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => openJoined(entry)}
-                                className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             >
-                                <Text className="text-sm font-medium text-discord-textPrimary">
+                                <Text className="text-sm font-medium text-zam-textPrimary">
                                     {t("roomDirectory.open")}
                                 </Text>
                             </Pressable>
@@ -296,9 +296,9 @@ export default function RoomDirectory() {
                                 accessibilityRole="button"
                                 disabled
                                 accessibilityState={{ disabled: true }}
-                                className="px-3 py-1.5 rounded bg-discord-backgroundSecondary opacity-60 flex-shrink-0"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary opacity-60 flex-shrink-0"
                             >
-                                <Text className="text-sm font-medium text-discord-textMuted">
+                                <Text className="text-sm font-medium text-zam-textMuted">
                                     {t("roomDirectory.requested")}
                                 </Text>
                             </Pressable>
@@ -310,7 +310,7 @@ export default function RoomDirectory() {
                                 accessibilityState={{
                                     disabled: joiningId !== null,
                                 }}
-                                className={`px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors flex-shrink-0 ${
+                                className={`px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors flex-shrink-0 ${
                                     joiningId !== null ? "opacity-50" : ""
                                 }`}
                             >
@@ -326,7 +326,7 @@ export default function RoomDirectory() {
                                 accessibilityState={{
                                     disabled: joiningId !== null,
                                 }}
-                                className={`px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors flex-row items-center gap-2 flex-shrink-0 ${
+                                className={`px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors flex-row items-center gap-2 flex-shrink-0 ${
                                     joiningId !== null ? "opacity-50" : ""
                                 }`}
                             >
@@ -348,14 +348,14 @@ export default function RoomDirectory() {
                             onPress={() => void loadMore()}
                             disabled={loadingMore}
                             accessibilityState={{ disabled: loadingMore }}
-                            className={`mt-2 py-2 rounded hover:bg-discord-messageHover transition-colors flex-row items-center justify-center gap-2 ${
+                            className={`mt-2 py-2 rounded hover:bg-zam-messageHover transition-colors flex-row items-center justify-center gap-2 ${
                                 loadingMore ? "opacity-50" : ""
                             }`}
                         >
                             {loadingMore ? (
-                                <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full" />
+                                <Spin className="w-4 h-4 border-2 border-zam-accent border-t-transparent rounded-full" />
                             ) : null}
-                            <Text className="text-sm font-medium text-discord-textSecondary">
+                            <Text className="text-sm font-medium text-zam-textSecondary">
                                 {t("common.loadMore")}
                             </Text>
                         </Pressable>
@@ -364,10 +364,10 @@ export default function RoomDirectory() {
                 ListEmptyComponent={
                     loading ? (
                         <View className="flex-row items-center justify-center py-10">
-                            <Spin className="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full" />
+                            <Spin className="w-6 h-6 border-2 border-zam-accent border-t-transparent rounded-full" />
                         </View>
                     ) : !showRooms ? (
-                        <Text className="text-sm text-discord-textMuted text-center py-10">
+                        <Text className="text-sm text-zam-textMuted text-center py-10">
                             {t("roomDirectory.noRoomsFound")}
                         </Text>
                     ) : undefined

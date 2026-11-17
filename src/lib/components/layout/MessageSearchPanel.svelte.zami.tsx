@@ -429,18 +429,18 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
         <View
             className={`${
                 isMobile ? "" : "w-72"
-            } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+            } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
         >
-            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                 >
                     {t("messageSearchPanel.searchMessages")}
                 </Text>
             </View>
 
-            <View className="p-2 border-b border-discord-divider flex-shrink-0">
+            <View className="p-2 border-b border-zam-divider flex-shrink-0">
                 <TextInput
                     ref={inputEl}
                     value={term}
@@ -473,17 +473,17 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                     placeholder={t(
                         "messageSearchPanel.searchTryFromOrHasImage",
                     )}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t(
                         "messageSearchPanel.searchTryFromOrHasImage",
                     )}
-                    className="w-full px-2 py-1.5 text-sm rounded bg-discord-backgroundTertiary text-discord-textPrimary border border-transparent focus:border-discord-accent"
+                    className="w-full px-2 py-1.5 text-sm rounded bg-zam-backgroundTertiary text-zam-textPrimary border border-transparent focus:border-zam-accent"
                 />
                 {activeToken && suggestions.length > 0 ? (
                     <ScrollView
                         nestedScrollEnabled
                         keyboardShouldPersistTaps="handled"
-                        className="mt-1 max-h-64 flex-grow-0 bg-discord-backgroundSecondary border border-discord-divider rounded-lg"
+                        className="mt-1 max-h-64 flex-grow-0 bg-zam-backgroundSecondary border border-zam-divider rounded-lg"
                     >
                         {suggestions.map((s, i) => (
                             <Pressable
@@ -494,17 +494,17 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                                 }}
                                 className={`w-full px-3 py-2 transition-colors ${
                                     i === selectedIdx
-                                        ? "bg-discord-messageHover"
+                                        ? "bg-zam-messageHover"
                                         : ""
                                 }`}
                                 onPress={() => commit(s)}
                                 onHoverIn={() => setSelectedIdx(i)}
                             >
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {s.label}
                                 </Text>
                                 {s.sub ? (
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {s.sub}
                                     </Text>
                                 ) : null}
@@ -524,7 +524,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                 ListHeaderComponent={
                     showRows ? (
                         // `px-4 mt-2` outside the rows' `p-2` box.
-                        <Text className="text-xs text-discord-textMuted px-2 mb-2">
+                        <Text className="text-xs text-zam-textMuted px-2 mb-2">
                             {t("messageSearchPanel.resultCount", {
                                 count: resultCount,
                             })}
@@ -541,7 +541,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => jumpTo(event.getId()!)}
-                            className="w-full p-2 rounded-lg hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                            className="w-full p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                         >
                             <View className="flex-row items-center gap-2 mb-1">
                                 <Avatar
@@ -552,17 +552,17 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs font-semibold text-discord-textPrimary"
+                                    className="flex-shrink text-xs font-semibold text-zam-textPrimary"
                                 >
                                     {name}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted ms-auto flex-shrink-0">
+                                <Text className="text-xs text-zam-textMuted ms-auto flex-shrink-0">
                                     {compactDateTime(event.getTs())}
                                 </Text>
                             </View>
                             <Text
                                 numberOfLines={3}
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {buildSnippetSegments(
                                     event.getContent().body,
@@ -571,7 +571,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                                     segment.highlight ? (
                                         <Text
                                             key={i}
-                                            className="bg-discord-accent/40 text-discord-textPrimary rounded-sm px-px"
+                                            className="bg-zam-accent/40 text-zam-textPrimary rounded-sm px-px"
                                         >
                                             {segment.text}
                                         </Text>
@@ -594,7 +594,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                                 loadingMore ? "opacity-50" : ""
                             }`}
                         >
-                            <Text className="text-xs text-discord-accent text-center">
+                            <Text className="text-xs text-zam-accent text-center">
                                 {loadingMore
                                     ? t("common.loading")
                                     : t("common.loadMore")}
@@ -605,21 +605,21 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                 ListEmptyComponent={
                     searching && rows.length === 0 ? (
                         <View className="flex-row justify-center mt-8">
-                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                            <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                         </View>
                     ) : error ? (
-                        <Text className="text-sm text-discord-danger text-center mt-8 px-4">
+                        <Text className="text-sm text-zam-danger text-center mt-8 px-4">
                             {error}
                         </Text>
                     ) : searched === null ? (
-                        <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                        <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                             {t(
                                 "messageSearchPanel.searchForMessagesInThisRoom",
                             )}
                         </Text>
                     ) : rows.length === 0 ? (
                         <>
-                            <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                            <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                                 {hasMore
                                     ? t(
                                           "messageSearchPanel.noMatchesInTheResultsLoaded",
@@ -641,7 +641,7 @@ export default function MessageSearchPanel({ room, onClose, onJumpTo }: Props) {
                                             loadingMore ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-xs text-discord-accent text-center">
+                                        <Text className="text-xs text-zam-accent text-center">
                                             {loadingMore
                                                 ? t("common.loading")
                                                 : t("common.loadMore")}

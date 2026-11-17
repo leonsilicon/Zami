@@ -71,6 +71,8 @@ const ICONS: Record<MessageActionKey, string> = {
         "M20 6.54V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10.1A5 5 0 0 0 20 6.54zM19 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
     "view-source":
         "M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z",
+    "view-reactions":
+        "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c-2.33 0-4.31-1.46-5.11-3.5h10.22c-.8 2.04-2.78 3.5-5.11 3.5z",
     report: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z",
     redact: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
     delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
@@ -121,7 +123,7 @@ export default function MessageActionsSheet({
             <BottomSheet onClose={onClose}>
                 {pending ? (
                     <View className="px-4 py-3">
-                        <Text className="text-sm text-discord-textPrimary mb-3">
+                        <Text className="text-sm text-zam-textPrimary mb-3">
                             {t("messageActionsSheet.thisMessage", {
                                 label: pending.label,
                             })}
@@ -130,16 +132,16 @@ export default function MessageActionsSheet({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setPending(null)}
-                                className="px-4 min-h-11 justify-center rounded hover:bg-discord-messageHover transition-colors"
+                                className="px-4 min-h-11 justify-center rounded hover:bg-zam-messageHover transition-colors"
                             >
-                                <Text className="text-sm font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                                <Text className="text-sm font-semibold text-zam-textMuted hover:text-zam-textPrimary">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => run(pending.key)}
-                                className="px-4 min-h-11 justify-center rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                                className="px-4 min-h-11 justify-center rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                             >
                                 <Text className="text-sm font-semibold text-white">
                                     {pending.label}
@@ -160,7 +162,7 @@ export default function MessageActionsSheet({
                             // long-press, which it doesn't take over).
                             <View className="px-4 pb-3">
                                 <ScrollView
-                                    className="grow-0 rounded-lg bg-discord-backgroundSecondary"
+                                    className="grow-0 rounded-lg bg-zam-backgroundSecondary"
                                     style={{
                                         maxHeight: windowSize.height * 0.28,
                                     }}
@@ -181,7 +183,7 @@ export default function MessageActionsSheet({
                                             <View className="flex-row items-baseline gap-2 mb-0.5 min-w-0">
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="flex-shrink min-w-0 font-semibold text-sm text-discord-textPrimary"
+                                                    className="flex-shrink min-w-0 font-semibold text-sm text-zam-textPrimary"
                                                     style={
                                                         sender.colour
                                                             ? {
@@ -194,7 +196,7 @@ export default function MessageActionsSheet({
                                                 </Text>
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="text-xs text-discord-textMuted flex-shrink-0"
+                                                    className="text-xs text-zam-textMuted flex-shrink-0"
                                                 >
                                                     {sender.time}
                                                 </Text>
@@ -205,7 +207,7 @@ export default function MessageActionsSheet({
                                         ) : preview ? (
                                             <Text
                                                 selectable
-                                                className="text-sm leading-relaxed text-discord-textPrimary"
+                                                className="text-sm leading-relaxed text-zam-textPrimary"
                                             >
                                                 {preview}
                                             </Text>
@@ -213,7 +215,7 @@ export default function MessageActionsSheet({
                                     </View>
                                 </ScrollView>
                                 {preview ? (
-                                    <Text className="mt-1.5 text-xs text-discord-textMuted">
+                                    <Text className="mt-1.5 text-xs text-zam-textMuted">
                                         {t("messageActionsMenu.selectHint")}
                                     </Text>
                                 ) : null}
@@ -231,22 +233,22 @@ export default function MessageActionsSheet({
                                     key={row.key}
                                     accessibilityRole="menuitem"
                                     onPress={() => pick(row)}
-                                    className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                                    className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-zam-messageHover hover:bg-zam-messageHover"
                                 >
                                     <SvgIcon
                                         d={ICONS[row.key]}
                                         className={`w-5 h-5 flex-shrink-0 ${
                                             row.danger
-                                                ? "text-discord-danger"
-                                                : "text-discord-textMuted"
+                                                ? "text-zam-danger"
+                                                : "text-zam-textMuted"
                                         }`}
                                     />
                                     <Text
                                         numberOfLines={1}
                                         className={`flex-1 text-sm ${
                                             row.danger
-                                                ? "text-discord-danger"
-                                                : "text-discord-textPrimary"
+                                                ? "text-zam-danger"
+                                                : "text-zam-textPrimary"
                                         }`}
                                     >
                                         {row.label}
@@ -258,23 +260,23 @@ export default function MessageActionsSheet({
                                     key={row.entryId}
                                     accessibilityRole="menuitem"
                                     onPress={() => runPlugin(row.key)}
-                                    className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                                    className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-zam-messageHover hover:bg-zam-messageHover"
                                 >
                                     {row.icon ? (
                                         <SvgIcon
                                             d={row.icon}
-                                            className="w-5 h-5 flex-shrink-0 text-discord-textMuted"
+                                            className="w-5 h-5 flex-shrink-0 text-zam-textMuted"
                                         />
                                     ) : (
                                         <View className="w-5 h-5 flex-shrink-0 items-center justify-center">
-                                            <Text className="text-xs font-semibold text-discord-textMuted">
+                                            <Text className="text-xs font-semibold text-zam-textMuted">
                                                 {row.label.slice(0, 1)}
                                             </Text>
                                         </View>
                                     )}
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-1 text-sm text-discord-textPrimary"
+                                        className="flex-1 text-sm text-zam-textPrimary"
                                     >
                                         {row.label}
                                     </Text>

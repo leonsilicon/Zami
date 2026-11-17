@@ -306,19 +306,19 @@ function VoiceBadge({
             pointerEvents="none"
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"
-            className={`absolute -end-[9px] -bottom-[9px] p-[3px] bg-discord-backgroundTertiary ${
+            className={`absolute -end-[9px] -bottom-[9px] p-[3px] bg-zam-backgroundTertiary ${
                 bits & 2 ? "rounded-[7px]" : "rounded-full"
             }`}
         >
             {bits & 2 ? (
-                <View className="h-4 px-1 rounded bg-discord-danger justify-center">
+                <View className="h-4 px-1 rounded bg-zam-danger justify-center">
                     <Text className="text-white text-[9px] font-bold leading-4 tracking-wide">
                         {t("spaceSidebar.liveBadge")}
                     </Text>
                 </View>
             ) : (
                 <View
-                    className={`rounded-full bg-discord-textPositive flex-row items-center justify-center ${
+                    className={`rounded-full bg-zam-textPositive flex-row items-center justify-center ${
                         small ? "w-4 h-4" : "w-[18px] h-[18px]"
                     }`}
                 >
@@ -611,10 +611,10 @@ function FolderColorPicker({
         <ModalDialog
             onClose={onClose}
             label={t("spaceSidebar.folderColor")}
-            panelClass="relative w-[240px] bg-discord-backgroundSecondary rounded-xl shadow-2xl p-4 flex flex-col gap-3"
+            panelClass="relative w-[240px] bg-zam-backgroundSecondary rounded-xl shadow-2xl p-4 flex flex-col gap-3"
             backdropClass="bg-black/50"
         >
-            <Text className="text-sm font-semibold text-discord-textPrimary">
+            <Text className="text-sm font-semibold text-zam-textPrimary">
                 {t("spaceSidebar.folderColor")}
             </Text>
 
@@ -729,7 +729,7 @@ function FolderColorPicker({
                     accessibilityLabel={t("spaceSidebar.folderColor")}
                     autoCapitalize="characters"
                     autoCorrect={false}
-                    className="flex-1 bg-discord-backgroundTertiary text-discord-textPrimary text-sm font-mono px-2 py-1.5 rounded outline-none border border-discord-divider focus:border-discord-accent uppercase tracking-wider"
+                    className="flex-1 bg-zam-backgroundTertiary text-zam-textPrimary text-sm font-mono px-2 py-1.5 rounded outline-none border border-zam-divider focus:border-zam-accent uppercase tracking-wider"
                     value={hexText.toUpperCase()}
                     maxLength={7}
                     onChangeText={(value) => {
@@ -744,7 +744,7 @@ function FolderColorPicker({
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => onSave(cpHex)}
-                    className="flex-1 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors"
+                    className="flex-1 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors"
                 >
                     <Text className="text-center text-sm font-semibold text-white">
                         {t("common.save")}
@@ -753,9 +753,9 @@ function FolderColorPicker({
                 <Pressable
                     accessibilityRole="button"
                     onPress={onClose}
-                    className="flex-1 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                    className="flex-1 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                 >
-                    <Text className="text-center text-sm font-semibold text-discord-textPrimary">
+                    <Text className="text-center text-sm font-semibold text-zam-textPrimary">
                         {t("common.cancel")}
                     </Text>
                 </Pressable>
@@ -778,7 +778,7 @@ const AddRoomRow = memo(function AddRoomRow({
         <Pressable
             accessibilityRole="button"
             onPress={() => onPick(room.roomId)}
-            className="w-full px-3 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex-row items-center gap-2"
+            className="w-full px-3 py-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex-row items-center gap-2"
         >
             <Avatar
                 src={getRoomAvatar(room)}
@@ -789,7 +789,7 @@ const AddRoomRow = memo(function AddRoomRow({
             />
             <Text
                 numberOfLines={1}
-                className="flex-1 text-sm text-discord-textSecondary hover:text-discord-textPrimary"
+                className="flex-1 text-sm text-zam-textSecondary hover:text-zam-textPrimary"
             >
                 {getRoomDisplayName(room)}
             </Text>
@@ -800,9 +800,9 @@ const AddRoomRow = memo(function AddRoomRow({
 // Zami: the context menu rows' classes, which upstream repeats on each: the
 // row's box, and its text.
 const MENU_ITEM =
-    "w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-discord-accent active:bg-discord-accent";
-const MENU_TEXT = "text-sm text-discord-textPrimary hover:text-white";
-const MENU_DANGER = "text-sm text-discord-danger hover:text-white";
+    "w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-zam-accent active:bg-zam-accent";
+const MENU_TEXT = "text-sm text-zam-textPrimary hover:text-white";
+const MENU_DANGER = "text-sm text-zam-danger hover:text-white";
 
 export default function SpaceSidebar({
     onHomeClick,
@@ -1674,9 +1674,9 @@ export default function SpaceSidebar({
                         {t("spaceSidebar.markAsRead")}
                     </Text>
                 </Pressable>
-                <View className="w-full h-px bg-discord-divider my-1" />
+                <View className="w-full h-px bg-zam-divider my-1" />
                 {/* px-3 matches this menu's buttons; twin of RoomList's context menu. */}
-                <Text className="px-3 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="px-3 py-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("common.notifications")}
                 </Text>
                 {(
@@ -1705,7 +1705,7 @@ export default function SpaceSidebar({
                             {currentNotif === val && (
                                 <FilledCircle
                                     size={8}
-                                    className="text-discord-textPrimary"
+                                    className="text-zam-textPrimary"
                                 />
                             )}
                         </View>
@@ -1714,7 +1714,7 @@ export default function SpaceSidebar({
                 ))}
                 {canAddRoomToSpace(cm.spaceId) && (
                     <>
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => openCreateRoom(cm.spaceId)}
@@ -1735,7 +1735,7 @@ export default function SpaceSidebar({
                         </Pressable>
                     </>
                 )}
-                <View className="w-full h-px bg-discord-divider my-1" />
+                <View className="w-full h-px bg-zam-divider my-1" />
                 {cm.folderId ? (
                     <>
                         <Pressable
@@ -1749,7 +1749,7 @@ export default function SpaceSidebar({
                                 {t("spaceSidebar.removeFromFolder")}
                             </Text>
                         </Pressable>
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                     </>
                 ) : (
                     <>
@@ -1762,14 +1762,14 @@ export default function SpaceSidebar({
                                 {t("spaceSidebar.newFolder")}
                             </Text>
                         </Pressable>
-                        <View className="w-full h-px bg-discord-divider my-1" />
+                        <View className="w-full h-px bg-zam-divider my-1" />
                     </>
                 )}
                 {leaveConfirmId === cm.spaceId ? (
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void handleLeaveSpace(cm.spaceId)}
-                        className="w-full flex-row items-center gap-2 px-3 py-1.5 bg-discord-danger"
+                        className="w-full flex-row items-center gap-2 px-3 py-1.5 bg-zam-danger"
                     >
                         <Text className="text-sm text-white font-medium">
                             {isLastJoinedMember(cm.spaceId)
@@ -1781,7 +1781,7 @@ export default function SpaceSidebar({
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => setLeaveConfirmId(cm.spaceId)}
-                        className="w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-discord-danger active:bg-discord-danger"
+                        className="w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger"
                     >
                         <Text className={MENU_DANGER}>
                             {t("spaceSidebar.leaveSpace")}
@@ -1800,11 +1800,11 @@ export default function SpaceSidebar({
             >
                 <Text className={MENU_TEXT}>{t("spaceSidebar.setColor")}</Text>
             </Pressable>
-            <View className="w-full h-px bg-discord-divider my-1" />
+            <View className="w-full h-px bg-zam-divider my-1" />
             <Pressable
                 accessibilityRole="button"
                 onPress={() => handleDissolveFolder(folderId)}
-                className="w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-discord-danger active:bg-discord-danger"
+                className="w-full flex-row items-center gap-2 px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger"
             >
                 <Text className={MENU_DANGER}>
                     {t("spaceSidebar.dissolveFolder")}
@@ -1814,7 +1814,7 @@ export default function SpaceSidebar({
     );
 
     const menuClass =
-        "absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl min-w-40";
+        "absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl min-w-40";
 
     // Zami: once per opening (and per change of the room list), not on every
     // render of the rail while the dialog is open: it walks every Home room
@@ -1893,7 +1893,7 @@ export default function SpaceSidebar({
                     }
                     className={`group relative w-12 h-12 flex-row items-center justify-center transition-all duration-200 flex-shrink-0 ${
                         dragState?.id === item.id ? "opacity-40" : ""
-                    } ${isMergeTarget ? "ring-2 ring-discord-accent rounded-xl" : ""}`}
+                    } ${isMergeTarget ? "ring-2 ring-zam-accent rounded-xl" : ""}`}
                 >
                     <Avatar
                         src={avatarSrc}
@@ -1919,19 +1919,19 @@ export default function SpaceSidebar({
                     >
                         {(spaceNotifs) =>
                             isActive ? (
-                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-discord-textPrimary rounded-e-full" />
+                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-zam-textPrimary rounded-e-full" />
                             ) : spaceNotifs.unread ? (
                                 <View
                                     pointerEvents="none"
                                     className={`absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 rounded-e-full pointer-events-none ${
                                         spaceNotifs.loud ||
                                         spaceNotifs.highlight
-                                            ? "h-4 bg-discord-danger"
-                                            : "h-2 bg-discord-textPrimary"
+                                            ? "h-4 bg-zam-danger"
+                                            : "h-2 bg-zam-textPrimary"
                                     }`}
                                 />
                             ) : (
-                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-discord-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-5 transition-all duration-200" />
+                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-zam-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-5 transition-all duration-200" />
                             )
                         }
                     </WithNotifs>
@@ -1939,7 +1939,7 @@ export default function SpaceSidebar({
                         dropTarget.position !== "into" && (
                             <View
                                 pointerEvents="none"
-                                className={`absolute left-1/2 -translate-x-1/2 w-10 h-0.5 bg-discord-accent rounded-full pointer-events-none ${
+                                className={`absolute left-1/2 -translate-x-1/2 w-10 h-0.5 bg-zam-accent rounded-full pointer-events-none ${
                                     dropTarget.position === "before"
                                         ? "-top-[5px]"
                                         : "-bottom-[5px]"
@@ -1986,7 +1986,7 @@ export default function SpaceSidebar({
                     dropTarget.position !== "into" && (
                         <View
                             pointerEvents="none"
-                            className={`absolute left-1/2 -translate-x-1/2 w-10 h-0.5 bg-discord-accent rounded-full pointer-events-none ${
+                            className={`absolute left-1/2 -translate-x-1/2 w-10 h-0.5 bg-zam-accent rounded-full pointer-events-none ${
                                 dropTarget.position === "before"
                                     ? "-top-[5px]"
                                     : "-bottom-[5px]"
@@ -2022,7 +2022,7 @@ export default function SpaceSidebar({
                         onPress={() => toggleFolder(item.id)}
                         className={`group relative w-12 h-12 flex-row items-center justify-center flex-shrink-0 ${
                             isIntoTarget
-                                ? "ring-2 ring-discord-accent rounded-xl"
+                                ? "ring-2 ring-zam-accent rounded-xl"
                                 : ""
                         }`}
                     >
@@ -2032,9 +2032,7 @@ export default function SpaceSidebar({
                                     ? "rounded-xl"
                                     : "rounded-2xl"
                             } group-hover:rounded-xl overflow-hidden transition-all duration-200 flex-row flex-wrap ${
-                                folderColor
-                                    ? ""
-                                    : "bg-discord-backgroundSecondary"
+                                folderColor ? "" : "bg-zam-backgroundSecondary"
                             }`}
                             style={{
                                 gap: 2,
@@ -2062,7 +2060,7 @@ export default function SpaceSidebar({
                             {item.spaces.length === 0 && (
                                 <View className="flex-1 flex-row items-center justify-center">
                                     <SvgIcon
-                                        className="w-4 h-4 text-discord-textMuted"
+                                        className="w-4 h-4 text-zam-textMuted"
                                         d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"
                                     />
                                 </View>
@@ -2081,19 +2079,19 @@ export default function SpaceSidebar({
                         >
                             {(folderNotifs) =>
                                 folderHasActive && !isExpanded ? (
-                                    <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-discord-textPrimary rounded-e-full" />
+                                    <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-zam-textPrimary rounded-e-full" />
                                 ) : folderNotifs.unread && !isExpanded ? (
                                     <View
                                         pointerEvents="none"
                                         className={`absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 rounded-e-full pointer-events-none ${
                                             folderNotifs.loud ||
                                             folderNotifs.highlight
-                                                ? "h-4 bg-discord-danger"
-                                                : "h-2 bg-discord-textPrimary"
+                                                ? "h-4 bg-zam-danger"
+                                                : "h-2 bg-zam-textPrimary"
                                         }`}
                                     />
                                 ) : !isExpanded ? (
-                                    <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-discord-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-5 transition-all duration-200" />
+                                    <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-zam-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-5 transition-all duration-200" />
                                 ) : null
                             }
                         </WithNotifs>
@@ -2111,7 +2109,7 @@ export default function SpaceSidebar({
                                   )
                                 : undefined
                         }
-                        className="flex flex-col items-center gap-1 bg-discord-backgroundSecondary/50 rounded-xl px-1 py-1 w-12"
+                        className="flex flex-col items-center gap-1 bg-zam-backgroundSecondary/50 rounded-xl px-1 py-1 w-12"
                     >
                         {item.spaces.map((space) =>
                             renderFolderSpace(item, space),
@@ -2180,18 +2178,18 @@ export default function SpaceSidebar({
                     >
                         {(isn) =>
                             isActive ? (
-                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-6 bg-discord-textPrimary rounded-e-full" />
+                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-6 bg-zam-textPrimary rounded-e-full" />
                             ) : isn.unread ? (
                                 <View
                                     pointerEvents="none"
                                     className={`absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 rounded-e-full pointer-events-none ${
                                         isn.loud || isn.highlight
-                                            ? "h-3 bg-discord-danger"
-                                            : "h-1.5 bg-discord-textPrimary"
+                                            ? "h-3 bg-zam-danger"
+                                            : "h-1.5 bg-zam-textPrimary"
                                     }`}
                                 />
                             ) : (
-                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-discord-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-4 transition-all duration-200" />
+                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-2 bg-zam-textPrimary rounded-e-full opacity-0 group-hover:opacity-100 group-hover:h-4 transition-all duration-200" />
                             )
                         }
                     </WithNotifs>
@@ -2199,7 +2197,7 @@ export default function SpaceSidebar({
                         dropTarget.position !== "into" && (
                             <View
                                 pointerEvents="none"
-                                className={`absolute left-1/2 -translate-x-1/2 w-8 h-0.5 bg-discord-accent rounded-full pointer-events-none ${
+                                className={`absolute left-1/2 -translate-x-1/2 w-8 h-0.5 bg-zam-accent rounded-full pointer-events-none ${
                                     dropTarget.position === "before"
                                         ? "-top-[3px]"
                                         : "-bottom-[3px]"
@@ -2226,7 +2224,7 @@ export default function SpaceSidebar({
                 onScroll={hideHoverCard}
                 onTouchStart={hideHoverCard}
                 scrollEventThrottle={100}
-                className={`space-rail w-[4.5rem] grow-0 bg-discord-backgroundTertiary flex-shrink-0 ${
+                className={`space-rail w-[4.5rem] grow-0 bg-zam-backgroundTertiary flex-shrink-0 ${
                     theme === "amoled" ? "border-e border-white/15" : ""
                 }`}
                 contentContainerClassName="flex flex-col items-center py-3 gap-2"
@@ -2250,29 +2248,29 @@ export default function SpaceSidebar({
                     onPress={onHomeClick}
                     className={`group relative w-12 h-12 flex-row items-center justify-center transition-all duration-200 flex-shrink-0 ${
                         activeSpaceId === null
-                            ? "bg-[rgb(var(--discord-accent-rgb))] rounded-xl"
-                            : "hover:bg-[rgb(var(--discord-accent-rgb))] rounded-2xl bg-discord-backgroundSecondary hover:rounded-xl"
+                            ? "bg-[rgb(var(--zam-accent-rgb))] rounded-xl"
+                            : "hover:bg-[rgb(var(--zam-accent-rgb))] rounded-2xl bg-zam-backgroundSecondary hover:rounded-xl"
                     }`}
                 >
                     <SvgIcon
                         className={`w-6 h-6 transition-colors ${
                             activeSpaceId === null
                                 ? "text-white"
-                                : "text-discord-textPrimary group-hover:text-white"
+                                : "text-zam-textPrimary group-hover:text-white"
                         }`}
                         d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"
                     />
                     <WithNotifs read={getHomeNotifs}>
                         {(n) =>
                             activeSpaceId === null ? (
-                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-discord-textPrimary rounded-e-full" />
+                                <View className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 h-8 bg-zam-textPrimary rounded-e-full" />
                             ) : n.unread ? (
                                 <View
                                     pointerEvents="none"
                                     className={`absolute start-0 top-1/2 -translate-y-1/2 -translate-x-3 mirror:translate-x-3 w-1 rounded-e-full pointer-events-none ${
                                         n.loud || n.highlight
-                                            ? "h-4 bg-discord-danger"
-                                            : "h-2 bg-discord-textPrimary"
+                                            ? "h-4 bg-zam-danger"
+                                            : "h-2 bg-zam-textPrimary"
                                     }`}
                                 />
                             ) : null
@@ -2282,7 +2280,7 @@ export default function SpaceSidebar({
                 </Pressable>
 
                 {/* Separator */}
-                <View className="w-8 h-px bg-discord-divider my-1 flex-shrink-0" />
+                <View className="w-8 h-px bg-zam-divider my-1 flex-shrink-0" />
 
                 {/* Root items */}
                 {rootItems.map((item) =>
@@ -2292,7 +2290,7 @@ export default function SpaceSidebar({
                 )}
 
                 {spaces.length > 0 && (
-                    <View className="w-8 h-px bg-discord-divider my-1 flex-shrink-0" />
+                    <View className="w-8 h-px bg-zam-divider my-1 flex-shrink-0" />
                 )}
 
                 {/* Add / create a space */}
@@ -2302,10 +2300,10 @@ export default function SpaceSidebar({
                     accessibilityLabel={t("spaceSidebar.addASpace")}
                     accessibilityState={{ expanded: addMenuOpen }}
                     onPress={() => void openAddMenu()}
-                    className="group w-12 h-12 rounded-2xl flex-row items-center justify-center bg-discord-backgroundSecondary hover:rounded-xl hover:bg-discord-textPositive transition-all duration-200 flex-shrink-0"
+                    className="group w-12 h-12 rounded-2xl flex-row items-center justify-center bg-zam-backgroundSecondary hover:rounded-xl hover:bg-zam-textPositive transition-all duration-200 flex-shrink-0"
                 >
                     <SvgIcon
-                        className="w-6 h-6 text-discord-textPositive group-hover:text-white transition-colors"
+                        className="w-6 h-6 text-zam-textPositive group-hover:text-white transition-colors"
                         d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"
                     />
                 </Pressable>
@@ -2315,10 +2313,10 @@ export default function SpaceSidebar({
                     accessibilityRole="button"
                     accessibilityLabel={t("spaceSidebar.exploreRooms")}
                     onPress={openExplore}
-                    className="group w-12 h-12 rounded-2xl flex-row items-center justify-center bg-discord-backgroundSecondary hover:rounded-xl hover:bg-discord-textPositive transition-all duration-200 flex-shrink-0"
+                    className="group w-12 h-12 rounded-2xl flex-row items-center justify-center bg-zam-backgroundSecondary hover:rounded-xl hover:bg-zam-textPositive transition-all duration-200 flex-shrink-0"
                 >
                     <SvgIcon
-                        className="w-6 h-6 text-discord-textSecondary group-hover:text-white transition-colors"
+                        className="w-6 h-6 text-zam-textSecondary group-hover:text-white transition-colors"
                         d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm2.19 12.19L6 18l3.81-8.19L18 6l-3.81 8.19zM12 10.9a1.1 1.1 0 100 2.2 1.1 1.1 0 000-2.2z"
                     />
                 </Pressable>
@@ -2341,9 +2339,9 @@ export default function SpaceSidebar({
                                     class="rounded-xl"
                                 />
                             ) : (
-                                <View className="w-12 h-12 rounded-xl bg-discord-backgroundSecondary flex-row items-center justify-center">
+                                <View className="w-12 h-12 rounded-xl bg-zam-backgroundSecondary flex-row items-center justify-center">
                                     <SvgIcon
-                                        className="w-6 h-6 text-discord-textMuted"
+                                        className="w-6 h-6 text-zam-textMuted"
                                         d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"
                                     />
                                 </View>
@@ -2379,7 +2377,7 @@ export default function SpaceSidebar({
                     accessibilityLabel={t("spaceSidebar.addASpace")}
                     accessibilityViewIsModal={addMenuOpen}
                     onAccessibilityEscape={closeModal}
-                    className={`absolute z-50 bg-discord-backgroundTertiary border border-discord-divider rounded-lg shadow-xl py-1 min-w-52 ${
+                    className={`absolute z-50 bg-zam-backgroundTertiary border border-zam-divider rounded-lg shadow-xl py-1 min-w-52 ${
                         addMenuOpen ? "" : "hidden"
                     }`}
                     style={{ left: addMenuX, top: addMenuY }}
@@ -2413,7 +2411,7 @@ export default function SpaceSidebar({
                     <ModalDialog
                         onClose={closeModal}
                         labelledBy="space-create-room-title"
-                        panelClass="relative bg-discord-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-full overflow-hidden"
+                        panelClass="relative bg-zam-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-full overflow-hidden"
                     >
                         <ScrollView
                             keyboardShouldPersistTaps="handled"
@@ -2422,13 +2420,13 @@ export default function SpaceSidebar({
                             <Text
                                 nativeID="space-create-room-title"
                                 role="heading"
-                                className="text-lg font-bold text-discord-textPrimary"
+                                className="text-lg font-bold text-zam-textPrimary"
                             >
                                 {t("spaceSidebar.createRoomInSpace")}
                             </Text>
                             <View className="flex flex-col gap-3">
                                 <View>
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                         {t("spaceSidebar.roomName")}
                                     </Text>
                                     {/* Zami: focused on open, as the
@@ -2447,12 +2445,12 @@ export default function SpaceSidebar({
                                         submitBehavior="submit"
                                         returnKeyType="go"
                                         placeholder={t("spaceSidebar.myRoom")}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
-                                        className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent focus:outline-none text-sm"
+                                        placeholderTextColorClassName="accent-zam-textMuted"
+                                        className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent focus:outline-none text-sm"
                                     />
                                 </View>
                                 <View>
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                         {t("common.topic")}{" "}
                                         <Text className="normal-case font-normal">
                                             {t("spaceSidebar.optional")}
@@ -2470,8 +2468,8 @@ export default function SpaceSidebar({
                                         placeholder={t(
                                             "spaceSidebar.whatSThisRoomAbout",
                                         )}
-                                        placeholderTextColorClassName="accent-discord-textMuted"
-                                        className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent focus:outline-none text-sm"
+                                        placeholderTextColorClassName="accent-zam-textMuted"
+                                        className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent focus:outline-none text-sm"
                                     />
                                 </View>
                                 <Checkbox
@@ -2481,10 +2479,10 @@ export default function SpaceSidebar({
                                     inputClassName="mt-0.5 w-3.5 h-3.5 rounded-sm"
                                     label={
                                         <View className="shrink">
-                                            <Text className="text-sm text-discord-textPrimary">
+                                            <Text className="text-sm text-zam-textPrimary">
                                                 {t("common.videoRoom")}
                                             </Text>
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {t(
                                                     "spaceSidebar.opensStraightIntoACallMessages",
                                                 )}
@@ -2494,7 +2492,7 @@ export default function SpaceSidebar({
                                 />
                             </View>
                             {modalError ? (
-                                <Text className="text-sm text-discord-danger">
+                                <Text className="text-sm text-zam-danger">
                                     {modalError}
                                 </Text>
                             ) : null}
@@ -2506,11 +2504,11 @@ export default function SpaceSidebar({
                                     accessibilityState={{
                                         disabled: modalLoading,
                                     }}
-                                    className={`px-4 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
+                                    className={`px-4 py-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors ${
                                         modalLoading ? "opacity-50" : ""
                                     }`}
                                 >
-                                    <Text className="text-sm font-medium text-discord-textMuted hover:text-discord-textPrimary">
+                                    <Text className="text-sm font-medium text-zam-textMuted hover:text-zam-textPrimary">
                                         {t("common.cancel")}
                                     </Text>
                                 </Pressable>
@@ -2524,7 +2522,7 @@ export default function SpaceSidebar({
                                         disabled:
                                             modalLoading || !modalInput1.trim(),
                                     }}
-                                    className={`px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors flex-row items-center gap-2 ${
+                                    className={`px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors flex-row items-center gap-2 ${
                                         modalLoading || !modalInput1.trim()
                                             ? "opacity-50"
                                             : ""
@@ -2547,17 +2545,17 @@ export default function SpaceSidebar({
                     <ModalDialog
                         onClose={closeModal}
                         labelledBy="space-add-room-title"
-                        panelClass="relative bg-discord-background rounded-lg shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-4"
+                        panelClass="relative bg-zam-background rounded-lg shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-4"
                     >
                         <Text
                             nativeID="space-add-room-title"
                             role="heading"
-                            className="text-lg font-bold text-discord-textPrimary"
+                            className="text-lg font-bold text-zam-textPrimary"
                         >
                             {t("spaceSidebar.addExistingRoomToSpace")}
                         </Text>
                         {addRoomCandidates.length === 0 ? (
-                            <Text className="text-sm text-discord-textMuted">
+                            <Text className="text-sm text-zam-textMuted">
                                 {t("spaceSidebar.noRoomsAvailableToAdd")}
                             </Text>
                         ) : (
@@ -2582,9 +2580,9 @@ export default function SpaceSidebar({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={closeModal}
-                                className="px-4 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                className="px-4 py-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                             >
-                                <Text className="text-sm font-medium text-discord-textMuted hover:text-discord-textPrimary">
+                                <Text className="text-sm font-medium text-zam-textMuted hover:text-zam-textPrimary">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>

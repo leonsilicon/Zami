@@ -44,12 +44,12 @@ export default function MeshConsentDialog() {
         <ModalDialog
             onClose={dismiss}
             labelledBy="mesh-consent-title"
-            panelClass="relative z-10 w-[min(30rem,calc(100vw-2rem))] rounded-lg bg-discord-backgroundSecondary p-5 shadow-xl"
+            panelClass="relative z-10 w-[min(30rem,calc(100vw-2rem))] rounded-lg bg-zam-backgroundSecondary p-5 shadow-xl"
         >
             <Text
                 nativeID="mesh-consent-title"
                 role="heading"
-                className="mb-2 text-lg font-semibold text-discord-textPrimary"
+                className="mb-2 text-lg font-semibold text-zam-textPrimary"
             >
                 {pending.fileTransfer
                     ? t("meshConsent.titleFileTransfer")
@@ -57,7 +57,7 @@ export default function MeshConsentDialog() {
                       ? t("meshConsent.titleJoining")
                       : t("meshConsent.titleNewcomer")}
             </Text>
-            <Text className="mb-3 text-sm text-discord-textMuted">
+            <Text className="mb-3 text-sm text-zam-textMuted">
                 {pending.fileTransfer
                     ? t("meshConsent.fileTransferDirect")
                     : pending.publishing
@@ -65,14 +65,14 @@ export default function MeshConsentDialog() {
                       : t("meshConsent.someoneWithoutCallServer")}
             </Text>
             {relayOnly ? (
-                <Text className="mb-3 rounded border border-discord-divider px-3 py-2 text-sm text-discord-textMuted">
+                <Text className="mb-3 rounded border border-zam-divider px-3 py-2 text-sm text-zam-textMuted">
                     {pending.relayed
                         ? t("meshConsent.relayed")
                         : t("meshConsent.relayRequired")}
                 </Text>
             ) : (
                 <Text
-                    className="mb-3 rounded border border-discord-danger/40 bg-discord-danger/10 px-3 py-2 text-sm text-discord-danger"
+                    className="mb-3 rounded border border-zam-danger/40 bg-zam-danger/10 px-3 py-2 text-sm text-zam-danger"
                     accessibilityRole="alert"
                 >
                     {t("meshConsent.ipVisible")}
@@ -85,8 +85,8 @@ export default function MeshConsentDialog() {
                     className="mb-3 items-start gap-2"
                     inputClassName="mt-0.5 h-3.5 w-3.5 rounded-sm"
                     label={
-                        <Text className="flex-1 text-sm text-discord-textMuted">
-                            <Text className="font-medium text-discord-textPrimary">
+                        <Text className="flex-1 text-sm text-zam-textMuted">
+                            <Text className="font-medium text-zam-textPrimary">
                                 {t("meshConsent.usePublicStun")}
                             </Text>{" "}
                             {t("meshConsent.usePublicStunHint")}
@@ -102,7 +102,7 @@ export default function MeshConsentDialog() {
                         onPress={() => resolveMeshConsent("cancel")}
                         className="rounded px-4 py-2"
                     >
-                        <Text className="text-sm font-medium text-discord-textSecondary hover:text-discord-textPrimary hover:underline transition-colors">
+                        <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
                             {t("common.cancel")}
                         </Text>
                     </Pressable>
@@ -113,7 +113,7 @@ export default function MeshConsentDialog() {
                         onPress={() => resolveMeshConsent("deny")}
                         className="rounded px-4 py-2"
                     >
-                        <Text className="text-sm font-medium text-discord-textSecondary hover:text-discord-textPrimary hover:underline transition-colors">
+                        <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
                             {pending.joining
                                 ? t("meshConsent.joinWithoutThem")
                                 : t("meshConsent.notNow")}
@@ -123,7 +123,7 @@ export default function MeshConsentDialog() {
                 <Pressable
                     accessibilityRole="button"
                     onPress={allow}
-                    className="rounded bg-discord-accent px-4 py-2 hover:opacity-90"
+                    className="rounded bg-zam-accent px-4 py-2 hover:opacity-90"
                 >
                     <Text className="text-sm font-medium text-white">
                         {pending.joining &&

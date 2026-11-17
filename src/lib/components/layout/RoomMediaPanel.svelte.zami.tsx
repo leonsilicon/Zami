@@ -529,7 +529,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         : media.name
                 }
                 onPress={() => openViewer(media)}
-                className="relative aspect-square rounded overflow-hidden bg-discord-background active:opacity-80 transition-opacity"
+                className="relative aspect-square rounded overflow-hidden bg-zam-background active:opacity-80 transition-opacity"
                 style={{ width: cell }}
             >
                 {thumb ? (
@@ -549,7 +549,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                 ) : media.kind === "video" ? (
                     // Nothing to show: a flat tile that lets the play
                     // badge below carry the meaning on its own.
-                    <View className="w-full h-full bg-discord-backgroundTertiary" />
+                    <View className="w-full h-full bg-zam-backgroundTertiary" />
                 ) : null}
                 {media.kind === "video" ? (
                     <>
@@ -580,15 +580,15 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                 accessibilityRole="button"
                 // Zami: no shift+click quiet save.
                 onPress={() => void download(file)}
-                className="w-full p-2 rounded-lg hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                className="w-full p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
             >
                 <Text
                     numberOfLines={1}
-                    className="text-xs font-semibold text-discord-textPrimary"
+                    className="text-xs font-semibold text-zam-textPrimary"
                 >
                     {file.name}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {formatMediaSize(file.size) ||
                         (file.kind === "audio"
                             ? t("roomMediaPanel.audio")
@@ -688,14 +688,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         "roomMediaPanel.mediaCouldNotBeLoaded",
                     )}
                 >
-                    <View className="bg-discord-backgroundSecondary rounded-lg p-6 max-w-sm shadow-lg">
-                        <Text className="text-sm text-discord-textPrimary text-center mb-4">
+                    <View className="bg-zam-backgroundSecondary rounded-lg p-6 max-w-sm shadow-lg">
+                        <Text className="text-sm text-zam-textPrimary text-center mb-4">
                             {t("roomMediaPanel.couldNotLoadThisMedia")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => setViewerIndex(null)}
-                            className="self-center px-4 py-1.5 rounded bg-discord-accent active:opacity-90 transition-opacity"
+                            className="self-center px-4 py-1.5 rounded bg-zam-accent active:opacity-90 transition-opacity"
                         >
                             <Text className="text-sm text-white">
                                 {t("common.close")}
@@ -712,12 +712,12 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
             <View
                 className={`${
                     isMobile ? "" : "w-72"
-                } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+                } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
             >
-                <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+                <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                     <Text
                         accessibilityRole="header"
-                        className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                        className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                     >
                         {t("roomMediaPanel.media")}
                     </Text>
@@ -730,13 +730,13 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     >
                         <SvgIcon
                             d="M18.3 5.71 12 12.01l-6.3-6.3-1.42 1.42 6.3 6.3-6.3 6.3 1.42 1.42 6.3-6.3 6.3 6.3 1.42-1.42-6.3-6.3 6.3-6.3z"
-                            className="w-4 h-4 text-discord-textMuted"
+                            className="w-4 h-4 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
 
                 <View
-                    className="flex-row items-center gap-1 px-2 py-2 border-b border-discord-divider flex-shrink-0"
+                    className="flex-row items-center gap-1 px-2 py-2 border-b border-zam-divider flex-shrink-0"
                     accessibilityRole="tablist"
                 >
                     <Pressable
@@ -745,14 +745,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         accessibilityState={{ selected: tab === "media" }}
                         onPress={() => setTab("media")}
                         className={`flex-1 py-1 rounded transition-colors ${
-                            tab === "media" ? "bg-discord-messageHover" : ""
+                            tab === "media" ? "bg-zam-messageHover" : ""
                         }`}
                     >
                         <Text
                             className={`text-xs text-center ${
                                 tab === "media"
-                                    ? "text-discord-textPrimary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textPrimary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {t("roomMediaPanel.media2", {
@@ -767,14 +767,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         accessibilityState={{ selected: tab === "files" }}
                         onPress={() => setTab("files")}
                         className={`flex-1 py-1 rounded transition-colors ${
-                            tab === "files" ? "bg-discord-messageHover" : ""
+                            tab === "files" ? "bg-zam-messageHover" : ""
                         }`}
                     >
                         <Text
                             className={`text-xs text-center ${
                                 tab === "files"
-                                    ? "text-discord-textPrimary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textPrimary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {t("roomMediaPanel.files", {
@@ -819,11 +819,11 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     ListEmptyComponent={
                         loading ? (
                             <View className="flex-row justify-center mt-8">
-                                <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                                <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                             </View>
                         ) : error ? (
                             <>
-                                <Text className="text-sm text-discord-danger text-center mt-8 px-4">
+                                <Text className="text-sm text-zam-danger text-center mt-8 px-4">
                                     {error}
                                 </Text>
                                 <View className="px-2 pt-2">
@@ -832,14 +832,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                                         onPress={() => void pull(true)}
                                         className="w-full py-1.5"
                                     >
-                                        <Text className="text-xs text-discord-accent text-center">
+                                        <Text className="text-xs text-zam-accent text-center">
                                             {t("roomMediaPanel.tryAgain")}
                                         </Text>
                                     </Pressable>
                                 </View>
                             </>
                         ) : (
-                            <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                            <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                                 {emptyMessage}
                             </Text>
                         )
@@ -850,7 +850,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                             {loadMoreError ? (
                                 // Inline, not the full-panel error branch: whatever already
                                 // loaded stays on screen and "Load more" can simply be retried.
-                                <Text className="text-xs text-discord-danger text-center px-2 pb-1">
+                                <Text className="text-xs text-zam-danger text-center px-2 pb-1">
                                     {loadMoreError}
                                 </Text>
                             ) : null}
@@ -868,7 +868,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                                             loadingMore ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-xs text-discord-accent text-center">
+                                        <Text className="text-xs text-zam-accent text-center">
                                             {loadingMore
                                                 ? t("common.loading")
                                                 : t("common.loadMore")}

@@ -37,25 +37,25 @@ export default function MediaProgress({ label, progress = null }: Props) {
     })();
 
     return (
-        <View className="flex-row items-center gap-2 p-3 bg-discord-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
-            <Spin className="w-4 h-4 border-2 border-discord-accent border-t-transparent rounded-full flex-shrink-0" />
+        <View className="flex-row items-center gap-2 p-3 bg-zam-backgroundSecondary rounded-lg mt-1 max-w-sm w-full">
+            <Spin className="w-4 h-4 border-2 border-zam-accent border-t-transparent rounded-full flex-shrink-0" />
             <View className="min-w-0 flex-1">
                 <View className="flex-row items-baseline justify-between gap-2">
                     <Text
                         numberOfLines={1}
-                        className="shrink text-xs text-discord-textMuted truncate"
+                        className="shrink text-xs text-zam-textMuted truncate"
                     >
                         {label}
                     </Text>
                     {detail ? (
-                        <Text className="text-[11px] text-discord-textMuted tabular-nums flex-shrink-0">
+                        <Text className="text-[11px] text-zam-textMuted tabular-nums flex-shrink-0">
                             {detail}
                         </Text>
                     ) : null}
                 </View>
                 {fraction !== null && (
                     <View
-                        className="mt-1.5 h-1 rounded-full bg-discord-backgroundTertiary overflow-hidden"
+                        className="mt-1.5 h-1 rounded-full bg-zam-backgroundTertiary overflow-hidden"
                         role="progressbar"
                         accessibilityLabel={label}
                         accessibilityValue={{
@@ -65,7 +65,7 @@ export default function MediaProgress({ label, progress = null }: Props) {
                         }}
                     >
                         <View
-                            className="h-full bg-discord-accent transition-[width] duration-150"
+                            className="h-full bg-zam-accent transition-[width] duration-150"
                             style={{ width: `${Math.round(fraction * 100)}%` }}
                         />
                     </View>

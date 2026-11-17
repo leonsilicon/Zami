@@ -344,7 +344,7 @@ export default function MemberList({ room }: Props) {
                         <Text
                             accessibilityRole="header"
                             numberOfLines={1}
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {row.label}
                         </Text>
@@ -369,12 +369,12 @@ export default function MemberList({ room }: Props) {
         <View
             className={`${
                 isMobile ? "" : "w-72"
-            } h-full bg-discord-backgroundSecondary flex flex-col flex-shrink-0 overflow-hidden border-l border-discord-divider`}
+            } h-full bg-zam-backgroundSecondary flex flex-col flex-shrink-0 overflow-hidden border-l border-zam-divider`}
         >
-            <View className="h-12 px-4 flex-row items-center border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 px-4 flex-row items-center border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                 >
                     {t("memberList.members", { length: groups.count })}
                 </Text>
@@ -497,7 +497,7 @@ const MemberRow = memo(function MemberRow({
             accessibilityRole="button"
             onPress={(e) => openCard(member.userId, e)}
             style={{ height: MEMBER_H }}
-            className="flex-row items-center gap-2 px-2 mx-2 rounded overflow-hidden hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+            className="flex-row items-center gap-2 px-2 mx-2 rounded overflow-hidden hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
         >
             <View className="relative flex-shrink-0">
                 <Avatar
@@ -513,7 +513,7 @@ const MemberRow = memo(function MemberRow({
                     accessibilityLabel={presence.label}
                     className={`absolute bottom-0 end-0 w-2.5 h-2.5 ${
                         presence.dotClass
-                    } rounded-full border-2 border-discord-backgroundSecondary`}
+                    } rounded-full border-2 border-zam-backgroundSecondary`}
                 />
             </View>
             <View className="min-w-0 flex-1">
@@ -523,8 +523,8 @@ const MemberRow = memo(function MemberRow({
                         style={nameColour ? { color: nameColour } : undefined}
                         className={`flex-shrink text-sm leading-5 font-medium ${
                             muted
-                                ? "text-discord-textMuted"
-                                : "text-discord-textPrimary"
+                                ? "text-zam-textMuted"
+                                : "text-zam-textPrimary"
                         } ${
                             muted && nameColour
                                 ? "opacity-60 group-hover:opacity-100"
@@ -536,9 +536,9 @@ const MemberRow = memo(function MemberRow({
                     {(deco?.badges ?? []).map((badge, i) => (
                         <View
                             key={i}
-                            className="flex-shrink-0 px-1 rounded bg-discord-backgroundTertiary"
+                            className="flex-shrink-0 px-1 rounded bg-zam-backgroundTertiary"
                         >
-                            <Text className="text-[10px] font-semibold uppercase text-discord-textMuted">
+                            <Text className="text-[10px] font-semibold uppercase text-zam-textMuted">
                                 {badge}
                             </Text>
                         </View>
@@ -547,7 +547,7 @@ const MemberRow = memo(function MemberRow({
                 {secondLine ? (
                     <Text
                         numberOfLines={1}
-                        className="text-xs leading-4 text-discord-textMuted"
+                        className="text-xs leading-4 text-zam-textMuted"
                     >
                         {secondLine}
                     </Text>

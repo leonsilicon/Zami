@@ -175,17 +175,17 @@ export default function ScreenSharePicker() {
                     onPress={cancel}
                 />
                 <View
-                    className="flex max-h-[80vh] w-full max-w-3xl shrink flex-col overflow-hidden rounded-lg bg-discord-backgroundSecondary shadow-xl"
+                    className="flex max-h-[80vh] w-full max-w-3xl shrink flex-col overflow-hidden rounded-lg bg-zam-backgroundSecondary shadow-xl"
                     role="dialog"
                     accessibilityViewIsModal
                     aria-labelledby="screenshare-picker-title"
                     onAccessibilityEscape={cancel}
                 >
-                    <View className="border-b border-discord-divider px-4 py-3">
+                    <View className="border-b border-zam-divider px-4 py-3">
                         <Text
                             nativeID="screenshare-picker-title"
                             role="heading"
-                            className="text-base font-semibold text-discord-textPrimary"
+                            className="text-base font-semibold text-zam-textPrimary"
                         >
                             {t("screenSharePicker.chooseWhatToShare")}
                         </Text>
@@ -208,7 +208,7 @@ export default function ScreenSharePicker() {
                             <Fragment key={group.label}>
                                 {group.items.length ? (
                                     <>
-                                        <Text className="mb-2 mt-1 text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                        <Text className="mb-2 mt-1 text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                             {group.label}
                                         </Text>
                                         <View className="mb-3 gap-3">
@@ -225,7 +225,7 @@ export default function ScreenSharePicker() {
                                                                 accessibilityLabel={
                                                                     source.name
                                                                 }
-                                                                className="flex-1 flex flex-col overflow-hidden rounded border border-transparent bg-discord-background hover:border-discord-accent focus:border-discord-accent active:border-discord-accent"
+                                                                className="flex-1 flex flex-col overflow-hidden rounded border border-transparent bg-zam-background hover:border-zam-accent focus:border-zam-accent active:border-zam-accent"
                                                                 onPress={() =>
                                                                     pick(source)
                                                                 }
@@ -240,7 +240,7 @@ export default function ScreenSharePicker() {
                                                                             className="h-full w-full"
                                                                         />
                                                                     ) : (
-                                                                        <Text className="text-xs text-discord-textMuted">
+                                                                        <Text className="text-xs text-zam-textMuted">
                                                                             {t(
                                                                                 "screenSharePicker.noPreview",
                                                                             )}
@@ -251,7 +251,7 @@ export default function ScreenSharePicker() {
                                                                     numberOfLines={
                                                                         1
                                                                     }
-                                                                    className="px-2 py-1.5 text-xs text-discord-textSecondary"
+                                                                    className="px-2 py-1.5 text-xs text-zam-textSecondary"
                                                                 >
                                                                     {
                                                                         source.name
@@ -278,32 +278,32 @@ export default function ScreenSharePicker() {
                         <ScrollView
                             nativeID="screenshare-picker-quality"
                             style={styles.quality}
-                            className="border-t border-discord-divider max-h-[40vh] grow-0"
+                            className="border-t border-zam-divider max-h-[40vh] grow-0"
                             contentContainerClassName="px-4 py-3 gap-3"
                         >
                             <ScreenShareQualityChips />
                         </ScrollView>
                     ) : null}
-                    <View className="flex-row flex-wrap items-center justify-end gap-2 border-t border-discord-divider px-4 py-3">
+                    <View className="flex-row flex-wrap items-center justify-end gap-2 border-t border-zam-divider px-4 py-3">
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => setShowQuality(!showQuality)}
                             accessibilityState={{ expanded: showQuality }}
-                            className="me-auto rounded px-3 py-2 hover:bg-discord-messageHover active:bg-discord-messageHover"
+                            className="me-auto rounded px-3 py-2 hover:bg-zam-messageHover active:bg-zam-messageHover"
                         >
                             <View className="flex-row items-center gap-1">
                                 {showQuality ? (
                                     <ChevronDown
                                         size={12}
-                                        className="text-sm text-discord-textSecondary"
+                                        className="text-sm text-zam-textSecondary"
                                     />
                                 ) : (
                                     <ChevronRight
                                         size={12}
-                                        className="text-sm text-discord-textSecondary"
+                                        className="text-sm text-zam-textSecondary"
                                     />
                                 )}
-                                <Text className="text-sm text-discord-textSecondary">
+                                <Text className="text-sm text-zam-textSecondary">
                                     {t("screenSharePicker.quality", {
                                         quality: `${SCREEN_RESOLUTIONS.find((r) => r.key === screenShareResolution)?.label ?? screenShareResolution} · ${screenShareFps} fps`,
                                     })}
@@ -312,7 +312,7 @@ export default function ScreenSharePicker() {
                         </Pressable>
                         {audioOptions.length ? (
                             <View className="flex-row min-w-0 max-w-full shrink items-center gap-2">
-                                <Text className="text-sm text-discord-textSecondary">
+                                <Text className="text-sm text-zam-textSecondary">
                                     {t("screenSharePicker.audio")}
                                 </Text>
                                 <Select
@@ -322,7 +322,7 @@ export default function ScreenSharePicker() {
                                     accessibilityLabel={t(
                                         "screenSharePicker.audio",
                                     )}
-                                    className="min-w-0 max-w-[20rem] shrink rounded bg-discord-backgroundTertiary px-3 py-2"
+                                    className="min-w-0 max-w-[20rem] shrink rounded bg-zam-backgroundTertiary px-3 py-2"
                                 />
                             </View>
                         ) : null}
@@ -331,7 +331,7 @@ export default function ScreenSharePicker() {
                             className="rounded px-4 py-2"
                             onPress={cancel}
                         >
-                            <Text className="text-sm text-discord-textSecondary hover:text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textSecondary hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>

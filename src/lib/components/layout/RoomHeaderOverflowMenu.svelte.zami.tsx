@@ -62,7 +62,7 @@ function badgeAnnouncement(key: RoomHeaderMenuKey, badge: string): string {
     });
 }
 
-// The threads pill keeps `bg-discord-danger` because it counts unread
+// The threads pill keeps `bg-zam-danger` because it counts unread
 // *mentions* — the same thing the desktop threads badge paints red. Every
 // other row's badge is a neutral total (pinned messages are not urgent), so
 // it gets a plain chip: `divider` reads as a raised surface against the
@@ -71,11 +71,11 @@ function badgeAnnouncement(key: RoomHeaderMenuKey, badge: string): string {
 // Zami: split into the pill's background and its text color, which here go
 // on the pill's View and its Text.
 const BADGE_CLASSES: Record<RoomHeaderMenuKey, [string, string]> = {
-    threads: ["bg-discord-danger", "text-white"],
-    pinned: ["bg-discord-divider", "text-discord-textPrimary"],
-    notifications: ["bg-discord-divider", "text-discord-textPrimary"],
-    media: ["bg-discord-divider", "text-discord-textPrimary"],
-    members: ["bg-discord-divider", "text-discord-textPrimary"],
+    threads: ["bg-zam-danger", "text-white"],
+    pinned: ["bg-zam-divider", "text-zam-textPrimary"],
+    notifications: ["bg-zam-divider", "text-zam-textPrimary"],
+    media: ["bg-zam-divider", "text-zam-textPrimary"],
+    members: ["bg-zam-divider", "text-zam-textPrimary"],
 };
 
 export default function RoomHeaderOverflowMenu({
@@ -145,22 +145,22 @@ export default function RoomHeaderOverflowMenu({
                                       : row.label
                             }
                             onPress={() => choose(row.key)}
-                            className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                            className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-zam-messageHover hover:bg-zam-messageHover"
                         >
                             <SvgIcon
                                 d={ICONS[row.key]}
                                 className={`w-5 h-5 flex-shrink-0 ${
                                     row.active
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }`}
                             />
                             <Text
                                 numberOfLines={1}
                                 className={`flex-1 text-sm ${
                                     row.active
-                                        ? "text-discord-accent"
-                                        : "text-discord-textPrimary"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textPrimary"
                                 }`}
                             >
                                 {row.label}
@@ -185,7 +185,7 @@ export default function RoomHeaderOverflowMenu({
                                 <View
                                     accessibilityElementsHidden
                                     importantForAccessibility="no-hide-descendants"
-                                    className="flex-shrink-0 w-2 h-2 rounded-full bg-discord-accent"
+                                    className="flex-shrink-0 w-2 h-2 rounded-full bg-zam-accent"
                                 />
                             ) : null}
                         </Pressable>
@@ -196,22 +196,22 @@ export default function RoomHeaderOverflowMenu({
                             accessibilityRole="menuitem"
                             accessibilityState={{ checked: row.active }}
                             onPress={() => choosePlugin(row.key)}
-                            className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-discord-messageHover hover:bg-discord-messageHover"
+                            className="w-full flex-row items-center gap-3 px-4 py-3 transition-colors active:bg-zam-messageHover hover:bg-zam-messageHover"
                         >
                             <SvgIcon
                                 d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 4v10h16V8H4z"
                                 className={`w-5 h-5 flex-shrink-0 ${
                                     row.active
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }`}
                             />
                             <Text
                                 numberOfLines={1}
                                 className={`flex-1 text-sm ${
                                     row.active
-                                        ? "text-discord-accent"
-                                        : "text-discord-textPrimary"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textPrimary"
                                 }`}
                             >
                                 {row.label}

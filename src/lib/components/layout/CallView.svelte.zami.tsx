@@ -189,7 +189,7 @@ export default function CallView({
     // const is enough — used to hide the share-screen button where unsupported.
     // Zami: false on iOS (screenShareSupportedHere): a share needs a Broadcast
     // Upload Extension the app doesn't have, so the button stays hidden.
-    const screenShareSupported = screenShareSupportedHere();
+    const screenShareSupported = useRune(() => screenShareSupportedHere());
 
     // Live SDK objects mutate in place, so every read of call/room state hangs
     // off a tick: voiceTick for the roster, roomsTick for names and avatars.
@@ -504,30 +504,30 @@ export default function CallView({
         <>
             {/* Zami: not ported: `data-zam-region="call"` (plugins' DOM
                 region hook; there's no DOM here). */}
-            <View className="flex-1 flex-col min-w-0 bg-discord-backgroundTertiary">
+            <View className="flex-1 flex-col min-w-0 bg-zam-backgroundTertiary">
                 {/* Header */}
-                <View className="h-12 px-4 flex-row items-center gap-2 flex-shrink-0 border-b border-discord-divider bg-discord-background">
+                <View className="h-12 px-4 flex-row items-center gap-2 flex-shrink-0 border-b border-zam-divider bg-zam-background">
                     {isMobile && (
                         <Pressable
                             accessibilityRole="button"
                             onPress={onMenuOpen}
-                            className="p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            className="p-1.5 -ms-1 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             accessibilityLabel={t("common.openRoomList")}
                         >
                             <SvgIcon
-                                className="w-5 h-5 text-discord-textMuted"
+                                className="w-5 h-5 text-zam-textMuted"
                                 d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"
                             />
                         </Pressable>
                     )}
                     <Volume2
                         size={20}
-                        className="text-discord-textMuted flex-shrink-0"
+                        className="text-zam-textMuted flex-shrink-0"
                     />
                     <Text
                         accessibilityRole="header"
                         numberOfLines={1}
-                        className="flex-shrink font-semibold text-discord-textPrimary truncate"
+                        className="flex-shrink font-semibold text-zam-textPrimary truncate"
                     >
                         {roomName}
                     </Text>
@@ -538,7 +538,7 @@ export default function CallView({
                         />
                     )}
                     {ringingOut && (
-                        <Text className="text-sm text-discord-textMuted flex-shrink-0">
+                        <Text className="text-sm text-zam-textMuted flex-shrink-0">
                             {t("callView.ringing")}
                         </Text>
                     )}
@@ -546,12 +546,12 @@ export default function CallView({
                     <Pressable
                         accessibilityRole="button"
                         onPress={showChatView}
-                        className="p-1.5 rounded transition-colors hover:bg-discord-messageHover"
+                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
                         accessibilityLabel={t("callView.showChat")}
                     >
                         <MessageSquare
                             size={20}
-                            className="text-discord-textMuted"
+                            className="text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -567,11 +567,8 @@ export default function CallView({
                 >
                     {participants.length === 0 && screenTiles.length === 0 ? (
                         <View className="flex-1 flex-col items-center justify-center gap-3">
-                            <Volume2
-                                size={40}
-                                className="text-discord-textMuted"
-                            />
-                            <Text className="text-sm text-discord-textMuted">
+                            <Volume2 size={40} className="text-zam-textMuted" />
+                            <Text className="text-sm text-zam-textMuted">
                                 {t("callView.noOneIsInThisCall")}
                             </Text>
                         </View>
@@ -633,7 +630,7 @@ export default function CallView({
                                             exiting={tileOut()}
                                             className={`relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-black border-2 ${
                                                 tile.key === focusedTileKey
-                                                    ? "border-discord-accent"
+                                                    ? "border-zam-accent"
                                                     : "border-transparent"
                                             }`}
                                         >
@@ -745,7 +742,7 @@ export default function CallView({
                                         style={gridCellStyle}
                                         className={`relative aspect-video rounded-lg overflow-hidden bg-black border-2 ${
                                             tile.key === focusedTileKey
-                                                ? "border-discord-accent"
+                                                ? "border-zam-accent"
                                                 : "border-transparent"
                                         }`}
                                     >
@@ -835,7 +832,7 @@ export default function CallView({
                 {pluginPanels.map((panel) => (
                     <ScrollView
                         key={panel.key}
-                        className="flex-shrink-0 grow-0 border-t border-discord-divider bg-discord-background max-h-[60%]"
+                        className="flex-shrink-0 grow-0 border-t border-zam-divider bg-zam-background max-h-[60%]"
                         accessibilityLabel={panel.title}
                         keyboardShouldPersistTaps="handled"
                     >
@@ -855,7 +852,7 @@ export default function CallView({
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => void resumeVoicePlayback()}
-                            className="px-3 py-1.5 rounded bg-discord-warning"
+                            className="px-3 py-1.5 rounded bg-zam-warning"
                         >
                             <Text className="text-black text-xs font-semibold">
                                 {t("callView.enableAudio")}
@@ -863,14 +860,14 @@ export default function CallView({
                         </Pressable>
                     )}
                     {onHold && inThisCall && (
-                        <View className="flex-row items-center gap-2 px-3 py-1.5 rounded bg-discord-backgroundSecondary">
-                            <Text className="text-xs text-discord-textMuted">
+                        <View className="flex-row items-center gap-2 px-3 py-1.5 rounded bg-zam-backgroundSecondary">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("callView.onHold")}
                             </Text>
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={resumeHeldCall}
-                                className="px-2 py-0.5 rounded bg-discord-accent"
+                                className="px-2 py-0.5 rounded bg-zam-accent"
                             >
                                 <Text className="text-xs text-white font-semibold">
                                     {t("callView.resume")}
@@ -879,11 +876,11 @@ export default function CallView({
                         </View>
                     )}
                     {controlMode === "controls" ? (
-                        <View className="flex-row items-center gap-2 px-2 py-2 rounded-full bg-discord-backgroundSecondary">
+                        <View className="flex-row items-center gap-2 px-2 py-2 rounded-full bg-zam-backgroundSecondary">
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={toggleCallMute}
-                                className="p-3 rounded-full hover:bg-discord-messageHover"
+                                className="p-3 rounded-full hover:bg-zam-messageHover"
                                 accessibilityLabel={
                                     micMuted
                                         ? t("callView.unmute")
@@ -893,19 +890,19 @@ export default function CallView({
                                 {micMuted ? (
                                     <MicOff
                                         size={20}
-                                        className="text-discord-danger"
+                                        className="text-zam-danger"
                                     />
                                 ) : (
                                     <Mic
                                         size={20}
-                                        className="text-discord-textPrimary"
+                                        className="text-zam-textPrimary"
                                     />
                                 )}
                             </Pressable>
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={toggleCallDeafen}
-                                className="p-3 rounded-full hover:bg-discord-messageHover"
+                                className="p-3 rounded-full hover:bg-zam-messageHover"
                                 accessibilityLabel={
                                     deafened
                                         ? t("callView.undeafen")
@@ -915,12 +912,12 @@ export default function CallView({
                                 {deafened ? (
                                     <HeadphoneOff
                                         size={20}
-                                        className="text-discord-danger"
+                                        className="text-zam-danger"
                                     />
                                 ) : (
                                     <Headphones
                                         size={20}
-                                        className="text-discord-textPrimary"
+                                        className="text-zam-textPrimary"
                                     />
                                 )}
                             </Pressable>
@@ -931,7 +928,7 @@ export default function CallView({
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={toggleSpeaker}
-                                        className="p-3 rounded-full hover:bg-discord-messageHover"
+                                        className="p-3 rounded-full hover:bg-zam-messageHover"
                                         accessibilityLabel={
                                             audioRoute === "speaker"
                                                 ? t("callView.speakerOff")
@@ -945,22 +942,22 @@ export default function CallView({
                                         {audioRoute === "speaker" ? (
                                             <Volume2
                                                 size={20}
-                                                className="text-discord-accent"
+                                                className="text-zam-accent"
                                             />
                                         ) : audioRoute === "bluetooth" ? (
                                             <Bluetooth
                                                 size={20}
-                                                className="text-discord-textPrimary"
+                                                className="text-zam-textPrimary"
                                             />
                                         ) : audioRoute === "wired" ? (
                                             <Headphones
                                                 size={20}
-                                                className="text-discord-textPrimary"
+                                                className="text-zam-textPrimary"
                                             />
                                         ) : (
                                             <Ear
                                                 size={20}
-                                                className="text-discord-textPrimary"
+                                                className="text-zam-textPrimary"
                                             />
                                         )}
                                     </Pressable>
@@ -969,7 +966,7 @@ export default function CallView({
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={() => void toggleCamera()}
-                                    className="p-3 rounded-full hover:bg-discord-messageHover"
+                                    className="p-3 rounded-full hover:bg-zam-messageHover"
                                     accessibilityLabel={
                                         cameraOn
                                             ? t("common.turnOffCamera")
@@ -979,12 +976,12 @@ export default function CallView({
                                     {cameraOn ? (
                                         <Video
                                             size={20}
-                                            className="text-discord-accent"
+                                            className="text-zam-accent"
                                         />
                                     ) : (
                                         <VideoOff
                                             size={20}
-                                            className="text-discord-textPrimary"
+                                            className="text-zam-textPrimary"
                                         />
                                     )}
                                 </Pressable>
@@ -993,7 +990,7 @@ export default function CallView({
                                 <Pressable
                                     accessibilityRole="button"
                                     onPress={onShareBtnClick}
-                                    className="p-3 rounded-full hover:bg-discord-messageHover"
+                                    className="p-3 rounded-full hover:bg-zam-messageHover"
                                     accessibilityLabel={
                                         screenSharing
                                             ? t("common.stopSharing")
@@ -1004,16 +1001,16 @@ export default function CallView({
                                         size={20}
                                         className={
                                             screenSharing
-                                                ? "text-discord-accent"
-                                                : "text-discord-textPrimary"
+                                                ? "text-zam-accent"
+                                                : "text-zam-textPrimary"
                                         }
                                     />
                                 </Pressable>
                             )}
                             <SoundboardButton
                                 room={room}
-                                buttonClass="p-3 rounded-full hover:bg-discord-messageHover"
-                                idleClass="text-discord-textPrimary"
+                                buttonClass="p-3 rounded-full hover:bg-zam-messageHover"
+                                idleClass="text-zam-textPrimary"
                             />
                             {pluginControls.map((c) => (
                                 // Zami: `e.currentTarget`, the anchor a plugin
@@ -1030,15 +1027,15 @@ export default function CallView({
                                                 : target,
                                         ).then((anchor) => c.click(anchor));
                                     }}
-                                    className="p-3 rounded-full hover:bg-discord-messageHover"
+                                    className="p-3 rounded-full hover:bg-zam-messageHover"
                                     accessibilityLabel={c.label}
                                 >
                                     {c.icon ? (
                                         <SvgIcon
                                             className={`w-5 h-5 ${
                                                 c.active
-                                                    ? "text-discord-accent"
-                                                    : "text-discord-textPrimary"
+                                                    ? "text-zam-accent"
+                                                    : "text-zam-textPrimary"
                                             }`}
                                             d={c.icon}
                                         />
@@ -1050,8 +1047,8 @@ export default function CallView({
                                             <Text
                                                 className={`text-sm font-semibold leading-none ${
                                                     c.active
-                                                        ? "text-discord-accent"
-                                                        : "text-discord-textPrimary"
+                                                        ? "text-zam-accent"
+                                                        : "text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {c.label.slice(0, 1)}
@@ -1063,7 +1060,7 @@ export default function CallView({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={leaveCall}
-                                className="p-3 rounded-full bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                                className="p-3 rounded-full bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                                 accessibilityLabel={t("callView.disconnect")}
                             >
                                 <PhoneOff size={20} className="text-white" />
@@ -1077,7 +1074,7 @@ export default function CallView({
                             accessibilityState={{
                                 disabled: joinPendingRoomId !== null,
                             }}
-                            className={`flex-row items-center gap-2 px-6 py-2.5 rounded-full bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                            className={`flex-row items-center gap-2 px-6 py-2.5 rounded-full bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                                 joinPendingRoomId !== null ? "opacity-60" : ""
                             }`}
                         >
@@ -1237,9 +1234,9 @@ const ParticipantTile = memo(function ParticipantTile({
                 layout={tileFlip()}
                 entering={tileIn()}
                 exiting={tileOut()}
-                className={`relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-discord-backgroundSecondary border-2 ${
+                className={`relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-zam-backgroundSecondary border-2 ${
                     isSpeaking || (cam && cam.key === focusedTileKey)
-                        ? "border-discord-accent"
+                        ? "border-zam-accent"
                         : "border-transparent"
                 }`}
             >
@@ -1309,21 +1306,18 @@ const ParticipantTile = memo(function ParticipantTile({
     const statusIcons = (
         <>
             {status.micOff && (
-                <MicOff
-                    size={14}
-                    className="text-discord-danger flex-shrink-0"
-                />
+                <MicOff size={14} className="text-zam-danger flex-shrink-0" />
             )}
             {status.deafened && (
                 <HeadphoneOff
                     size={14}
-                    className="text-discord-danger flex-shrink-0"
+                    className="text-zam-danger flex-shrink-0"
                 />
             )}
             {status.locallyMuted && (
                 <VolumeX
                     size={14}
-                    className="text-discord-textMuted flex-shrink-0"
+                    className="text-zam-textMuted flex-shrink-0"
                 />
             )}
             {status.multiDevice && (
@@ -1344,9 +1338,9 @@ const ParticipantTile = memo(function ParticipantTile({
             entering={tileIn()}
             exiting={tileOut()}
             style={gridCellStyle}
-            className={`relative aspect-video rounded-lg overflow-hidden bg-discord-backgroundSecondary border-2 ${
+            className={`relative aspect-video rounded-lg overflow-hidden bg-zam-backgroundSecondary border-2 ${
                 isSpeaking || (cam && cam.key === focusedTileKey)
-                    ? "border-discord-accent"
+                    ? "border-zam-accent"
                     : "border-transparent"
             }`}
         >

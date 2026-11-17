@@ -91,7 +91,7 @@ export default function GameInviteDialog() {
                             accessibilityViewIsModal
                             aria-labelledby="game-invite-title"
                             onAccessibilityEscape={closeGameInviteDialog}
-                            className="relative z-10 shrink bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-md overflow-hidden"
+                            className="relative z-10 shrink bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-md overflow-hidden"
                             style={{ maxHeight: windowSize.height * 0.85 }}
                         >
                             <ScrollView
@@ -102,18 +102,18 @@ export default function GameInviteDialog() {
                                 <Text
                                     nativeID="game-invite-title"
                                     role="heading"
-                                    className="text-lg font-bold text-discord-textPrimary"
+                                    className="text-lg font-bold text-zam-textPrimary"
                                 >
                                     {t("gameInvite.title")}
                                 </Text>
 
                                 {games.length === 0 ? (
-                                    <Text className="text-sm text-discord-textMuted">
+                                    <Text className="text-sm text-zam-textMuted">
                                         {t("gameInvite.noGames")}
                                     </Text>
                                 ) : (
                                     <View className="flex-col gap-1.5">
-                                        <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                        <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                             {t("gameInvite.game")}
                                         </Text>
                                         {games.length > 1 ? (
@@ -129,10 +129,10 @@ export default function GameInviteDialog() {
                                                     label: g.name,
                                                     key: g.key,
                                                 }))}
-                                                className="w-full rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                                                className="w-full rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary focus:outline-none focus:ring-2 focus:ring-zam-accent"
                                             />
                                         ) : selected ? (
-                                            <Text className="text-sm text-discord-textPrimary">
+                                            <Text className="text-sm text-zam-textPrimary">
                                                 {selected.name}
                                             </Text>
                                         ) : null}
@@ -140,7 +140,7 @@ export default function GameInviteDialog() {
                                 )}
 
                                 <View className="flex-col gap-1.5">
-                                    <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                         {t("gameInvite.note")}
                                     </Text>
                                     {/* Zami: `rows="2"` → a two-line minimum
@@ -159,7 +159,7 @@ export default function GameInviteDialog() {
                                             "gameInvite.note",
                                         )}
                                         textAlignVertical="top"
-                                        className="w-full min-h-14 rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                                        className="w-full min-h-14 rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-2 focus:ring-zam-accent"
                                     />
                                 </View>
 
@@ -169,7 +169,7 @@ export default function GameInviteDialog() {
                                         onPress={closeGameInviteDialog}
                                         className="px-4 py-2 rounded"
                                     >
-                                        <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary transition-colors">
+                                        <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary transition-colors">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
@@ -180,7 +180,7 @@ export default function GameInviteDialog() {
                                         accessibilityState={{
                                             disabled: !selected || sending,
                                         }}
-                                        className={`px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                                        className={`px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                                             !selected || sending
                                                 ? "opacity-50"
                                                 : ""

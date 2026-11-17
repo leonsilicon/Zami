@@ -152,6 +152,12 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
     const [decryptedFull, decryptedFullRef, setDecryptedFull] = useLatestState<
         Record<string, string>
     >({});
+    // Encrypted images either side of the viewed one, decrypted ahead so a
+    // swipe lands on a loaded image. Handed over to decryptedFull when the
+    // viewer steps onto one; revoked once they are no longer neighbours.
+    const [prefetchedFull, prefetchedFullRef, setPrefetchedFull] =
+        useLatestState<Record<string, string>>({});
+    const [prefetchPending] = useState(() => new Set<string>());
     const [viewerDecrypting, setViewerDecrypting] = useState(false);
     const [viewerProgress, setViewerProgress] =
         useState<DownloadProgress | null>(null);
@@ -164,12 +170,16 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
     function releaseDecryptedBlobs(): void {
         blobGen.current++;
         thumbPending.clear();
+        prefetchPending.clear();
         for (const url of Object.values(decryptedThumbsRef.current))
             URL.revokeObjectURL(url);
         for (const url of Object.values(decryptedFullRef.current))
             URL.revokeObjectURL(url);
+        for (const url of Object.values(prefetchedFullRef.current))
+            URL.revokeObjectURL(url);
         setDecryptedThumbs({});
         setDecryptedFull({});
+        setPrefetchedFull({});
         setViewerDecrypting(false);
     }
     useEffect(
@@ -244,6 +254,15 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
         if (!media.encrypted || !media.encryptedFile) return;
         if (media.kind === "video") return;
         if (decryptedFullRef.current[key]) return;
+        // Already decrypted ahead as a neighbour: take that copy over.
+        const ahead = prefetchedFullRef.current[key];
+        if (ahead) {
+            setDecryptedFull({ ...decryptedFullRef.current, [key]: ahead });
+            const rest = { ...prefetchedFullRef.current };
+            delete rest[key];
+            setPrefetchedFull(rest);
+            return;
+        }
         const gen = blobGen.current;
         let cancelled = false;
         setViewerDecrypting(true);
@@ -299,6 +318,116 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
         return mxcToHttp(mediaThumbnailMxc(entry.media), 800, 600, "scale");
     })();
 
+    // Decrypt the encrypted images either side of the viewed one, through the
+    // same helper the viewer uses, and release any blob that no longer belongs
+    // to a neighbour. Closing the viewer empties `wanted`, which releases all.
+    useEffect(() => {
+        const idx = viewerIndex;
+        const wanted =
+            idx === null
+                ? []
+                : [visual[idx - 1], visual[idx + 1]].filter(
+                      (e): e is Entry =>
+                          !!e &&
+                          e.media.kind === "image" &&
+                          !!e.media.encrypted &&
+                          !!e.media.encryptedFile,
+                  );
+        const keep = new Set(wanted.map((e) => e.key));
+        const kept: Record<string, string> = {};
+        let dropped = false;
+        for (const [key, url] of Object.entries(prefetchedFullRef.current)) {
+            if (keep.has(key)) {
+                kept[key] = url;
+                continue;
+            }
+            URL.revokeObjectURL(url);
+            dropped = true;
+        }
+        if (dropped) setPrefetchedFull(kept);
+        const gen = blobGen.current;
+        for (const entry of wanted) {
+            const key = entry.key;
+            if (
+                decryptedFullRef.current[key] ||
+                prefetchedFullRef.current[key] ||
+                prefetchPending.has(key)
+            )
+                continue;
+            prefetchPending.add(key);
+            fetchDecryptedAttachmentBlob(
+                entry.media.encryptedFile!,
+                entry.media.mimetype ?? undefined,
+                { expectedSize: entry.media.size },
+            )
+                .then((url) => {
+                    // Stale (torn down, or the viewer has since decrypted
+                    // it itself): nothing will own this URL, so release it.
+                    if (
+                        gen !== blobGen.current ||
+                        decryptedFullRef.current[key]
+                    ) {
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+                    setPrefetchedFull({
+                        ...prefetchedFullRef.current,
+                        [key]: url,
+                    });
+                })
+                .catch(() => {
+                    /* a failed prefetch just means no warm copy */
+                })
+                .finally(() => {
+                    if (gen === blobGen.current) prefetchPending.delete(key);
+                });
+        }
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream untracks the blob maps.
+    }, [viewerIndex, visual]);
+
+    /** The tile thumbnail for an entry, as the grid shows it (decrypted for an
+     *  encrypted one). Null until it is ready or if it failed. */
+    function thumbSrc(entry: Entry, box: number): string | null {
+        if (thumbFailed[entry.key]) return null;
+        const media = entry.media;
+        return media.encrypted
+            ? (decryptedThumbs[entry.key] ?? null)
+            : mxcToHttp(mediaThumbnailMxc(media), box, box, "scale");
+    }
+
+    /** Stand-ins and size for the lightbox, sized for the viewer rather than a tile. */
+    const VIEWER_THUMB_PX = 800;
+    function viewerStandIn(entry: Entry) {
+        return {
+            placeholders: [thumbSrc(entry, VIEWER_THUMB_PX)],
+            dims: { w: entry.info.w, h: entry.info.h },
+        };
+    }
+
+    /** A swipe neighbour: its full src (or "" while it is not ready, or for a
+     *  video, which the viewer does not preload), plus its stand-ins. */
+    function neighbourOf(entry: Entry | undefined) {
+        if (!entry) return null;
+        const media = entry.media;
+        const src =
+            media.kind !== "image"
+                ? ""
+                : media.encrypted
+                  ? (decryptedFull[entry.key] ??
+                    prefetchedFull[entry.key] ??
+                    "")
+                  : (mxcToHttp(media.url) ?? "");
+        return { src, ...viewerStandIn(entry) };
+    }
+
+    const viewerNeighbours =
+        viewerIndex === null
+            ? undefined
+            : {
+                  prev: neighbourOf(visual[viewerIndex - 1]),
+                  next: neighbourOf(visual[viewerIndex + 1]),
+              };
+
     function step(delta: number): void {
         if (viewerIndex === null) return;
         const next = viewerIndex + delta;
@@ -339,7 +468,7 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                 className="mt-1 max-w-full gap-1"
             >
                 {entries.length === 0 ? (
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("messageItem.galleryEmpty")}
                     </Text>
                 ) : null}
@@ -364,16 +493,7 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                         tile.height,
                                         devicePixelRatioOrOne(),
                                     );
-                                    const thumb = thumbFailed[entry.key]
-                                        ? null
-                                        : media.encrypted
-                                          ? (decryptedThumbs[entry.key] ?? null)
-                                          : mxcToHttp(
-                                                mediaThumbnailMxc(media),
-                                                box,
-                                                box,
-                                                "scale",
-                                            );
+                                    const thumb = thumbSrc(entry, box);
                                     const duration = formatMediaDuration(
                                         media.durationMs,
                                     );
@@ -390,7 +510,7 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                                     name: media.name,
                                                 },
                                             )}
-                                            className="relative shrink-0 overflow-hidden rounded-lg bg-discord-background hover:opacity-80 active:opacity-80 transition-opacity"
+                                            className="relative shrink-0 overflow-hidden rounded-lg bg-zam-background hover:opacity-80 active:opacity-80 transition-opacity"
                                             style={{
                                                 width: tile.width,
                                                 height: tile.height,
@@ -400,7 +520,7 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                                 <Image
                                                     source={mediaSource(thumb)}
                                                     accessible={false}
-                                                    className="w-full h-full bg-discord-backgroundTertiary"
+                                                    className="w-full h-full bg-zam-backgroundTertiary"
                                                     contentFit="contain"
                                                     onLoad={(e) =>
                                                         learnAspect(
@@ -417,11 +537,11 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                                     }
                                                 />
                                             ) : (
-                                                <View className="absolute inset-0 flex items-center justify-center bg-discord-backgroundTertiary">
+                                                <View className="absolute inset-0 flex items-center justify-center bg-zam-backgroundTertiary">
                                                     {media.kind === "video" ? (
-                                                        <Film className="w-6 h-6 text-discord-textMuted" />
+                                                        <Film className="w-6 h-6 text-zam-textMuted" />
                                                     ) : (
-                                                        <ImageIcon className="w-6 h-6 text-discord-textMuted" />
+                                                        <ImageIcon className="w-6 h-6 text-zam-textMuted" />
                                                     )}
                                                 </View>
                                             )}
@@ -461,22 +581,22 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                 <View
                                     key={entry.key}
                                     role="listitem"
-                                    className="flex-row items-center gap-2 p-2 rounded-lg bg-discord-backgroundSecondary max-w-sm min-w-0"
+                                    className="flex-row items-center gap-2 p-2 rounded-lg bg-zam-backgroundSecondary max-w-sm min-w-0"
                                 >
                                     {media.kind === "audio" ? (
-                                        <Music className="w-5 h-5 shrink-0 text-discord-textMuted" />
+                                        <Music className="w-5 h-5 shrink-0 text-zam-textMuted" />
                                     ) : (
-                                        <FileIcon className="w-5 h-5 shrink-0 text-discord-textMuted" />
+                                        <FileIcon className="w-5 h-5 shrink-0 text-zam-textMuted" />
                                     )}
                                     <View className="min-w-0 flex-1">
                                         <Text
                                             numberOfLines={1}
-                                            className="text-sm text-discord-textPrimary"
+                                            className="text-sm text-zam-textPrimary"
                                         >
                                             {media.name}
                                         </Text>
                                         {sizeLabel ? (
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {sizeLabel}
                                             </Text>
                                         ) : null}
@@ -490,9 +610,9 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                                                 name: media.name,
                                             },
                                         )}
-                                        className="shrink-0 p-1.5 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                        className="shrink-0 p-1.5 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                                     >
-                                        <Download className="w-4 h-4 text-discord-textMuted" />
+                                        <Download className="w-4 h-4 text-zam-textMuted" />
                                     </Pressable>
                                 </View>
                             );
@@ -554,6 +674,9 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                             visual.length,
                             viewerIndex ?? -1,
                         )}
+                        placeholders={viewerStandIn(viewerEntry).placeholders}
+                        dims={viewerStandIn(viewerEntry).dims}
+                        neighbours={viewerNeighbours}
                     />
                 ) : null
             ) : null}

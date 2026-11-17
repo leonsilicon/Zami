@@ -60,22 +60,22 @@ export default function GeneralSettings() {
             {isDesktopTray() ? (
                 <>
                     <View>
-                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                             {t("generalSettings.desktop")}
                         </Text>
                         {autostartInfo?.available ? (
-                            <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                            <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                                 <View className="flex-1 min-w-0">
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {t("generalSettings.runAtStartup")}
                                     </Text>
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t(
                                             "generalSettings.startZamWhenYouLogIn",
                                         )}
                                     </Text>
                                     {autostartFailed ? (
-                                        <Text className="text-xs text-discord-danger">
+                                        <Text className="text-xs text-zam-danger">
                                             {t(
                                                 "generalSettings.runAtStartupFailed",
                                             )}
@@ -91,12 +91,12 @@ export default function GeneralSettings() {
                                 />
                             </View>
                         ) : null}
-                        <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                        <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                             <View className="flex-1 min-w-0">
-                                <Text className="text-sm text-discord-textPrimary">
+                                <Text className="text-sm text-zam-textPrimary">
                                     {t("generalSettings.minimiseToTrayOnClose")}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "generalSettings.keepZamRunningInTheSystem",
                                     )}
@@ -116,7 +116,7 @@ export default function GeneralSettings() {
             {proxyBridge() ? (
                 <ProxySettings />
             ) : !isDesktopTray() ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("generalSettings.noGeneralSettingsAreAvailableOn")}
                 </Text>
             ) : null}
