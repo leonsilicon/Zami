@@ -18,10 +18,16 @@ import {
     useDebouncedValue,
     useThrottledRune,
 } from "@-/com.leonsilicon.zami.incremental/react";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { shallowEqual, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, ChevronRight, Circle, TriangleAlert } from "lucide-svelte";
+import {
+    ArrowLeft,
+    ChevronRight,
+    Circle,
+    TriangleAlert,
+    Smile,
+} from "lucide-svelte";
 import type { Room, RoomMember } from "matrix-js-sdk";
 import {
     useCallback,
@@ -78,6 +84,8 @@ import {
     setRoomTopic,
     setRoomAvatar,
     uploadContent,
+    canEditPowerLevelTags,
+    setRoomPowerLevelTags,
     getJoinRule,
     setJoinRule,
     getDirectParentSpaceIds,
@@ -118,6 +126,7 @@ import {
     getRoomsInSpace,
     getSpaceChildIds,
     type RoomNotificationSetting,
+    type CustomEmoji,
 } from "$lib/matrix/client";
 import {
     getRestrictedJoinState,
@@ -185,7 +194,20 @@ import {
 } from "$lib/stores/ignoredUsers.svelte";
 import { mapWithConcurrency } from "$lib/utils/async";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
-import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import {
+    safeTagColor,
+    sortedTagLevels,
+    tagForPowerLevel,
+    type PowerLevelTag,
+    type PowerLevelTags,
+} from "$lib/utils/powerLevelTags";
 
 interface Props {
     room: Room;
@@ -449,6 +471,15 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // rather than per sync. A quiet spell's first tick (a save echoing back)
     // re-renders at once.
     const roomsTick = useThrottledRune(() => roomsState.roomsTick, 500);
+    // Zami: the room's effective tags (upstream reads effectiveRoomTags in
+    // plLabel, roleSelectOptions and the reseed effect), read once here.
+    const roomTags = useRune(
+        () => effectiveRoomTags(room.roomId),
+        [room.roomId],
+        {
+            isEqual: shallowEqual,
+        },
+    );
     const myPowerLevel = getMyPowerLevel(room);
     // Rank decides who may act on whom (creators outrank admins); the level is
     // still the ceiling for hand-typed levels.
@@ -1356,11 +1387,232 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         }
     }
 
+    // The name of the room's tag covering `level` (its own tags, or the
+    // defaults).
     function plLabel(level: number): string {
+        const resolved = tagForPowerLevel(roomTags.tags, level);
+        if (resolved) return resolved.tag.name;
         if (level < 0) return t("roomSettings.muted");
-        if (level >= 100) return t("roomSettings.admin");
-        if (level >= 50) return t("roomSettings.moderator");
         return t("roomSettings.member");
+    }
+
+    // ── Role tags editor (MSC3949) ─────────────────────────────────────────────
+    interface RoleTagRow {
+        key: number;
+        level: string;
+        name: string;
+        color: string;
+        icon: string;
+        iconInfo?: Record<string, unknown>;
+    }
+    const roleTagSeq = useRef(0);
+    const [roleTagRows, setRoleTagRows] = useState<RoleTagRow[]>([]);
+    const [roleTagsDirty, setRoleTagsDirty] = useState(false);
+    const [roleTagsSaving, setRoleTagsSaving] = useState(false);
+    const [roleTagsUsingDefaults, setRoleTagsUsingDefaults] = useState(false);
+    const [roleTagIconBusy, setRoleTagIconBusy] = useState<number | null>(null);
+    const canEditTags = (void roomsTick, canEditPowerLevelTags(room.roomId));
+
+    function roleTagRowFromTag(level: number, tag: PowerLevelTag): RoleTagRow {
+        return {
+            key: ++roleTagSeq.current,
+            level: String(level),
+            name: tag.name,
+            color: tag.color ?? "",
+            icon: tag.icon?.key ?? "",
+            iconInfo: tag.icon?.info,
+        };
+    }
+
+    // Replace the editor rows with the room's current tags (or the defaults).
+    // Zami: an effect event, so it reads the latest tags without being a
+    // dependency of the effects that call it.
+    const seedRoleTagRows = useEffectEvent((): void => {
+        const info = effectiveRoomTags(room.roomId);
+        setRoleTagRows(
+            sortedTagLevels(info.tags).map((level) =>
+                roleTagRowFromTag(level, info.tags[level]),
+            ),
+        );
+        setRoleTagsUsingDefaults(!info.custom);
+        setRoleTagsDirty(false);
+    });
+
+    // Reseed on room switch; reseed on tag changes only while the editor has
+    // no unsaved edits, so an incoming change never discards typing.
+    useEffect(() => {
+        void room.roomId;
+        seedRoleTagRows();
+    }, [room.roomId]);
+    useEffect(() => {
+        const release = acquirePowerLevelTags(room.roomId);
+        return release;
+    }, [room.roomId]);
+    const reseedRoleTagsIfClean = useEffectEvent(() => {
+        if (!roleTagsDirty) seedRoleTagRows();
+    });
+    useEffect(() => {
+        void roomTags;
+        reseedRoleTagsIfClean();
+    }, [roomTags]);
+
+    // Options for a member's role select: the room's tag levels the actor may
+    // grant (at or below their own level), plus Muted (-1). A current level
+    // no tag covers is still listed, so the select never shows a wrong value.
+    function roleSelectOptions(
+        myLevel: number,
+        currentLevel: number,
+    ): { level: number; label: string }[] {
+        const tags = roomTags.tags;
+        const levels = new Set<number>();
+        for (const level of sortedTagLevels(tags)) {
+            if (level <= myLevel) levels.add(level);
+        }
+        levels.add(-1);
+        levels.add(currentLevel);
+        return [...levels]
+            .sort((a, b) => b - a)
+            .map((level) => {
+                const tag = tags[level];
+                if (tag) {
+                    return { level, label: `${tag.name} (${level})` };
+                }
+                if (level === -1) {
+                    return { level, label: t("roomSettings.muted1") };
+                }
+                return {
+                    level,
+                    label: t("roomSettings.customLevel", { level }),
+                };
+            });
+    }
+
+    function updateRoleTag(key: number, patch: Partial<RoleTagRow>): void {
+        setRoleTagRows((rows) =>
+            rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+        );
+        setRoleTagsDirty(true);
+    }
+
+    function addRoleTag(): void {
+        const used = new Set(roleTagRows.map((r) => Number(r.level)));
+        let level = 0;
+        while (used.has(level)) level++;
+        setRoleTagRows([
+            ...roleTagRows,
+            {
+                key: ++roleTagSeq.current,
+                level: String(level),
+                name: "",
+                color: "",
+                icon: "",
+            },
+        ]);
+        setRoleTagsDirty(true);
+    }
+
+    function removeRoleTag(key: number): void {
+        setRoleTagRows((rows) => rows.filter((r) => r.key !== key));
+        setRoleTagsDirty(true);
+    }
+
+    // Emoji picker for a row's icon. One open at a time: `roleTagPickerKey` is
+    // the row it is showing for, or null. It is a local popover rather than
+    // an interfaceState modal, because the settings dialog already holds the
+    // modal slot and opening another modal would close it.
+    // Zami: it opens over the app as a sheet through Portal (as
+    // ProfileFieldsEditor's status emoji picker does) rather than as a popover
+    // placed under the button, and a press outside it closes it; so there is no
+    // placement to compute and nothing to close on scroll or resize.
+    const [roleTagPickerKey, setRoleTagPickerKey] = useState<number | null>(
+        null,
+    );
+
+    function toggleRoleTagPicker(row: RoleTagRow): void {
+        setRoleTagPickerKey(roleTagPickerKey === row.key ? null : row.key);
+    }
+
+    function pickRoleTagEmoji(key: number, emoji: string): void {
+        updateRoleTag(key, { icon: emoji, iconInfo: undefined });
+        setRoleTagPickerKey(null);
+    }
+
+    function pickRoleTagCustomEmoji(key: number, emoji: CustomEmoji): void {
+        updateRoleTag(key, { icon: emoji.mxcUrl, iconInfo: emoji.info });
+        setRoleTagPickerKey(null);
+    }
+
+    // Zami: <input type="file" accept="image/*"> → expo-image-picker's photo
+    // library, and the picked image as the input's `File`.
+    async function handleRoleTagIconUpload(row: RoleTagRow): Promise<void> {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            quality: 1,
+        });
+        const asset = result.canceled ? undefined : result.assets[0];
+        if (!asset) return;
+        setRoleTagIconBusy(row.key);
+        try {
+            const file = await pickedFile(asset);
+            const mxcUrl = await uploadContent(file);
+            updateRoleTag(row.key, {
+                icon: mxcUrl,
+                iconInfo: file.type
+                    ? { mimetype: file.type, size: file.size }
+                    : { size: file.size },
+            });
+        } catch (err: any) {
+            showErrorToast(err?.message ?? t("roomSettings.uploadFailed"));
+        } finally {
+            setRoleTagIconBusy(null);
+        }
+    }
+
+    async function saveRoleTags(): Promise<void> {
+        const tags: PowerLevelTags = {};
+        for (const row of roleTagRows) {
+            const levelText = row.level.trim();
+            const level = Number(levelText);
+            if (levelText === "" || !Number.isSafeInteger(level)) {
+                showErrorToast(t("roomSettings.roleTagLevelInvalid"));
+                return;
+            }
+            const name = row.name.trim();
+            if (name === "") {
+                showErrorToast(t("roomSettings.roleTagNameRequired"));
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(tags, level)) {
+                showErrorToast(
+                    t("roomSettings.roleTagDuplicateLevel", { level }),
+                );
+                return;
+            }
+            const tag: PowerLevelTag = { name };
+            const color = safeTagColor(row.color);
+            if (color !== undefined) tag.color = color;
+            const iconKey = row.icon.trim();
+            if (iconKey !== "") {
+                tag.icon = row.iconInfo
+                    ? { key: iconKey, info: row.iconInfo }
+                    : { key: iconKey };
+            }
+            tags[level] = tag;
+        }
+        setRoleTagsSaving(true);
+        try {
+            await setRoomPowerLevelTags(room.roomId, tags);
+            setRoleTagsDirty(false);
+            showToast(t("roomSettings.roleTagsSaved"));
+        } catch (err: any) {
+            showErrorToast(
+                t("roomSettings.roleTagsSaveFailed", {
+                    error: err?.message ?? String(err),
+                }),
+            );
+        } finally {
+            setRoleTagsSaving(false);
+        }
     }
 
     // ── Rooms tab (spaces only) ────────────────────────────────────────────────
@@ -1716,63 +1968,26 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 (myPowerLevel >= 100 ||
                                     myPowerRank > memberRank) && (
                                     <>
-                                        {/* Zami: the `<select>` keeps showing
-                                            "Set role", as the DOM's does until a
-                                            pick; picking that placeholder is no
-                                            change, so it fires nothing. */}
                                         <Select
-                                            value=""
-                                            onChange={(value) => {
-                                                if (value === "") return;
-                                                void doSetPowerLevel(
-                                                    member,
-                                                    Number(value),
-                                                );
-                                            }}
-                                            disabled={pending}
                                             accessibilityLabel={t(
                                                 "roomSettings.setRole",
                                             )}
-                                            options={[
-                                                {
-                                                    value: "",
-                                                    label: t(
-                                                        "roomSettings.setRole",
-                                                    ),
-                                                },
-                                                ...(myPowerLevel >= 100
-                                                    ? [
-                                                          {
-                                                              value: "100",
-                                                              label: t(
-                                                                  "roomSettings.admin100",
-                                                              ),
-                                                          },
-                                                      ]
-                                                    : []),
-                                                ...(myPowerLevel >= 50
-                                                    ? [
-                                                          {
-                                                              value: "50",
-                                                              label: t(
-                                                                  "roomSettings.moderator50",
-                                                              ),
-                                                          },
-                                                      ]
-                                                    : []),
-                                                {
-                                                    value: "0",
-                                                    label: t(
-                                                        "roomSettings.member0",
-                                                    ),
-                                                },
-                                                {
-                                                    value: "-1",
-                                                    label: t(
-                                                        "roomSettings.muted1",
-                                                    ),
-                                                },
-                                            ]}
+                                            value={String(memberPl)}
+                                            onChange={(value) =>
+                                                void doSetPowerLevel(
+                                                    member,
+                                                    Number(value),
+                                                )
+                                            }
+                                            disabled={pending}
+                                            options={roleSelectOptions(
+                                                myPowerLevel,
+                                                memberPl,
+                                            ).map((opt) => ({
+                                                value: String(opt.level),
+                                                label: opt.label,
+                                                key: String(opt.level),
+                                            }))}
                                             className="w-36 px-2 py-1 rounded bg-zam-backgroundSecondary border border-zam-divider disabled:opacity-50"
                                         />
                                         <TextInput
@@ -3602,80 +3817,126 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         </View>
                                     ) : /* ── Permissions ─────────────────────────────────────── */
                                     activeTab === "permissions" ? (
-                                        <View className="gap-4">
-                                            <Text className="text-xs text-zam-textMuted">
-                                                {t(
-                                                    "roomSettings.powerLevelRequiredForEachAction",
-                                                )}
-                                            </Text>
-                                            {!stateLoaded ? (
-                                                stateLoading()
-                                            ) : (
-                                                <>
-                                                    {[
-                                                        [
-                                                            "Send messages",
-                                                            "plEventsDefault",
-                                                        ],
-                                                        [
-                                                            "Change room settings",
-                                                            "plStateDefault",
-                                                        ],
-                                                        [
-                                                            "Default member level",
-                                                            "plUsersDefault",
-                                                        ],
-                                                        [
-                                                            "Invite members",
-                                                            "plInvite",
-                                                        ],
-                                                        [
-                                                            "Kick members",
-                                                            "plKick",
-                                                        ],
-                                                        [
-                                                            "Ban members",
-                                                            "plBan",
-                                                        ],
-                                                        [
-                                                            "Redact messages",
-                                                            "plRedact",
-                                                        ],
-                                                        ...(isSpace
-                                                            ? []
-                                                            : [
-                                                                  [
-                                                                      t(
-                                                                          "roomSettings.nameAnyThread",
-                                                                      ),
-                                                                      "plThreadName",
-                                                                  ],
-                                                              ]),
-                                                    ].map(([label, key]) => (
-                                                        <View
-                                                            key={key}
-                                                            className="flex-row items-center justify-between gap-4"
-                                                        >
+                                        <>
+                                            <View className="gap-4">
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {t(
+                                                        "roomSettings.powerLevelRequiredForEachAction",
+                                                    )}
+                                                </Text>
+                                                {!stateLoaded ? (
+                                                    stateLoading()
+                                                ) : (
+                                                    <>
+                                                        {[
+                                                            [
+                                                                "Send messages",
+                                                                "plEventsDefault",
+                                                            ],
+                                                            [
+                                                                "Change room settings",
+                                                                "plStateDefault",
+                                                            ],
+                                                            [
+                                                                "Default member level",
+                                                                "plUsersDefault",
+                                                            ],
+                                                            [
+                                                                "Invite members",
+                                                                "plInvite",
+                                                            ],
+                                                            [
+                                                                "Kick members",
+                                                                "plKick",
+                                                            ],
+                                                            [
+                                                                "Ban members",
+                                                                "plBan",
+                                                            ],
+                                                            [
+                                                                "Redact messages",
+                                                                "plRedact",
+                                                            ],
+                                                            ...(isSpace
+                                                                ? []
+                                                                : [
+                                                                      [
+                                                                          t(
+                                                                              "roomSettings.nameAnyThread",
+                                                                          ),
+                                                                          "plThreadName",
+                                                                      ],
+                                                                  ]),
+                                                        ].map(
+                                                            ([label, key]) => (
+                                                                <View
+                                                                    key={key}
+                                                                    className="flex-row items-center justify-between gap-4"
+                                                                >
+                                                                    <Text className="shrink text-sm text-zam-textPrimary">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <View className="flex-row items-center gap-2">
+                                                                        <TextInput
+                                                                            keyboardType="number-pad"
+                                                                            accessibilityLabel={
+                                                                                label
+                                                                            }
+                                                                            value={String(
+                                                                                bindings[
+                                                                                    key
+                                                                                ],
+                                                                            )}
+                                                                            onChangeText={(
+                                                                                value,
+                                                                            ) =>
+                                                                                setters[
+                                                                                    key
+                                                                                ](
+                                                                                    Number(
+                                                                                        value,
+                                                                                    ),
+                                                                                )
+                                                                            }
+                                                                            editable={
+                                                                                canEditState
+                                                                            }
+                                                                            className="w-16 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
+                                                                        />
+                                                                        <Text className="text-xs text-zam-textMuted w-16">
+                                                                            {plLabel(
+                                                                                bindings[
+                                                                                    key
+                                                                                ],
+                                                                            )}
+                                                                        </Text>
+                                                                    </View>
+                                                                </View>
+                                                            ),
+                                                        )}
+
+                                                        {/* Call-join lives in the events map (3 call-member
+                                                        types), not a top-level PL field, so it sits outside
+                                                        the scalar loop above and binds to plCallJoin. */}
+                                                        <View className="flex-row items-center justify-between gap-4">
                                                             <Text className="shrink text-sm text-zam-textPrimary">
-                                                                {label}
+                                                                {t(
+                                                                    "roomSettings.joinCallsVoiceVideo",
+                                                                )}
                                                             </Text>
                                                             <View className="flex-row items-center gap-2">
                                                                 <TextInput
                                                                     keyboardType="number-pad"
-                                                                    accessibilityLabel={
-                                                                        label
-                                                                    }
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.joinCallsVoiceVideo",
+                                                                    )}
                                                                     value={String(
-                                                                        bindings[
-                                                                            key
-                                                                        ],
+                                                                        plCallJoin,
                                                                     )}
                                                                     onChangeText={(
                                                                         value,
                                                                     ) =>
-                                                                        setters[
-                                                                            key
-                                                                        ](
+                                                                        setPlCallJoin(
                                                                             Number(
                                                                                 value,
                                                                             ),
@@ -3688,89 +3949,464 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 />
                                                                 <Text className="text-xs text-zam-textMuted w-16">
                                                                     {plLabel(
-                                                                        bindings[
-                                                                            key
-                                                                        ],
+                                                                        plCallJoin,
                                                                     )}
                                                                 </Text>
                                                             </View>
                                                         </View>
-                                                    ))}
 
-                                                    {/* Call-join lives in the events map (3 call-member
-                                                        types), not a top-level PL field, so it sits outside
-                                                        the scalar loop above and binds to plCallJoin. */}
-                                                    <View className="flex-row items-center justify-between gap-4">
-                                                        <Text className="shrink text-sm text-zam-textPrimary">
+                                                        {permError ? (
+                                                            <Text className="text-sm text-zam-danger">
+                                                                {permError}
+                                                            </Text>
+                                                        ) : null}
+                                                        {canEditState && (
+                                                            <Pressable
+                                                                accessibilityRole="button"
+                                                                onPress={() =>
+                                                                    void savePermissions()
+                                                                }
+                                                                disabled={
+                                                                    permSaving
+                                                                }
+                                                                className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Text className="text-white font-medium text-sm">
+                                                                    {permSaving
+                                                                        ? t(
+                                                                              "common.saving",
+                                                                          )
+                                                                        : permSuccess
+                                                                          ? t(
+                                                                                "roomSettings.saved",
+                                                                            )
+                                                                          : t(
+                                                                                "roomSettings.saveChanges",
+                                                                            )}
+                                                                </Text>
+                                                            </Pressable>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </View>
+
+                                            {/* ── Role tags (MSC3949) ─────────────────────────────── */}
+                                            <View className="gap-3 mt-6 pt-6 border-t border-zam-divider">
+                                                <View className="gap-1">
+                                                    <Text
+                                                        role="heading"
+                                                        className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
+                                                    >
+                                                        {t(
+                                                            "roomSettings.roleTags",
+                                                        )}
+                                                    </Text>
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "roomSettings.roleTagsHint",
+                                                        )}
+                                                    </Text>
+                                                    {roleTagsUsingDefaults && (
+                                                        <Text className="text-xs text-zam-textMuted italic">
                                                             {t(
-                                                                "roomSettings.joinCallsVoiceVideo",
+                                                                "roomSettings.roleTagsUsingDefaults",
                                                             )}
                                                         </Text>
-                                                        <View className="flex-row items-center gap-2">
+                                                    )}
+                                                </View>
+
+                                                {roleTagRows.map((row) => {
+                                                    const imageIcon =
+                                                        row.icon.startsWith(
+                                                            "mxc://",
+                                                        );
+                                                    const swatch = safeTagColor(
+                                                        row.color,
+                                                    );
+                                                    return (
+                                                        <View
+                                                            key={row.key}
+                                                            className="flex-row flex-wrap items-center gap-2 p-2 rounded bg-zam-backgroundTertiary"
+                                                        >
                                                             <TextInput
-                                                                keyboardType="number-pad"
+                                                                keyboardType="numbers-and-punctuation"
                                                                 accessibilityLabel={t(
-                                                                    "roomSettings.joinCallsVoiceVideo",
+                                                                    "roomSettings.roleTagLevel",
                                                                 )}
-                                                                value={String(
-                                                                    plCallJoin,
-                                                                )}
+                                                                value={
+                                                                    row.level
+                                                                }
                                                                 onChangeText={(
                                                                     value,
                                                                 ) =>
-                                                                    setPlCallJoin(
-                                                                        Number(
-                                                                            value,
-                                                                        ),
+                                                                    updateRoleTag(
+                                                                        row.key,
+                                                                        {
+                                                                            level: value,
+                                                                        },
                                                                     )
                                                                 }
                                                                 editable={
-                                                                    canEditState
+                                                                    canEditTags &&
+                                                                    !roleTagsSaving
                                                                 }
-                                                                className="w-16 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
+                                                                className="w-16 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
                                                             />
-                                                            <Text className="text-xs text-zam-textMuted w-16">
-                                                                {plLabel(
-                                                                    plCallJoin,
+                                                            <TextInput
+                                                                maxLength={64}
+                                                                placeholder={t(
+                                                                    "roomSettings.roleTagName",
+                                                                )}
+                                                                placeholderTextColorClassName="accent-zam-textMuted"
+                                                                accessibilityLabel={t(
+                                                                    "roomSettings.roleTagName",
+                                                                )}
+                                                                value={row.name}
+                                                                onChangeText={(
+                                                                    value,
+                                                                ) =>
+                                                                    updateRoleTag(
+                                                                        row.key,
+                                                                        {
+                                                                            name: value,
+                                                                        },
+                                                                    )
+                                                                }
+                                                                editable={
+                                                                    canEditTags &&
+                                                                    !roleTagsSaving
+                                                                }
+                                                                className="flex-1 min-w-[8rem] bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                            />
+                                                            {/* Zami: React Native has no
+                                                            <input type="color">: a swatch
+                                                            shows the colour and its hex
+                                                            code is typed (an invalid one
+                                                            is dropped on save, as
+                                                            safeTagColor drops it). */}
+                                                            {/* Zami: not ported: a visual colour picker. */}
+                                                            <View className="flex-row items-center gap-1">
+                                                                <View
+                                                                    className="w-9 h-8 rounded border border-zam-divider"
+                                                                    style={{
+                                                                        backgroundColor:
+                                                                            swatch ??
+                                                                            "#808080",
+                                                                    }}
+                                                                />
+                                                                <TextInput
+                                                                    maxLength={
+                                                                        7
+                                                                    }
+                                                                    autoCapitalize="none"
+                                                                    autoCorrect={
+                                                                        false
+                                                                    }
+                                                                    placeholder="#808080"
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagColor",
+                                                                    )}
+                                                                    value={
+                                                                        row.color
+                                                                    }
+                                                                    onChangeText={(
+                                                                        value,
+                                                                    ) =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                color: value,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    editable={
+                                                                        canEditTags &&
+                                                                        !roleTagsSaving
+                                                                    }
+                                                                    className="w-20 bg-zam-backgroundSecondary text-zam-textPrimary text-xs font-mono rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                                />
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                color: "",
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        !row.color ||
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <Text className="text-xs text-zam-textMuted">
+                                                                        {t(
+                                                                            "roomSettings.roleTagClearColor",
+                                                                        )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                            </View>
+                                                            <View className="flex-row items-center gap-1">
+                                                                {row.icon ? (
+                                                                    <PowerLevelTagBadge
+                                                                        tag={{
+                                                                            name:
+                                                                                row.name ||
+                                                                                "?",
+                                                                            icon: {
+                                                                                key: row.icon,
+                                                                                info: row.iconInfo,
+                                                                            },
+                                                                        }}
+                                                                        showName={
+                                                                            false
+                                                                        }
+                                                                        size="md"
+                                                                    />
+                                                                ) : null}
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        toggleRoleTagPicker(
+                                                                            row,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagPickEmoji",
+                                                                    )}
+                                                                    accessibilityState={{
+                                                                        expanded:
+                                                                            roleTagPickerKey ===
+                                                                            row.key,
+                                                                    }}
+                                                                    className="px-2 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <Smile
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                        className="text-zam-textPrimary"
+                                                                    />
+                                                                </Pressable>
+                                                                <TextInput
+                                                                    maxLength={
+                                                                        256
+                                                                    }
+                                                                    placeholder={t(
+                                                                        "roomSettings.roleTagIcon",
+                                                                    )}
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagIcon",
+                                                                    )}
+                                                                    value={
+                                                                        imageIcon
+                                                                            ? ""
+                                                                            : row.icon
+                                                                    }
+                                                                    onChangeText={(
+                                                                        value,
+                                                                    ) =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                icon: value,
+                                                                                iconInfo:
+                                                                                    undefined,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    editable={
+                                                                        canEditTags &&
+                                                                        !roleTagsSaving &&
+                                                                        !imageIcon
+                                                                    }
+                                                                    className="w-28 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                                />
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        void handleRoleTagIconUpload(
+                                                                            row,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        roleTagsSaving ||
+                                                                        roleTagIconBusy !==
+                                                                            null
+                                                                    }
+                                                                    className="px-2 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <Text className="text-xs text-zam-textPrimary">
+                                                                        {roleTagIconBusy ===
+                                                                        row.key
+                                                                            ? t(
+                                                                                  "common.uploading",
+                                                                              )
+                                                                            : t(
+                                                                                  "roomSettings.roleTagUploadIcon",
+                                                                              )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                                {row.icon ? (
+                                                                    <Pressable
+                                                                        accessibilityRole="button"
+                                                                        onPress={() =>
+                                                                            updateRoleTag(
+                                                                                row.key,
+                                                                                {
+                                                                                    icon: "",
+                                                                                    iconInfo:
+                                                                                        undefined,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            !canEditTags ||
+                                                                            roleTagsSaving
+                                                                        }
+                                                                        className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                    >
+                                                                        <Text className="text-xs text-zam-textMuted">
+                                                                            {t(
+                                                                                "roomSettings.roleTagRemoveIcon",
+                                                                            )}
+                                                                        </Text>
+                                                                    </Pressable>
+                                                                ) : null}
+                                                            </View>
+                                                            {canEditTags && (
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        removeRoleTag(
+                                                                            row.key,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    className="ms-auto px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <Text className="text-xs text-zam-danger">
+                                                                        {t(
+                                                                            "roomSettings.removeRoleTag",
+                                                                        )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                            )}
+                                                        </View>
+                                                    );
+                                                })}
+
+                                                {canEditTags && (
+                                                    <View className="flex-row flex-wrap items-center gap-2">
+                                                        <Pressable
+                                                            accessibilityRole="button"
+                                                            onPress={addRoleTag}
+                                                            disabled={
+                                                                roleTagsSaving
+                                                            }
+                                                            className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                        >
+                                                            <Text className="text-sm font-medium text-zam-textPrimary">
+                                                                {t(
+                                                                    "roomSettings.addRoleTag",
                                                                 )}
                                                             </Text>
-                                                        </View>
-                                                    </View>
-
-                                                    {permError ? (
-                                                        <Text className="text-sm text-zam-danger">
-                                                            {permError}
-                                                        </Text>
-                                                    ) : null}
-                                                    {canEditState && (
+                                                        </Pressable>
                                                         <Pressable
                                                             accessibilityRole="button"
                                                             onPress={() =>
-                                                                void savePermissions()
+                                                                void saveRoleTags()
                                                             }
                                                             disabled={
-                                                                permSaving
+                                                                roleTagsSaving
                                                             }
-                                                            className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
+                                                            className="px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                         >
                                                             <Text className="text-white font-medium text-sm">
-                                                                {permSaving
+                                                                {roleTagsSaving
                                                                     ? t(
                                                                           "common.saving",
                                                                       )
-                                                                    : permSuccess
-                                                                      ? t(
-                                                                            "roomSettings.saved",
-                                                                        )
-                                                                      : t(
-                                                                            "roomSettings.saveChanges",
-                                                                        )}
+                                                                    : t(
+                                                                          "roomSettings.saveRoleTags",
+                                                                      )}
                                                             </Text>
                                                         </Pressable>
-                                                    )}
-                                                </>
-                                            )}
-                                        </View>
+                                                    </View>
+                                                )}
+
+                                                {/* Zami: the picker is a list, which
+                                                can't sit inline in the settings'
+                                                scroll view: it opens over the app
+                                                as a sheet, and a press outside it
+                                                closes it (upstream's outside
+                                                click). */}
+                                                {roleTagPickerKey !== null && (
+                                                    <Portal>
+                                                        <View
+                                                            className="absolute inset-0"
+                                                            pointerEvents="box-none"
+                                                        >
+                                                            <Pressable
+                                                                accessibilityRole="button"
+                                                                accessibilityLabel={t(
+                                                                    "common.close",
+                                                                )}
+                                                                className="absolute inset-0 z-40"
+                                                                onPress={() =>
+                                                                    setRoleTagPickerKey(
+                                                                        null,
+                                                                    )
+                                                                }
+                                                            />
+                                                            <View
+                                                                className="absolute start-0 end-0 z-50"
+                                                                style={{
+                                                                    bottom: insets.bottom,
+                                                                }}
+                                                            >
+                                                                <EmojiPicker
+                                                                    room={room}
+                                                                    onSelect={(
+                                                                        emoji,
+                                                                    ) =>
+                                                                        pickRoleTagEmoji(
+                                                                            roleTagPickerKey,
+                                                                            emoji,
+                                                                        )
+                                                                    }
+                                                                    onSelectCustom={(
+                                                                        emoji,
+                                                                    ) =>
+                                                                        pickRoleTagCustomEmoji(
+                                                                            roleTagPickerKey,
+                                                                            emoji,
+                                                                        )
+                                                                    }
+                                                                    onClose={() =>
+                                                                        setRoleTagPickerKey(
+                                                                            null,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </View>
+                                                        </View>
+                                                    </Portal>
+                                                )}
+                                            </View>
+                                        </>
                                     ) : /* ── Members ─────────────────────────────────────────── */
                                     activeTab === "members" ? (
                                         // The list itself is the FlatList above.

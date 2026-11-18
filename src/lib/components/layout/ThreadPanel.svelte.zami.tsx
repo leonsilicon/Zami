@@ -34,6 +34,7 @@ import type { Room, MatrixEvent } from "matrix-js-sdk";
 import MessageItem from "$lib/components/messages/MessageItem.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { sedEditLastMessage } from "$lib/matrix/editMessage";
+import { lastEditableOwnMessage } from "$lib/utils/editableMessage";
 import {
     getThreadMessages,
     paginateThreadBack,
@@ -95,6 +96,8 @@ export default function ThreadPanel({
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreOlder, setNoMoreOlder] = useState(false);
     const [replyToEvent, setReplyToEvent] = useState<MatrixEvent | null>(null);
+    // The message being edited in this thread's composer (edit mode).
+    const [editEvent, setEditEvent] = useState<MatrixEvent | null>(null);
     const messageInputEl = useRef<MessageInputHandle>(null);
     // Plain (non-reactive) scroll bookkeeping for the auto-scroll effect below.
     const atBottom = useRef(true);
@@ -225,6 +228,7 @@ export default function ThreadPanel({
         setNoMoreOlder(false);
         setLoadingOlder(false);
         setReplyToEvent(null);
+        setEditEvent(null);
         atBottom.current = true;
         lastLatestId.current = null;
     }, [rootEventId]);
@@ -307,6 +311,8 @@ export default function ThreadPanel({
         setReplyToEvent(e);
         messageInputEl.current?.focus();
     }, []);
+    const onStartEdit = useCallback((ev: MatrixEvent) => setEditEvent(ev), []);
+    const editEventId = editEvent?.getId() ?? null;
 
     // Zami: stable while what it reads is, so a render of the panel doesn't
     // re-render every reply; each is a memo'd ReplyRow (B7).
@@ -325,12 +331,24 @@ export default function ThreadPanel({
                             ? highlight.n
                             : 0
                     }
+                    onStartEdit={onStartEdit}
+                    isBeingEdited={
+                        !!editEventId && editEventId === event.getId()
+                    }
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                 />
             );
         },
-        [messages, room, highlight, onReply, jumpToReply],
+        [
+            messages,
+            room,
+            highlight,
+            onStartEdit,
+            editEventId,
+            onReply,
+            jumpToReply,
+        ],
     );
 
     const titleLabel = threadName
@@ -416,6 +434,11 @@ export default function ThreadPanel({
                             event={rootEvent}
                             room={room}
                             showHeader={true}
+                            onStartEdit={onStartEdit}
+                            isBeingEdited={
+                                !!editEventId &&
+                                editEventId === rootEvent.getId()
+                            }
                             onReply={onReply}
                             jumpToReply={jumpToReply}
                         />
@@ -487,6 +510,17 @@ export default function ThreadPanel({
                         room={room}
                         threadRootId={rootEventId}
                         replyToEvent={replyToEvent}
+                        editEvent={editEvent}
+                        onCancelEdit={() => {
+                            setEditEvent(null);
+                        }}
+                        onRequestEditLast={() => {
+                            const last = lastEditableOwnMessage(
+                                messages,
+                                auth.userId,
+                            );
+                            if (last) setEditEvent(last);
+                        }}
                         onCancelReply={() => {
                             setReplyToEvent(null);
                         }}
@@ -522,6 +556,8 @@ interface ReplyRowProps {
     index: number;
     showHeader: boolean;
     highlightN: number;
+    onStartEdit: (event: MatrixEvent) => void;
+    isBeingEdited: boolean;
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
 }
@@ -538,6 +574,8 @@ const ReplyRow = memo(function ReplyRow({
     index: i,
     showHeader,
     highlightN,
+    onStartEdit,
+    isBeingEdited,
     onReply,
     jumpToReply,
 }: ReplyRowProps) {
@@ -551,6 +589,8 @@ const ReplyRow = memo(function ReplyRow({
                 showHeader={showHeader}
                 timelineEvents={messages}
                 timelineIndex={i}
+                onStartEdit={onStartEdit}
+                isBeingEdited={isBeingEdited}
                 onReply={onReply}
                 jumpToReply={jumpToReply}
             />
