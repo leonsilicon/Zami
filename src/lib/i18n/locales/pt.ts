@@ -171,6 +171,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Alinhar minhas mensagens à direita (layout de balões)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Exibe suas próprias mensagens à direita, em um balão colorido",
+    "appearanceSettings.bubbleAllMessages": "Balões para todas as mensagens",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Mostrar as mensagens de todos em balões, não só as suas",
     "appearanceSettings.showNameColours": "Mostrar cores dos nomes",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Exibe o nome das pessoas na cor que elas escolheram no perfil. Desative para usar a cor de texto normal para todos.",
@@ -303,6 +306,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "Ensurdecer",
     "callView.disconnect": "Desconectar",
     "callView.joinCall": "Entrar na chamada",
+    "callView.muteShareAudio": "Silenciar áudio compartilhado",
+    "callView.unmuteShareAudio": "Reativar áudio compartilhado",
     "callView.you": "Você",
     "callView.sScreen": "Tela de {name}",
     "callView.exitSpotlightFor": "Sair do destaque de {label}",
@@ -1338,6 +1343,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Administradores: {length}",
     "memberList.admin": "Administrador",
     "memberList.moderators": "Moderadores: {length}",
+    "memberList.defaultRoleMember": "Membro",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} esta mensagem?",
@@ -1368,6 +1375,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "Este é o início da sala #",
     "messageArea.loadingHistory": "Carregando mensagens mais antigas",
     "messageArea.room": ".",
+    "messageArea.dmStart":
+        "Este é o início do seu histórico de mensagens diretas com {name}.",
     "messageArea.newMessages": "Novas mensagens",
     "messageArea.unreadSince":
         "{count, plural, one {# nova mensagem desde {since}} other {# novas mensagens desde {since}}}",
@@ -1397,6 +1406,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "Não avisar o autor",
     "messageInput.replyingTo": "Respondendo a {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancelar resposta (Esc)",
+    "messageInput.editingMessage": "Editando mensagem",
+    "messageInput.cancelEditEsc": "Cancelar edição (Esc)",
+    "messageInput.editFailed": "Não foi possível salvar a edição",
     "messageInput.editAttachment": "Editar anexo",
     "messageInput.editAttachment2": "Editar anexo {name}",
     "messageInput.custom": "personalizado",
@@ -1487,8 +1499,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} de {total}",
     "messageItem.fileAttachment": "Anexo de arquivo",
     "messageItem.download": "Baixar",
-    "messageItem.toSave": "para salvar ·",
-    "messageItem.toCancel": "para cancelar",
     "messageItem.openThread": "Abrir tópico",
     "messageItem.failedToSend": "Falha ao enviar.",
     "messageItem.retrying": "Tentando novamente…",
@@ -2275,6 +2285,31 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Administrador (100)",
     "roomSettings.moderator50": "Moderador (50)",
     "roomSettings.member0": "Membro (0)",
+    "roomSettings.roleTags": "Tags de função",
+    "roomSettings.roleTagsHint":
+        "Nome, cor e ícone exibidos para cada nível de permissão (MSC3949). Níveis sem tag usam o inferior mais próximo.",
+    "roomSettings.roleTagLevel": "Nível de permissão",
+    "roomSettings.roleTagName": "Nome",
+    "roomSettings.roleTagColor": "Cor",
+    "roomSettings.roleTagIcon": "Ícone (emoji)",
+    "roomSettings.roleTagPickEmoji": "Escolher emoji",
+    "roomSettings.roleTagUploadIcon": "Enviar imagem",
+    "roomSettings.roleTagRemoveIcon": "Remover ícone",
+    "roomSettings.addRoleTag": "Adicionar tag",
+    "roomSettings.removeRoleTag": "Remover tag",
+    "roomSettings.saveRoleTags": "Salvar tags",
+    "roomSettings.roleTagsSaved": "Tags de função salvas",
+    "roomSettings.roleTagsSaveFailed":
+        "Não foi possível salvar as tags de função: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Duas tags usam o nível de permissão {level}",
+    "roomSettings.roleTagNameRequired": "Cada tag precisa de um nome",
+    "roomSettings.roleTagLevelInvalid":
+        "O nível de permissão deve ser um número inteiro",
+    "roomSettings.roleTagClearColor": "Limpar cor",
+    "roomSettings.customLevel": "Personalizado ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "Esta sala ainda não tem tags; mostrando as padrão.",
     "roomSettings.muted1": "Silenciado (-1)",
     "roomSettings.kick": "Expulsar",
     "roomSettings.ban": "Banir",
@@ -2888,6 +2923,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "sessão",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} assistindo",
+    "videoTile.watchers": "Assistindo",
+    "videoTile.noWatchers": "Ninguém está assistindo",
+    "videoTile.muteShareAudio": "Silenciar áudio do compartilhamento de tela",
+    "videoTile.unmuteShareAudio": "Reativar áudio do compartilhamento de tela",
     "videoTile.fullscreen": "Tela cheia",
     "videoTile.pictureInPicture": "Picture-in-picture (janela flutuante)",
     "videoTile.exitPictureInPicture": "Sair do picture in picture",
@@ -3935,6 +3975,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Invisível também oculta suas confirmações de leitura e quando você está digitando.",
     "presence.unsupportedByServer":
         "Este servidor não suporta presença, então não há status para definir.",
+    "presence.shareViaProfile": "Compartilhar meu status pelo perfil",
+    "presence.shareViaProfileDescription":
+        "Este servidor está com a presença desativada. O Zam pode publicar seu status em um campo do perfil. Outros usuários do Zam o verão, assim como qualquer pessoa que consiga ler seu perfil.",
     "presence.appearOfflineToOtherUsers":
         "Aparece como offline para os outros usuários",
 
@@ -4266,6 +4309,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Atualização pronta{versionSuffix} - reinicie para aplicar",
     "updateStatus.restartToApply": "Reiniciar para aplicar",
+    "updateStatus.reopenToApply":
+        "Atualização instalada{versionSuffix}. Feche o Zam e abra-o novamente para concluir",
     "updateStatus.updateReadyReloadToApply":
         "Atualização pronta{versionSuffix} - recarregue para aplicar",
     "updateStatus.reloadToApply": "Recarregar para aplicar",
@@ -4353,6 +4398,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "Cancelar",
     "fileOffer.withdraw": "Retirar",
     "fileOffer.connecting": "Conectando ao remetente...",
+    "fileOffer.preparingReceive": "Aguardando o remetente preparar o arquivo",
+    "fileOffer.preparingSend": "Preparando o arquivo",
+    "fileOffer.acceptedElsewhere":
+        "Aceito em outro dos seus dispositivos ({device})",
+    "fileOffer.untrusted":
+        "Esta oferta não é confiável: ela não veio do dispositivo que ela indica.",
     "fileOffer.progress": "{done} de {total}, {rate}/s",
     "fileOffer.verifying": "Verificando o arquivo...",
     "fileOffer.savedDone": "Arquivo salvo e verificado.",
@@ -4538,6 +4589,25 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "Conectar diretamente",
     "meshConsent.joinWithoutThem": "Entrar sem eles",
     "meshConsent.notNow": "Agora não",
+    "meshConsent.titlePluginPublish":
+        "Entrar nesta chamada através de {label}?",
+    "meshConsent.titlePluginReceive": "Alguém nesta chamada usa {label}",
+    "meshConsent.pluginPublish":
+        "Seu áudio, vídeo e compartilhamento de tela passam por {label}, uma forma de transportar chamadas adicionada por um plugin. Só pessoas cujo Zam tem o mesmo plugin podem ouvir e ver você.",
+    "meshConsent.pluginReceive":
+        "Alguém nesta chamada envia áudio e vídeo por {label}, adicionado por um plugin. Para ouvir e ver essa pessoa, o Zam também o usa.",
+    "meshConsent.pluginIpVisible":
+        "As pessoas que você alcança por {label} podem ver seu endereço IP, que pode revelar aproximadamente onde você está.",
+    "meshConsent.pluginIpHidden":
+        "{label} não mostra seu endereço IP às pessoas do outro lado.",
+    "meshConsent.pluginThirdParty":
+        "A mídia da sua chamada também passa por {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Entrar sem ele",
+    "meshConsent.usePlugin": "Usar {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} parou, então ninguém nesta chamada ouve ou vê você até você entrar de novo.",
+    "voiceCall.pluginTransportFailed":
+        "{label} não conseguiu iniciar para esta chamada.",
     "voiceCall.meshNeedsTurn":
         "“Exigir servidor de retransmissão para chamadas ponto a ponto” está ativado, mas seu servidor doméstico não tem servidor de retransmissão (TURN). Desative isso nas configurações de Voz e vídeo para entrar.",
     "voiceAudioSettings.meshRelayOnly":

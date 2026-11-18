@@ -172,6 +172,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Вирівнювати мої повідомлення праворуч (компонування «бульбашки»)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Показувати ваші повідомлення праворуч у кольоровій бульбашці",
+    "appearanceSettings.bubbleAllMessages": "Бульбашки для всіх повідомлень",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Показувати повідомлення всіх у бульбашках, а не лише свої",
     "appearanceSettings.showNameColours": "Показувати кольори імен",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Малювати імена людей кольором, який вони вибрали у своєму профілі. Вимкніть, щоб для всіх використовувався звичайний колір тексту.",
@@ -304,6 +307,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "Вимкнути звук",
     "callView.disconnect": "Відключитися",
     "callView.joinCall": "Приєднатися до виклику",
+    "callView.muteShareAudio": "Вимкнути звук демонстрації",
+    "callView.unmuteShareAudio": "Увімкнути звук демонстрації",
     "callView.you": "Ви",
     "callView.sScreen": "Екран {name}",
     "callView.exitSpotlightFor": "Вийти з фокусу для {label}",
@@ -1341,6 +1346,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Адміністраторів: {length}",
     "memberList.admin": "Адміністратор",
     "memberList.moderators": "Модераторів: {length}",
+    "memberList.defaultRoleMember": "Учасник",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} це повідомлення?",
@@ -1371,6 +1378,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "Це початок історії кімнати #",
     "messageArea.loadingHistory": "Завантаження старіших повідомлень",
     "messageArea.room": ".",
+    "messageArea.dmStart": "Це початок вашого особистого листування з {name}.",
     "messageArea.newMessages": "Нові повідомлення",
     "messageArea.unreadSince":
         "{count, plural, one {# нове повідомлення з {since}} few {# нові повідомлення з {since}} many {# нових повідомлень з {since}} other {# нового повідомлення з {since}}}",
@@ -1401,6 +1409,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "Не сповіщати автора",
     "messageInput.replyingTo": "Відповідь для {replyTargetName}",
     "messageInput.cancelReplyEsc": "Скасувати відповідь (Esc)",
+    "messageInput.editingMessage": "Редагування повідомлення",
+    "messageInput.cancelEditEsc": "Скасувати редагування (Esc)",
+    "messageInput.editFailed": "Не вдалося зберегти зміни",
     "messageInput.editAttachment": "Редагувати вкладення",
     "messageInput.editAttachment2": "Редагувати вкладення {name}",
     "messageInput.custom": "власні",
@@ -1494,8 +1505,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} з {total}",
     "messageItem.fileAttachment": "Вкладений файл",
     "messageItem.download": "Завантажити",
-    "messageItem.toSave": "щоб зберегти ·",
-    "messageItem.toCancel": "щоб скасувати",
     "messageItem.openThread": "Відкрити гілку",
     "messageItem.failedToSend": "Не вдалося надіслати.",
     "messageItem.retrying": "Повторна спроба…",
@@ -2281,6 +2290,30 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Адміністратор (100)",
     "roomSettings.moderator50": "Модератор (50)",
     "roomSettings.member0": "Учасник (0)",
+    "roomSettings.roleTags": "Теги ролей",
+    "roomSettings.roleTagsHint":
+        "Назва, колір і значок для кожного рівня прав (MSC3949). Рівні без тега використовують найближчий нижчий.",
+    "roomSettings.roleTagLevel": "Рівень прав",
+    "roomSettings.roleTagName": "Назва",
+    "roomSettings.roleTagColor": "Колір",
+    "roomSettings.roleTagIcon": "Значок (емодзі)",
+    "roomSettings.roleTagPickEmoji": "Вибрати емодзі",
+    "roomSettings.roleTagUploadIcon": "Завантажити зображення",
+    "roomSettings.roleTagRemoveIcon": "Видалити значок",
+    "roomSettings.addRoleTag": "Додати тег",
+    "roomSettings.removeRoleTag": "Видалити тег",
+    "roomSettings.saveRoleTags": "Зберегти теги",
+    "roomSettings.roleTagsSaved": "Теги ролей збережено",
+    "roomSettings.roleTagsSaveFailed":
+        "Не вдалося зберегти теги ролей: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Два теги використовують рівень прав {level}",
+    "roomSettings.roleTagNameRequired": "Кожен тег потребує назви",
+    "roomSettings.roleTagLevelInvalid": "Рівень прав має бути цілим числом",
+    "roomSettings.roleTagClearColor": "Прибрати колір",
+    "roomSettings.customLevel": "Власний ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "У цій кімнаті ще немає тегів; показано стандартні.",
     "roomSettings.muted1": "Заглушений (-1)",
     "roomSettings.kick": "Виключити",
     "roomSettings.ban": "Заблокувати",
@@ -2879,6 +2912,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "у вашому іншому сеансі",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "дивляться: {count}",
+    "videoTile.watchers": "Дивляться",
+    "videoTile.noWatchers": "Ніхто не дивиться",
+    "videoTile.muteShareAudio": "Вимкнути звук демонстрації екрана",
+    "videoTile.unmuteShareAudio": "Увімкнути звук демонстрації екрана",
     "videoTile.fullscreen": "На весь екран",
     "videoTile.pictureInPicture": "Картинка в картинці",
     "videoTile.exitPictureInPicture": "Вийти з режиму «картинка в картинці»",
@@ -3913,6 +3951,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Невидимий також приховує від інших ваші підтвердження прочитання і набір тексту.",
     "presence.unsupportedByServer":
         "Цей сервер не підтримує присутність, тому встановити статус неможливо.",
+    "presence.shareViaProfile": "Ділитися статусом через профіль",
+    "presence.shareViaProfileDescription":
+        "На цьому сервері присутність вимкнено. Zam може опублікувати ваш статус у полі профілю. Його побачать інші користувачі Zam і всі, хто може читати ваш профіль.",
     "presence.appearOfflineToOtherUsers":
         "Показуватися іншим користувачам поза мережею",
 
@@ -4240,6 +4281,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Оновлення{versionSuffix} готове - перезапустіть, щоб застосувати",
     "updateStatus.restartToApply": "Перезапустити для застосування",
+    "updateStatus.reopenToApply":
+        "Оновлення встановлено{versionSuffix}. Закрийте Zam і відкрийте його знову, щоб завершити",
     "updateStatus.updateReadyReloadToApply":
         "Оновлення{versionSuffix} готове - перезавантажте, щоб застосувати",
     "updateStatus.reloadToApply": "Перезавантажити для застосування",
@@ -4328,6 +4371,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "Скасувати",
     "fileOffer.withdraw": "Відкликати",
     "fileOffer.connecting": "З’єднання з відправником...",
+    "fileOffer.preparingReceive": "Очікування, поки відправник підготує файл",
+    "fileOffer.preparingSend": "Підготовка файлу",
+    "fileOffer.acceptedElsewhere":
+        "Прийнято на іншому вашому пристрої ({device})",
+    "fileOffer.untrusted":
+        "Цій пропозиції не можна довіряти: вона надійшла не з пристрою, який вона називає.",
     "fileOffer.progress": "{done} з {total}, {rate}/с",
     "fileOffer.verifying": "Перевірка файлу...",
     "fileOffer.savedDone": "Файл збережено й перевірено.",
@@ -4508,6 +4557,25 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "Підключитися напряму",
     "meshConsent.joinWithoutThem": "Приєднатися без них",
     "meshConsent.notNow": "Не зараз",
+    "meshConsent.titlePluginPublish": "Приєднатися до дзвінка через {label}?",
+    "meshConsent.titlePluginReceive":
+        "Хтось у цьому дзвінку використовує {label}",
+    "meshConsent.pluginPublish":
+        "Ваш звук, відео та демонстрація екрана йдуть через {label}: спосіб передавання дзвінків, який додає плагін. Чути й бачити вас зможуть лише ті, у кого в Zam є цей самий плагін.",
+    "meshConsent.pluginReceive":
+        "Хтось у цьому дзвінку передає звук і відео через {label}, який додає плагін. Щоб чути й бачити його, Zam теж використовує {label}.",
+    "meshConsent.pluginIpVisible":
+        "Ті, з ким ви з'єднуєтеся через {label}, бачать вашу IP-адресу, за якою можна приблизно визначити, де ви.",
+    "meshConsent.pluginIpHidden":
+        "{label} не показує вашу IP-адресу співрозмовникам.",
+    "meshConsent.pluginThirdParty":
+        "Медіа дзвінка також проходять через {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Приєднатися без нього",
+    "meshConsent.usePlugin": "Використати {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} зупинено, тож ніхто в дзвінку не чує й не бачить вас, доки ви не приєднаєтеся знову.",
+    "voiceCall.pluginTransportFailed":
+        "Не вдалося запустити {label} для цього дзвінка.",
     "voiceCall.meshNeedsTurn":
         "«Вимагати ретранслятор для однорангових дзвінків» увімкнено, але ваш домашній сервер не має ретранслятора (TURN). Вимкніть це в налаштуваннях голосу й відео, щоб приєднатися.",
     "voiceAudioSettings.meshRelayOnly":

@@ -22,6 +22,7 @@ import {
     presenceDotClass,
     presenceLabel,
 } from "$lib/utils/presence";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { openModal, closeModal } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
@@ -64,6 +65,9 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
     const doNotDisturb = useRune(() => settingsState.doNotDisturb);
     const presenceUnsupported = useRune(
         () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
     );
     const ownPresence =
         doNotDisturb && ownPresenceState !== "offline"
@@ -279,7 +283,11 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                             id={userId}
                             size={32}
                         />
-                        {(!presenceUnsupported || doNotDisturb) && (
+                        {(presenceControlsShown(
+                            presenceUnsupported,
+                            shareProfilePresence,
+                        ) ||
+                            doNotDisturb) && (
                             <View
                                 className={`absolute bottom-0 end-0 w-3 h-3 ${ownPresence.dotClass} rounded-full border-2 border-zam-backgroundTertiary`}
                             />

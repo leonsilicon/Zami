@@ -508,6 +508,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                 <Lightbox
                     src={gifViewer.url}
                     kind="video"
+                    loop
                     poster={gifViewer.thumbnail}
                     alt={gifViewer.alt ?? ""}
                     onClose={() => setGifViewer(null)}

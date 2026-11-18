@@ -40,6 +40,7 @@ import { auth, isOAuthSession } from "$lib/stores/auth.svelte";
 import {
     changeOwnPresence,
     changeDoNotDisturb,
+    changeShareProfilePresence,
 } from "$lib/stores/presence.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import {
@@ -47,6 +48,7 @@ import {
     validatePasswordChange,
 } from "$lib/utils/accountSecurity";
 import { OWN_PRESENCE_OPTIONS, type PresenceState } from "$lib/utils/presence";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import {
     serverSupports,
     type Capabilities,
@@ -83,6 +85,9 @@ export default function AccountSettings({ onLogout }: Props) {
     const ownPresence = useRune(() => settingsState.ownPresence);
     const presenceUnsupported = useRune(
         () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
     );
     const doNotDisturb = useRune(() => settingsState.doNotDisturb);
     const streamerMode = useRune(() => settingsState.streamerMode);
@@ -553,7 +558,10 @@ export default function AccountSettings({ onLogout }: Props) {
                     <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("accountSettings.presence")}
                     </Text>
-                    {!presenceUnsupported ? (
+                    {presenceControlsShown(
+                        presenceUnsupported,
+                        shareProfilePresence,
+                    ) ? (
                         <>
                             <View className="flex-row items-center gap-3">
                                 <OptionSelector
@@ -578,6 +586,29 @@ export default function AccountSettings({ onLogout }: Props) {
                         <Text className="text-xs text-zam-textMuted">
                             {t("presence.unsupportedByServer")}
                         </Text>
+                    )}
+                    {presenceUnsupported && (
+                        <Checkbox
+                            checked={shareProfilePresence}
+                            onChange={(checked) =>
+                                changeShareProfilePresence(checked)
+                            }
+                            label={
+                                <View className="flex-1">
+                                    <Text className="text-sm text-zam-textPrimary">
+                                        {t("presence.shareViaProfile")}
+                                    </Text>
+                                    <Text className="text-xs text-zam-textMuted">
+                                        {t(
+                                            "presence.shareViaProfileDescription",
+                                        )}
+                                    </Text>
+                                </View>
+                            }
+                            accessibilityLabel={t("presence.shareViaProfile")}
+                            className="mt-3 items-start gap-3 cursor-pointer"
+                            inputClassName="mt-1 w-3.5 h-3.5 rounded-sm"
+                        />
                     )}
                     <Checkbox
                         checked={doNotDisturb}

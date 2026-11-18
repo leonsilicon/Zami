@@ -84,6 +84,7 @@ import {
     type PresenceState,
     type SeenPresence,
 } from "$lib/utils/presence";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import { sendPresenceWithSlidingSync } from "$lib/matrix/slidingSyncPresence";
 import {
     installMediaHealer,
@@ -135,6 +136,13 @@ import {
 } from "$lib/utils/emotePacks";
 import { isMxcPreviewMedia } from "$lib/utils/linkPreviewPolicy";
 import { serializeServerAcl, type ServerAcl } from "$lib/utils/serverAcl";
+import {
+    POWER_LEVEL_TAGS_EVENT_TYPE,
+    UNSTABLE_POWER_LEVEL_TAGS_EVENT_TYPE,
+    parsePowerLevelTags,
+    serializePowerLevelTags,
+    type PowerLevelTags,
+} from "$lib/utils/powerLevelTags";
 import { requestPersistentStorage } from "$lib/utils/persistentStorage";
 import { reportStorageError } from "$lib/stores/storageHealth.svelte";
 import { parseLoginFlows, type LoginOptions } from "$lib/utils/loginFlows";
@@ -309,7 +317,7 @@ import {
     FILE_OFFER_EVENT,
     isFileOfferEventType,
 } from "$lib/utils/fileTransfer";
-import { hasUnreadMessages } from "$lib/utils/roomUnread";
+import { hasUnreadMessages, isStaleLocalUnread } from "$lib/utils/roomUnread";
 import { localReadVerdict, type LocalReadMark } from "$lib/utils/localRead";
 import { callMemberSendersMissingMembership } from "$lib/utils/callMemberSenders";
 import {
@@ -1613,6 +1621,26 @@ export async function startSync(
         },
     );
     client.on(RoomEvent.Timeline as never, onTimelineMember as never);
+    // Our own receipt can land after the newest message already decrypted and
+    // was counted unread (the receipts extension runs last under sliding sync).
+    // Re-check the room then. Registered here, before AppShell subscribes
+    // (AppShell mounts only after startSync resolves), so its receipt-driven
+    // re-render reads the corrected counts.
+    const onOwnReceipt = guardOwnership(
+        owner,
+        readOwner,
+        (event: MatrixEvent, room: Room) => {
+            try {
+                const userId = client.getUserId();
+                if (!userId || !receiptNamesUser(event, userId)) return;
+                if (clearStaleEncryptedUnread(room))
+                    notifyLocalUnreadChange(room.roomId);
+            } catch {
+                // Never break the receipt fan-out to other listeners.
+            }
+        },
+    );
+    client.on(RoomEvent.Receipt as never, onOwnReceipt as never);
     if (onLoggedOut) client.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
     let disposed = false;
@@ -1626,6 +1654,7 @@ export async function startSync(
         client.off(ClientEvent.Room as never, onRoom as never);
         client.off(RoomStateEvent.Events, onMemberState);
         client.off(RoomEvent.Timeline as never, onTimelineMember as never);
+        client.off(RoomEvent.Receipt as never, onOwnReceipt as never);
         if (onLoggedOut) client.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         document.removeEventListener("visibilitychange", onHidden);
         document.removeEventListener("visibilitychange", onVisibleKick);
@@ -5461,6 +5490,64 @@ export function getRoomUnreadInfo(room: Room): {
     return { unread, highlight };
 }
 
+/** Zero an encrypted room's main unread counts when our receipt already covers its newest message (see isStaleLocalUnread). Returns whether it changed anything. */
+function clearStaleEncryptedUnread(room: Room): boolean {
+    const userId = matrixClient?.getUserId();
+    if (!userId) return false;
+    // Main timeline only: thread counts are cleared by clearReadThreadCounts.
+    const total =
+        room.getRoomUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+    const highlight =
+        room.getRoomUnreadNotificationCount(NotificationCountType.Highlight) ??
+        0;
+    const encrypted = room.hasEncryptionStateEvent();
+    if (!encrypted || (total === 0 && highlight === 0)) return false;
+
+    const events = room.getLiveTimeline().getEvents();
+    let newest: MatrixEvent | null = null;
+    for (let i = events.length - 1; i >= 0; i--) {
+        if (isNotificationEvent(events[i])) {
+            newest = events[i];
+            break;
+        }
+    }
+    const newestId = newest?.getId();
+    const newestNotificationRead = newestId
+        ? room.hasUserReadEvent(userId, newestId)
+        : null;
+    if (
+        !isStaleLocalUnread({
+            encrypted,
+            total,
+            highlight,
+            newestNotificationRead,
+        })
+    )
+        return false;
+
+    room.setUnreadNotificationCount(NotificationCountType.Total, 0);
+    room.setUnreadNotificationCount(NotificationCountType.Highlight, 0);
+    return true;
+}
+
+/** Whether a m.receipt event's content names `userId` for any event and receipt type. */
+function receiptNamesUser(event: MatrixEvent, userId: string): boolean {
+    const content = event.getContent() as unknown;
+    if (!content || typeof content !== "object") return false;
+    for (const byType of Object.values(content)) {
+        if (!byType || typeof byType !== "object") continue;
+        for (const users of Object.values(byType)) {
+            if (
+                users &&
+                typeof users === "object" &&
+                Object.prototype.hasOwnProperty.call(users, userId)
+            )
+                return true;
+        }
+    }
+    return false;
+}
+
 export function onTimelineEvent(
     callback: (event: MatrixEvent, room: Room, isLiveAppend: boolean) => void,
 ): () => void {
@@ -6283,19 +6370,18 @@ export async function sendEdit(
     // Media fields (see mediaEditBase) when editing a media caption; the
     // replacement must restate the whole media content, not just the text.
     mediaBase?: Record<string, unknown>,
+    // Mentions the editor resolved from the new body (pills and typed MXIDs).
+    newMentions?: { userIds?: string[]; room?: boolean },
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     // v1.7 mentions module: split m.mentions across the replacement halves —
     // top-level carries only the mentions NEWLY introduced by this revision;
     // m.new_content carries the resolved final set. Conservative: original
     // mentions are never dropped (see computeEditMentions).
-    // ⚑ deferred: pill anchors in the ORIGINAL formatted_body are lost on edit
-    // because the edit UI is a plain-text box — so a mention that existed only
-    // as a formatted_body pill (no bare mxid retyped) survives as an
-    // m.mentions user_id but loses its inline highlight in the new body.
     const { topLevel, resolved } = computeEditMentions(
         originalMentions,
         newText,
+        newMentions,
     );
     const newContent: Record<string, unknown> = {
         ...(mediaBase ?? { msgtype: "m.text" }),
@@ -6620,7 +6706,10 @@ export async function searchRoomMessagesMore(
 export function isActivityHidden(): boolean {
     return activityHidden(
         settingsState.ownPresence,
-        settingsState.presenceUnsupported,
+        !presenceControlsShown(
+            settingsState.presenceUnsupported,
+            settingsState.shareProfilePresence,
+        ),
     );
 }
 
@@ -6684,6 +6773,11 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
             room.getEventReadUpTo(myUserId, true),
         )
     ) {
+        // Our receipt may already cover the newest message while the counts
+        // still show it unread (see clearStaleEncryptedUnread). Opening the room
+        // lands here, so fix the counts now.
+        if (room && clearStaleEncryptedUnread(room))
+            notifyLocalUnreadChange(roomId);
         if (inFlightReceipts.get(roomId) !== eventId)
             notifyReadReceiptConfirmed(roomId);
         return;
@@ -9992,6 +10086,84 @@ export async function setServerAcl(room: Room, acl: ServerAcl): Promise<void> {
     );
 }
 
+const parsedPowerLevelTags = new WeakMap<MatrixEvent, PowerLevelTags>();
+
+/**
+ * The room's MSC3949 power level tags, or null when the room has neither the
+ * stable nor the unstable event (the UI then shows the defaults). The unstable
+ * event wins when both are present, since that is what implementations
+ * (Cinny, this client) write today.
+ */
+export function getRoomPowerLevelTags(roomId: string): PowerLevelTags | null {
+    const state = matrixClient
+        ?.getRoom(roomId)
+        ?.getLiveTimeline()
+        .getState(EventTimeline.FORWARDS);
+    if (!state) return null;
+    const event =
+        state.getStateEvents(UNSTABLE_POWER_LEVEL_TAGS_EVENT_TYPE, "") ??
+        state.getStateEvents(POWER_LEVEL_TAGS_EVENT_TYPE, "");
+    if (!event) return null;
+    // Parsed once per state event object: callers (every timeline row) read
+    // this on each tick, and a replaced event is a new object, so the memo can
+    // never serve stale tags.
+    let tags = parsedPowerLevelTags.get(event);
+    if (!tags) {
+        tags = parsePowerLevelTags(event.getContent());
+        parsedPowerLevelTags.set(event, tags);
+    }
+    return tags;
+}
+
+/** Whether the user's power level lets them write the room's power level tags. */
+export function canEditPowerLevelTags(roomId: string): boolean {
+    const room = matrixClient?.getRoom(roomId);
+    if (!room) return false;
+    return maySendPackEvent(room, UNSTABLE_POWER_LEVEL_TAGS_EVENT_TYPE);
+}
+
+/** Write the room's power level tags with the unstable type (MSC3949). */
+export async function setRoomPowerLevelTags(
+    roomId: string,
+    tags: PowerLevelTags,
+): Promise<void> {
+    if (!matrixClient) throw new Error(t("client.notLoggedIn"));
+    await (matrixClient as any).sendStateEvent(
+        roomId,
+        UNSTABLE_POWER_LEVEL_TAGS_EVENT_TYPE,
+        serializePowerLevelTags(tags),
+        "",
+    );
+}
+
+/**
+ * Calls `callback` whenever either power level tags event changes in the
+ * room. Ordinary state events do not bump roomsTick, so UI that shows tags
+ * must subscribe here. Returns the unsubscribe function.
+ */
+export function onPowerLevelTagsChanged(
+    roomId: string,
+    callback: () => void,
+): () => void {
+    if (!matrixClient) return () => {};
+    const client = matrixClient;
+    const onEvents = (event: MatrixEvent, state: RoomState) => {
+        if (state.roomId !== roomId) return;
+        const type = event.getType();
+        if (
+            event.getStateKey() === "" &&
+            (type === POWER_LEVEL_TAGS_EVENT_TYPE ||
+                type === UNSTABLE_POWER_LEVEL_TAGS_EVENT_TYPE)
+        ) {
+            callback();
+        }
+    };
+    client.on(RoomStateEvent.Events as never, onEvents as never);
+    return () => {
+        client.off(RoomStateEvent.Events as never, onEvents as never);
+    };
+}
+
 export async function setUserPowerLevel(
     room: Room,
     userId: string,
@@ -11612,6 +11784,9 @@ export {
     setParticipantLocalMute,
     setParticipantShareMute,
     setShareWatched,
+    setShareAudioMuted,
+    hasOwnShareAudio,
+    onShareWatchersChanged,
     setParticipantVideoHidden,
     onVoiceConnStateChanged,
     onActiveSpeakersChanged,

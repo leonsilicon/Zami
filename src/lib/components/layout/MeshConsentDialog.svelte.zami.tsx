@@ -39,6 +39,96 @@ export default function MeshConsentDialog() {
         resolveMeshConsent("cancel");
     }, []);
 
+    if (pending?.plugin) {
+        const plugin = pending.plugin;
+        return (
+            <ModalDialog
+                onClose={dismiss}
+                labelledBy="mesh-consent-title"
+                panelClass="relative z-10 w-[min(30rem,calc(100vw-2rem))] rounded-lg bg-zam-backgroundSecondary p-5 shadow-xl"
+            >
+                <Text
+                    nativeID="mesh-consent-title"
+                    role="heading"
+                    className="mb-2 text-lg font-semibold text-zam-textPrimary"
+                >
+                    {pending.publishing
+                        ? t("meshConsent.titlePluginPublish", {
+                              label: plugin.label,
+                          })
+                        : t("meshConsent.titlePluginReceive", {
+                              label: plugin.label,
+                          })}
+                </Text>
+                <Text className="mb-3 text-sm text-zam-textMuted">
+                    {pending.publishing
+                        ? t("meshConsent.pluginPublish", {
+                              label: plugin.label,
+                          })
+                        : t("meshConsent.pluginReceive", {
+                              label: plugin.label,
+                          })}
+                </Text>
+                <Text
+                    className={
+                        plugin.exposesIp
+                            ? "mb-3 rounded border border-zam-danger/40 bg-zam-danger/10 px-3 py-2 text-sm text-zam-danger"
+                            : "mb-3 rounded border border-zam-divider px-3 py-2 text-sm text-zam-textMuted"
+                    }
+                    accessibilityRole={plugin.exposesIp ? "alert" : undefined}
+                >
+                    {plugin.exposesIp
+                        ? t("meshConsent.pluginIpVisible", {
+                              label: plugin.label,
+                          })
+                        : t("meshConsent.pluginIpHidden", {
+                              label: plugin.label,
+                          })}
+                    {plugin.thirdParty
+                        ? " " +
+                          t("meshConsent.pluginThirdParty", {
+                              thirdParty: plugin.thirdParty,
+                          })
+                        : null}
+                </Text>
+                <View className="mt-4 flex-row flex-wrap justify-end gap-2">
+                    {pending.joining && (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => resolveMeshConsent("cancel")}
+                            className="rounded px-4 py-2"
+                        >
+                            <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
+                                {t("common.cancel")}
+                            </Text>
+                        </Pressable>
+                    )}
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={() => resolveMeshConsent("deny")}
+                        className="rounded px-4 py-2"
+                    >
+                        <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
+                            {pending.joining
+                                ? t("meshConsent.pluginJoinWithout")
+                                : t("meshConsent.notNow")}
+                        </Text>
+                    </Pressable>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={() => resolveMeshConsent("allow")}
+                        className="rounded bg-zam-accent px-4 py-2 hover:opacity-90"
+                    >
+                        <Text className="text-sm font-medium text-white">
+                            {t("meshConsent.usePlugin", {
+                                label: plugin.label,
+                            })}
+                        </Text>
+                    </Pressable>
+                </View>
+            </ModalDialog>
+        );
+    }
     if (!pending) return null;
     return (
         <ModalDialog

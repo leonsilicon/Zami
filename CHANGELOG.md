@@ -4,6 +4,69 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.66.2
+
+✨ **New**
+
+- **Presence on servers without it:** on a homeserver that has presence turned off (matrix.org, for example), Settings > Account now has "Share my status through my profile". When it is on, Zam publishes your online, away or busy state in a profile field, and other Zam users see it in member lists and DMs. It is off by default, because anyone who can read your profile can see it. Invisible removes it.
+- **Role tags:** rooms can name, colour and give an icon to each power level (MSC3949). The member list groups people by tag, the timeline and profile card show the tag, and room settings has a Role tags editor.
+- **Message bubbles for everyone:** the bubble style can now apply to all messages, separately from the right-aligned layout.
+
+🐛 **Fixed**
+
+- **Slow file transfers:** a direct file transfer whose checks took a moment could sit still for about a minute. The receiver now keeps data that arrives during the check, so it carries on at once.
+
+## v1.66.1
+
+🐛 **Fixed**
+
+- **Flatpak restart after an update:** "Restart to apply" could close Zam without starting the new version, mostly on Wayland desktops such as sway and Hyprland. Zam now starts the update on your desktop with your display settings, and if that still doesn't work it stays open and asks you to quit and reopen it. This takes effect from the update after this one.
+
+## v1.66.0
+
+✨ **New**
+
+- **Edit in the main composer:** editing a message now opens it in the main message box under an "Editing message" bar, with mentions, emoji, autocomplete and markdown. Your unsent draft comes back when you save or press Esc. Works in rooms and threads.
+- **DMs look like DMs:** a direct message now starts with the other person's avatar and name and "This is the beginning of your direct message history", instead of a room's welcome header.
+- **Direct file transfer, version 2:** the protocol now matches the shared draft written with the Vommet project. Every 1 MiB block is checked as it arrives, so a damaged block is resent instead of failing the whole file at the end. LiveKit packets are signed. When the sender has no voice server, the two devices connect over a direct WebRTC channel, which goes only through TURN if you have relay-only on. Your other devices see "Accepted on another of your devices", and an offer that didn't come from the device it names can't be accepted. Older Zam versions can't send files to this one or receive from it, so update both sides.
+- **Plugins:** plugins can carry call audio and video over their own network (for example I2P or Tor), and can open raw TCP and UDP sockets to the servers their manifest lists, on desktop and Android.
+
+🐛 **Fixed**
+
+- **Mentions survive edits:** editing a message no longer turns its mentions into plain text.
+- **File transfers and other servers:** a file transfer only connects to the voice server the other person's homeserver advertises. Before, anyone in the room could point your device at a server of their choosing.
+- **Received file names:** file names are cleaned more strictly before saving, and an offer can stay open for at most a day after it was posted.
+
+## v1.65.9
+
+✨ **New**
+
+- **Screen shares are opt-in:** someone else's screen share no longer opens by itself. Click Watch on its tile to see it.
+- **See who's watching:** screen share tiles show how many people are watching, and hovering lists their names.
+- **Mute a screen share's sound:** remote share tiles have a mute button for the share's audio. While you share with system audio, you can mute your share's sound without stopping the share.
+
+🐛 **Fixed**
+
+- **Mute and deafen:** muting or deafening now really stops sending your microphone. Before, with Zam's audio processing on, others could still hear you and see your speaking ring light up.
+
+## v1.65.8
+
+✨ **New**
+
+- **YouTube video titles:** YouTube link previews now show the video's title and channel under the thumbnail.
+
+🐛 **Fixed**
+
+- **YouTube Shorts and youtu.be links:** Shorts links now get the YouTube player, in a vertical layout, instead of a plain link card. A timestamp in a youtu.be or YouTube link (`?t=1m30s`) now starts the video there.
+
+- **Rooms unread after a reload:** an encrypted room you had already read could show as unread again every time Zam started, and reading it again didn't clear it. It now stays read.
+
+## v1.65.6
+
+🐛 **Fixed**
+
+- **Tweet GIFs in the viewer:** opening a GIF from an embedded tweet no longer shows "Could not load this video". It now plays in the viewer and loops like it does on Twitter.
+
 ## v1.65.5
 
 🐛 **Fixed**

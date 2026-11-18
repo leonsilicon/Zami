@@ -165,6 +165,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "我的消息靠右对齐（气泡布局）",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "将你自己的消息以彩色气泡显示在右侧",
+    "appearanceSettings.bubbleAllMessages": "所有消息使用气泡",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "以气泡显示所有人的消息，而不仅是你自己的",
     "appearanceSettings.showNameColours": "显示名称颜色",
     "appearanceSettings.drawPeopleSNamesInThe":
         "用每个人在个人资料中选择的颜色显示其名称。关闭后，所有人都使用普通文字颜色。",
@@ -290,6 +293,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "拒听",
     "callView.disconnect": "断开连接",
     "callView.joinCall": "加入通话",
+    "callView.muteShareAudio": "静音共享声音",
+    "callView.unmuteShareAudio": "取消静音共享声音",
     "callView.you": "你",
     "callView.sScreen": "{name} 的屏幕",
     "callView.exitSpotlightFor": "退出对 {label} 的聚焦",
@@ -1253,6 +1258,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "管理员：{length}",
     "memberList.admin": "管理员",
     "memberList.moderators": "协管员：{length}",
+    "memberList.defaultRoleMember": "成员",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label}此消息？",
@@ -1283,6 +1290,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "这是 # 的开头",
     "messageArea.loadingHistory": "正在加载更早的消息",
     "messageArea.room": "房间。",
+    "messageArea.dmStart": "这是你与 {name} 私信记录的开头。",
     "messageArea.newMessages": "新消息",
     "messageArea.unreadSince":
         "{count, plural, other {自 {since} 以来有 # 条新消息}}",
@@ -1312,6 +1320,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "不提醒作者",
     "messageInput.replyingTo": "回复 {replyTargetName}",
     "messageInput.cancelReplyEsc": "取消回复（Esc）",
+    "messageInput.editingMessage": "正在编辑消息",
+    "messageInput.cancelEditEsc": "取消编辑（Esc）",
+    "messageInput.editFailed": "无法保存编辑",
     "messageInput.editAttachment": "编辑附件",
     "messageInput.editAttachment2": "编辑附件 {name}",
     "messageInput.custom": "自定义",
@@ -1391,8 +1402,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} / {total}",
     "messageItem.fileAttachment": "文件附件",
     "messageItem.download": "下载",
-    "messageItem.toSave": "保存 ·",
-    "messageItem.toCancel": "取消",
     "messageItem.openThread": "打开消息列",
     "messageItem.failedToSend": "发送失败。",
     "messageItem.retrying": "正在重试…",
@@ -2107,6 +2116,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "管理员 (100)",
     "roomSettings.moderator50": "协管员 (50)",
     "roomSettings.member0": "成员 (0)",
+    "roomSettings.roleTags": "角色标签",
+    "roomSettings.roleTagsHint":
+        "为每个权限级别显示的名称、颜色和图标 (MSC3949)。没有标签的级别使用比它低的最近一个标签。",
+    "roomSettings.roleTagLevel": "权限级别",
+    "roomSettings.roleTagName": "名称",
+    "roomSettings.roleTagColor": "颜色",
+    "roomSettings.roleTagIcon": "图标 (表情符号)",
+    "roomSettings.roleTagPickEmoji": "选择表情符号",
+    "roomSettings.roleTagUploadIcon": "上传图片",
+    "roomSettings.roleTagRemoveIcon": "移除图标",
+    "roomSettings.addRoleTag": "添加标签",
+    "roomSettings.removeRoleTag": "移除标签",
+    "roomSettings.saveRoleTags": "保存标签",
+    "roomSettings.roleTagsSaved": "角色标签已保存",
+    "roomSettings.roleTagsSaveFailed": "无法保存角色标签：{error}",
+    "roomSettings.roleTagDuplicateLevel": "两个标签使用了权限级别 {level}",
+    "roomSettings.roleTagNameRequired": "每个标签都需要名称",
+    "roomSettings.roleTagLevelInvalid": "权限等级必须是整数",
+    "roomSettings.roleTagClearColor": "清除颜色",
+    "roomSettings.customLevel": "自定义 ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "此房间还没有标签；正在显示默认标签。",
     "roomSettings.muted1": "禁言 (-1)",
     "roomSettings.kick": "移出",
     "roomSettings.ban": "封禁",
@@ -2653,6 +2684,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "你的另一个会话",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} 人正在观看",
+    "videoTile.watchers": "正在观看",
+    "videoTile.noWatchers": "没有人在观看",
+    "videoTile.muteShareAudio": "静音屏幕共享声音",
+    "videoTile.unmuteShareAudio": "取消静音屏幕共享声音",
     "videoTile.fullscreen": "全屏",
     "videoTile.pictureInPicture": "画中画",
     "videoTile.exitPictureInPicture": "退出画中画",
@@ -3579,6 +3615,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "隐身还会向其他用户隐藏你的已读回执和输入状态。",
     "presence.unsupportedByServer":
         "此服务器不支持在线状态，因此无法设置状态。",
+    "presence.shareViaProfile": "通过个人资料分享我的状态",
+    "presence.shareViaProfileDescription":
+        "此服务器已关闭在线状态。Zam 可以改为把你的状态发布到个人资料字段中。其他 Zam 用户以及任何能查看你个人资料的人都能看到。",
     "presence.appearOfflineToOtherUsers": "向其他用户显示为离线",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -3884,6 +3923,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "更新已就绪{versionSuffix} - 重启以应用",
     "updateStatus.restartToApply": "重启以应用",
+    "updateStatus.reopenToApply":
+        "更新已安装{versionSuffix}。退出 Zam 并重新打开以完成更新",
     "updateStatus.updateReadyReloadToApply":
         "更新已就绪{versionSuffix} - 重新加载以应用",
     "updateStatus.reloadToApply": "重新加载以应用",
@@ -3960,6 +4001,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "取消",
     "fileOffer.withdraw": "撤回",
     "fileOffer.connecting": "正在连接发送者...",
+    "fileOffer.preparingReceive": "正在等待发送方准备文件",
+    "fileOffer.preparingSend": "正在准备文件",
+    "fileOffer.acceptedElsewhere": "已在你的另一台设备上接受（{device}）",
+    "fileOffer.untrusted": "此邀请不可信：它并非来自其所指明的设备。",
     "fileOffer.progress": "{done} / {total}，{rate}/秒",
     "fileOffer.verifying": "正在校验文件...",
     "fileOffer.savedDone": "文件已保存并通过校验。",
@@ -4119,6 +4164,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "直接连接",
     "meshConsent.joinWithoutThem": "不与其连接并加入",
     "meshConsent.notNow": "暂不",
+    "meshConsent.titlePluginPublish": "通过 {label} 加入此通话？",
+    "meshConsent.titlePluginReceive": "此通话中有人使用 {label}",
+    "meshConsent.pluginPublish":
+        "你的音频、视频和屏幕共享将通过 {label} 传输，这是插件添加的一种通话传输方式。只有 Zam 装有同一插件的人才能听到和看到你。",
+    "meshConsent.pluginReceive":
+        "此通话中有人通过插件添加的 {label} 发送音频和视频。为了听到和看到对方，Zam 也会使用它。",
+    "meshConsent.pluginIpVisible":
+        "通过 {label} 连接的人可以看到你的 IP 地址，可能大致暴露你的位置。",
+    "meshConsent.pluginIpHidden": "{label} 不会向对方显示你的 IP 地址。",
+    "meshConsent.pluginThirdParty": "你的通话媒体还会经过 {thirdParty}。",
+    "meshConsent.pluginJoinWithout": "不使用它加入",
+    "meshConsent.usePlugin": "使用 {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} 已停止，在你重新加入之前，通话中没有人能听到或看到你。",
+    "voiceCall.pluginTransportFailed": "无法为此通话启动 {label}。",
     "voiceCall.meshNeedsTurn":
         "“点对点通话必须使用中继服务器”已开启，但您的主服务器没有中继（TURN）服务器。在语音和视频设置中关闭它即可加入。",
     "voiceAudioSettings.meshRelayOnly": "点对点通话必须使用中继服务器",

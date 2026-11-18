@@ -216,6 +216,40 @@ export function pickLivekitTransport(
     return null;
 }
 
+/** The LiveKit service URLs among a homeserver's advertised foci. */
+export function livekitServiceUrls(foci: unknown): string[] {
+    if (!Array.isArray(foci)) return [];
+    const urls: string[] = [];
+    for (const f of foci) {
+        const lk = asLivekit(f);
+        if (lk) urls.push(lk.livekit_service_url);
+    }
+    return urls;
+}
+
+function normalServiceUrl(url: string): string | null {
+    try {
+        const u = new URL(url);
+        if (u.protocol !== "https:" || u.username || u.password) return null;
+        return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Whether `serviceUrl` is one of `advertised`, ignoring a trailing slash and
+ * the host's case. Only https URLs count.
+ */
+export function isAdvertisedServiceUrl(
+    serviceUrl: string,
+    advertised: string[],
+): boolean {
+    const wanted = normalServiceUrl(serviceUrl);
+    if (!wanted) return false;
+    return advertised.some((a) => normalServiceUrl(a) === wanted);
+}
+
 /** Identifies one LiveKit room on one SFU: one connection per key. */
 export function livekitTargetKey(t: LivekitTarget): string {
     return `${t.serviceUrl.replace(/\/+$/, "")}|${t.alias}`;
@@ -376,4 +410,16 @@ export function mutedIdentities(
     const heard = new Set(peers.filter((p) => p.micOn).map((p) => p.identity));
     const everyone = new Set(peers.map((p) => p.identity));
     return [...everyone].filter((id) => !heard.has(id));
+}
+
+/** Speaking identities as the call shows them. Our own mic closed (muted or
+ *  deafened) means we are not sending anything, so our own identity is
+ *  dropped: a closed mic must never light our own tile. */
+export function audibleSpeakerIds(
+    identities: string[],
+    ownUserId: string | null,
+    micClosed: boolean,
+): string[] {
+    if (!micClosed || !ownUserId) return identities;
+    return identities.filter((id) => identityToUserId(id) !== ownUserId);
 }

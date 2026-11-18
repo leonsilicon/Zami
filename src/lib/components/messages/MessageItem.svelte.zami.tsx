@@ -29,7 +29,6 @@ import {
     type GestureResponderEvent,
     type HostInstance,
     type LayoutChangeEvent,
-    type TextInputInstance,
 } from "react-native";
 import {
     GestureDetector,
@@ -150,6 +149,7 @@ import {
     deleteMessage,
     getMyPowerLevel,
     getRoomPowerLevels,
+    getUserPowerLevel,
     getPinnedEventIds,
     pinMessage,
     unpinMessage,
@@ -171,14 +171,8 @@ import {
     EventStatus,
 } from "$lib/matrix/client";
 import { forwardEventPermalink, readForward } from "$lib/utils/forwarded";
-import MessageEditBox from "$lib/components/messages/MessageEditBox.svelte";
-import { emoticonsFromHtml } from "$lib/utils/messageBody";
 import { saveObjectUrl, revokeLater } from "$lib/utils/saveFile";
-import {
-    editableBody,
-    isEmptyEdit,
-    sendMessageEdit,
-} from "$lib/matrix/editMessage";
+import { editableBody } from "$lib/matrix/editMessage";
 import { displayContent } from "$lib/utils/displayContent";
 import { resolveBubbleLayout } from "$lib/utils/bubbleLayout";
 import {
@@ -270,6 +264,15 @@ import {
 } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
 import { nameColourFor } from "$lib/stores/profileFields.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import {
+    tagForPowerLevel,
+    type PowerLevelTag,
+} from "$lib/utils/powerLevelTags";
 import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { isDoubleTap, type TapPoint } from "$lib/utils/doubleTap";
@@ -331,8 +334,11 @@ interface Props {
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
     onOpenThread?: (rootEventId: string) => void;
-    editRequested?: boolean;
-    onEditDone?: () => void;
+    /** Starts editing this message in the room composer. Absent when the
+     *  surface has no composer to edit in, which hides every Edit entry. */
+    onStartEdit?: (event: MatrixEvent) => void;
+    /** This message is the one the composer is editing: it is highlighted. */
+    isBeingEdited?: boolean;
     receipts?: ReadReceiptInfo[];
     mentionHighlight?: boolean;
     callSummary?: CallSummary | null;
@@ -396,6 +402,25 @@ const VERTICAL_LOCK_PX = 8;
 // Zami: `.own-bubble` in src/app.zami.css, as utilities (Uniwind has no
 // component classes). Not ported: its `::after` tail.
 const OWN_BUBBLE = "self-end max-w-[80%] px-3 py-2 rounded-2xl bg-zam-accent";
+// Zami: `.own-bubble.own-bubble-start` (an own bubble that isn't
+// right-aligned: no end margin, no tail).
+const OWN_BUBBLE_START =
+    "self-start max-w-[80%] px-3 py-2 rounded-2xl bg-zam-accent";
+// Zami: `.other-bubble` in src/app.zami.css, as utilities.
+const OTHER_BUBBLE =
+    "self-start max-w-[80%] px-3 py-2 rounded-2xl bg-zam-backgroundTertiary";
+
+// Zami: upstream's `senderTagIcon` derived, read in `roomView` (on roomsTick,
+// and the room's tags tick).
+function senderTagIconOf(room: Room, senderId: string): PowerLevelTag | null {
+    const info = effectiveRoomTags(room.roomId);
+    if (!info.custom) return null;
+    const resolved = tagForPowerLevel(
+        info.tags,
+        getUserPowerLevel(room, senderId),
+    );
+    return resolved?.tag.icon ? resolved.tag : null;
+}
 
 function MessageItem({
     event,
@@ -404,8 +429,8 @@ function MessageItem({
     onReply,
     jumpToReply,
     onOpenThread,
-    editRequested = false,
-    onEditDone,
+    onStartEdit,
+    isBeingEdited = false,
     receipts = NO_RECEIPTS,
     mentionHighlight = false,
     callSummary = null,
@@ -446,6 +471,7 @@ function MessageItem({
                     settingsState.holdToOpenMessageMenu,
                 ),
                 alignOwnEnabled: settingsState.rightAlignOwnBubbles,
+                bubbleAll: settingsState.bubbleAllMessages,
                 linkPreviewsEnabled: settingsState.linkPreviewsEnabled,
                 ...readPluginHooks(
                     room.roomId,
@@ -498,6 +524,7 @@ function MessageItem({
                 displayName: getMemberName(room, senderId),
                 avatarSrc: getMemberAvatar(room, senderId),
                 nameColour: nameColourFor(senderId),
+                senderTagIcon: senderTagIconOf(room, senderId),
                 roomEncrypted: encrypted,
                 securityTick: encrypted ? securityState.securityTick : 0,
                 shieldRetryTick: shieldRetry ? messagesState.timelineTick : 0,
@@ -782,7 +809,7 @@ function MessageItem({
     }
 
     // Zami: `use:longPress` (500 ms, 50 ms vibrate), offered on a
-    // touchscreen while not editing, as its `shouldStart` gate. Pressable's own
+    // touchscreen, as its `shouldStart` gate. Pressable's own
     // hold timer cancels on a move. An image embed is its own Pressable, which
     // takes the same hold (onLongPress below), as upstream's gate lets a hold
     // on an <img> through.
@@ -833,7 +860,6 @@ function MessageItem({
 
     // Zami: not ported: the delete confirmation's keyboard focus (focusing Yes,
     // ArrowLeft/ArrowRight between Yes and No, Enter and Escape).
-    const deleteRefocus = useRef(false);
 
     function resolveDelete(confirmed: boolean) {
         setConfirmingDelete(false);
@@ -842,11 +868,6 @@ function MessageItem({
                 console.error("[MessageItem] delete failed", err);
                 showErrorToast(t("messageItem.couldnTDeleteTheMessage"));
             });
-        }
-        if (deleteRefocus.current) {
-            deleteRefocus.current = false;
-            onEditDone?.();
-            return;
         }
         // Zami: no refocusing the row, which upstream does for the keyboard.
     }
@@ -922,16 +943,10 @@ function MessageItem({
 
     const [emojiPickerBelow, setEmojiPickerBelow] = useState(false);
     const reactionBtnEl = useRef<HostInstance>(null);
-    const [isEditing, setIsEditing] = useState(false);
     // Zami: the row's (and an image embed's) hold, `use:longPress`'s
     // `shouldStart` gate.
-    const rowLongPress =
-        isTouchscreen && !isEditing ? onRowLongPress : undefined;
-    const editFromKeyboard = useRef(false);
-    const [editText, setEditText] = useState("");
-    const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const rowLongPress = isTouchscreen ? onRowLongPress : undefined;
     const rootEl = useRef<HostInstance>(null);
-    const editBoxEl = useRef<TextInputInstance>(null);
     const avatarBtnEl = useRef<HostInstance>(null);
     const nameBtnEl = useRef<HostInstance>(null);
 
@@ -959,14 +974,16 @@ function MessageItem({
     const menuMode = rowState.menuMode;
 
     const alignOwnEnabled = rowState.alignOwnEnabled;
+    const bubbleAll = rowState.bubbleAll;
     const bubble = useMemo(
         () =>
             resolveBubbleLayout({
                 isOwn: isOwnMessage,
                 alignOwnEnabled,
+                bubbleAll,
                 showHeader,
             }),
-        [isOwnMessage, alignOwnEnabled, showHeader],
+        [isOwnMessage, alignOwnEnabled, bubbleAll, showHeader],
     );
     // Width the receipt cluster button occupies: 16px avatars with a 2px gap,
     // the "+N" label (ms-1 + text), and 4px of breathing room. Only the
@@ -1042,6 +1059,13 @@ function MessageItem({
     const displayName = roomView.displayName;
     const avatarSrc = roomView.avatarSrc;
     const nameColour = roomView.nameColour;
+    // Keep this room's tags live for every message in it; the subscription is
+    // shared (ref-counted) so this does not add a listener per message.
+    useEffect(() => acquirePowerLevelTags(room.roomId), [room.roomId]);
+    // The sender's tag icon, shown only when the room defines its own tags
+    // (the defaults carry no icons anyway). Cached per room by the store.
+    // Zami: computed in `roomView` (senderTagIconOf, below).
+    const senderTagIcon = roomView.senderTagIcon;
     const timestamp = event.getTs();
     const revision = rowState.revision;
     const content = useMemo(() => {
@@ -1150,8 +1174,10 @@ function MessageItem({
         eventType === "m.room.encrypted" || event.isDecryptionFailure();
 
     // Gate for Edit action: your own m.text messages, plus the caption of your
-    // own captioned media (MSC2530), can be edited inline.
+    // own captioned media (MSC2530), can be edited in the composer. Needs a
+    // composer to edit in (`onStartEdit`).
     const canEditMessage =
+        !!onStartEdit &&
         isOwnMessage &&
         eventType === "m.room.message" &&
         !forward &&
@@ -1430,7 +1456,7 @@ function MessageItem({
                 onOpenThread?.(threadRootId);
                 break;
             case "edit":
-                startEdit();
+                onStartEdit?.(event);
                 break;
             case "pin":
                 void togglePin();
@@ -2577,65 +2603,6 @@ function MessageItem({
         );
     }
 
-    useEffect(() => {
-        if (editRequested) {
-            editFromKeyboard.current = true;
-            startEdit();
-        }
-        // Zami: it runs when the parent asks, as upstream's effect does.
-    }, [editRequested]);
-
-    // Zami: the edit box focuses when it mounts, which covers every way in
-    // (this button, ArrowUp in the composer, a double-tap).
-    useEffect(() => {
-        if (isEditing) editBoxEl.current?.focus();
-    }, [isEditing]);
-
-    function startEdit() {
-        setEditText(body());
-        setIsEditing(true);
-        // Zami: not ported: scrolling the row into view, which the timeline's
-        // list would have to do (the keyboard's own avoidance mostly covers it).
-    }
-
-    function cancelEdit() {
-        setIsEditing(false);
-        setEditText("");
-        if (editFromKeyboard.current) {
-            editFromKeyboard.current = false;
-            onEditDone?.();
-        }
-    }
-
-    async function saveEdit() {
-        if (!event.getId() || isSavingEdit) return;
-        // Captioned media: an empty caption just strips the caption rather
-        // than offering to delete the attachment.
-        if (isEmptyEdit(event, editText)) {
-            // Empty edit — cancel without returning focus, then prompt to delete
-            setIsEditing(false);
-            setEditText("");
-            deleteRefocus.current = editFromKeyboard.current;
-            editFromKeyboard.current = false;
-            setConfirmingDelete(true);
-            return;
-        }
-        setIsSavingEdit(true);
-        try {
-            await sendMessageEdit(room, event, editText);
-            setIsEditing(false);
-            setEditText("");
-            if (editFromKeyboard.current) {
-                editFromKeyboard.current = false;
-                onEditDone?.();
-            }
-        } catch (err) {
-            console.error("Failed to edit message:", err);
-        } finally {
-            setIsSavingEdit(false);
-        }
-    }
-
     function plainToHtml(text: string): string {
         const escaped = text
             .replace(/&/g, "&amp;")
@@ -2816,67 +2783,6 @@ function MessageItem({
         );
     }
 
-    // Media caption (MSC2530): rendered as a normal message above the
-    // media, so an image/video/etc. with a caption reads like a message
-    // followed by the attachment.
-    // Inline edit box: replaces a text body, or a media caption (the
-    // attachment itself stays rendered below it).
-    function editBox() {
-        return (
-            <View className="mt-1">
-                <MessageEditBox
-                    text={editText}
-                    onTextChange={setEditText}
-                    editorEl={editBoxEl}
-                    room={room}
-                    messageEmotes={emoticonsFromHtml(
-                        event.getContent().formatted_body as string | undefined,
-                    )}
-                    onSave={saveEdit}
-                    onCancel={cancelEdit}
-                />
-                <Text className="text-xs text-zam-textMuted mt-1">
-                    <Text className="font-mono">Enter</Text>{" "}
-                    {t("messageItem.toSave")}{" "}
-                    <Text className="font-mono">Esc</Text>{" "}
-                    {t("messageItem.toCancel")}
-                </Text>
-                <View className="flex-row gap-2 mt-1">
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={saveEdit}
-                        disabled={
-                            isSavingEdit || (!editText.trim() && !hasCaption())
-                        }
-                        accessibilityState={{
-                            disabled:
-                                isSavingEdit ||
-                                (!editText.trim() && !hasCaption()),
-                        }}
-                        className={`px-3 py-1 bg-zam-accent rounded transition-colors ${
-                            isSavingEdit || (!editText.trim() && !hasCaption())
-                                ? "opacity-50"
-                                : ""
-                        }`}
-                    >
-                        <Text className="text-xs font-semibold text-white">
-                            {t("common.save")}
-                        </Text>
-                    </Pressable>
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={cancelEdit}
-                        className="px-3 py-1 bg-zam-backgroundTertiary rounded transition-colors"
-                    >
-                        <Text className="text-xs font-semibold text-zam-textPrimary">
-                            {t("common.cancel")}
-                        </Text>
-                    </Pressable>
-                </View>
-            </View>
-        );
-    }
-
     // The player row for uploaded audio, and for tracker
     // modules sent as m.file.
     function audioCard() {
@@ -2998,8 +2904,10 @@ function MessageItem({
         );
     }
 
+    // Media caption (MSC2530): rendered as a normal message above the
+    // media, so an image/video/etc. with a caption reads like a message
+    // followed by the attachment.
     function mediaCaption() {
-        if (isEditing) return editBox();
         if (!hasCaption()) return null;
         return (
             <>
@@ -3585,7 +3493,6 @@ function MessageItem({
                 </>
             );
         }
-        if (isEditing) return editBox();
         // m.emote: prefix the action with the sender's name so it
         // reads "* Name does something" even in grouped messages
         // where the header is hidden. Uses the same member-name
@@ -3601,7 +3508,17 @@ function MessageItem({
                 : bodyHtml;
         return (
             <>
-                <View className={bubble.bubble ? OWN_BUBBLE : ""}>
+                <View
+                    className={
+                        bubble.bubble
+                            ? bubble.alignOwn
+                                ? OWN_BUBBLE
+                                : OWN_BUBBLE_START
+                            : bubble.otherBubble
+                              ? OTHER_BUBBLE
+                              : ""
+                    }
+                >
                     {bodyWithTrailing(
                         html,
                         `${bodyTextClass}${emojiOnly ? " emoji-only" : ""}${
@@ -3726,7 +3643,9 @@ function MessageItem({
             className={`group relative px-4 py-0.5 rounded transition-colors ${
                 mentionHighlight
                     ? "bg-zam-warning/10 border-s-2 border-zam-warning"
-                    : ""
+                    : isBeingEdited
+                      ? "bg-zam-accent/10 border-s-2 border-zam-accent"
+                      : ""
             } ${showHeader ? "pt-3" : ""} ${
                 mobileSelected || (!isTouchscreen && rowHovered)
                     ? "bg-zam-messageHover"
@@ -3796,6 +3715,12 @@ function MessageItem({
                                     {displayName}
                                 </Text>
                             </Pressable>
+                            {senderTagIcon ? (
+                                <PowerLevelTagBadge
+                                    tag={senderTagIcon}
+                                    showName={false}
+                                />
+                            ) : null}
                             <Text className="text-xs text-zam-textMuted flex-shrink-0">
                                 {messageTimestamp(timestamp)}
                             </Text>
@@ -4221,7 +4146,7 @@ function MessageItem({
                     {!isTouchscreen && canEditMessage ? (
                         <ActionButton
                             label={t("messageItem.editMessage")}
-                            onPress={startEdit}
+                            onPress={() => onStartEdit?.(event)}
                         >
                             <SvgIcon
                                 d={EDIT_PATH}
@@ -4321,7 +4246,7 @@ function MessageItem({
                         // Edit at the start of the bar instead.
                         <ActionButton
                             label={t("messageItem.editMessage")}
-                            onPress={startEdit}
+                            onPress={() => onStartEdit?.(event)}
                         >
                             <SvgIcon
                                 d={EDIT_PATH}

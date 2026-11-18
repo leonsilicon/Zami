@@ -24,6 +24,12 @@ import type { Room } from "matrix-js-sdk";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import Portal from "$lib/components/ui/Portal.svelte";
 import RichPresenceCard from "$lib/components/ui/RichPresenceCard.svelte";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import { effectiveRoomTags } from "$lib/stores/powerLevelTags.svelte";
+import {
+    tagForPowerLevel,
+    type PowerLevelTag,
+} from "$lib/utils/powerLevelTags";
 import { nextRpcExpiry, parseRpcField } from "$lib/utils/richPresence";
 import BottomSheet from "$lib/components/ui/BottomSheet.svelte";
 import { auth } from "$lib/stores/auth.svelte";
@@ -165,6 +171,19 @@ export default function UserProfileCard({ room }: Props) {
     // while it's open: the card stays mounted (closed) under every room.
     useRune(() => (open ? roomsState.roomsTick : 0), [open]);
     const member = userId ? room.getMember(userId) : null;
+    // The room's tag for this member's power level (creators have their own
+    // label, so no badge there).
+    // Zami: read through useRune so a tags edit re-renders the card.
+    const memberTag = useRune((): PowerLevelTag | null => {
+        if (!member || hasImmutableCreatorPower(room, member.userId)) {
+            return null;
+        }
+        const info = effectiveRoomTags(room.roomId);
+        return (
+            tagForPowerLevel(info.tags, getUserPowerLevel(room, member.userId))
+                ?.tag ?? null
+        );
+    }, [room, member, open && roomsState.roomsTick]);
     const displayName = member ? memberDisplayName(member) : userId;
     const avatarSrc = userId ? getMemberAvatar(room, userId) : null;
     const presence = useRune(
@@ -753,13 +772,19 @@ export default function UserProfileCard({ room }: Props) {
                     </View>
                 )}
                 {member && (
-                    <Text className="mt-1 text-xs text-zam-textMuted">
-                        {hasImmutableCreatorPower(room, member.userId)
-                            ? t("userProfileCard.powerLevelCreator")
-                            : t("userProfileCard.powerLevel", {
-                                  level: getUserPowerLevel(room, member.userId),
-                              })}
-                    </Text>
+                    <View className="mt-1 flex-row flex-wrap items-center gap-1">
+                        <Text className="text-xs text-zam-textMuted">
+                            {hasImmutableCreatorPower(room, member.userId)
+                                ? t("userProfileCard.powerLevelCreator")
+                                : t("userProfileCard.powerLevel", {
+                                      level: getUserPowerLevel(
+                                          room,
+                                          member.userId,
+                                      ),
+                                  })}
+                        </Text>
+                        {memberTag && <PowerLevelTagBadge tag={memberTag} />}
+                    </View>
                 )}
                 {!member && !isSelf && (
                     <Text className="mt-1 text-xs text-zam-textMuted">

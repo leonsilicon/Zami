@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -7,17 +7,23 @@ import type { MatrixEvent } from "matrix-js-sdk";
 import {
     acceptOffer,
     cancelTransfer,
+    offerFromSenderDevice,
     withdrawOffer,
 } from "$lib/matrix/fileTransfer";
 import { getClient } from "$lib/matrix/runtime";
 import {
+    acceptedOnDevice,
     isOffered,
     transfersFor,
     type TransferFailure,
     type TransferView,
 } from "$lib/stores/fileTransfers.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
-import { formatTransferBytes, parseFileOffer } from "$lib/utils/fileTransfer";
+import {
+    formatTransferBytes,
+    offerExpiresAt,
+    parseFileOffer,
+} from "$lib/utils/fileTransfer";
 import type { MessageKey } from "$lib/i18n/en";
 
 interface Props {
@@ -57,10 +63,41 @@ export default function FileOfferCard({ event }: Props) {
         () => !!transferId && isOffered(transferId),
         [transferId],
     );
-    const expired = !!offer && offer.expiresTs < Date.now();
+    const expired =
+        !!offer && offerExpiresAt(offer, event.getTs()) < Date.now();
+    const eventId = event.getId();
+    const acceptedElsewhere = useRune(
+        () => (eventId ? acceptedOnDevice(eventId ?? "") : null),
+        [eventId],
+    );
+    // null while the check runs; false when the device proof fails or throws.
+    const [fromNamedDevice, setFromNamedDevice] = useState<boolean | null>(
+        null,
+    );
+    useEffect(() => {
+        const current = event;
+        setFromNamedDevice(null);
+        let stale = false;
+        offerFromSenderDevice(current)
+            .then((ok) => {
+                if (!stale) setFromNamedDevice(ok);
+            })
+            .catch((err) => {
+                // Not proven is not trusted: a failed check counts as false.
+                console.warn("[file-transfer] offer check", err);
+                if (!stale) setFromNamedDevice(false);
+            });
+        return () => {
+            stale = true;
+        };
+    }, [event]);
+    const untrusted = fromNamedDevice === false && !fromThisDevice;
+    // Accept needs the device proof itself: while the check runs it is disabled.
+    const verified = fromThisDevice || fromNamedDevice === true;
     const canAccept =
         !fromThisDevice &&
         !expired &&
+        !untrusted &&
         (!incoming ||
             incoming.phase === "failed" ||
             incoming.phase === "cancelled");
@@ -77,6 +114,7 @@ export default function FileOfferCard({ event }: Props) {
     function isActive(view: TransferView): boolean {
         return (
             view.phase === "connecting" ||
+            view.phase === "preparing" ||
             view.phase === "transferring" ||
             view.phase === "verifying"
         );
@@ -84,6 +122,10 @@ export default function FileOfferCard({ event }: Props) {
 
     function statusText(view: TransferView): string {
         switch (view.phase) {
+            case "preparing":
+                return view.direction === "receive"
+                    ? t("fileOffer.preparingReceive")
+                    : t("fileOffer.preparingSend");
             case "connecting":
                 return t("fileOffer.connecting");
             case "verifying":
@@ -108,8 +150,13 @@ export default function FileOfferCard({ event }: Props) {
     }
 
     function accept() {
-        if (!offer) return;
-        acceptOffer(event.getRoomId() ?? "", sender, offer).catch((err) => {
+        if (!offer || !verified) return;
+        acceptOffer(
+            event.getRoomId() ?? "",
+            event.getId() ?? "",
+            sender,
+            offer,
+        ).catch((err) => {
             console.error("Failed to accept file:", err);
             showErrorToast(t("fileOffer.failedConnection"));
         });
@@ -248,10 +295,21 @@ export default function FileOfferCard({ event }: Props) {
                                     {t("fileOffer.expired")}
                                 </Text>
                             ) : null}
-                            {canAccept && (
+                            {acceptedElsewhere &&
+                                views.length === 0 &&
+                                !untrusted && (
+                                    <Text className="mt-2 text-xs text-zam-textMuted">
+                                        {t("fileOffer.acceptedElsewhere", {
+                                            device: acceptedElsewhere,
+                                        })}
+                                    </Text>
+                                )}
+                            {canAccept ? (
                                 <Pressable
                                     accessibilityRole="button"
-                                    className="mt-2 self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
+                                    className={`mt-2 self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors${verified ? "" : " opacity-50"}`}
+                                    disabled={!verified}
+                                    accessibilityState={{ disabled: !verified }}
                                     onPress={accept}
                                 >
                                     <Text className="text-white text-xs font-semibold">
@@ -260,7 +318,11 @@ export default function FileOfferCard({ event }: Props) {
                                             : t("fileOffer.accept")}
                                     </Text>
                                 </Pressable>
-                            )}
+                            ) : untrusted ? (
+                                <Text className="mt-2 text-xs text-zam-danger">
+                                    {t("fileOffer.untrusted")}
+                                </Text>
+                            ) : null}
                         </>
                     )}
                 </>

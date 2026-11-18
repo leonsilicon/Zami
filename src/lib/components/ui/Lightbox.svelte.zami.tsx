@@ -58,7 +58,9 @@ import {
 import {
     fetchAttachmentBlob,
     fetchDecryptedAttachmentBlob,
+    getHomeserverBaseUrl,
 } from "$lib/matrix/client";
+import { isSameOrigin } from "$lib/utils/mxcUri";
 import { rememberVolume } from "$lib/actions/rememberVolume";
 import { isSvg, safeMediaBlob } from "$lib/utils/attachmentMime";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
@@ -82,6 +84,9 @@ interface Props {
     /** Still shown behind a video until its data arrives. Ignored for
      *  images, which are their own poster. */
     poster?: string | null;
+    /** Loop the video: for GIF-style media (a tweet's GIF mp4), never for
+     *  a real video. */
+    loop?: boolean;
     /** Name to save as. Falls back to the last path segment of `src`, which
      *  is a bare media id (no extension) on Matrix download URLs. */
     filename?: string;
@@ -216,6 +221,7 @@ export default function Lightbox({
     alt = "",
     kind = "image",
     poster = null,
+    loop = false,
     filename,
     onClose,
     favourite,
@@ -1129,6 +1135,7 @@ export default function Lightbox({
                                         src={src}
                                         alt={alt}
                                         poster={poster}
+                                        loop={loop}
                                         encryptedFile={encryptedFile}
                                         mimetype={mimetype}
                                         sizeHint={sizeHint}
@@ -1491,6 +1498,7 @@ function LightboxVideo({
     src,
     alt,
     poster,
+    loop,
     encryptedFile,
     mimetype,
     sizeHint,
@@ -1500,13 +1508,26 @@ function LightboxVideo({
     src: string;
     alt: string;
     poster: string | null;
+    loop: boolean;
     encryptedFile?: EncryptedFileInfo & { url: string };
     mimetype: string | null;
     sizeHint: number | null;
     maxWidth: number;
     maxHeight: number;
 }) {
-    const videoBlobUrl = isObjectUrl(src) ? src : null;
+    // Third-party video (e.g. a tweet's GIF mp4 on video.twimg.com) needs no
+    // token, and the authed streamer refuses to fetch it (and CORS would block
+    // it anyway), so the element loads it directly, like the inline player.
+    function isDirectVideo(url: string): boolean {
+        if (isObjectUrl(url)) return true;
+        if (encryptedFile) return false;
+        const hs = getHomeserverBaseUrl();
+        return !!hs && /^https?:/i.test(url) && !isSameOrigin(url, hs);
+    }
+
+    // A `blob:` src is already local bytes. The caller owns it, so play it
+    // as is and never revoke it here. A third-party URL is played as is too.
+    const videoBlobUrl = isDirectVideo(src) ? src : null;
     const [videoFailed, setVideoFailed] = useState(false);
     const [videoReady, setVideoReady] = useState(false);
     const [videoProgress, setVideoProgress] = useState<DownloadProgress | null>(
@@ -1515,9 +1536,9 @@ function LightboxVideo({
     // A stream that broke retries once as a full, verified download.
     const [videoStreamBroke, setVideoStreamBroke] = useState(false);
 
-    // The URL the action streams, or null when the element has a blob / is
-    // not a video / has given up.
-    const videoStreamUrl = !videoFailed && !isObjectUrl(src) ? src : null;
+    // The URL the action streams, or null when the element has a direct src /
+    // is not a video / has given up.
+    const videoStreamUrl = !videoFailed && !isDirectVideo(src) ? src : null;
     // Encrypted files too small to be worth playing on unverified bytes (see
     // STREAM_ENCRYPTED_MIN_BYTES), or a browser with no MediaSource, take the
     // download-verify-play route.
@@ -1529,7 +1550,14 @@ function LightboxVideo({
                 sizeHint < STREAM_ENCRYPTED_MIN_BYTES));
 
     function onVideoBroke() {
-        if (!videoStreamUrl) return;
+        if (!videoStreamUrl) {
+            // A directly loaded third-party video has no fallback.
+            if (videoBlobUrl && !isObjectUrl(videoBlobUrl)) {
+                console.error("Failed to load video");
+                setVideoFailed(true);
+            }
+            return;
+        }
         if (!videoStreamBroke && !videoForceBlob) {
             setVideoStreamBroke(true);
             setVideoReady(false);
@@ -1541,9 +1569,11 @@ function LightboxVideo({
 
     // ⚠ Exactly ONE video element is ever live (this viewer is a singleton in
     // the modal slot) and it is only ever created after the user clicked a
-    // tile. It carries no `loop`, and above all NO onpause handler that calls
-    // play() — that pattern fights the browser's own load-shedding forever and
-    // pegged the main thread when it lived in LinkPreview. Do not add one back.
+    // tile. It must have NO onpause handler that calls play(): that pattern
+    // fights the browser's own load-shedding forever and pegged the main
+    // thread when it lived in LinkPreview. Do not add one back. (`loop` is a
+    // different thing and is fine: the browser just seeks to 0 at the end and
+    // can still pause it. Only GIF-style media sets it.)
 
     // Zami: the video's own size, once its metadata is in; the box is 16:9
     // until then.
@@ -1574,6 +1604,7 @@ function LightboxVideo({
                             onError: onVideoBroke,
                         }}
                         poster={poster}
+                        loop={loop}
                         className="rounded-lg bg-black"
                         style={box}
                         onLoadedMetadata={(w, h) => setNatural({ w, h })}
@@ -1707,7 +1738,7 @@ function useAuthedVideoSrc({
 }
 
 /**
- * Zami: the `<video>` element, `autoplay` with `controls` and `use:rememberVolume`:
+ * Zami: the `<video>` element, `autoplay` with `controls`, `{loop}` and `use:rememberVolume`:
  * its bare `src`, or what `use:authedVideoSrc` feeds it, with its `poster` over it
  * until the first frame. Its `onloadedmetadata` reads the video's size, which the
  * player reports as `onResize`.
@@ -1716,6 +1747,7 @@ function AuthedVideo({
     src,
     authed,
     poster,
+    loop,
     className,
     style,
     onLoadedMetadata,
@@ -1725,6 +1757,7 @@ function AuthedVideo({
     src: string | null | undefined;
     authed: AuthedVideoSrcParams;
     poster: string | null;
+    loop: boolean;
     className: string;
     style: ViewStyle;
     onLoadedMetadata: (videoWidth: number, videoHeight: number) => void;
@@ -1737,6 +1770,7 @@ function AuthedVideo({
             src={streamed ?? src}
             poster={poster}
             controls
+            loop={loop}
             autoplay
             use={rememberVolume}
             className={className}

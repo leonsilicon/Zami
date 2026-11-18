@@ -270,6 +270,8 @@ export const settingsState = $state({
      *  iMessage convention). Default OFF (Discord uniform-left). Rides
      *  customization sync so it follows the account across devices. */
     rightAlignOwnBubbles: readBool("rightAlignOwnBubbles", false),
+    /** Render everyone's messages in bubbles, not only own right-aligned ones. */
+    bubbleAllMessages: readBool("bubbleAllMessages", false),
     /** Draw senders' names in the colour they chose in their profile
      *  (MSC4522). Default ON. Rides customization sync. */
     showNameColours: readBool("showNameColours", true),
@@ -514,6 +516,10 @@ export const settingsState = $state({
      *  login. Not persisted: the presence options hide and invisible stops
      *  hiding receipts and typing. False until the probe says otherwise. */
     presenceUnsupported: false,
+    /** On a server without presence, publish ours in an extended profile field
+     *  instead (see utils/profilePresence.ts). Opt-in: the field is readable by
+     *  anyone who can see the profile. */
+    shareProfilePresence: readAccountBool("shareProfilePresence", false),
     /** Do Not Disturb: silences notifications and ringing on every device
      *  (the account's master push rule) and shows as idle to others. */
     doNotDisturb: readAccountBool("doNotDisturb", false),
@@ -748,6 +754,7 @@ export function customizationSnapshot(): ClientCustomization {
         keepSidebarOpen: settingsState.keepSidebarOpen,
         showMatrixIds: settingsState.showMatrixIds,
         rightAlignOwnBubbles: settingsState.rightAlignOwnBubbles,
+        bubbleAllMessages: settingsState.bubbleAllMessages,
         showNameColours: settingsState.showNameColours,
         shareCallStatus: settingsState.shareCallStatus,
         themePresets: Object.fromEntries(
@@ -824,6 +831,10 @@ export function applyCustomization(c: ClientCustomization): void {
         settingsState.rightAlignOwnBubbles = c.rightAlignOwnBubbles;
         writeBool("rightAlignOwnBubbles", c.rightAlignOwnBubbles);
     }
+    if (c.bubbleAllMessages !== undefined) {
+        settingsState.bubbleAllMessages = c.bubbleAllMessages;
+        writeBool("bubbleAllMessages", c.bubbleAllMessages);
+    }
     if (c.gifDefaultTab !== undefined) {
         settingsState.gifDefaultTab = normalizeGifTab(c.gifDefaultTab);
         writeString("gifDefaultTab", settingsState.gifDefaultTab);
@@ -890,6 +901,10 @@ export function reloadAccountSettings(): void {
     );
     settingsState.ownPresence = readPresence("ownPresence", "online");
     settingsState.presenceUnsupported = false;
+    settingsState.shareProfilePresence = readAccountBool(
+        "shareProfilePresence",
+        false,
+    );
     settingsState.doNotDisturb = readAccountBool("doNotDisturb", false);
     settingsState.dmSortOrder = readDmSortOrder();
     settingsState.ownStatusMessage =
@@ -1013,6 +1028,12 @@ export function setShareCallStatus(value: boolean): void {
 export function setShowNameColours(value: boolean): void {
     settingsState.showNameColours = value;
     writeBool("showNameColours", value);
+    customizationChanged();
+}
+
+export function setBubbleAllMessages(value: boolean): void {
+    settingsState.bubbleAllMessages = value;
+    writeBool("bubbleAllMessages", value);
     customizationChanged();
 }
 
@@ -1400,6 +1421,11 @@ export function setExcludeInsecureDevices(value: boolean): void {
 export function setOwnStatusMessageSetting(value: string): void {
     settingsState.ownStatusMessage = value;
     writeAccountString("ownStatusMessage", value);
+}
+
+export function setShareProfilePresenceSetting(value: boolean): void {
+    settingsState.shareProfilePresence = value;
+    writeAccountBool("shareProfilePresence", value);
 }
 
 export function setDoNotDisturbSetting(value: boolean): void {

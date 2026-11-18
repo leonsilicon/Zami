@@ -67,6 +67,13 @@ import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { resolveEmbed, mountEmbed } from "$lib/plugins/embeds";
 import { applyPreviewUrlTransforms } from "$lib/plugins/outgoingTransforms";
+import {
+    parseYoutubeUrl,
+    youtubeWatchUrl,
+    youtubeOembedUrl,
+    parseOembedTitle,
+    type YoutubeOembedMeta,
+} from "$lib/utils/youtube";
 
 // What each link resolved to this session. The timeline unmounts rows
 // away from the viewport (utils/timelineWindow); a row mounted again
@@ -85,6 +92,18 @@ function rememberPreview(key: string, r: Resolved) {
         resolvedPreviews.delete(resolvedPreviews.keys().next().value!);
     }
     resolvedPreviews.set(key, r);
+}
+
+// YouTube oEmbed titles per video id, null for a failed lookup so a broken
+// link is not asked for again on every mount.
+const YOUTUBE_OEMBED_MAX = 1000;
+const youtubeOembeds = new Map<string, YoutubeOembedMeta | null>();
+function rememberYoutubeOembed(id: string, meta: YoutubeOembedMeta | null) {
+    youtubeOembeds.delete(id);
+    if (youtubeOembeds.size >= YOUTUBE_OEMBED_MAX) {
+        youtubeOembeds.delete(youtubeOembeds.keys().next().value!);
+    }
+    youtubeOembeds.set(id, meta);
 }
 
 interface Props {
@@ -147,10 +166,21 @@ export default function LinkPreview({ url }: Props) {
     const [videoThumbError, setVideoThumbError] = useState(false);
 
     type DirectEmbed =
-        | { type: "youtube"; embedUrl: string }
+        | {
+              type: "youtube";
+              embedUrl: string;
+              watchUrl: string;
+              short: boolean;
+              start: number;
+          }
         | { type: "video"; videoUrl: string };
 
     const [directEmbed, setDirectEmbed] = useState<DirectEmbed | null>(null);
+    // Title and channel of the YouTube video, from oEmbed. Null until known
+    // (and for good when the lookup fails): the preview works without it.
+    const [youtubeTitle, setYoutubeTitle] = useState<YoutubeOembedMeta | null>(
+        null,
+    );
 
     // A YouTube embed shows its thumbnail until played: each player is a
     // whole YouTube page in its own frame (tens of MB before it plays, plus a
@@ -195,21 +225,8 @@ export default function LinkPreview({ url }: Props) {
     }
 
     function getYoutubeEmbedUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h === "youtube.com" || h === "m.youtube.com") {
-                const id = u.searchParams.get("v");
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-            if (h === "youtu.be") {
-                const id = u.pathname.slice(1).split("?")[0];
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-        } catch {
-            /* */
-        }
-        return null;
+        const yt = parseYoutubeUrl(rawUrl);
+        return yt ? `https://www.youtube.com/embed/${yt.id}` : null;
     }
 
     // Zami: upstream's effect re-runs when the preview URL transforms change;
@@ -232,17 +249,48 @@ export default function LinkPreview({ url }: Props) {
         setVideoThumbError(false);
         setYoutubePlaying(false);
         youtubeResumeAt.current = 0;
+        setYoutubeTitle(null);
 
         // A response that lands after the URL or the policy moved on must not
         // write itself back into state — otherwise flipping the setting to a
         // stricter value could be undone by the request it just cancelled.
         let cancelled = false;
 
-        const ytUrl = allowEmbeds ? getYoutubeEmbedUrl(currentUrl) : null;
-        if (ytUrl) {
-            setDirectEmbed({ type: "youtube", embedUrl: ytUrl });
+        const yt = allowEmbeds ? parseYoutubeUrl(currentUrl) : null;
+        if (yt) {
+            const watchUrl = youtubeWatchUrl(yt.id);
+            // The first play starts at the link's own offset (?t= / ?start=).
+            youtubeResumeAt.current = yt.start;
+            setDirectEmbed({
+                type: "youtube",
+                embedUrl: `https://www.youtube.com/embed/${yt.id}`,
+                watchUrl,
+                short: yt.short,
+                start: yt.start,
+            });
             setPending(false);
-            return;
+
+            // Title via oEmbed, behind the same consent as the embed above.
+            // Cached per id, failures included.
+            if (youtubeOembeds.has(yt.id)) {
+                setYoutubeTitle(youtubeOembeds.get(yt.id) ?? null);
+            } else {
+                const id = yt.id;
+                fetch(youtubeOembedUrl(watchUrl), {
+                    referrerPolicy: "no-referrer",
+                })
+                    .then(async (r) =>
+                        r.ok ? parseOembedTitle(await r.json()) : null,
+                    )
+                    .catch(() => null)
+                    .then((meta) => {
+                        rememberYoutubeOembed(id, meta);
+                        if (!cancelled) setYoutubeTitle(meta);
+                    });
+            }
+            return () => {
+                cancelled = true;
+            };
         }
 
         // Twitter/X: built from FxTwitter's status API (it sends CORS
@@ -667,42 +715,87 @@ export default function LinkPreview({ url }: Props) {
     }
 
     function body(): ReactNode {
-        if (directEmbed?.type === "youtube" && youtubePlaying)
-            // Zami: the <iframe> is a WebView. Not ported: parkYoutubeOffscreen
-            // (and pausing for pauseVideoOnScrollOff), which watch the player
-            // scroll out of view; the timeline's FlatList unmounts rows far
-            // off screen, which closes the player.
+        if (directEmbed?.type === "youtube")
+            // Shorts are vertical, so they get a narrow 9:16 column. The title
+            // sits under the player or thumbnail and stays put while it plays.
             return (
                 <View
-                    accessibilityLabel={t("linkPreview.youtubeVideo")}
-                    className="mt-1 w-full max-w-lg aspect-video rounded-lg overflow-hidden bg-black"
+                    className={`mt-1 w-full ${
+                        directEmbed.short
+                            ? "max-w-[min(100%,18rem)]"
+                            : "max-w-lg"
+                    }`}
                 >
-                    <YoutubeFrame
-                        src={youtubePlayerUrl(directEmbed.embedUrl)}
-                        title={t("linkPreview.youtubeVideo")}
-                    />
+                    {youtubePlaying ? (
+                        // Zami: the <iframe> is a WebView. Not ported:
+                        // parkYoutubeOffscreen (and pausing for
+                        // pauseVideoOnScrollOff), which watch the player scroll
+                        // out of view; the timeline's FlatList unmounts rows
+                        // far off screen, which closes the player.
+                        <View
+                            accessibilityLabel={
+                                youtubeTitle?.title ??
+                                t("linkPreview.youtubeVideo")
+                            }
+                            className={`w-full ${
+                                directEmbed.short
+                                    ? "max-w-[min(100%,18rem)] aspect-[9/16]"
+                                    : "max-w-lg aspect-video"
+                            } rounded-lg overflow-hidden bg-black`}
+                        >
+                            <YoutubeFrame
+                                src={youtubePlayerUrl(directEmbed.embedUrl)}
+                                title={
+                                    youtubeTitle?.title ??
+                                    t("linkPreview.youtubeVideo")
+                                }
+                            />
+                        </View>
+                    ) : (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t("linkPreview.playVideo")}
+                            className={`group/media relative w-full ${
+                                directEmbed.short
+                                    ? "max-w-[min(100%,18rem)] aspect-[9/16]"
+                                    : "max-w-lg aspect-video"
+                            } rounded-lg overflow-hidden bg-black`}
+                            onPress={() => setYoutubePlaying(true)}
+                        >
+                            <Image
+                                source={mediaSource(
+                                    youtubeThumbnail(directEmbed.embedUrl),
+                                )}
+                                accessible={false}
+                                className="w-full h-full"
+                                contentFit="cover"
+                            />
+                            <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
+                                {playBadge()}
+                            </View>
+                        </Pressable>
+                    )}
+                    {youtubeTitle ? (
+                        <View className="mt-1.5 min-w-0">
+                            <Text
+                                accessibilityRole="link"
+                                onPress={() => openLink(url)}
+                                numberOfLines={2}
+                                className="text-sm font-semibold text-zam-accent leading-snug"
+                            >
+                                {youtubeTitle.title}
+                            </Text>
+                            {youtubeTitle.author ? (
+                                <Text
+                                    numberOfLines={1}
+                                    className="text-xs text-zam-textMuted mt-0.5"
+                                >
+                                    {youtubeTitle.author}
+                                </Text>
+                            ) : null}
+                        </View>
+                    ) : null}
                 </View>
-            );
-        if (directEmbed?.type === "youtube")
-            return (
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t("linkPreview.playVideo")}
-                    className="group/media mt-1 relative w-full max-w-lg aspect-video rounded-lg overflow-hidden bg-black"
-                    onPress={() => setYoutubePlaying(true)}
-                >
-                    <Image
-                        source={mediaSource(
-                            youtubeThumbnail(directEmbed.embedUrl),
-                        )}
-                        accessible={false}
-                        className="w-full h-full"
-                        contentFit="cover"
-                    />
-                    <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
-                        {playBadge()}
-                    </View>
-                </Pressable>
             );
         if (directEmbed?.type === "video")
             // Zami: a 16:9 box, as the <video> has no size of its own here.

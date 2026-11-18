@@ -114,12 +114,14 @@ import {
     getCallSummaries,
     getContextCallSummaries,
     getOwnUserId,
+    getDirectRoomIds,
     decryptEventsForDisplay,
     isRenderableTimelineEvent,
     onCallEvent,
     shouldLoadMembersOnOpen,
     type ReadReceiptInfo,
 } from "$lib/matrix/client";
+import Avatar from "$lib/components/ui/Avatar.svelte";
 import { isCallEventType } from "$lib/utils/callSummary";
 import { logSync } from "$lib/matrix/syncLog";
 import { setActiveRoom } from "$lib/stores/rooms.svelte";
@@ -428,9 +430,10 @@ export default function MessageArea({
             if (hostBridge.startReply === handler) hostBridge.startReply = null;
         };
     }, [room]);
-    const [editRequestedEventId, setEditRequestedEventId] = useState<
-        string | null
-    >(null);
+    // The message being edited in the composer (edit mode). Set by a message's
+    // Edit action, ArrowUp in the composer, or a plugin's composer.startEdit.
+    // Cleared on room switch, and by the composer when the edit ends.
+    const [editEvent, setEditEvent] = useState<MatrixEvent | null>(null);
 
     // Zami: `await tick()`: resolves once React has committed what was set
     // before it.
@@ -444,14 +447,12 @@ export default function MessageArea({
         );
     }, [tick]);
 
-    // Plugin composer.startEdit → start inline edit of your own text message.
+    // Plugin composer.startEdit → edit your own text message in the composer.
     // Single slot; the mounted room area owns it and only acts on its own room.
-    // Guards own + editable text (parity with requestEditLastMessage). The
-    // transient editRequestedEventId pulse is how the matching MessageItem
-    // enters edit mode (its editRequested prop → $effect → startEdit()).
+    // Guards own + editable text (parity with requestEditLastMessage).
     useEffect(() => {
         const activeRoom = room;
-        const handler = async (ctx: { roomId: string; eventId: string }) => {
+        const handler = (ctx: { roomId: string; eventId: string }) => {
             if (ctx.roomId !== activeRoom.roomId) return;
             const ev = findEventById(activeRoom, ctx.eventId);
             if (
@@ -461,16 +462,13 @@ export default function MessageArea({
                 !isEditableContent(ev.getContent())
             )
                 return;
-            await revealForEdit(ctx.eventId);
-            setEditRequestedEventId(ctx.eventId);
-            await tick();
-            setEditRequestedEventId(null);
+            setEditEvent(ev);
         };
         hostBridge.startEdit = handler;
         return () => {
             if (hostBridge.startEdit === handler) hostBridge.startEdit = null;
         };
-    }, [room, tick]);
+    }, [room]);
     const [threadRootId, setThreadRootId] = useState<string | null>(null);
     // Desktop: thread replaces the timeline instead of docking as a side
     // panel. Sticky for the session so an expanded reader stays expanded
@@ -556,25 +554,10 @@ export default function MessageArea({
         // Zami: no window to re-fit: the list windows itself.
     }
 
-    async function requestEditLastMessage() {
+    function requestEditLastMessage() {
         const last = lastEditableOwnMessage(currentMessages(), auth.userId);
         if (!last) return;
-        await revealForEdit(last.getId()!);
-        setEditRequestedEventId(last.getId()!);
-        await tick();
-        setEditRequestedEventId(null);
-    }
-    // Zami: upstream's window mounts the row an edit is asked of; the list
-    // only mounts rows near the screen, so bring it on screen first (as
-    // focusing its edit box would).
-    async function revealForEdit(eventId: string) {
-        if (viewableKeys.current.length === 0) return;
-        const index = await revealRow(eventId);
-        if (index === null) return;
-        const event = rows.current[index];
-        if (event && viewableKeys.current.includes(rowKey(event))) return;
-        scrollRowIntoView(index, 0.5, false);
-        await layoutSettled();
+        setEditEvent(last);
     }
     // Right-side panels live in the shared interfaceState.sidebar slot, so only
     // one is ever open and the central Escape/back handler can dismiss them.
@@ -1185,6 +1168,11 @@ export default function MessageArea({
         () => (void roomsState.roomsTick, getRoomDisplayName(room)),
         [room],
     );
+    // DMs get their own chat-start wording: users don't know a DM is a room.
+    const isDirectRoom = useRune(
+        () => (void roomsState.roomsTick, getDirectRoomIds().has(room.roomId)),
+        [room],
+    );
     // A Discord thread bridged by ZDMB: the header leads with its channel,
     // like Discord's "#channel > thread". Only a joined channel (not a forum,
     // which is a space) gets the link.
@@ -1702,6 +1690,7 @@ export default function MessageArea({
     useEffect(() => {
         void room.roomId; // track room changes
         setReplyToEvent(null);
+        setEditEvent(null);
         setContextWindow(null);
         setContextMessages(null);
         setContextAtReadPosition(false);
@@ -2908,7 +2897,7 @@ export default function MessageArea({
         void scrollToMessage(eventId);
     });
     const onOpenThread = useStableCallback(openThread);
-    const onEditDone = useCallback(() => messageInputEl.current?.focus(), []);
+    const onStartEdit = useCallback((ev: MatrixEvent) => setEditEvent(ev), []);
     const onRevealBlocked = useCallback((eventId: string) => {
         setRevealedBlockedIds((ids) => ({ ...ids, [eventId]: true }));
     }, []);
@@ -2928,7 +2917,7 @@ export default function MessageArea({
             revealedBlockedIds,
             receiptsByEvent,
             callSummaries,
-            editRequestedEventId,
+            editEventId: editEvent?.getId() ?? null,
             highlight,
         }),
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- isRawDebugEvent reads showAllEvents and debugTick.
@@ -2942,7 +2931,7 @@ export default function MessageArea({
             revealedBlockedIds,
             receiptsByEvent,
             callSummaries,
-            editRequestedEventId,
+            editEvent,
             highlight,
         ],
     );
@@ -2961,7 +2950,7 @@ export default function MessageArea({
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                     onOpenThread={onOpenThread}
-                    onEditDone={onEditDone}
+                    onStartEdit={onStartEdit}
                     onRevealBlocked={onRevealBlocked}
                     onRowTouch={onRowTouch}
                 />
@@ -2973,7 +2962,7 @@ export default function MessageArea({
             onReply,
             jumpToReply,
             onOpenThread,
-            onEditDone,
+            onStartEdit,
             onRevealBlocked,
             onRowTouch,
         ],
@@ -3612,6 +3601,8 @@ export default function MessageArea({
                                     <HistoryEdge
                                         state={historyEdgeState}
                                         roomName={roomName}
+                                        room={room}
+                                        isDirectRoom={isDirectRoom}
                                     />
                                 }
                             />
@@ -3784,13 +3775,17 @@ export default function MessageArea({
                                         roomName={roomName}
                                         room={room}
                                         replyToEvent={replyToEvent}
+                                        editEvent={editEvent}
+                                        onCancelEdit={() => {
+                                            setEditEvent(null);
+                                        }}
                                         scrollEl={timelineScroller}
                                         keepScrollOnSend={isContextView}
                                         onCancelReply={() => {
                                             setReplyToEvent(null);
                                         }}
-                                        onRequestEditLast={() =>
-                                            void requestEditLastMessage()
+                                        onRequestEditLast={
+                                            requestEditLastMessage
                                         }
                                         onSedEdit={(cmd) =>
                                             sedEditLastMessage(
@@ -4069,7 +4064,8 @@ interface RowsContext {
     revealedBlockedIds: Record<string, boolean>;
     receiptsByEvent: Map<string, ReadReceiptInfo[]> | null;
     callSummaries: Map<string, CallSummary>;
-    editRequestedEventId: string | null;
+    /** The message being edited in the composer. */
+    editEventId: string | null;
     highlight: { eventId: string; n: number } | null;
 }
 
@@ -4101,7 +4097,7 @@ function createRowsStore(): RowsStore {
             revealedBlockedIds: {},
             receiptsByEvent: null,
             callSummaries: new Map(),
-            editRequestedEventId: null,
+            editEventId: null,
             highlight: null,
         },
         version: 0,
@@ -4138,7 +4134,7 @@ interface RowProps {
     receipts: ReadReceiptInfo[];
     mentionHighlight: boolean;
     callSummary: CallSummary | null;
-    editRequested: boolean;
+    isBeingEdited: boolean;
     highlightN: number;
 }
 
@@ -4162,7 +4158,8 @@ function rowPropsOf(context: RowsContext, event: MatrixEvent): RowProps {
         receipts: context.receiptsByEvent?.get(id) ?? NO_RECEIPTS,
         mentionHighlight: mentionHighlightOf(event),
         callSummary: context.callSummaries.get(id) ?? null,
-        editRequested: context.editRequestedEventId === event.getId(),
+        isBeingEdited:
+            !!context.editEventId && context.editEventId === event.getId(),
         highlightN:
             context.highlight && context.highlight.eventId === event.getId()
                 ? context.highlight.n
@@ -4233,7 +4230,7 @@ interface TimelineRowProps {
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
     onOpenThread: (rootEventId: string) => void;
-    onEditDone: () => void;
+    onStartEdit: (event: MatrixEvent) => void;
     onRevealBlocked: (eventId: string) => void;
     onRowTouch: (eventId: string) => void;
 }
@@ -4251,7 +4248,7 @@ const TimelineRow = memo(function TimelineRow({
     onReply,
     jumpToReply,
     onOpenThread,
-    onEditDone,
+    onStartEdit,
     onRevealBlocked,
     onRowTouch,
 }: TimelineRowProps) {
@@ -4266,7 +4263,7 @@ const TimelineRow = memo(function TimelineRow({
         receipts,
         mentionHighlight,
         callSummary,
-        editRequested,
+        isBeingEdited,
         highlightN,
     } = useRowProps(rowsStore, event);
     // One box per row, measured for the spacers. It carries the
@@ -4326,8 +4323,8 @@ const TimelineRow = memo(function TimelineRow({
                         onReply={onReply}
                         jumpToReply={jumpToReply}
                         onOpenThread={onOpenThread}
-                        editRequested={editRequested}
-                        onEditDone={onEditDone}
+                        onStartEdit={onStartEdit}
+                        isBeingEdited={isBeingEdited}
                         receipts={receipts}
                         mentionHighlight={mentionHighlight}
                         callSummary={callSummary}
@@ -4427,9 +4424,13 @@ function TimelineCell({
 function HistoryEdge({
     state,
     roomName,
+    room,
+    isDirectRoom,
 }: {
     state: "start" | "loading" | "none";
     roomName: string;
+    room: Room;
+    isDirectRoom: boolean;
 }) {
     return (
         <>
@@ -4446,7 +4447,27 @@ function HistoryEdge({
             ) : null}
 
             {/* Chat start, shown only once the room's m.room.create is loaded */}
-            {state === "start" ? (
+            {state === "start" && isDirectRoom ? (
+                <View className="px-4 pb-4">
+                    <View className="mb-4">
+                        <Avatar
+                            src={getRoomAvatar(room)}
+                            name={roomName}
+                            id={room.roomId}
+                            size={64}
+                        />
+                    </View>
+                    <Text
+                        accessibilityRole="header"
+                        className="text-2xl font-bold text-zam-textPrimary mb-1"
+                    >
+                        {roomName}
+                    </Text>
+                    <Text className="text-zam-textMuted">
+                        {t("messageArea.dmStart", { name: roomName })}
+                    </Text>
+                </View>
+            ) : state === "start" ? (
                 <View className="px-4 pb-4">
                     <View className="w-16 h-16 rounded-full bg-zam-accent flex-row items-center justify-center mb-4">
                         <Text className="text-3xl font-bold text-white">#</Text>

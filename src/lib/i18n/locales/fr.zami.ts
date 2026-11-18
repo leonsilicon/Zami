@@ -172,6 +172,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aligner mes messages à droite (bulles)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Afficher vos propres messages à droite dans une bulle colorée",
+    "appearanceSettings.bubbleAllMessages": "Bulles pour tous les messages",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Afficher les messages de tout le monde dans des bulles, pas seulement les vôtres",
     "appearanceSettings.showNameColours": "Afficher les couleurs des noms",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Afficher les noms dans la couleur choisie dans chaque profil. Désactivez pour utiliser la couleur de texte normale pour tout le monde.",
@@ -296,6 +299,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "Couper le son",
     "callView.disconnect": "Se déconnecter",
     "callView.joinCall": "Rejoindre l'appel",
+    "callView.muteShareAudio": "Couper le son du partage",
+    "callView.unmuteShareAudio": "Réactiver le son du partage",
     "callView.you": "Vous",
     "callView.sScreen": "Écran de {name}",
     "callView.exitSpotlightFor": "Quitter la mise en avant de {label}",
@@ -1196,6 +1201,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Administrateurs : {length}",
     "memberList.admin": "Administrateur",
     "memberList.moderators": "Modérateurs : {length}",
+    "memberList.defaultRoleMember": "Membre",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} ce message ?",
@@ -1226,6 +1233,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "Ceci est le début du salon #",
     "messageArea.loadingHistory": "Chargement des messages précédents",
     "messageArea.room": ".",
+    "messageArea.dmStart":
+        "Ceci est le début de votre historique de messages privés avec {name}.",
     "messageArea.newMessages": "Nouveaux messages",
     "messageArea.unreadSince":
         "{count, plural, one {# nouveau message depuis {since}} other {# nouveaux messages depuis {since}}}",
@@ -1255,6 +1264,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageInput.pingOffTitle": "Ne pas notifier l'auteur",
     "messageInput.replyingTo": "En réponse à {replyTargetName}",
     "messageInput.cancelReplyEsc": "Annuler la réponse (Échap)",
+    "messageInput.editingMessage": "Modification du message",
+    "messageInput.cancelEditEsc": "Annuler la modification (Échap)",
+    "messageInput.editFailed": "Impossible d'enregistrer la modification",
     "messageInput.editAttachment": "Modifier la pièce jointe",
     "messageInput.editAttachment2": "Modifier la pièce jointe {name}",
     "messageInput.custom": "personnalisé",
@@ -1345,8 +1357,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} sur {total}",
     "messageItem.fileAttachment": "Fichier joint",
     "messageItem.download": "Télécharger",
-    "messageItem.toSave": "pour enregistrer ·",
-    "messageItem.toCancel": "pour annuler",
     "messageItem.openThread": "Ouvrir le fil",
     "messageItem.failedToSend": "Échec de l'envoi.",
     "messageItem.retrying": "Nouvelle tentative…",
@@ -2120,6 +2130,31 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Administrateur (100)",
     "roomSettings.moderator50": "Modérateur (50)",
     "roomSettings.member0": "Membre (0)",
+    "roomSettings.roleTags": "Étiquettes de rôle",
+    "roomSettings.roleTagsHint":
+        "Nom, couleur et icône affichés pour chaque niveau de pouvoir (MSC3949). Les niveaux sans étiquette utilisent le plus proche inférieur.",
+    "roomSettings.roleTagLevel": "Niveau de pouvoir",
+    "roomSettings.roleTagName": "Nom",
+    "roomSettings.roleTagColor": "Couleur",
+    "roomSettings.roleTagIcon": "Icône (emoji)",
+    "roomSettings.roleTagPickEmoji": "Choisir un emoji",
+    "roomSettings.roleTagUploadIcon": "Importer une image",
+    "roomSettings.roleTagRemoveIcon": "Supprimer l'icône",
+    "roomSettings.addRoleTag": "Ajouter une étiquette",
+    "roomSettings.removeRoleTag": "Supprimer l'étiquette",
+    "roomSettings.saveRoleTags": "Enregistrer les étiquettes",
+    "roomSettings.roleTagsSaved": "Étiquettes de rôle enregistrées",
+    "roomSettings.roleTagsSaveFailed":
+        "Impossible d'enregistrer les étiquettes de rôle : {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Deux étiquettes utilisent le niveau de pouvoir {level}",
+    "roomSettings.roleTagNameRequired": "Chaque étiquette a besoin d'un nom",
+    "roomSettings.roleTagLevelInvalid":
+        "Le niveau de pouvoir doit être un nombre entier",
+    "roomSettings.roleTagClearColor": "Effacer la couleur",
+    "roomSettings.customLevel": "Personnalisé ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "Ce salon n'a pas encore d'étiquettes ; les étiquettes par défaut sont affichées.",
     "roomSettings.muted1": "Muet (-1)",
     "roomSettings.kick": "Expulser",
     "roomSettings.ban": "Bannir",
@@ -2817,6 +2852,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.session": "votre autre session",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} regardent",
+    "videoTile.watchers": "Regardent",
+    "videoTile.noWatchers": "Personne ne regarde",
+    "videoTile.muteShareAudio": "Couper le son du partage d'écran",
+    "videoTile.unmuteShareAudio": "Réactiver le son du partage d'écran",
     "videoTile.fullscreen": "Plein écran",
     "videoTile.pictureInPicture": "Image dans l'image",
     "videoTile.exitPictureInPicture": "Quitter l'image dans l'image",
@@ -3141,6 +3181,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "Annuler",
     "fileOffer.withdraw": "Retirer",
     "fileOffer.connecting": "Connexion à l'expéditeur...",
+    "fileOffer.preparingReceive":
+        "En attente que l'expéditeur prépare le fichier",
+    "fileOffer.preparingSend": "Préparation du fichier",
+    "fileOffer.acceptedElsewhere":
+        "Accepté sur un autre de vos appareils ({device})",
+    "fileOffer.untrusted":
+        "Cette offre n'est pas fiable : elle ne vient pas de l'appareil qu'elle désigne.",
     "fileOffer.progress": "{done} sur {total}, {rate}/s",
     "fileOffer.verifying": "Vérification du fichier...",
     "fileOffer.savedDone": "Fichier enregistré et vérifié.",
@@ -3899,6 +3946,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Invisible masque aussi vos accusés de lecture et votre saisie aux autres.",
     "presence.unsupportedByServer":
         "Ce serveur ne prend pas en charge la présence, il n'y a donc aucun statut à définir.",
+    "presence.shareViaProfile": "Partager mon statut via mon profil",
+    "presence.shareViaProfileDescription":
+        "La présence est désactivée sur ce serveur. Zam peut publier votre statut dans un champ du profil. Les autres utilisateurs de Zam le verront, comme toute personne pouvant lire votre profil.",
     "presence.appearOfflineToOtherUsers":
         "Apparaître hors ligne aux autres utilisateurs",
 
@@ -4236,6 +4286,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Mise à jour prête{versionSuffix} - redémarrez pour l'appliquer",
     "updateStatus.restartToApply": "Redémarrer pour appliquer",
+    "updateStatus.reopenToApply":
+        "Mise à jour installée{versionSuffix}. Quittez Zam et rouvrez-le pour terminer",
     "updateStatus.updateReadyReloadToApply":
         "Mise à jour prête{versionSuffix} - recharger pour appliquer",
     "updateStatus.reloadToApply": "Recharger pour appliquer",
@@ -4571,6 +4623,25 @@ const messages: Partial<Record<MessageKey, string>> = {
     "meshConsent.connectDirectly": "Se connecter directement",
     "meshConsent.joinWithoutThem": "Rejoindre sans elles",
     "meshConsent.notNow": "Pas maintenant",
+    "meshConsent.titlePluginPublish": "Rejoindre cet appel via {label} ?",
+    "meshConsent.titlePluginReceive":
+        "Quelqu'un dans cet appel utilise {label}",
+    "meshConsent.pluginPublish":
+        "Ton audio, ta vidéo et ton partage d'écran passent par {label}, un moyen de transporter les appels ajouté par un plugin. Seules les personnes dont Zam a le même plugin peuvent t'entendre et te voir.",
+    "meshConsent.pluginReceive":
+        "Quelqu'un dans cet appel envoie son audio et sa vidéo via {label}, ajouté par un plugin. Pour l'entendre et le voir, Zam l'utilise aussi.",
+    "meshConsent.pluginIpVisible":
+        "Les personnes que tu joins via {label} peuvent voir ton adresse IP, qui peut révéler à peu près où tu te trouves.",
+    "meshConsent.pluginIpHidden":
+        "{label} ne montre pas ton adresse IP aux personnes à l'autre bout.",
+    "meshConsent.pluginThirdParty":
+        "Les médias de ton appel passent aussi par {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Rejoindre sans",
+    "meshConsent.usePlugin": "Utiliser {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} s'est arrêté, donc personne dans cet appel ne t'entend ni ne te voit jusqu'à ce que tu le rejoignes à nouveau.",
+    "voiceCall.pluginTransportFailed":
+        "{label} n'a pas pu démarrer pour cet appel.",
     "voiceCall.meshNeedsTurn":
         "« Exiger un serveur relais pour les appels pair à pair » est activé, mais votre serveur d'accueil n'a pas de serveur relais (TURN). Désactivez-le dans les paramètres Voix et vidéo pour rejoindre l'appel.",
     "voiceAudioSettings.meshRelayOnly":

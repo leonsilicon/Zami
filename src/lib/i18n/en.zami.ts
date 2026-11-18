@@ -161,9 +161,12 @@ export const en = {
 
     // src/lib/components/settings/AppearanceSettings.svelte
     "appearanceSettings.rightAlignMyMessagesBubbleLayout":
-        "Right-align my messages (bubble layout)",
+        "Right-align my messages",
     "appearanceSettings.displayYourOwnMessagesOnThe":
-        "Display your own messages on the right in a colored bubble",
+        "Display your own messages on the right",
+    "appearanceSettings.bubbleAllMessages": "Bubbles for all messages",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Show everyone's messages in bubbles, not just your own",
     "appearanceSettings.showNameColours": "Show name colours",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Draw people's names in the colour they picked in their profile. Turn off to use the normal text colour for everyone.",
@@ -295,6 +298,8 @@ export const en = {
     "callView.deafen": "Deafen",
     "callView.disconnect": "Disconnect",
     "callView.joinCall": "Join Call",
+    "callView.muteShareAudio": "Mute share audio",
+    "callView.unmuteShareAudio": "Unmute share audio",
     "callView.you": "You",
     "callView.sScreen": "{name}'s screen",
     "callView.exitSpotlightFor": "Exit spotlight for {label}",
@@ -1300,6 +1305,8 @@ export const en = {
     "memberList.admins": "Admins: {length}",
     "memberList.admin": "Admin",
     "memberList.moderators": "Moderators: {length}",
+    "memberList.defaultRoleMember": "Member",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} this message?",
@@ -1330,6 +1337,8 @@ export const en = {
     "messageArea.thisIsTheBeginningOfThe": "This is the beginning of the #",
     "messageArea.loadingHistory": "Loading older messages",
     "messageArea.room": "room.",
+    "messageArea.dmStart":
+        "This is the beginning of your direct message history with {name}.",
     "messageArea.newMessages": "New Messages",
     "messageArea.unreadSince":
         "{count, plural, one {# new message since {since}} other {# new messages since {since}}}",
@@ -1359,6 +1368,9 @@ export const en = {
     "messageInput.pingOffTitle": "Don't ping the author",
     "messageInput.replyingTo": "Replying to {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancel reply (Esc)",
+    "messageInput.editingMessage": "Editing message",
+    "messageInput.cancelEditEsc": "Cancel edit (Esc)",
+    "messageInput.editFailed": "Couldn't save the edit",
     "messageInput.editAttachment": "Edit attachment",
     "messageInput.editAttachment2": "Edit attachment {name}",
     "messageInput.custom": "custom",
@@ -1444,8 +1456,6 @@ export const en = {
     "mediaProgress.ofTotal": "{loaded} of {total}",
     "messageItem.fileAttachment": "File attachment",
     "messageItem.download": "Download",
-    "messageItem.toSave": "to save ·",
-    "messageItem.toCancel": "to cancel",
     "messageItem.openThread": "Open thread",
     "messageItem.failedToSend": "Failed to send.",
     "messageItem.retrying": "Retrying…",
@@ -2205,6 +2215,28 @@ export const en = {
     "roomSettings.admin100": "Admin (100)",
     "roomSettings.moderator50": "Moderator (50)",
     "roomSettings.member0": "Member (0)",
+    "roomSettings.roleTags": "Role tags",
+    "roomSettings.roleTagsHint":
+        "Name, colour and icon shown for each power level (MSC3949). Levels without a tag use the nearest lower one.",
+    "roomSettings.roleTagLevel": "Power level",
+    "roomSettings.roleTagName": "Name",
+    "roomSettings.roleTagColor": "Colour",
+    "roomSettings.roleTagIcon": "Icon (emoji)",
+    "roomSettings.roleTagPickEmoji": "Pick emoji",
+    "roomSettings.roleTagUploadIcon": "Upload image",
+    "roomSettings.roleTagRemoveIcon": "Remove icon",
+    "roomSettings.addRoleTag": "Add tag",
+    "roomSettings.removeRoleTag": "Remove tag",
+    "roomSettings.saveRoleTags": "Save tags",
+    "roomSettings.roleTagsSaved": "Role tags saved",
+    "roomSettings.roleTagsSaveFailed": "Could not save role tags: {error}",
+    "roomSettings.roleTagDuplicateLevel": "Two tags use power level {level}",
+    "roomSettings.roleTagNameRequired": "Every tag needs a name",
+    "roomSettings.roleTagLevelInvalid": "Power level must be a whole number",
+    "roomSettings.roleTagClearColor": "Clear colour",
+    "roomSettings.customLevel": "Custom ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "This room has no tags yet; showing the default ones.",
     "roomSettings.muted1": "Muted (-1)",
     "roomSettings.kick": "Kick",
     "roomSettings.ban": "Ban",
@@ -2783,6 +2815,11 @@ export const en = {
     "verificationModal.session": "session",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} watching",
+    "videoTile.watchers": "Watching",
+    "videoTile.noWatchers": "Nobody is watching",
+    "videoTile.muteShareAudio": "Mute screen share audio",
+    "videoTile.unmuteShareAudio": "Unmute screen share audio",
     "videoTile.fullscreen": "Fullscreen",
     "videoTile.pictureInPicture": "Picture in picture",
     "videoTile.exitPictureInPicture": "Exit picture in picture",
@@ -3807,6 +3844,9 @@ export const en = {
         "Invisible also hides your read receipts and typing from other users.",
     "presence.unsupportedByServer":
         "This homeserver does not support presence, so there is no status to set.",
+    "presence.shareViaProfile": "Share my status through my profile",
+    "presence.shareViaProfileDescription":
+        "This homeserver has presence turned off. Zam can publish your status in a profile field instead. Other Zam users will see it, and so can anyone who can read your profile.",
     "presence.appearOfflineToOtherUsers": "Appear offline to other users",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -4125,6 +4165,8 @@ export const en = {
     "updateStatus.updateReadyRestartToApply":
         "Update ready{versionSuffix} - restart to apply",
     "updateStatus.restartToApply": "Restart to apply",
+    "updateStatus.reopenToApply":
+        "Update installed{versionSuffix}. Quit Zam and open it again to finish",
     "updateStatus.updateReadyReloadToApply":
         "Update ready{versionSuffix} - reload to apply",
     "updateStatus.reloadToApply": "Reload to apply",
@@ -4210,6 +4252,13 @@ export const en = {
     "fileOffer.cancel": "Cancel",
     "fileOffer.withdraw": "Withdraw",
     "fileOffer.connecting": "Connecting to the sender...",
+    "fileOffer.preparingReceive":
+        "Waiting for the sender to get the file ready",
+    "fileOffer.preparingSend": "Getting the file ready",
+    "fileOffer.acceptedElsewhere":
+        "Accepted on another of your devices ({device})",
+    "fileOffer.untrusted":
+        "This offer can't be trusted: it didn't come from the device it names.",
     "fileOffer.progress": "{done} of {total}, {rate}/s",
     "fileOffer.verifying": "Verifying the file...",
     "fileOffer.savedDone": "File saved and verified.",
@@ -4364,6 +4413,23 @@ export const en = {
     "meshConsent.connectDirectly": "Connect directly",
     "meshConsent.joinWithoutThem": "Join without them",
     "meshConsent.notNow": "Not now",
+    "meshConsent.titlePluginPublish": "Join this call over {label}?",
+    "meshConsent.titlePluginReceive": "Someone in this call uses {label}",
+    "meshConsent.pluginPublish":
+        "Your audio, video and screen share go over {label}, a way of carrying calls that a plugin adds. Only people whose Zam has the same plugin can hear and see you.",
+    "meshConsent.pluginReceive":
+        "Someone in this call sends their audio and video over {label}, which a plugin adds. To hear and see them, Zam uses it too.",
+    "meshConsent.pluginIpVisible":
+        "People you reach over {label} can see your IP address, which can reveal roughly where you are.",
+    "meshConsent.pluginIpHidden":
+        "{label} doesn't show your IP address to the people at the other end.",
+    "meshConsent.pluginThirdParty":
+        "Your call media also passes through {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Join without it",
+    "meshConsent.usePlugin": "Use {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} stopped, so nobody in this call hears or sees you until you rejoin.",
+    "voiceCall.pluginTransportFailed": "{label} couldn't start for this call.",
     "voiceCall.meshNeedsTurn":
         '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server. Turn it off in Voice & Video settings to join.',
     "voiceAudioSettings.meshRelayOnly":

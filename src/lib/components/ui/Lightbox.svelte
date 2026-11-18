@@ -9,6 +9,9 @@
         /** Still shown behind a video until its data arrives. Ignored for
          *  images, which are their own poster. */
         poster?: string | null;
+        /** Loop the video: for GIF-style media (a tweet's GIF mp4), never for
+         *  a real video. */
+        loop?: boolean;
         /** Name to save as. Falls back to the last path segment of `src`, which
          *  is a bare media id (no extension) on Matrix download URLs. */
         filename?: string;
@@ -88,7 +91,9 @@
     import {
         fetchAttachmentBlob,
         fetchDecryptedAttachmentBlob,
+        getHomeserverBaseUrl,
     } from "$lib/matrix/client";
+    import { isSameOrigin } from "$lib/utils/mxcUri";
     import { authedVideoSrc } from "$lib/actions/authedVideoSrc";
     import { rememberVolume } from "$lib/actions/rememberVolume";
     import { authedMediaBlobUrl } from "$lib/stores/mediaAuth.svelte";
@@ -118,6 +123,7 @@
         alt = "",
         kind = "image",
         poster = null,
+        loop = false,
         filename,
         onClose,
         favourite,
@@ -270,10 +276,20 @@
     // A stream that broke retries once as a full, verified download.
     let videoStreamBroke = $state(false);
 
-    // The URL the action streams, or null when the element has a blob / is
-    // not a video / has given up.
+    // Third-party video (e.g. a tweet's GIF mp4 on video.twimg.com) needs no
+    // token, and the authed streamer refuses to fetch it (and CORS would block
+    // it anyway), so the element loads it directly, like the inline player.
+    function isDirectVideo(url: string): boolean {
+        if (url.startsWith("blob:")) return true;
+        if (encryptedFile) return false;
+        const hs = getHomeserverBaseUrl();
+        return !!hs && /^https?:/i.test(url) && !isSameOrigin(url, hs);
+    }
+
+    // The URL the action streams, or null when the element has a direct src /
+    // is not a video / has given up.
     const videoStreamUrl = $derived(
-        isVideo && !videoFailed && !src.startsWith("blob:") ? src : null,
+        isVideo && !videoFailed && !isDirectVideo(src) ? src : null,
     );
     // Encrypted files too small to be worth playing on unverified bytes (see
     // STREAM_ENCRYPTED_MIN_BYTES), or a browser with no MediaSource, take the
@@ -287,7 +303,14 @@
     );
 
     function onVideoBroke() {
-        if (!videoStreamUrl) return;
+        if (!videoStreamUrl) {
+            // A directly loaded third-party video has no fallback.
+            if (videoBlobUrl && !videoBlobUrl.startsWith("blob:")) {
+                console.error("Failed to load video");
+                videoFailed = true;
+            }
+            return;
+        }
         if (!videoStreamBroke && !videoForceBlob) {
             videoStreamBroke = true;
             videoReady = false;
@@ -299,9 +322,11 @@
 
     // ⚠ Exactly ONE video element is ever live (this viewer is a singleton in
     // the modal slot) and it is only ever created after the user clicked a
-    // tile. It carries no `loop`, and above all NO onpause handler that calls
-    // play() — that pattern fights the browser's own load-shedding forever and
-    // pegged the main thread when it lived in LinkPreview. Do not add one back.
+    // tile. It must have NO onpause handler that calls play(): that pattern
+    // fights the browser's own load-shedding forever and pegged the main
+    // thread when it lived in LinkPreview. Do not add one back. (`loop` is a
+    // different thing and is fine: the browser just seeks to 0 at the end and
+    // can still pause it. Only GIF-style media sets it.)
     //
     // `src` and `kind` are this effect's only dependencies; the state writes
     // are untracked so they cannot re-enter it (effect_update_depth_exceeded).
@@ -318,8 +343,8 @@
             videoStreamBroke = false;
         });
         // A `blob:` src is already local bytes. The caller owns it, so play it
-        // as is and never revoke it here.
-        if (target?.startsWith("blob:")) {
+        // as is and never revoke it here. A third-party URL is played as is too.
+        if (target && untrack(() => isDirectVideo(target))) {
             untrack(() => (videoBlobUrl = target));
             return () => {
                 if (videoEl) videoEl.pause();
@@ -1329,6 +1354,7 @@
                                 poster={poster ?? undefined}
                                 use:rememberVolume
                                 controls
+                                {loop}
                                 autoplay
                                 preload="metadata"
                                 playsinline
