@@ -172,6 +172,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Вирівнювати мої повідомлення праворуч (компонування «бульбашки»)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Показувати ваші повідомлення праворуч у кольоровій бульбашці",
+    "appearanceSettings.bubbleAllMessages": "Бульбашки для всіх повідомлень",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Показувати повідомлення всіх у бульбашках, а не лише свої",
     "appearanceSettings.showNameColours": "Показувати кольори імен",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Малювати імена людей кольором, який вони вибрали у своєму профілі. Вимкніть, щоб для всіх використовувався звичайний колір тексту.",
@@ -1343,6 +1346,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Адміністраторів: {length}",
     "memberList.admin": "Адміністратор",
     "memberList.moderators": "Модераторів: {length}",
+    "memberList.defaultRoleMember": "Учасник",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} це повідомлення?",
@@ -2285,6 +2290,30 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Адміністратор (100)",
     "roomSettings.moderator50": "Модератор (50)",
     "roomSettings.member0": "Учасник (0)",
+    "roomSettings.roleTags": "Теги ролей",
+    "roomSettings.roleTagsHint":
+        "Назва, колір і значок для кожного рівня прав (MSC3949). Рівні без тега використовують найближчий нижчий.",
+    "roomSettings.roleTagLevel": "Рівень прав",
+    "roomSettings.roleTagName": "Назва",
+    "roomSettings.roleTagColor": "Колір",
+    "roomSettings.roleTagIcon": "Значок (емодзі)",
+    "roomSettings.roleTagPickEmoji": "Вибрати емодзі",
+    "roomSettings.roleTagUploadIcon": "Завантажити зображення",
+    "roomSettings.roleTagRemoveIcon": "Видалити значок",
+    "roomSettings.addRoleTag": "Додати тег",
+    "roomSettings.removeRoleTag": "Видалити тег",
+    "roomSettings.saveRoleTags": "Зберегти теги",
+    "roomSettings.roleTagsSaved": "Теги ролей збережено",
+    "roomSettings.roleTagsSaveFailed":
+        "Не вдалося зберегти теги ролей: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Два теги використовують рівень прав {level}",
+    "roomSettings.roleTagNameRequired": "Кожен тег потребує назви",
+    "roomSettings.roleTagLevelInvalid": "Рівень прав має бути цілим числом",
+    "roomSettings.roleTagClearColor": "Прибрати колір",
+    "roomSettings.customLevel": "Власний ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "У цій кімнаті ще немає тегів; показано стандартні.",
     "roomSettings.muted1": "Заглушений (-1)",
     "roomSettings.kick": "Виключити",
     "roomSettings.ban": "Заблокувати",
@@ -3922,6 +3951,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Невидимий також приховує від інших ваші підтвердження прочитання і набір тексту.",
     "presence.unsupportedByServer":
         "Цей сервер не підтримує присутність, тому встановити статус неможливо.",
+    "presence.shareViaProfile": "Ділитися статусом через профіль",
+    "presence.shareViaProfileDescription":
+        "На цьому сервері присутність вимкнено. Zam може опублікувати ваш статус у полі профілю. Його побачать інші користувачі Zam і всі, хто може читати ваш профіль.",
     "presence.appearOfflineToOtherUsers":
         "Показуватися іншим користувачам поза мережею",
 
@@ -4249,6 +4281,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Оновлення{versionSuffix} готове - перезапустіть, щоб застосувати",
     "updateStatus.restartToApply": "Перезапустити для застосування",
+    "updateStatus.reopenToApply":
+        "Оновлення встановлено{versionSuffix}. Закрийте Zam і відкрийте його знову, щоб завершити",
     "updateStatus.updateReadyReloadToApply":
         "Оновлення{versionSuffix} готове - перезавантажте, щоб застосувати",
     "updateStatus.reloadToApply": "Перезавантажити для застосування",

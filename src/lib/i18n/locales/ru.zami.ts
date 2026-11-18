@@ -176,6 +176,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Выравнивать мои сообщения по правому краю (пузырьки)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Показывать ваши сообщения справа в цветном пузырьке",
+    "appearanceSettings.bubbleAllMessages": "Пузыри для всех сообщений",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Показывать сообщения всех в пузырях, а не только свои",
     "appearanceSettings.showNameColours": "Показывать цвета имён",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Показывать имена людей цветом, выбранным в их профиле. Выключите, чтобы все имена были обычного цвета текста.",
@@ -1353,6 +1356,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Администраторы: {length}",
     "memberList.admin": "Администратор",
     "memberList.moderators": "Модераторы: {length}",
+    "memberList.defaultRoleMember": "Участник",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} это сообщение?",
@@ -2290,6 +2295,30 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Администратор (100)",
     "roomSettings.moderator50": "Модератор (50)",
     "roomSettings.member0": "Участник (0)",
+    "roomSettings.roleTags": "Теги ролей",
+    "roomSettings.roleTagsHint":
+        "Название, цвет и значок для каждого уровня прав (MSC3949). Уровни без тега используют ближайший меньший.",
+    "roomSettings.roleTagLevel": "Уровень прав",
+    "roomSettings.roleTagName": "Название",
+    "roomSettings.roleTagColor": "Цвет",
+    "roomSettings.roleTagIcon": "Значок (эмодзи)",
+    "roomSettings.roleTagPickEmoji": "Выбрать эмодзи",
+    "roomSettings.roleTagUploadIcon": "Загрузить изображение",
+    "roomSettings.roleTagRemoveIcon": "Удалить значок",
+    "roomSettings.addRoleTag": "Добавить тег",
+    "roomSettings.removeRoleTag": "Удалить тег",
+    "roomSettings.saveRoleTags": "Сохранить теги",
+    "roomSettings.roleTagsSaved": "Теги ролей сохранены",
+    "roomSettings.roleTagsSaveFailed":
+        "Не удалось сохранить теги ролей: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Два тега используют уровень прав {level}",
+    "roomSettings.roleTagNameRequired": "Каждому тегу нужно название",
+    "roomSettings.roleTagLevelInvalid": "Уровень прав должен быть целым числом",
+    "roomSettings.roleTagClearColor": "Убрать цвет",
+    "roomSettings.customLevel": "Особый ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "В этой комнате пока нет тегов; показаны стандартные.",
     "roomSettings.muted1": "Без права писать (-1)",
     "roomSettings.kick": "Исключить",
     "roomSettings.ban": "Заблокировать",
@@ -3931,6 +3960,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Невидимка также скрывает от других ваши отметки о прочтении и набор текста.",
     "presence.unsupportedByServer":
         "Этот сервер не поддерживает присутствие, поэтому статус задать нельзя.",
+    "presence.shareViaProfile": "Делиться статусом через профиль",
+    "presence.shareViaProfileDescription":
+        "На этом сервере присутствие отключено. Zam может опубликовать ваш статус в поле профиля. Его увидят другие пользователи Zam и все, кто может читать ваш профиль.",
     "presence.appearOfflineToOtherUsers":
         "Выглядеть «не в сети» для других пользователей",
 
@@ -4260,6 +4292,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Обновление готово{versionSuffix} - перезапустите для применения",
     "updateStatus.restartToApply": "Перезапустить для применения",
+    "updateStatus.reopenToApply":
+        "Обновление установлено{versionSuffix}. Закройте Zam и откройте его снова, чтобы завершить",
     "updateStatus.updateReadyReloadToApply":
         "Обновление готово{versionSuffix} - перезагрузите для применения",
     "updateStatus.reloadToApply": "Перезагрузить для применения",

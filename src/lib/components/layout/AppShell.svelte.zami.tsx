@@ -1767,17 +1767,22 @@ export default function AppShell() {
     const presenceUnsupported = useRune(
         () => settingsState.presenceUnsupported,
     );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
+    );
     useEffect(() => {
         void receiptOverrides;
         void privateReadReceipts;
         void ownPresence;
         void presenceUnsupported;
+        void shareProfilePresence;
         scheduleReceiptMirror();
     }, [
         receiptOverrides,
         privateReadReceipts,
         ownPresence,
         presenceUnsupported,
+        shareProfilePresence,
     ]);
 
     // MSC4153: surface changed cross-signing identities among the open room's

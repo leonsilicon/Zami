@@ -8,6 +8,7 @@ import ThemeColorEditor from "$lib/components/settings/ThemeColorEditor.svelte";
 import OptionSelector from "$lib/components/ui/OptionSelector.svelte";
 import {
     setRightAlignOwnBubbles,
+    setBubbleAllMessages,
     setShowNameColours,
     setTimeClock,
     setDateStyle,
@@ -59,6 +60,7 @@ export default function AppearanceSettings() {
     const rightAlignOwnBubbles = useRune(
         () => settingsState.rightAlignOwnBubbles,
     );
+    const bubbleAllMessages = useRune(() => settingsState.bubbleAllMessages);
     const showNameColours = useRune(() => settingsState.showNameColours);
     const keepSidebarOpen = useRune(() => settingsState.keepSidebarOpen);
     const customCssEnabled = useRune(() => settingsState.customCssEnabled);
@@ -145,6 +147,24 @@ export default function AppearanceSettings() {
                         label={t(
                             "appearanceSettings.rightAlignMyMessagesBubbleLayout",
                         )}
+                    />
+                </SettingAnchor>
+                <SettingAnchor
+                    anchor="theme-bubbleall"
+                    className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
+                >
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("appearanceSettings.bubbleAllMessages")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("appearanceSettings.bubbleAllMessagesDesc")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={bubbleAllMessages}
+                        onChange={setBubbleAllMessages}
+                        label={t("appearanceSettings.bubbleAllMessages")}
                     />
                 </SettingAnchor>
                 <SettingAnchor

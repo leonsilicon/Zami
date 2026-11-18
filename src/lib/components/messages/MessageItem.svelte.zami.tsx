@@ -149,6 +149,7 @@ import {
     deleteMessage,
     getMyPowerLevel,
     getRoomPowerLevels,
+    getUserPowerLevel,
     getPinnedEventIds,
     pinMessage,
     unpinMessage,
@@ -263,6 +264,15 @@ import {
 } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
 import { nameColourFor } from "$lib/stores/profileFields.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import {
+    tagForPowerLevel,
+    type PowerLevelTag,
+} from "$lib/utils/powerLevelTags";
 import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { isDoubleTap, type TapPoint } from "$lib/utils/doubleTap";
@@ -392,6 +402,25 @@ const VERTICAL_LOCK_PX = 8;
 // Zami: `.own-bubble` in src/app.zami.css, as utilities (Uniwind has no
 // component classes). Not ported: its `::after` tail.
 const OWN_BUBBLE = "self-end max-w-[80%] px-3 py-2 rounded-2xl bg-zam-accent";
+// Zami: `.own-bubble.own-bubble-start` (an own bubble that isn't
+// right-aligned: no end margin, no tail).
+const OWN_BUBBLE_START =
+    "self-start max-w-[80%] px-3 py-2 rounded-2xl bg-zam-accent";
+// Zami: `.other-bubble` in src/app.zami.css, as utilities.
+const OTHER_BUBBLE =
+    "self-start max-w-[80%] px-3 py-2 rounded-2xl bg-zam-backgroundTertiary";
+
+// Zami: upstream's `senderTagIcon` derived, read in `roomView` (on roomsTick,
+// and the room's tags tick).
+function senderTagIconOf(room: Room, senderId: string): PowerLevelTag | null {
+    const info = effectiveRoomTags(room.roomId);
+    if (!info.custom) return null;
+    const resolved = tagForPowerLevel(
+        info.tags,
+        getUserPowerLevel(room, senderId),
+    );
+    return resolved?.tag.icon ? resolved.tag : null;
+}
 
 function MessageItem({
     event,
@@ -442,6 +471,7 @@ function MessageItem({
                     settingsState.holdToOpenMessageMenu,
                 ),
                 alignOwnEnabled: settingsState.rightAlignOwnBubbles,
+                bubbleAll: settingsState.bubbleAllMessages,
                 linkPreviewsEnabled: settingsState.linkPreviewsEnabled,
                 ...readPluginHooks(
                     room.roomId,
@@ -494,6 +524,7 @@ function MessageItem({
                 displayName: getMemberName(room, senderId),
                 avatarSrc: getMemberAvatar(room, senderId),
                 nameColour: nameColourFor(senderId),
+                senderTagIcon: senderTagIconOf(room, senderId),
                 roomEncrypted: encrypted,
                 securityTick: encrypted ? securityState.securityTick : 0,
                 shieldRetryTick: shieldRetry ? messagesState.timelineTick : 0,
@@ -943,14 +974,16 @@ function MessageItem({
     const menuMode = rowState.menuMode;
 
     const alignOwnEnabled = rowState.alignOwnEnabled;
+    const bubbleAll = rowState.bubbleAll;
     const bubble = useMemo(
         () =>
             resolveBubbleLayout({
                 isOwn: isOwnMessage,
                 alignOwnEnabled,
+                bubbleAll,
                 showHeader,
             }),
-        [isOwnMessage, alignOwnEnabled, showHeader],
+        [isOwnMessage, alignOwnEnabled, bubbleAll, showHeader],
     );
     // Width the receipt cluster button occupies: 16px avatars with a 2px gap,
     // the "+N" label (ms-1 + text), and 4px of breathing room. Only the
@@ -1026,6 +1059,13 @@ function MessageItem({
     const displayName = roomView.displayName;
     const avatarSrc = roomView.avatarSrc;
     const nameColour = roomView.nameColour;
+    // Keep this room's tags live for every message in it; the subscription is
+    // shared (ref-counted) so this does not add a listener per message.
+    useEffect(() => acquirePowerLevelTags(room.roomId), [room.roomId]);
+    // The sender's tag icon, shown only when the room defines its own tags
+    // (the defaults carry no icons anyway). Cached per room by the store.
+    // Zami: computed in `roomView` (senderTagIconOf, below).
+    const senderTagIcon = roomView.senderTagIcon;
     const timestamp = event.getTs();
     const revision = rowState.revision;
     const content = useMemo(() => {
@@ -3468,7 +3508,17 @@ function MessageItem({
                 : bodyHtml;
         return (
             <>
-                <View className={bubble.bubble ? OWN_BUBBLE : ""}>
+                <View
+                    className={
+                        bubble.bubble
+                            ? bubble.alignOwn
+                                ? OWN_BUBBLE
+                                : OWN_BUBBLE_START
+                            : bubble.otherBubble
+                              ? OTHER_BUBBLE
+                              : ""
+                    }
+                >
                     {bodyWithTrailing(
                         html,
                         `${bodyTextClass}${emojiOnly ? " emoji-only" : ""}${
@@ -3665,6 +3715,12 @@ function MessageItem({
                                     {displayName}
                                 </Text>
                             </Pressable>
+                            {senderTagIcon ? (
+                                <PowerLevelTagBadge
+                                    tag={senderTagIcon}
+                                    showName={false}
+                                />
+                            ) : null}
                             <Text className="text-xs text-zam-textMuted flex-shrink-0">
                                 {messageTimestamp(timestamp)}
                             </Text>

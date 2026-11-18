@@ -42,6 +42,17 @@ import {
 } from "$lib/utils/presence";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { collectMemberDecorations } from "$lib/plugins/pluginMembers";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+    type EffectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import {
+    sortedTagLevels,
+    tagForPowerLevel,
+    type PowerLevelTag,
+} from "$lib/utils/powerLevelTags";
 
 interface Props {
     room: Room;
@@ -73,12 +84,15 @@ type Row =
            *  (a rename or a new avatar mutates the same RoomMember). */
           rev: MatrixEvent | undefined;
           roleLabel: string | null;
+          roleTag: PowerLevelTag | null;
           muted: boolean;
           top: number;
           height: number;
       };
 
-type Group = "creators" | "admins" | "moderators" | "regular";
+// Zami: a member's group is "creators", the level of the tag that applies to
+// them, or "untitled" (below every tag).
+type Group = "creators" | "untitled" | number;
 
 // One pass and a shared collator: a big room's three filters (each looking
 // up every member's power level) plus three localeCompare sorts were tens
@@ -115,10 +129,21 @@ export default function MemberList({ room }: Props) {
             })
             .catch(() => {});
         scroller.current?.scrollToOffset({ offset: 0, animated: false });
+        // Power level tag edits are ordinary state events, so they arrive
+        // through the tags subscription instead.
+        const releaseTags = acquirePowerLevelTags(r.roomId);
         return () => {
             live = false;
+            releaseTags();
         };
     }, [room]);
+
+    // Zami: the room's tags, read through useRune so a tags edit (or a
+    // locale switch, for the defaults) rebuilds the groups. The parsed tags
+    // are memoised per state event, so the same tags compare equal.
+    const tagsInfo = useRune(() => effectiveRoomTags(room.roomId), [room], {
+        isEqual: sameTags,
+    });
 
     // Zami: upstream regroups everything when onRoomMembersChanged fires
     // (kicks/bans/joins from other sessions included); here this room's own
@@ -218,13 +243,23 @@ export default function MemberList({ room }: Props) {
     // Zami: the groups, as FlatList rows, rebuilt only when a member or a
     // power level changed (`version`); unchanged rows keep their objects.
     const [rowCache] = useState(() => createRowCache<Row>());
+    // Members are bucketed by the tag that applies to their power level, one
+    // bucket per defined tag level (highest first). Creators sit above all
+    // tags. Members below every tag land in the untitled bucket.
+    // Zami: the tags each member's cached group was worked out against.
+    const groupedFor = useRef<EffectiveRoomTags["tags"] | null>(null);
     const groups = useMemo(() => {
         void version;
+        const info = tagsInfo;
+        if (groupedFor.current !== info.tags) {
+            groupedFor.current = info.tags;
+            groupOf.clear();
+        }
+        const levels = sortedTagLevels(info.tags);
         const creators: RoomMember[] = [];
-        const admins: RoomMember[] = [];
-        const moderators: RoomMember[] = [];
-        const regular: RoomMember[] = [];
-        const lists = { creators, admins, moderators, regular };
+        const byLevel = new Map<number, RoomMember[]>();
+        for (const level of levels) byLevel.set(level, []);
+        const untitled: RoomMember[] = [];
         for (const { id, value: m } of index.entries) {
             let group = groupOf.get(id);
             if (group === undefined) {
@@ -233,24 +268,33 @@ export default function MemberList({ room }: Props) {
                 if (hasImmutableCreatorPower(room, m.userId))
                     group = "creators";
                 else {
-                    const l = getUserPowerLevel(room, m.userId);
-                    group =
-                        l >= 100
-                            ? "admins"
-                            : l >= 50
-                              ? "moderators"
-                              : "regular";
+                    const resolved = tagForPowerLevel(
+                        info.tags,
+                        getUserPowerLevel(room, m.userId),
+                    );
+                    group = resolved ? resolved.level : "untitled";
                 }
                 groupOf.set(id, group);
             }
-            lists[group].push(m);
+            if (group === "creators") creators.push(m);
+            else if (group === "untitled") untitled.push(m);
+            else byLevel.get(group)?.push(m);
         }
+        // Zami: the index keeps every list in name order already.
+        const tagged = levels.map((level) => ({
+            level,
+            tag: info.tags[level],
+            members: byLevel.get(level) ?? [],
+        }));
+        const lowestLevel =
+            levels.length > 0 ? levels[levels.length - 1] : null;
         // Flat, sorted row list: header then members for each non-empty group.
         const sections: {
             key: string;
             label: string;
             members: RoomMember[];
             roleLabel: string | null;
+            roleTag: PowerLevelTag | null;
             muted: boolean;
         }[] = [];
         if (creators.length > 0)
@@ -259,32 +303,33 @@ export default function MemberList({ room }: Props) {
                 label: t("memberList.creators", { length: creators.length }),
                 members: creators,
                 roleLabel: t("roomSettings.creatorLabel"),
+                roleTag: null,
                 muted: false,
             });
-        if (admins.length > 0)
+        for (const { level, tag, members: list } of tagged) {
+            if (list.length === 0) continue;
+            // The lowest tag is the baseline: its rows stay unlabelled and
+            // muted, as regular members were before tags.
+            const isLowest = level === lowestLevel;
             sections.push({
-                key: "admins",
-                label: t("memberList.admins", { length: admins.length }),
-                members: admins,
-                roleLabel: t("memberList.admin"),
-                muted: false,
-            });
-        if (moderators.length > 0)
-            sections.push({
-                key: "moderators",
-                label: t("memberList.moderators", {
-                    length: moderators.length,
+                key: `tag:${level}`,
+                label: t("memberList.roleSection", {
+                    name: tag.name,
+                    length: list.length,
                 }),
-                members: moderators,
+                members: list,
                 roleLabel: null,
-                muted: false,
+                roleTag: isLowest ? null : tag,
+                muted: isLowest && level <= 0,
             });
-        if (regular.length > 0)
+        }
+        if (untitled.length > 0)
             sections.push({
-                key: "regular",
-                label: t("memberList.members", { length: regular.length }),
-                members: regular,
+                key: "untitled",
+                label: t("memberList.members", { length: untitled.length }),
+                members: untitled,
                 roleLabel: null,
+                roleTag: null,
                 muted: true,
             });
 
@@ -311,6 +356,7 @@ export default function MemberList({ room }: Props) {
                             member: m,
                             rev: m.events.member,
                             roleLabel: s.roleLabel,
+                            roleTag: s.roleTag,
                             muted: s.muted,
                             top,
                             height: MEMBER_H,
@@ -327,7 +373,7 @@ export default function MemberList({ room }: Props) {
                 ? getRoomMembers(room).length
                 : index.entries.length;
         return { rows, count };
-    }, [version, room, index, groupOf, rowCache]);
+    }, [version, tagsInfo, room, index, groupOf, rowCache]);
 
     const renderItem = useCallback(
         ({ item: row, index }: ListRenderItemInfo<Row>) => {
@@ -356,6 +402,7 @@ export default function MemberList({ room }: Props) {
                     member={row.member}
                     rev={row.rev}
                     roleLabel={row.roleLabel}
+                    roleTag={row.roleTag}
                     muted={row.muted}
                 />
             );
@@ -394,6 +441,10 @@ export default function MemberList({ room }: Props) {
             />
         </View>
     );
+}
+
+function sameTags(a: EffectiveRoomTags, b: EffectiveRoomTags): boolean {
+    return a.tags === b.tags && a.custom === b.custom;
 }
 
 function rowKey(row: Row): string {
@@ -470,12 +521,14 @@ const MemberRow = memo(function MemberRow({
     member,
     rev,
     roleLabel,
+    roleTag,
     muted,
 }: {
     member: RoomMember;
     /** The member's state event: the row re-renders when it changes. */
     rev: MatrixEvent | undefined;
     roleLabel: string | null;
+    roleTag: PowerLevelTag | null;
     muted: boolean;
 }) {
     const presence = useRune(() => presenceOf(member.userId), [member], {
@@ -544,7 +597,19 @@ const MemberRow = memo(function MemberRow({
                         </View>
                     ))}
                 </View>
-                {secondLine ? (
+                {roleTag ? (
+                    <View className="flex-row items-center gap-1 min-w-0">
+                        <PowerLevelTagBadge tag={roleTag} />
+                        {deco?.subtitle ? (
+                            <Text
+                                numberOfLines={1}
+                                className="shrink text-xs leading-4 text-zam-textMuted"
+                            >
+                                · {deco.subtitle}
+                            </Text>
+                        ) : null}
+                    </View>
+                ) : secondLine ? (
                     <Text
                         numberOfLines={1}
                         className="text-xs leading-4 text-zam-textMuted"

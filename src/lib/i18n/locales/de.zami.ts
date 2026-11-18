@@ -178,6 +178,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Meine Nachrichten rechtsbündig (Blasen-Layout)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Eigene Nachrichten rechts in einer farbigen Blase anzeigen",
+    "appearanceSettings.bubbleAllMessages": "Blasen für alle Nachrichten",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Nachrichten aller in Blasen anzeigen, nicht nur deine eigenen",
     "appearanceSettings.showNameColours": "Namensfarben anzeigen",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Namen in der Farbe anzeigen, die im jeweiligen Profil gewählt wurde. Ausschalten, um für alle die normale Textfarbe zu verwenden.",
@@ -1212,6 +1215,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Administratoren: {length}",
     "memberList.admin": "Administrator",
     "memberList.moderators": "Moderatoren: {length}",
+    "memberList.defaultRoleMember": "Mitglied",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label}: diese Nachricht?",
@@ -2152,6 +2157,31 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Administrator (100)",
     "roomSettings.moderator50": "Moderator (50)",
     "roomSettings.member0": "Mitglied (0)",
+    "roomSettings.roleTags": "Rollen-Tags",
+    "roomSettings.roleTagsHint":
+        "Name, Farbe und Symbol für jede Berechtigungsstufe (MSC3949). Stufen ohne Tag nutzen das nächsttiefere.",
+    "roomSettings.roleTagLevel": "Berechtigungsstufe",
+    "roomSettings.roleTagName": "Name",
+    "roomSettings.roleTagColor": "Farbe",
+    "roomSettings.roleTagIcon": "Symbol (Emoji)",
+    "roomSettings.roleTagPickEmoji": "Emoji auswählen",
+    "roomSettings.roleTagUploadIcon": "Bild hochladen",
+    "roomSettings.roleTagRemoveIcon": "Symbol entfernen",
+    "roomSettings.addRoleTag": "Tag hinzufügen",
+    "roomSettings.removeRoleTag": "Tag entfernen",
+    "roomSettings.saveRoleTags": "Tags speichern",
+    "roomSettings.roleTagsSaved": "Rollen-Tags gespeichert",
+    "roomSettings.roleTagsSaveFailed":
+        "Rollen-Tags konnten nicht gespeichert werden: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Zwei Tags verwenden die Berechtigungsstufe {level}",
+    "roomSettings.roleTagNameRequired": "Jeder Tag braucht einen Namen",
+    "roomSettings.roleTagLevelInvalid":
+        "Die Berechtigungsstufe muss eine ganze Zahl sein",
+    "roomSettings.roleTagClearColor": "Farbe entfernen",
+    "roomSettings.customLevel": "Benutzerdefiniert ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "Dieser Raum hat noch keine Tags; es werden die Standardtags angezeigt.",
     "roomSettings.muted1": "Stummgeschaltet (-1)",
     "roomSettings.kick": "Entfernen",
     "roomSettings.ban": "Bannen",
@@ -3951,6 +3981,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Unsichtbar verbirgt auch deine Lesebestätigungen und dein Tippen vor anderen.",
     "presence.unsupportedByServer":
         "Dieser Homeserver unterstützt keine Anwesenheit, daher gibt es keinen Status zum Einstellen.",
+    "presence.shareViaProfile": "Meinen Status über mein Profil teilen",
+    "presence.shareViaProfileDescription":
+        "Auf diesem Homeserver ist Anwesenheit deaktiviert. Zam kann deinen Status stattdessen in einem Profilfeld veröffentlichen. Andere Zam-Nutzer sehen ihn, ebenso jeder, der dein Profil lesen kann.",
     "presence.appearOfflineToOtherUsers":
         "Für andere Benutzer offline erscheinen",
 
@@ -4285,6 +4318,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Update bereit{versionSuffix} - zum Anwenden neu starten",
     "updateStatus.restartToApply": "Zum Anwenden neu starten",
+    "updateStatus.reopenToApply":
+        "Update installiert{versionSuffix}. Beende Zam und öffne es erneut, um es abzuschließen",
     "updateStatus.updateReadyReloadToApply":
         "Update bereit{versionSuffix} - zum Anwenden neu laden",
     "updateStatus.reloadToApply": "Zum Anwenden neu laden",

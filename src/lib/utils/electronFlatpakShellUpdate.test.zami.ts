@@ -7,9 +7,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const require = createRequire(import.meta.url);
 
-const { createFlatpakShellUpdate, AFTER_UPDATE_FLAG } = require(
-    join(__dirname, "../../../electron/flatpakShellUpdate.cjs"),
-);
+const {
+    createFlatpakShellUpdate,
+    AFTER_UPDATE_FLAG,
+    NEW_VERSION_START_MS,
+} = require(join(__dirname, "../../../electron/flatpakShellUpdate.cjs"));
 
 type Result = "done" | "empty";
 
@@ -18,6 +20,7 @@ function setup(
         update?: (onProgress: (f: number) => void) => Promise<Result>;
         repoVersion?: string | null;
         failed?: string[];
+        hostLaunch?: (args: string[]) => Promise<void>;
     } = {},
 ) {
     const statuses: Record<string, unknown>[] = [];
@@ -31,6 +34,7 @@ function setup(
         sendStatus: (s: Record<string, unknown>) => statuses.push(s),
         isFailed: (v: string) => (opts.failed ?? []).includes(v),
         repoVersion: async () => opts.repoVersion ?? null,
+        ...(opts.hostLaunch ? { hostLaunch: opts.hostLaunch } : {}),
     });
     const settle = () => new Promise((r) => setTimeout(r, 0));
     return { shell, monitor, statuses, settle };
@@ -172,13 +176,104 @@ describe("flatpakShellUpdate", () => {
     });
 
     it("restarts into the latest version only once one is installed", async () => {
-        const { shell, monitor } = setup();
+        const { shell, monitor, settle } = setup();
         await expect(shell.restart()).rejects.toThrow();
         await shell.install();
-        await shell.restart();
+        const restarting = shell.restart();
+        await settle();
         expect(monitor.spawnLatest).toHaveBeenCalledWith([
             "zam",
             AFTER_UPDATE_FLAG,
         ]);
+        shell.newVersionStarted();
+        await expect(restarting).resolves.toBe(true);
+        expect(shell.restartFailed()).toBe(false);
+    });
+
+    it("stays when the new version never starts", async () => {
+        vi.useFakeTimers();
+        try {
+            const { shell, monitor } = setup();
+            await shell.install();
+            const restarting = shell.restart();
+            // A second click while waiting does not spawn again.
+            const again = shell.restart();
+            await vi.advanceTimersByTimeAsync(NEW_VERSION_START_MS);
+            await expect(restarting).resolves.toBe(false);
+            await expect(again).resolves.toBe(false);
+            expect(monitor.spawnLatest).toHaveBeenCalledTimes(1);
+            expect(shell.restartFailed()).toBe(true);
+            // A late start changes nothing.
+            shell.newVersionStarted();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a failed spawn throws and can be retried", async () => {
+        const { shell, monitor } = setup();
+        await shell.install();
+        monitor.spawnLatest.mockRejectedValueOnce(new Error("no portal"));
+        await expect(shell.restart()).rejects.toThrow("no portal");
+        const restarting = shell.restart();
+        await new Promise((r) => setTimeout(r, 0));
+        shell.newVersionStarted();
+        await expect(restarting).resolves.toBe(true);
+    });
+
+    describe("with a host launcher", () => {
+        it("starts on the host first and leaves the portal alone", async () => {
+            const hostLaunch = vi.fn(async () => {});
+            const { shell, monitor, settle } = setup({ hostLaunch });
+            await shell.install();
+            const restarting = shell.restart();
+            await settle();
+            expect(hostLaunch).toHaveBeenCalledWith([AFTER_UPDATE_FLAG]);
+            shell.newVersionStarted();
+            await expect(restarting).resolves.toBe(true);
+            expect(monitor.spawnLatest).not.toHaveBeenCalled();
+        });
+
+        it("falls back to the portal when the host cannot be asked", async () => {
+            const hostLaunch = vi.fn(async () => {
+                throw new Error("no host access");
+            });
+            const { shell, monitor, settle } = setup({ hostLaunch });
+            await shell.install();
+            const restarting = shell.restart();
+            await settle();
+            expect(monitor.spawnLatest).toHaveBeenCalledTimes(1);
+            shell.newVersionStarted();
+            await expect(restarting).resolves.toBe(true);
+        });
+
+        it("tries the portal when the host's start never shows up, then gives up", async () => {
+            vi.useFakeTimers();
+            try {
+                const hostLaunch = vi.fn(async () => {});
+                const { shell, monitor } = setup({ hostLaunch });
+                await shell.install();
+                const restarting = shell.restart();
+                await vi.advanceTimersByTimeAsync(NEW_VERSION_START_MS);
+                expect(monitor.spawnLatest).toHaveBeenCalledTimes(1);
+                await vi.advanceTimersByTimeAsync(NEW_VERSION_START_MS);
+                await expect(restarting).resolves.toBe(false);
+                expect(shell.restartFailed()).toBe(true);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it("throws when neither way could be asked", async () => {
+            const { shell, monitor } = setup({
+                hostLaunch: async () => {
+                    throw new Error("no host access");
+                },
+            });
+            monitor.spawnLatest.mockRejectedValueOnce(new Error("no portal"));
+            await shell.install();
+            await expect(shell.restart()).rejects.toThrow("no portal");
+            expect(shell.restartFailed()).toBe(false);
+        });
     });
 });

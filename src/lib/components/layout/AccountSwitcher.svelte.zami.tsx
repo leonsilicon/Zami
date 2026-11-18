@@ -61,6 +61,7 @@ import {
     readFieldWithLegacy,
 } from "$lib/utils/extendedProfile";
 import { switchToAccount } from "$lib/stores/accountSwitch";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import {
     OWN_PRESENCE_OPTIONS,
     presenceDot,
@@ -122,6 +123,9 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
     const doNotDisturb = useRune(() => settingsState.doNotDisturb);
     const presenceUnsupported = useRune(
         () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
     );
     const streamerMode = useRune(() => settingsState.streamerMode);
     const activeUserId = useRune(() => auth.userId);
@@ -226,7 +230,10 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
 
     const presenceMenu = () => (
         <>
-            {(presenceUnsupported ? [] : OWN_PRESENCE_OPTIONS).map((option) => (
+            {(presenceControlsShown(presenceUnsupported, shareProfilePresence)
+                ? OWN_PRESENCE_OPTIONS
+                : []
+            ).map((option) => (
                 <Pressable
                     key={option.value}
                     accessibilityRole="button"
