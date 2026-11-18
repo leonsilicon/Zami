@@ -172,6 +172,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aligner mes messages à droite (bulles)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Afficher vos propres messages à droite dans une bulle colorée",
+    "appearanceSettings.bubbleAllMessages": "Bulles pour tous les messages",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Afficher les messages de tout le monde dans des bulles, pas seulement les vôtres",
     "appearanceSettings.showNameColours": "Afficher les couleurs des noms",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Afficher les noms dans la couleur choisie dans chaque profil. Désactivez pour utiliser la couleur de texte normale pour tout le monde.",
@@ -1198,6 +1201,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Administrateurs : {length}",
     "memberList.admin": "Administrateur",
     "memberList.moderators": "Modérateurs : {length}",
+    "memberList.defaultRoleMember": "Membre",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} ce message ?",
@@ -2125,6 +2130,31 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Administrateur (100)",
     "roomSettings.moderator50": "Modérateur (50)",
     "roomSettings.member0": "Membre (0)",
+    "roomSettings.roleTags": "Étiquettes de rôle",
+    "roomSettings.roleTagsHint":
+        "Nom, couleur et icône affichés pour chaque niveau de pouvoir (MSC3949). Les niveaux sans étiquette utilisent le plus proche inférieur.",
+    "roomSettings.roleTagLevel": "Niveau de pouvoir",
+    "roomSettings.roleTagName": "Nom",
+    "roomSettings.roleTagColor": "Couleur",
+    "roomSettings.roleTagIcon": "Icône (emoji)",
+    "roomSettings.roleTagPickEmoji": "Choisir un emoji",
+    "roomSettings.roleTagUploadIcon": "Importer une image",
+    "roomSettings.roleTagRemoveIcon": "Supprimer l'icône",
+    "roomSettings.addRoleTag": "Ajouter une étiquette",
+    "roomSettings.removeRoleTag": "Supprimer l'étiquette",
+    "roomSettings.saveRoleTags": "Enregistrer les étiquettes",
+    "roomSettings.roleTagsSaved": "Étiquettes de rôle enregistrées",
+    "roomSettings.roleTagsSaveFailed":
+        "Impossible d'enregistrer les étiquettes de rôle : {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Deux étiquettes utilisent le niveau de pouvoir {level}",
+    "roomSettings.roleTagNameRequired": "Chaque étiquette a besoin d'un nom",
+    "roomSettings.roleTagLevelInvalid":
+        "Le niveau de pouvoir doit être un nombre entier",
+    "roomSettings.roleTagClearColor": "Effacer la couleur",
+    "roomSettings.customLevel": "Personnalisé ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "Ce salon n'a pas encore d'étiquettes ; les étiquettes par défaut sont affichées.",
     "roomSettings.muted1": "Muet (-1)",
     "roomSettings.kick": "Expulser",
     "roomSettings.ban": "Bannir",
@@ -3916,6 +3946,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Invisible masque aussi vos accusés de lecture et votre saisie aux autres.",
     "presence.unsupportedByServer":
         "Ce serveur ne prend pas en charge la présence, il n'y a donc aucun statut à définir.",
+    "presence.shareViaProfile": "Partager mon statut via mon profil",
+    "presence.shareViaProfileDescription":
+        "La présence est désactivée sur ce serveur. Zam peut publier votre statut dans un champ du profil. Les autres utilisateurs de Zam le verront, comme toute personne pouvant lire votre profil.",
     "presence.appearOfflineToOtherUsers":
         "Apparaître hors ligne aux autres utilisateurs",
 
@@ -4253,6 +4286,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Mise à jour prête{versionSuffix} - redémarrez pour l'appliquer",
     "updateStatus.restartToApply": "Redémarrer pour appliquer",
+    "updateStatus.reopenToApply":
+        "Mise à jour installée{versionSuffix}. Quittez Zam et rouvrez-le pour terminer",
     "updateStatus.updateReadyReloadToApply":
         "Mise à jour prête{versionSuffix} - recharger pour appliquer",
     "updateStatus.reloadToApply": "Recharger pour appliquer",

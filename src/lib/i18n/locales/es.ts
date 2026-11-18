@@ -174,6 +174,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Alinear mis mensajes a la derecha (diseño de burbujas)",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "Muestra tus propios mensajes a la derecha en una burbuja de color",
+    "appearanceSettings.bubbleAllMessages": "Burbujas para todos los mensajes",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Mostrar los mensajes de todos en burbujas, no solo los tuyos",
     "appearanceSettings.showNameColours": "Mostrar los colores de los nombres",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Muestra los nombres de las personas en el color que eligieron en su perfil. Desactívalo para usar el color de texto normal para todos.",
@@ -1237,6 +1240,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "Administradores: {length}",
     "memberList.admin": "Administrador",
     "memberList.moderators": "Moderadores: {length}",
+    "memberList.defaultRoleMember": "Miembro",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "¿{label} este mensaje?",
@@ -2170,6 +2175,31 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "Administrador (100)",
     "roomSettings.moderator50": "Moderador (50)",
     "roomSettings.member0": "Miembro (0)",
+    "roomSettings.roleTags": "Etiquetas de rol",
+    "roomSettings.roleTagsHint":
+        "Nombre, color e icono mostrados para cada nivel de poder (MSC3949). Los niveles sin etiqueta usan el inferior más cercano.",
+    "roomSettings.roleTagLevel": "Nivel de poder",
+    "roomSettings.roleTagName": "Nombre",
+    "roomSettings.roleTagColor": "Color",
+    "roomSettings.roleTagIcon": "Icono (emoji)",
+    "roomSettings.roleTagPickEmoji": "Elegir emoji",
+    "roomSettings.roleTagUploadIcon": "Subir imagen",
+    "roomSettings.roleTagRemoveIcon": "Quitar icono",
+    "roomSettings.addRoleTag": "Añadir etiqueta",
+    "roomSettings.removeRoleTag": "Quitar etiqueta",
+    "roomSettings.saveRoleTags": "Guardar etiquetas",
+    "roomSettings.roleTagsSaved": "Etiquetas de rol guardadas",
+    "roomSettings.roleTagsSaveFailed":
+        "No se pudieron guardar las etiquetas de rol: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "Dos etiquetas usan el nivel de poder {level}",
+    "roomSettings.roleTagNameRequired": "Cada etiqueta necesita un nombre",
+    "roomSettings.roleTagLevelInvalid":
+        "El nivel de poder debe ser un número entero",
+    "roomSettings.roleTagClearColor": "Quitar color",
+    "roomSettings.customLevel": "Personalizado ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "Esta sala aún no tiene etiquetas; se muestran las predeterminadas.",
     "roomSettings.muted1": "Silenciado (-1)",
     "roomSettings.kick": "Expulsar",
     "roomSettings.ban": "Vetar",
@@ -3955,6 +3985,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Invisible también oculta tus confirmaciones de lectura y que estás escribiendo.",
     "presence.unsupportedByServer":
         "Este servidor no admite presencia, así que no hay estado que configurar.",
+    "presence.shareViaProfile": "Compartir mi estado a través de mi perfil",
+    "presence.shareViaProfileDescription":
+        "Este servidor tiene la presencia desactivada. Zam puede publicar tu estado en un campo del perfil. Lo verán otros usuarios de Zam y cualquiera que pueda leer tu perfil.",
     "presence.appearOfflineToOtherUsers":
         "Aparecer desconectado para otros usuarios",
 
@@ -4290,6 +4323,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "Actualización lista{versionSuffix} - reinicia para aplicarla",
     "updateStatus.restartToApply": "Reiniciar para aplicar",
+    "updateStatus.reopenToApply":
+        "Actualización instalada{versionSuffix}. Cierra Zam y vuelve a abrirlo para terminar",
     "updateStatus.updateReadyReloadToApply":
         "Actualización lista{versionSuffix} - recarga para aplicar",
     "updateStatus.reloadToApply": "Recargar para aplicar",

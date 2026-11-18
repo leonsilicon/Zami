@@ -160,6 +160,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "自分のメッセージを右寄せ（吹き出し表示）",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "自分のメッセージを色付きの吹き出しで右側に表示します",
+    "appearanceSettings.bubbleAllMessages":
+        "すべてのメッセージを吹き出しで表示",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "自分だけでなく全員のメッセージを吹き出しで表示します",
     "appearanceSettings.showNameColours": "名前の色を表示",
     "appearanceSettings.drawPeopleSNamesInThe":
         "プロフィールで設定した色で名前を表示します。オフにすると全員が通常の文字色になります。",
@@ -1128,6 +1132,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "管理者: {length}",
     "memberList.admin": "管理者",
     "memberList.moderators": "モデレーター: {length}",
+    "memberList.defaultRoleMember": "メンバー",
+    "memberList.roleSection": "{name}: {length}",
     "messageActionsSheet.thisMessage": "このメッセージを{label}しますか？",
     "messageActionsSheet.messageActions": "メッセージ操作",
     "messageArea.dropToAttach": "ドロップして添付",
@@ -1975,6 +1981,30 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "管理者 (100)",
     "roomSettings.moderator50": "モデレーター (50)",
     "roomSettings.member0": "メンバー (0)",
+    "roomSettings.roleTags": "ロールタグ",
+    "roomSettings.roleTagsHint":
+        "各権限レベルに表示される名前、色、アイコン (MSC3949)。タグのないレベルは、それより低い直近のタグを使います。",
+    "roomSettings.roleTagLevel": "権限レベル",
+    "roomSettings.roleTagName": "名前",
+    "roomSettings.roleTagColor": "色",
+    "roomSettings.roleTagIcon": "アイコン (絵文字)",
+    "roomSettings.roleTagPickEmoji": "絵文字を選ぶ",
+    "roomSettings.roleTagUploadIcon": "画像をアップロード",
+    "roomSettings.roleTagRemoveIcon": "アイコンを削除",
+    "roomSettings.addRoleTag": "タグを追加",
+    "roomSettings.removeRoleTag": "タグを削除",
+    "roomSettings.saveRoleTags": "タグを保存",
+    "roomSettings.roleTagsSaved": "ロールタグを保存しました",
+    "roomSettings.roleTagsSaveFailed":
+        "ロールタグを保存できませんでした: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "2つのタグが権限レベル {level} を使っています",
+    "roomSettings.roleTagNameRequired": "すべてのタグに名前が必要です",
+    "roomSettings.roleTagLevelInvalid": "権限レベルは整数で指定してください",
+    "roomSettings.roleTagClearColor": "色をクリア",
+    "roomSettings.customLevel": "カスタム ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "このルームにはまだタグがないため、既定のタグを表示しています。",
     "roomSettings.muted1": "ミュート (-1)",
     "roomSettings.kick": "キック",
     "roomSettings.ban": "BAN",
@@ -3405,6 +3435,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "オフライン表示にすると、既読通知と入力中の表示も他のユーザーに見えなくなります。",
     "presence.unsupportedByServer":
         "このホームサーバーはプレゼンスに対応していないため、設定できるステータスはありません。",
+    "presence.shareViaProfile": "プロフィール経由でステータスを共有",
+    "presence.shareViaProfileDescription":
+        "このホームサーバーではプレゼンスが無効です。代わりに Zam がプロフィールのフィールドにステータスを公開できます。他の Zam ユーザーのほか、プロフィールを閲覧できる人なら誰でも見られます。",
     "presence.appearOfflineToOtherUsers": "他のユーザーにオフラインとして表示",
     "pushRuleWrite.yourHomeserverHasNoNotificationRule":
         "ホームサーバーに「{label}」の通知ルールがないため、変更できませんでした。",
@@ -3667,6 +3700,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "アップデートの準備ができました{versionSuffix} - 再起動して適用",
     "updateStatus.restartToApply": "再起動して適用",
+    "updateStatus.reopenToApply":
+        "アップデートをインストールしました{versionSuffix}。完了するには Zam を終了してもう一度開いてください",
     "updateStatus.updateReadyReloadToApply":
         "アップデートの準備ができました{versionSuffix} - 再読み込みして適用",
     "updateStatus.reloadToApply": "再読み込みして適用",

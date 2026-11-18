@@ -165,6 +165,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "我的消息靠右对齐（气泡布局）",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "将你自己的消息以彩色气泡显示在右侧",
+    "appearanceSettings.bubbleAllMessages": "所有消息使用气泡",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "以气泡显示所有人的消息，而不仅是你自己的",
     "appearanceSettings.showNameColours": "显示名称颜色",
     "appearanceSettings.drawPeopleSNamesInThe":
         "用每个人在个人资料中选择的颜色显示其名称。关闭后，所有人都使用普通文字颜色。",
@@ -1255,6 +1258,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "管理员：{length}",
     "memberList.admin": "管理员",
     "memberList.moderators": "协管员：{length}",
+    "memberList.defaultRoleMember": "成员",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label}此消息？",
@@ -2111,6 +2116,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "管理员 (100)",
     "roomSettings.moderator50": "协管员 (50)",
     "roomSettings.member0": "成员 (0)",
+    "roomSettings.roleTags": "角色标签",
+    "roomSettings.roleTagsHint":
+        "为每个权限级别显示的名称、颜色和图标 (MSC3949)。没有标签的级别使用比它低的最近一个标签。",
+    "roomSettings.roleTagLevel": "权限级别",
+    "roomSettings.roleTagName": "名称",
+    "roomSettings.roleTagColor": "颜色",
+    "roomSettings.roleTagIcon": "图标 (表情符号)",
+    "roomSettings.roleTagPickEmoji": "选择表情符号",
+    "roomSettings.roleTagUploadIcon": "上传图片",
+    "roomSettings.roleTagRemoveIcon": "移除图标",
+    "roomSettings.addRoleTag": "添加标签",
+    "roomSettings.removeRoleTag": "移除标签",
+    "roomSettings.saveRoleTags": "保存标签",
+    "roomSettings.roleTagsSaved": "角色标签已保存",
+    "roomSettings.roleTagsSaveFailed": "无法保存角色标签：{error}",
+    "roomSettings.roleTagDuplicateLevel": "两个标签使用了权限级别 {level}",
+    "roomSettings.roleTagNameRequired": "每个标签都需要名称",
+    "roomSettings.roleTagLevelInvalid": "权限等级必须是整数",
+    "roomSettings.roleTagClearColor": "清除颜色",
+    "roomSettings.customLevel": "自定义 ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "此房间还没有标签；正在显示默认标签。",
     "roomSettings.muted1": "禁言 (-1)",
     "roomSettings.kick": "移出",
     "roomSettings.ban": "封禁",
@@ -3588,6 +3615,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "隐身还会向其他用户隐藏你的已读回执和输入状态。",
     "presence.unsupportedByServer":
         "此服务器不支持在线状态，因此无法设置状态。",
+    "presence.shareViaProfile": "通过个人资料分享我的状态",
+    "presence.shareViaProfileDescription":
+        "此服务器已关闭在线状态。Zam 可以改为把你的状态发布到个人资料字段中。其他 Zam 用户以及任何能查看你个人资料的人都能看到。",
     "presence.appearOfflineToOtherUsers": "向其他用户显示为离线",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -3893,6 +3923,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "更新已就绪{versionSuffix} - 重启以应用",
     "updateStatus.restartToApply": "重启以应用",
+    "updateStatus.reopenToApply":
+        "更新已安装{versionSuffix}。退出 Zam 并重新打开以完成更新",
     "updateStatus.updateReadyReloadToApply":
         "更新已就绪{versionSuffix} - 重新加载以应用",
     "updateStatus.reloadToApply": "重新加载以应用",
