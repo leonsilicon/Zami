@@ -62,6 +62,26 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         TweetEmbed["media"][number] | null
     >(null);
 
+    // A link ending in a language (fxtwitter.com/.../status/<id>/en) asks
+    // FxTwitter for a translation; it is shown in place of the original,
+    // which stays one click away.
+    const [showOriginal, setShowOriginal] = useState(false);
+    const translated =
+        tweet.translation && !showOriginal ? tweet.translation : null;
+    const sourceLanguage = (() => {
+        const tr = tweet.translation;
+        if (!tr) return "";
+        try {
+            const name = new Intl.DisplayNames(intlLocale(), {
+                type: "language",
+            }).of(tr.sourceLang);
+            if (name && name !== tr.sourceLang) return name;
+        } catch {
+            // Old engines or an odd code: fall back below.
+        }
+        return tr.sourceLangName ?? tr.sourceLang;
+    })();
+
     const photos = tweet.media.filter((m) => m.kind === "photo");
 
     /** A photo as the viewer wants it: the original, the grid's thumb as its
@@ -271,12 +291,29 @@ export default function TweetCard({ tweet, nested = false }: Props) {
 
             {tweet.text ? (
                 <View>
+                    {tweet.translation ? (
+                        <Text className="text-xs text-zam-textMuted mb-0.5">
+                            {t("linkPreview.translatedFrom", {
+                                language: sourceLanguage,
+                            })}
+                            {" · "}
+                            <Text
+                                accessibilityRole="button"
+                                className="text-xs text-zam-accent"
+                                onPress={() => setShowOriginal((x) => !x)}
+                            >
+                                {showOriginal
+                                    ? t("linkPreview.showTranslation")
+                                    : t("linkPreview.showOriginal")}
+                            </Text>
+                        </Text>
+                    ) : null}
                     <View>
                         <Text
                             numberOfLines={expanded ? undefined : clampLines}
                             className={textClass}
                         >
-                            {segments(tweet.segments)}
+                            {segments(translated?.segments ?? tweet.segments)}
                         </Text>
                         {/* Zami: the measuring copy (measureClamp). */}
                         <Text
@@ -290,7 +327,7 @@ export default function TweetCard({ tweet, nested = false }: Props) {
                                 )
                             }
                         >
-                            {tweet.text}
+                            {translated?.text ?? tweet.text}
                         </Text>
                     </View>
                     {clamped || expanded ? (

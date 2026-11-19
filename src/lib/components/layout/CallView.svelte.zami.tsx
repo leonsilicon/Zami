@@ -312,10 +312,11 @@ export default function CallView({
         source: "camera" | "screenshare",
     ): string {
         const userId = identity.slice(0, identity.lastIndexOf(":"));
-        const name =
-            userId === selfUserId
-                ? t("callView.you")
-                : getMemberName(room, userId);
+        if (userId === selfUserId)
+            return source === "screenshare"
+                ? t("callView.yourScreen")
+                : t("callView.you");
+        const name = getMemberName(room, userId);
         return source === "screenshare"
             ? t("callView.sScreen", { name })
             : name;

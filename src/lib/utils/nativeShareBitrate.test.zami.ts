@@ -4,6 +4,9 @@ import {
     nativeBitrateTarget,
     nativeSenderBitrate,
     NATIVE_SENDER_BITRATE_FLOOR,
+    NATIVE_START_BITRATE,
+    UPLINK_CEILING_CALM_MS,
+    UplinkCeiling,
 } from "./nativeShareBitrate";
 
 describe("nativeBitrateTarget", () => {
@@ -15,10 +18,13 @@ describe("nativeBitrateTarget", () => {
         expect(nativeBitrateTarget(6_000_000, 4_000_000)).toBe(3_400_000);
     });
 
-    it("keeps the picked bitrate while the uplink is unknown", () => {
-        expect(nativeBitrateTarget(6_000_000, null)).toBe(6_000_000);
-        expect(nativeBitrateTarget(6_000_000, undefined)).toBe(6_000_000);
-        expect(nativeBitrateTarget(6_000_000, 0)).toBe(6_000_000);
+    it("starts low while the uplink is unknown, and never above the pick", () => {
+        expect(nativeBitrateTarget(6_000_000, null)).toBe(NATIVE_START_BITRATE);
+        expect(nativeBitrateTarget(1_000_000, null)).toBe(1_000_000);
+        expect(nativeBitrateTarget(6_000_000, undefined)).toBe(
+            NATIVE_START_BITRATE,
+        );
+        expect(nativeBitrateTarget(6_000_000, 0)).toBe(NATIVE_START_BITRATE);
     });
 });
 
@@ -73,5 +79,47 @@ describe("nativeSenderBitrate", () => {
 
     it("keeps a higher picked bitrate", () => {
         expect(nativeSenderBitrate(20_000_000)).toBe(20_000_000);
+    });
+});
+
+describe("UplinkCeiling", () => {
+    it("passes the estimate through until it collapses", () => {
+        const c = new UplinkCeiling();
+        for (let t = 0, bps = 1e6; t < 20_000; t += 500, bps *= 1.04)
+            expect(c.limit(bps, t)).toBe(bps);
+        expect(c.current()).toBeNull();
+    });
+
+    it("rides out WebRTC's ordinary 15% backoffs", () => {
+        const c = new UplinkCeiling();
+        c.limit(10e6, 0);
+        c.limit(8.5e6, 500);
+        c.limit(7.3e6, 1000);
+        expect(c.current()).toBeNull();
+    });
+
+    it("holds the helper under 80% of where the uplink collapsed", () => {
+        const c = new UplinkCeiling();
+        c.limit(40e6, 0);
+        c.limit(60e6, 500);
+        expect(c.limit(1e6, 1000)).toBe(1e6);
+        expect(c.current()).toBe(48e6);
+        // The estimate climbs back past it: the helper stops at the ceiling.
+        expect(c.limit(55e6, 20_000)).toBe(48e6);
+    });
+
+    it("raises the ceiling slowly while the link stays calm", () => {
+        const c = new UplinkCeiling();
+        c.limit(50e6, 0);
+        c.limit(5e6, 500); // ceiling 40 Mbps
+        for (let t = 1000; t < 500 + UPLINK_CEILING_CALM_MS; t += 500)
+            c.limit(45e6, t);
+        expect(c.current()).toBe(40e6);
+        c.limit(45e6, 500 + UPLINK_CEILING_CALM_MS);
+        expect(c.current()).toBeCloseTo(44e6);
+    });
+
+    it("lets an unknown estimate through", () => {
+        expect(new UplinkCeiling().limit(null, 0)).toBeNull();
     });
 });
