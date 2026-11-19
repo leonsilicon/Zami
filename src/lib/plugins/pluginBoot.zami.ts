@@ -110,6 +110,17 @@ import { watchActiveRoom } from "./pluginNav.svelte";
 import { readPluginSettings, writePluginSettings } from "./pluginSettingsStore";
 // Zami: in place of import() of a blob: URL (see blobImport).
 import { domGlobals, importModule } from "@-/com.leonsilicon.zami.rn";
+// Zami: what the native app adds to the plugin host: a plugin's own globals
+// (`Worker`), and the plugins that load before the first render.
+import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
+import {
+    earlyPluginIds,
+    keepEarlyPreferences,
+    markLoadedEarly,
+    unmarkLoadedEarly,
+    wasLoadedEarly,
+} from "@-/com.leonsilicon.zami.plugins";
+import { showToast } from "$lib/stores/toasts.svelte";
 import {
     installedPlugins,
     pluginPrefs,
@@ -247,7 +258,7 @@ const PLUGIN_WINDOW_NAMES = [
     "Audio",
     "Notification",
 ];
-function pluginScope(): Record<string, unknown> {
+function pluginScope(pluginId?: string): Record<string, unknown> {
     const scope: Record<string, unknown> = {
         ...domGlobals(document),
         window,
@@ -255,6 +266,8 @@ function pluginScope(): Record<string, unknown> {
         document,
         navigator,
         location,
+        // The plugin's own `Worker` (a web page runs it), ended when it unloads.
+        ...(pluginId !== undefined && zamiHost.pluginScope?.(pluginId)),
     };
     for (const name of PLUGIN_WINDOW_NAMES)
         scope[name] = (window as unknown as Record<string, unknown>)[name];
@@ -262,14 +275,18 @@ function pluginScope(): Record<string, unknown> {
 }
 
 // --- module import: built-in (direct) + repo (blob-import) ---
-async function blobImport(code: string): Promise<PluginModule> {
+async function blobImport(
+    code: string,
+    // Zami: whose code it is, for the globals that are the plugin's own.
+    pluginId?: string,
+): Promise<PluginModule> {
     // Zami: Hermes can't import() a module at run time (from a blob: URL or
     // anywhere), so importModule evaluates the bundle as an ES module. Its
     // rewrite of the bundle is kept between launches (compileCache): parsing
     // a large bundle held the JS thread at every launch.
     {
         const mod = (await importModule(code, {
-            scope: pluginScope(),
+            scope: pluginScope(pluginId),
             compileCache: "zami-plugin-modules",
         })) as {
             default?: PluginModule;
@@ -299,7 +316,7 @@ function localLoadable(manifest: Manifest): LoadablePlugin {
                 throw new Error(
                     "The plugin's files are gone from this device. Reload its folder.",
                 );
-            return blobImport(cached.code);
+            return blobImport(cached.code, manifest.id);
         },
     };
 }
@@ -367,7 +384,7 @@ function repoLoadable(manifest: Manifest, repoRef: string): LoadablePlugin {
 
             if (decision.kind === "cache") {
                 if (!cached) throw new Error("cache decision but no cache"); // shouldn't happen
-                return blobImport(cached.code);
+                return blobImport(cached.code, manifest.id);
             }
 
             // decision.kind === "fetch"
@@ -380,14 +397,14 @@ function repoLoadable(manifest: Manifest, repoRef: string): LoadablePlugin {
             } catch (e) {
                 // Network error: fall back to any cache
                 if (isCacheFallbackAllowed(cached, sha))
-                    return blobImport(cached.code);
+                    return blobImport(cached.code, manifest.id);
                 throw e;
             }
 
             if (!res.ok) {
                 // Offline / 404: fall back to any cache if we have one
                 if (isCacheFallbackAllowed(cached, sha))
-                    return blobImport(cached.code);
+                    return blobImport(cached.code, manifest.id);
                 throw new Error(`fetch bundle ${res.status}`);
             }
 
@@ -399,7 +416,7 @@ function repoLoadable(manifest: Manifest, repoRef: string): LoadablePlugin {
                 cachedAt: Date.now(),
                 sha,
             });
-            return blobImport(code);
+            return blobImport(code, manifest.id);
         },
     };
 }
@@ -587,10 +604,62 @@ function onItsOwnTurn(
     };
 }
 
+/** Zami: zam.ui.notify is one of the app's toasts. */
+function notifyToast(opts: { title?: string; body: string }): void {
+    showToast(opts.title ? `${opts.title}: ${opts.body}` : opts.body, {
+        tone: "accent",
+    });
+}
+
+/**
+ * Zami: loads the plugins that load before the app's first render: those that
+ * patch components (@-/com.leonsilicon.zami.plugins), since a patch only
+ * reaches the elements created after it. The app's root awaits this before it
+ * renders Zam's page; initPlugins then finds them loaded, and they stay
+ * loaded when the app shell unmounts (signing out), as what they patch isn't
+ * only the shell.
+ */
+export async function bootEarlyPlugins(): Promise<void> {
+    const state = readState();
+    keepEarlyPreferences((id) => id in state.plugins);
+    hostBridge.openPopover = openPluginPopover;
+    hostBridge.notify = notifyToast;
+    for (const id of earlyPluginIds()) {
+        const entry = state.plugins[id];
+        if (!entry?.enabled || !entry.manifest || loader.isLoaded(id)) continue;
+        let l: LoadablePlugin;
+        if (entry.source === "local") {
+            setInstalledPlugin({
+                manifest: entry.manifest,
+                source: "local",
+                enabled: true,
+                error: null,
+            });
+            l = localLoadable(entry.manifest);
+        } else if (entry.source === "repo" && entry.repoRef) {
+            setInstalledPlugin({
+                manifest: entry.manifest,
+                source: "repo",
+                enabled: true,
+                error: null,
+                repoRef: entry.repoRef,
+                sha: entry.sha,
+                path: entry.path || `plugins/${id}`,
+            });
+            l = repoLoadable(entry.manifest, entry.repoRef);
+        } else continue;
+        loadables.set(id, l);
+        markLoadedEarly(id);
+        if (!(await loader.enable(l))) unmarkLoadedEarly(id);
+    }
+}
+
 export function initPlugins(): () => void {
     // Wire the imperative UI seam item 8 owns: zam.ui.openPopover routes
     // through hostBridge.openPopover (hostApi.ts). Set once at boot.
     hostBridge.openPopover = openPluginPopover;
+    // Zami: the UI shell's part, which upstream hasn't wired.
+    hostBridge.notify = notifyToast;
 
     // Custom event types a plugin renders join the timeline. Memoized on the
     // registry tick: the timeline filter asks once per event.
@@ -676,7 +745,10 @@ export function initPlugins(): () => void {
     void afterNextFrame().then(() => {
         if (disposed) return;
         return loader.bootLoad(
-            toBoot.map((p) => onItsOwnTurn(p, () => disposed)),
+            toBoot
+                // (Those bootEarlyPlugins loaded are running already.)
+                .filter((p) => !loader.isLoaded(p.manifest.id))
+                .map((p) => onItsOwnTurn(p, () => disposed)),
         );
     });
     const stopRepoWatch = startLocalRepoWatch();
@@ -687,6 +759,8 @@ export function initPlugins(): () => void {
         stopRepoWatch();
         disposeEventBus();
         for (const id of [...loadables.keys()]) {
+            // Zami: see bootEarlyPlugins.
+            if (wasLoadedEarly(id)) continue;
             if (loader.isLoaded(id)) void loader.disable(id);
         }
     };

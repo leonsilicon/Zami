@@ -2,6 +2,8 @@
 //  - compiles Svelte rune modules (`*.svelte.zami.ts`, and `*.svelte.ts` in Zami's own
 //    packages) with Svelte's compiler, so Zam's stores run unmodified;
 //  - rewrites the Vite build-time features Zam's code uses (see #vite-babel-plugin);
+//  - makes the top-level names of Zam's modules settable by plugins (see
+//    #bindings-babel-plugin);
 //  - turns Ruffle's scripts (`static/ruffle/*.zami.js`) into their text, for Flash's WebView.
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -9,6 +11,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import esbuild from "esbuild";
 import { compileModule } from "svelte/compiler";
+import { zamiBindingsPlugin } from "#bindings-babel-plugin";
 import { appVersion, zamiVitePlugin } from "#vite-babel-plugin";
 
 const require = createRequire(import.meta.url);
@@ -42,14 +45,20 @@ export function transform(params) {
   return upstream.transform({
     ...params,
     src,
-    plugins: [...(params.plugins ?? []), zamiVitePlugin],
+    plugins: [...(params.plugins ?? []), zamiVitePlugin, zamiBindingsPlugin],
   });
 }
 
 export function getCacheKey(...args) {
   const hash = crypto.createHash("sha1");
   hash.update(upstream.getCacheKey?.(...args) ?? "");
-  for (const file of ["transformer.js", "vite-babel-plugin.js", "zami-paths.js", "with-zami.js"]) {
+  for (const file of [
+    "transformer.js",
+    "vite-babel-plugin.js",
+    "bindings-babel-plugin.js",
+    "zami-paths.js",
+    "with-zami.js",
+  ]) {
     hash.update(fs.readFileSync(path.join(import.meta.dirname, file)));
   }
   hash.update(require("svelte/package.json").version);

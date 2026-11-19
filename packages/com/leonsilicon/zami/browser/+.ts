@@ -1,3 +1,5 @@
+export type { VariableOverride } from "#css-variables";
+export { onRootThemeChange, setRootVariableOverrides } from "#document";
 export { installBrowserGlobals } from "#install";
 export {
   addCaptureKeyListener,

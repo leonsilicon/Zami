@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { createVariableBatch } from "#css-variables";
+import { createRootVariables, createVariableBatch } from "#css-variables";
 
 function harness() {
   const calls: [string, Record<string, string>][] = [];
@@ -68,5 +68,104 @@ describe("createVariableBatch", () => {
     // The scheduled run finds nothing left.
     queued[0]();
     expect(calls).toHaveLength(1);
+  });
+});
+
+/** Two themes' variables as the app holds them, and a root over them. */
+function root() {
+  const themes: Record<string, Record<string, string>> = {
+    dark: { "--bg": "#111", "--text": "#eee" },
+    light: { "--bg": "#fff", "--text": "#222" },
+  };
+  const state = { theme: "dark" };
+  const variables = createRootVariables({
+    theme: () => state.theme,
+    read: (name) => themes[state.theme]![name] ?? "",
+    write: (theme, name, value) => {
+      themes[theme]![name] = value;
+    },
+  });
+  const switchTo = (theme: string) => {
+    state.theme = theme;
+    variables.themeChanged();
+  };
+  return { themes, variables, switchTo };
+}
+
+describe("createRootVariables", () => {
+  test("an inline variable goes over the theme's and comes off again", () => {
+    const { themes, variables } = root();
+    variables.setProperty("--bg", "#123");
+    expect(themes.dark!["--bg"]).toBe("#123");
+    expect(variables.getPropertyValue("--bg")).toBe("#123");
+    expect(variables.removeProperty("--bg")).toBe("#123");
+    expect(themes.dark!["--bg"]).toBe("#111");
+    expect(variables.getPropertyValue("--bg")).toBe("");
+  });
+
+  test("a stylesheet's variable wins over both, and its removal brings back what's under it", () => {
+    const { themes, variables } = root();
+    variables.setProperty("--bg", "#123");
+    variables.setOverrides([
+      { theme: null, name: "--bg", value: "#abc" },
+      { theme: null, name: "--text", value: "#def" },
+    ]);
+    expect(themes.dark).toEqual({ "--bg": "#abc", "--text": "#def" });
+    // Zam's theme code sets its own meanwhile: kept, but under the stylesheet's.
+    variables.setProperty("--bg", "#456");
+    variables.setProperty("--text", "#789");
+    expect(themes.dark).toEqual({ "--bg": "#abc", "--text": "#def" });
+    variables.removeProperty("--text");
+    expect(themes.dark!["--text"]).toBe("#def");
+    variables.setOverrides([]);
+    // The inline value where there is one, the theme's own where it was removed.
+    expect(themes.dark).toEqual({ "--bg": "#456", "--text": "#eee" });
+  });
+
+  test("the later of two overrides for a name wins, and a changed list is applied as a diff", () => {
+    const writes: string[] = [];
+    const variables = createRootVariables({
+      theme: () => "dark",
+      read: () => "#000",
+      write: (_theme, name, value) => writes.push(`${name}=${value}`),
+    });
+    variables.setOverrides([
+      { theme: null, name: "--a", value: "1" },
+      { theme: null, name: "--a", value: "2" },
+      { theme: null, name: "--b", value: "3" },
+    ]);
+    expect(writes).toEqual(["--a=2", "--b=3"]);
+    writes.length = 0;
+    variables.setOverrides([
+      { theme: null, name: "--a", value: "2" },
+      { theme: null, name: "--b", value: "4" },
+    ]);
+    expect(writes).toEqual(["--b=4"]);
+  });
+
+  test("a theme's overrides apply while it's in force, and are undone when it's back without them", () => {
+    const { themes, variables, switchTo } = root();
+    variables.setOverrides([
+      { theme: null, name: "--text", value: "#0f0" },
+      { theme: "light", name: "--bg", value: "#ffe" },
+    ]);
+    expect(themes.dark).toEqual({ "--bg": "#111", "--text": "#0f0" });
+    // The light theme's variables are untouched until it's the one in force.
+    expect(themes.light).toEqual({ "--bg": "#fff", "--text": "#222" });
+    switchTo("light");
+    expect(themes.light).toEqual({ "--bg": "#ffe", "--text": "#0f0" });
+    variables.setOverrides([]);
+    expect(themes.light).toEqual({ "--bg": "#fff", "--text": "#222" });
+    // The dark theme still holds what was written while it was in force.
+    expect(themes.dark!["--text"]).toBe("#0f0");
+    switchTo("dark");
+    expect(themes.dark).toEqual({ "--bg": "#111", "--text": "#eee" });
+  });
+
+  test("a variable the theme never had keeps the override's value: it can't be unset", () => {
+    const { themes, variables } = root();
+    variables.setOverrides([{ theme: null, name: "--mine", value: "1px" }]);
+    variables.setOverrides([]);
+    expect(themes.dark!["--mine"]).toBe("1px");
   });
 });

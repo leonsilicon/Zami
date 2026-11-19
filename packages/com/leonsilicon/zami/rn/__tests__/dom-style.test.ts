@@ -1,9 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  cascade,
   computeStyle,
+  domStyleSource,
+  domStyleVersion,
   parseColor,
   parseDeclarations,
   parseLength,
+  setDomStyleSource,
+  subscribeDomStyles,
   substituteVariables,
   variableNames,
   type StyleContext,
@@ -196,5 +201,53 @@ describe("computeStyle", () => {
   test("an unresolvable value is dropped, not passed on", () => {
     expect(style("color: var(--missing); width: calc(100% - 4px)").box).toEqual({});
     expect(style("color: var(--missing)").text).toEqual({});
+  });
+});
+
+describe("stylesheets", () => {
+  test("rules go around the inline style: normal ones under it, important ones over it", () => {
+    const inline = parseDeclarations("color: red; margin-left: 4px");
+    expect(cascade(inline, undefined)).toBe(inline);
+    const merged = cascade(inline, {
+      normal: new Map([
+        ["color", "blue"],
+        ["padding", "2px"],
+      ]),
+      important: new Map([["margin", "0"]]),
+    });
+    // In the order they apply: the important `margin` after the inline `margin-left`.
+    expect([...merged]).toEqual([
+      ["padding", "2px"],
+      ["color", "red"],
+      ["margin-left", "4px"],
+      ["margin", "0"],
+    ]);
+    expect(computeStyle(merged, ctx).box).toMatchObject({ marginLeft: 0, paddingTop: 2 });
+  });
+
+  test("a source's changes, and a change of source, are changes of version", () => {
+    const seen: number[] = [];
+    const unsubscribe = subscribeDomStyles(() => seen.push(domStyleVersion()));
+    let notify = () => {};
+    let subscribed = 0;
+    const start = domStyleVersion();
+    setDomStyleSource({
+      subscribe(listener) {
+        subscribed++;
+        notify = listener;
+        return () => {
+          subscribed--;
+        };
+      },
+      match: () => undefined,
+      variables: () => [],
+    });
+    expect(domStyleSource()).not.toBeNull();
+    notify();
+    setDomStyleSource(null);
+    expect(subscribed).toBe(0);
+    expect(domStyleSource()).toBeNull();
+    expect(seen).toEqual([start + 1, start + 2, start + 3]);
+    unsubscribe();
   });
 });

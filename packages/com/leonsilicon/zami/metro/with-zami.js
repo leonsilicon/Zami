@@ -20,6 +20,11 @@ const FILE_SHIMS = {
   "lucide-svelte": "packages/com/leonsilicon/zami/icons/lucide-svelte.cjs",
 };
 
+// Uniwind's store, where a `className` becomes a style: the plugins' stylesheets hook it
+// (@-/com.leonsilicon.zami.plugins). The package doesn't export the file, so it's
+// resolved here rather than by Metro, which would fall back to it with a warning.
+const UNIWIND_STORE = "uniwind/src/core/native/store";
+
 // Zam directories the app never imports from; keeping them out of Metro's file map
 // keeps startup fast (android/ alone holds Gradle build output).
 const UNWATCHED = [
@@ -129,6 +134,15 @@ export function withZami(config, { repoRoot }) {
     if (moduleName in SHIMS) return resolve(context, SHIMS[moduleName], platform);
     if (moduleName in FILE_SHIMS)
       return { type: "sourceFile", filePath: path.join(repoRoot, FILE_SHIMS[moduleName]) };
+    if (moduleName === UNIWIND_STORE) {
+      return {
+        type: "sourceFile",
+        filePath: path.join(
+          path.dirname(require.resolve("uniwind/package.json")),
+          "src/core/native/store.ts",
+        ),
+      };
+    }
     // Capacitor (Zam's Android bridge): the app isn't a Capacitor app.
     if (moduleName.startsWith("@capacitor/"))
       return { type: "sourceFile", filePath: path.join(repoRoot, CAPACITOR_SHIM) };

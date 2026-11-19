@@ -3,6 +3,11 @@
 // changes never touch another's. (The theme colours are set inline on <html>,
 // so overriding one of those variables needs `!important`.)
 
+// Zami: nothing draws the document's <style> elements in the native app, so
+// each stylesheet also goes to @-/com.leonsilicon.zami.plugins, which applies
+// what React Native can: theme variables, and rules for classes.
+import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
+
 const ATTR = "data-zam-css";
 
 const find = (id: string): HTMLStyleElement | null =>
@@ -16,6 +21,7 @@ const find = (id: string): HTMLStyleElement | null =>
 
 /** Set (or, when `css` is empty, remove) the stylesheet owned by `id`. */
 export function setStyleSheet(id: string, css: string): void {
+    zamiHost.setStyleSheet?.(id, css);
     if (typeof document === "undefined") return;
     const existing = find(id);
     if (!css.trim()) {

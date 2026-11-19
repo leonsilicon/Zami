@@ -28,6 +28,7 @@ import {
     videoFrameThumbnail,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
 import { t } from "$lib/i18n";
 import {
     getUrlPreview,
@@ -1202,7 +1203,11 @@ function escapeAttribute(text: string): string {
  * `origin` youtubePlayerUrl names. Links out of the player open in the browser.
  */
 function YoutubeFrame({ src, title }: { src: string; title: string }) {
-    const pageUrl = `${location.origin}/`;
+    // Plugins' `zam.frames` rules for this player, read as it loads: a rule's
+    // referrer is the page the frame sits in, and its script goes into every
+    // frame of the WebView (the rule's URLs pick the frames it runs in).
+    const rules = useMemo(() => zamiHost.frameRules?.(src) ?? {}, [src]);
+    const pageUrl = rules.referrer ?? `${location.origin}/`;
     const html = useMemo(
         () =>
             `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{display:block;border:0;width:100%;height:100%}</style></head><body><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></body></html>`,
@@ -1211,6 +1216,13 @@ function YoutubeFrame({ src, title }: { src: string; title: string }) {
     return (
         <WebView
             source={{ html, baseUrl: pageUrl }}
+            {...(rules.script !== undefined && {
+                injectedJavaScript: rules.script,
+                injectedJavaScriptForMainFrameOnly: false,
+                // react-native-webview only injects into a WebView that
+                // listens for messages.
+                onMessage: () => {},
+            })}
             originWhitelist={["*"]}
             allowsInlineMediaPlayback
             allowsFullscreenVideo

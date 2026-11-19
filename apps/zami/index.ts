@@ -11,6 +11,9 @@ import "#notifications";
 // reads `storageReady` once it has rendered, which with inline requires is when it would
 // first load (@-/com.leonsilicon.zami.metro).
 import "#storage";
+// Before anything renders: a plugin can patch any component only if every element the app
+// creates passes through its hook (@-/com.leonsilicon.zami.plugins).
+import "@-/com.leonsilicon.zami.plugins/install";
 import { parityRoot } from "@-/com.leonsilicon.zami.parity/native";
 import { registerRootComponent } from "expo";
 import { LogBox } from "react-native";
