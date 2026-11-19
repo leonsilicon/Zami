@@ -7,6 +7,8 @@
  */
 import type { Manifest } from "./manifest";
 import type { SettingsSchema } from "./settingsSchema";
+// Zami: `zam.zami`'s contract.
+import type { ZamiPluginApi } from "@-/com.leonsilicon.zami.plugins/host";
 
 /** One undo handle. `dispose()` is idempotent by contract. */
 export interface Disposable {
@@ -1320,6 +1322,13 @@ export interface ZamPluginApi {
     unsafe: {
         getClient(): unknown;
     };
+
+    /** Zami: what the native app adds (@-/com.leonsilicon.zami.plugins):
+     *  React and React Native, every module of the app and every library it
+     *  bundles, patches of any component or function, stylesheets, layers
+     *  over the app, web pages for WebAssembly and Workers. Zam has none of
+     *  it, so a plugin for both checks `zam.zami` first. */
+    zami?: ZamiPluginApi;
 }
 
 /** The shape a plugin bundle's default export (or built-in module) satisfies. */

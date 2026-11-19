@@ -1,0 +1,9 @@
+{
+  "id": "zami-showcase",
+  "name": "Zami showcase",
+  "version": "1.0.0",
+  "description": "What a plugin can do with zam.zami: a layer over the app, a patched component, a patched function, a stylesheet, and WebAssembly in a web page.",
+  "author": "Zami",
+  "entry": "index.js",
+  "capabilities": ["ui", "commands", "messages:read", "messages:send"]
+}

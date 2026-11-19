@@ -2,6 +2,14 @@
 // around the main page), inside what every screen relies on. Zam is one page; its
 // navigation lives in `page.url` (@-/com.leonsilicon.zami.sveltekit).
 import { AppFontProvider } from "@-/com.leonsilicon.zami.fonts";
+import {
+  createZamiApi,
+  earlyPluginIds,
+  markAppRendered,
+  PluginLayers,
+  PluginWebHost,
+  StyleSheetScope,
+} from "@-/com.leonsilicon.zami.plugins";
 import { PortalHost } from "@-/com.leonsilicon.zami.rn";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState, type ReactNode } from "react";
@@ -22,11 +30,47 @@ import "$lib/stores/settings.svelte";
 import Splash from "$lib/components/layout/Splash.svelte";
 import { initI18n } from "$lib/i18n";
 import { getClient } from "$lib/matrix/client";
+import { bootEarlyPlugins } from "$lib/plugins/pluginBoot";
 import Layout from "../../src/routes/+layout.svelte";
 import Page from "../../src/routes/+page.svelte";
 
-// For the debugger (Argent's debugger-evaluate): the running Matrix client.
-if (__DEV__) Object.assign(globalThis, { __zamiDebug: { getClient } });
+// For the debugger (Argent's debugger-evaluate): the running Matrix client, and what a
+// plugin gets as `zam.zami` (every module, component patches, …).
+if (__DEV__) {
+  let zami: ReturnType<typeof createZamiApi> | undefined;
+  Object.assign(globalThis, {
+    __zamiDebug: {
+      getClient,
+      get zami() {
+        return (zami ??= createZamiApi({
+          pluginId: "debugger",
+          manifest: { name: "Debugger" },
+          track: (disposable) => disposable,
+        }));
+      },
+    },
+  });
+}
+
+/** How long the first render waits for the plugins that load before it. */
+const EARLY_PLUGINS_TIMEOUT_MS = 4000;
+
+/**
+ * Loads the plugins that patch components before Zam's page renders: a patch only reaches
+ * the elements created after it. Most accounts have none, and then this doesn't even load
+ * the plugin host. One that hangs (a repo plugin fetching its bundle) doesn't hold the app:
+ * it finishes loading late, and says what that means.
+ */
+async function loadEarlyPlugins(): Promise<void> {
+  if (earlyPluginIds().length === 0) return;
+  markStartup("Loading plugins");
+  await Promise.race([
+    bootEarlyPlugins().catch((error: unknown) => {
+      console.error("[zami] loading plugins before the first render failed", error);
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, EARLY_PLUGINS_TIMEOUT_MS)),
+  ]);
+}
 
 export function Root() {
   // Zam's code starts once its translations are loaded, IndexedDB (the crypto store) is
@@ -35,8 +79,15 @@ export function Root() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     markStartup("Loading storage, translations and fonts");
-    void Promise.all([initI18n(), storageReady, fontsReady]).finally(() => setReady(true));
+    void Promise.all([initI18n(), storageReady, fontsReady])
+      .then(loadEarlyPlugins)
+      .finally(() => setReady(true));
   }, []);
+  // From here on, a component patched for the first time has elements on screen that the
+  // patch didn't reach.
+  useEffect(() => {
+    if (ready) markAppRendered();
+  }, [ready]);
 
   return (
     <AppProviders>
@@ -49,6 +100,8 @@ export function Root() {
         <Splash message={null} />
       )}
       <PortalHost />
+      <PluginLayers />
+      <PluginWebHost />
     </AppProviders>
   );
 }
@@ -77,7 +130,8 @@ function reportTouch(): void {
 /**
  * What every screen relies on: gestures, safe-area insets, keyboard tracking and the app's
  * font, on Zam's background. The PortalHost goes last inside it, so overlays get all of
- * them too, and every touch inside it counts as input (reportTouch).
+ * them too, and every touch inside it counts as input (reportTouch). The StyleSheetScope
+ * is what lets a stylesheet (custom CSS, a plugin's) restyle the views already on screen.
  */
 function AppProviders({ children }: { children: ReactNode }) {
   return (
@@ -85,9 +139,11 @@ function AppProviders({ children }: { children: ReactNode }) {
       <SafeAreaProvider>
         <KeyboardProvider>
           <AppFontProvider>
-            <View className="flex-1 bg-zam-backgroundTertiary" onTouchStartCapture={reportTouch}>
-              {children}
-            </View>
+            <StyleSheetScope>
+              <View className="flex-1 bg-zam-backgroundTertiary" onTouchStartCapture={reportTouch}>
+                {children}
+              </View>
+            </StyleSheetScope>
           </AppFontProvider>
         </KeyboardProvider>
       </SafeAreaProvider>

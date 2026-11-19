@@ -33,6 +33,8 @@ import { gifProviderProblem } from "./pluginGifs";
 import { closePluginPanelOf, openRegisteredPanel } from "./pluginPanel.svelte";
 import { navigateToRoom } from "../stores/rooms.svelte";
 import { viewedRoomId } from "./pluginNav.svelte";
+// Zami: what the native app adds to the API (`zam.zami`).
+import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
 import { sendReaction, getOwnUserId, getClient } from "../matrix/client";
 import {
     sendEventContent,
@@ -684,6 +686,18 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
         settings,
     };
 
+    // Zami: `zam.zami` (React and React Native, every app module, component
+    // and function patching, ...), built when the plugin first reads it.
+    const createZami = zamiHost.createApi;
+    if (createZami) {
+        let zami: ZamPluginApi["zami"];
+        Object.defineProperty(zam, "zami", {
+            enumerable: true,
+            configurable: true,
+            get: () => (zami ??= createZami({ pluginId, manifest, track })),
+        });
+    }
+
     const disposeAll = (): void => {
         for (const d of [...disposables]) {
             try {
@@ -702,6 +716,8 @@ export function buildHostApi(opts: BuildHostApiOptions): PluginHost {
         closePluginPanelOf(pluginId);
         // A ring this plugin is playing falls back to the built-in tone.
         stopPluginRingtonesOf(pluginId);
+        // Zami: what the plugin's code made outside this host (its workers).
+        zamiHost.unload?.(pluginId);
     };
 
     return { zam, disposeAll, setSettings };

@@ -9,6 +9,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -38,8 +39,12 @@ import {
 } from "linkedom";
 import { Checkbox } from "#checkbox";
 import {
+  cascade,
   computeStyle,
+  domStyleSource,
+  domStyleVersion,
   parseDeclarations,
+  subscribeDomStyles,
   variableNames,
   type Display,
   type ElementStyle,
@@ -388,6 +393,35 @@ function useDom(): DomContextValue {
   return ctx;
 }
 
+// React content shown in place of an element's children: how a plugin draws React Native
+// views where Zam gave it an element to render into.
+const domContent = new WeakMap<Element, ReactNode>();
+let domContentVersion = 0;
+
+/**
+ * Shows `content` (React elements) where `element` is, in place of its DOM children, in
+ * whichever DomView shows the element; `undefined` goes back to its children. The
+ * element's own box (its style and classes) stays around the content.
+ */
+export function setDomContent(element: Element, content: ReactNode | undefined): void {
+  if (content === undefined) domContent.delete(element);
+  else domContent.set(element, content);
+  // A DomView re-renders when its subtree changes, and an attribute is a change.
+  element.setAttribute("data-zami-content", String(++domContentVersion));
+}
+
+/** What tells a WebView how to load a frame: the app's `zam.frames` rules. */
+export interface DomFrameRules {
+  script?: string;
+  referrer?: string;
+}
+let frameRules: ((url: string) => DomFrameRules) | null = null;
+
+/** Where an `<iframe>` asks what plugins' frame rules say for the page it loads. */
+export function setDomFrameRules(source: ((url: string) => DomFrameRules) | null): void {
+  frameRules = source;
+}
+
 // Stable React keys for nodes, so a field keeps its focus when its siblings change.
 let nextKey = 1;
 const nodeKeys = new WeakMap<object, number>();
@@ -397,17 +431,35 @@ function keyOf(node: object): number {
   return key;
 }
 
-const declarationCache = new WeakMap<
-  Element,
-  { text: string | null; declarations: Map<string, string> }
->();
+// Counts the changes DomViews have seen in their subtrees. Which stylesheet rules match
+// an element depends on the elements around it, so a match is only good until the next one.
+let domEpoch = 0;
+
+interface CachedDeclarations {
+  text: string | null;
+  inline: Map<string, string>;
+  /** `declarations` is `inline` within the stylesheets' rules as of these. */
+  epoch: number;
+  styles: number;
+  declarations: Map<string, string>;
+}
+const declarationCache = new WeakMap<Element, CachedDeclarations>();
+/** An element's declarations: its inline style's, within the stylesheets' (#dom-style). */
 function declarationsOf(element: Element): Map<string, string> {
   const text = element.getAttribute("style");
-  const cached = declarationCache.get(element);
-  if (cached && cached.text === text) return cached.declarations;
-  const declarations = parseDeclarations(text);
-  declarationCache.set(element, { text, declarations });
-  return declarations;
+  let cached = declarationCache.get(element);
+  if (!cached || cached.text !== text) {
+    const inline = parseDeclarations(text);
+    cached = { text, inline, epoch: -1, styles: -1, declarations: inline };
+    declarationCache.set(element, cached);
+  }
+  const styles = domStyleVersion();
+  if (cached.epoch !== domEpoch || cached.styles !== styles) {
+    cached.epoch = domEpoch;
+    cached.styles = styles;
+    cached.declarations = cascade(cached.inline, domStyleSource()?.match(element));
+  }
+  return cached.declarations;
 }
 
 const TEXT_KEYS = new Set([
@@ -586,6 +638,8 @@ function kindOf(node: Node): Kind {
   const tag = node.localName;
   if (SKIPPED.has(tag) || node.hasAttribute("hidden")) return "skip";
   if (tag === "input" && node.getAttribute("type")?.toLowerCase() === "hidden") return "skip";
+  // React content is views, whatever the element holding it is.
+  if (domContent.has(node)) return "block";
   const display = declaredDisplay(node);
   if (display === "none") return "skip";
   if (display === "contents") return "contents";
@@ -747,7 +801,8 @@ function isInteractive(element: Element): boolean {
   const role = element.getAttribute("role");
   if (role && PRESSABLE_ROLES.has(role)) return true;
   if (element.hasAttribute("tabindex")) return true;
-  return /cursor\s*:\s*pointer/i.test(element.getAttribute("style") ?? "");
+  // Inline, or from a stylesheet's rule.
+  return /^pointer$/i.test(declarationsOf(element).get("cursor") ?? "");
 }
 
 function accessibilityRoleOf(element: Element): AccessibilityRole | undefined {
@@ -1116,6 +1171,14 @@ function DomElement({ node, inherited, flexItem, inlineBlock }: ElementProps): R
   if (flexItem && box.flexShrink === undefined && box.flex === undefined) box.flexShrink = 1;
   if (inlineBlock) box.alignSelf ??= "flex-start";
   const ref = (host: unknown) => bindHost(node, host);
+
+  if (domContent.has(node)) {
+    return (
+      <View ref={ref} style={box}>
+        {domContent.get(node)}
+      </View>
+    );
+  }
 
   switch (tag) {
     case "img":
@@ -1613,6 +1676,8 @@ function FrameElement({ node, box }: { node: Element; box: ViewStyle }): ReactNo
     return numberAttribute(node, name) ?? fallback;
   };
   if (!src && srcdoc === null) return null;
+  // Read as the frame loads, as a browser would apply them.
+  const rules = (srcdoc === null && src ? frameRules?.(src) : undefined) ?? {};
   return (
     <View
       ref={(host) => bindHost(node, host)}
@@ -1627,7 +1692,20 @@ function FrameElement({ node, box }: { node: Element; box: ViewStyle }): ReactNo
       ]}
     >
       <WebView
-        source={srcdoc !== null ? { html: srcdoc } : { uri: src! }}
+        source={
+          srcdoc !== null
+            ? { html: srcdoc }
+            : {
+                uri: src!,
+                ...(rules.referrer !== undefined && { headers: { Referer: rules.referrer } }),
+              }
+        }
+        {...(rules.script !== undefined && {
+          injectedJavaScript: rules.script,
+          injectedJavaScriptForMainFrameOnly: false,
+          // react-native-webview only injects into a WebView that listens for messages.
+          onMessage: () => {},
+        })}
         style={{ flex: 1, backgroundColor: "transparent" }}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
@@ -1760,9 +1838,10 @@ function observe(node: Element, callback: () => void): () => void {
   return () => observer.disconnect();
 }
 
-/** The `--x` names the subtree's inline styles read, and the accent (progress bars). */
+/** The `--x` names the subtree's inline styles and the stylesheets read, and the accent
+ *  (progress bars). */
 function subtreeVariables(node: Element): string[] {
-  const names = new Set<string>([ACCENT]);
+  const names = new Set<string>([ACCENT, ...(domStyleSource()?.variables() ?? [])]);
   for (const name of variableNames(node.getAttribute("style"))) names.add(name);
   for (const element of node.querySelectorAll("[style]"))
     for (const name of variableNames(element.getAttribute("style"))) names.add(name);
@@ -1785,11 +1864,17 @@ export function DomView({
   onLinkPress,
   resolveMxc,
 }: DomViewProps): ReactNode {
-  const [version, refresh] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => observe(node, refresh), [node]);
+  const [version, render] = useReducer((n: number) => n + 1, 0);
+  // Every re-read of the subtree is a new epoch for the stylesheet matches (domEpoch).
+  const refresh = useRef(() => {
+    domEpoch++;
+    render();
+  }).current;
+  useEffect(() => observe(node, refresh), [node, refresh]);
+  const styles = useSyncExternalStore(subscribeDomStyles, domStyleVersion, domStyleVersion);
   const viewport = useWindowDimensions();
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- `version` re-reads the subtree
-  const names = useMemo(() => subtreeVariables(node), [node, version]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- `version` and `styles` re-read
+  const names = useMemo(() => subtreeVariables(node), [node, version, styles]);
   const values = useCSSVariable(names) as (string | number | undefined)[];
   const base = useResolveClassNames(textClassName) as TextStyle;
   const inputs = useRef(new WeakMap<Element, Focusable>()).current;

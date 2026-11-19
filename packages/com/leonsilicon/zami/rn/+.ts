@@ -3,7 +3,24 @@ export { Pulse, Spin } from "#animation";
 export { Checkbox, type CheckboxProps } from "#checkbox";
 export { confirmAlert, type ConfirmAlertOptions } from "#confirm-alert";
 export { Details, type DetailsProps } from "#details";
-export { DomMount, DomView, domGlobals, type DomMountProps, type DomViewProps } from "#dom-view";
+export {
+  computeStyle,
+  parseDeclarations,
+  setDomStyleSource,
+  type DomStyleSource,
+  type ElementStyle,
+  type StyleContext,
+} from "#dom-style";
+export {
+  DomMount,
+  DomView,
+  domGlobals,
+  setDomContent,
+  setDomFrameRules,
+  type DomFrameRules,
+  type DomMountProps,
+  type DomViewProps,
+} from "#dom-view";
 export {
   compileModule,
   importModule,

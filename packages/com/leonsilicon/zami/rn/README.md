@@ -157,6 +157,13 @@ embeds), which here live in Zami's detached linkedom DOM
     Uniwind, so Zam's own Tailwind classes work. Text properties inherit down the tree;
     tags keep Tailwind's preflight look (headings and links as plain text, unstyled
     buttons and fields), with bold, italic, monospace and the like for their tags.
+  - Stylesheets: `setDomStyleSource({ subscribe, match, variables })` gives DomView the
+    rules of the app's stylesheets (@-/com.leonsilicon.zami.plugins registers the user's
+    custom CSS, plugins' `addStyles` and `<style>` elements). `match(element)` returns
+    what they declare for an element, and the cascade is a page's: the element's
+    (Uniwind) classes, then the rules' declarations, then its inline style, then the
+    rules' `!important` ones. A rule can set `display` and `cursor: pointer` too, and
+    DomView re-renders when the source says the rules changed.
   - It re-renders when the subtree changes (linkedom's `MutationObserver`, which reports
     added and removed nodes, attributes and text) and after every event it sends. A
     change only to a property (`el.style.color = …`, `input.checked`) made outside an
@@ -169,6 +176,12 @@ embeds), which here live in Zami's detached linkedom DOM
   with `DomView` and kept in the document's body while mounted. `mount` returns the
   cleanup and runs once per mount, as a Svelte action does: give the `DomMount` a `key`
   to run it again (`{#key}`). The other props are `DomView`'s.
+- `setDomContent(element, content)`: shows React content (native views) where `element`
+  is, in place of its DOM children, in whichever `DomView` shows it; `undefined` goes back
+  to its children. It's how a plugin draws React Native where Zam gave it an element
+  (`zam.zami.ui.render`).
+- `setDomFrameRules(source)`: where an `<iframe>` asks, as it loads, what plugins'
+  `zam.frames` rules say for its page: a script to inject and a referrer to send.
 - `domGlobals(document)`: the names a plugin's code needs for that DOM that the browser
   has as globals: `Event`, `CustomEvent`, `InputEvent`, `KeyboardEvent`, `MouseEvent`,
   `PointerEvent`, `FocusEvent` and `EventTarget` (linkedom's, which its nodes dispatch),

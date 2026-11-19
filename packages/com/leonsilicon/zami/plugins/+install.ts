@@ -1,0 +1,1 @@
+export { installZamiPlugins } from "#install";

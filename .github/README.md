@@ -87,6 +87,7 @@ under `packages/com/leonsilicon/zami/`. A package's `_name.ts` scripts run as
 | `packages/com/leonsilicon/zami/svelte-react` | `useRune`/`useDeepRune`: React components re-render when Svelte runes change |
 | `packages/com/leonsilicon/zami/icons` | `lucide-svelte` for the app: lucide-react-native icons that take Zam's Tailwind classes |
 | `packages/com/leonsilicon/zami/rn` | What translations share in place of web features: `Portal`, `Html`, `Image`/`mediaSource` |
+| `packages/com/leonsilicon/zami/plugins` | What Zami adds to Zam's plugin host: `zam.zami` (React Native, every app module, patches of any component or function, stylesheets, web pages for WebAssembly and Workers) and plugins that load before the first render |
 | `packages/com/leonsilicon/zami/push-gateway` | The push gateway itself: Matrix notify requests in, Expo push messages out |
 | `packages/com/leonsilicon/zami/dev` | `_dev`: builds, installs and runs the app with its dev server |
 | `packages/com/leonsilicon/zami/maestro` | `_maestro`: runs the app's Maestro end-to-end flows (`apps/zami/.maestro`) on a simulator or emulator |
