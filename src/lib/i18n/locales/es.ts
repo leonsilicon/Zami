@@ -305,6 +305,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Reactivar audio compartido",
     "callView.you": "Tú",
     "callView.sScreen": "Pantalla de {name}",
+    "callView.yourScreen": "Tu pantalla",
     "callView.exitSpotlightFor": "Quitar el foco de {label}",
     "callView.spotlight": "Poner el foco en {label}",
 
@@ -1021,6 +1022,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "En respuesta a",
     "linkPreview.showMore": "Mostrar más",
     "linkPreview.showLess": "Mostrar menos",
+    "linkPreview.translatedFrom": "Traducido del {language}",
+    "linkPreview.showOriginal": "Ver original",
+    "linkPreview.showTranslation": "Ver traducción",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} voto} other {{votes} votos}}",
     "linkPreview.pollFinal": "Resultados finales",
@@ -2312,6 +2316,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Tu subida mide {upload}, así que esto llega hasta {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Tu subida aún no se ha medido. Se mide mientras envías vídeo, así que por ahora esto llega hasta {max}.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Por encima de {safe} es decisión tuya: no se comprueba tu subida, y quienes miren con conexiones o dispositivos más lentos pueden ver tirones o congelaciones.",
     "screenShareQualityChips.nativeCapture": "Asistente de captura de Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Captura y codifica la pantalla compartida fuera del navegador, para que un juego exigente no la entrecorte. Se aplica al próximo uso compartido.",
@@ -3183,6 +3189,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "ancho de banda",
     "callStats.limitNone": "nada",
+    "callStats.shareHeldByViewers":
+        "Un espectador no da abasto: tu pantalla se limita a {rate} Mbps",
     "callStats.limitOther": "otro",
     "callStats.frameTime": "Tiempo por fotograma",
     "callStats.resent": "Reenviado",

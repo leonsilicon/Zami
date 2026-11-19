@@ -297,6 +297,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "取消静音共享声音",
     "callView.you": "你",
     "callView.sScreen": "{name} 的屏幕",
+    "callView.yourScreen": "你的屏幕",
     "callView.exitSpotlightFor": "退出对 {label} 的聚焦",
     "callView.spotlight": "聚焦 {label}",
 
@@ -1092,6 +1093,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "回复",
     "linkPreview.showMore": "显示更多",
     "linkPreview.showLess": "收起",
+    "linkPreview.translatedFrom": "译自{language}",
+    "linkPreview.showOriginal": "显示原文",
+    "linkPreview.showTranslation": "显示译文",
     "linkPreview.pollVotes": "{count, plural, other {{votes} 票}}",
     "linkPreview.pollFinal": "最终结果",
     "linkPreview.pollEnds": "{date} 结束",
@@ -2272,6 +2276,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "测得你的上传速度为 {upload}，因此上限为 {max}。",
     "screenShareQualityChips.bitrateUnmeasured":
         "尚未测量你的上传速度。它会在你发送视频时测量，因此目前上限为 {max}。",
+    "screenShareQualityChips.bitrateHighWarning":
+        "超过 {safe} 由你自行决定：不会检查你的上传速度，网络或设备较慢的观众可能会看到卡顿或画面冻结。",
     "screenShareQualityChips.nativeCapture": "Windows 捕获辅助程序",
     "screenShareQualityChips.nativeCaptureHint":
         "在浏览器之外捕获并编码共享画面，因此占用大的游戏不会让共享卡顿。将应用于下一次共享。",
@@ -2962,6 +2968,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "带宽",
     "callStats.limitNone": "无",
+    "callStats.shareHeldByViewers":
+        "有观众跟不上：你的共享已限制为 {rate} Mbps",
     "callStats.limitOther": "其他",
     "callStats.frameTime": "每帧耗时",
     "callStats.resent": "重发",
