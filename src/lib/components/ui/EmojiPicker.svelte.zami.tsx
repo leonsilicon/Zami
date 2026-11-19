@@ -100,6 +100,12 @@ const SECTION_GAP = 8; // mb-2 under each section's grid
 // worker does (utils/pickerThumbCache.ts).
 const EMOJI_THUMB_PX = 96;
 
+// Custom thumbnails whose full image has loaded (or failed). Until a URL
+// is in here its 16px placeholder stays behind it.
+// Zami: module-wide rather than per picker, so it outlives the FlatList's
+// unmounted rows (and a reopened picker skips the placeholder).
+const loadedThumbs = new Set<string>();
+
 // Zami: the standard emoji as options, built once: they never change, and
 // building them (a spread per emoji) on every open and every sync was much of
 // the picker's cost. The same objects each time also keep the rows below
@@ -834,6 +840,22 @@ const EmojiCell = memo(function EmojiCell({
     // cursor is on.
     const selected = useSelected(selection, item);
     const ring = selected ? " border-2 border-zam-accent" : "";
+    const thumb =
+        item.kind === "custom"
+            ? (pickerThumbUrl(item.data.mxcUrl, EMOJI_THUMB_PX) ??
+              item.data.url)
+            : "";
+    const lqip =
+        item.kind === "custom" ? pickerThumbUrl(item.data.mxcUrl, 16) : null;
+    // Zami: the FlatList unmounts rows that scroll away, so the set of
+    // settled thumbnails lives outside the cell (loadedThumbs); this state
+    // only re-renders the cell when its own thumbnail settles.
+    const [loaded, setLoaded] = useState(() => loadedThumbs.has(thumb));
+    const settleThumb = () => {
+        loadedThumbs.add(thumb);
+        setLoaded(true);
+    };
+    const thumbLoaded = loaded || loadedThumbs.has(thumb);
     return item.kind === "custom" ? (
         <Pressable
             onPress={() => pickCustom(item.data)}
@@ -843,18 +865,38 @@ const EmojiCell = memo(function EmojiCell({
             style={{ width: cell, height: cell }}
             className={`p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex items-center justify-center${ring}`}
         >
-            <Image
-                source={mediaSource(
-                    pickerThumbUrl(item.data.mxcUrl, EMOJI_THUMB_PX) ??
-                        item.data.url,
-                )}
-                accessibilityLabel={item.data.shortcode}
+            <View
                 style={{
                     width: cell - 8,
                     height: cell - 8,
                 }}
-                contentFit="contain"
-            />
+                className="relative"
+            >
+                {lqip && !thumbLoaded && (
+                    <Image
+                        source={mediaSource(lqip)}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                        className="absolute inset-0 w-full h-full scale-110"
+                        contentFit="cover"
+                        blurRadius={8}
+                    />
+                )}
+                <Image
+                    source={mediaSource(thumb)}
+                    accessibilityLabel={item.data.shortcode}
+                    onLoad={settleThumb}
+                    onError={settleThumb}
+                    style={{
+                        width: cell - 8,
+                        height: cell - 8,
+                    }}
+                    contentFit="contain"
+                    // Zami: `transition-opacity` with `class:opacity-0`
+                    // until it loads: expo-image fades it in itself.
+                    transition={200}
+                />
+            </View>
         </Pressable>
     ) : (
         <Pressable

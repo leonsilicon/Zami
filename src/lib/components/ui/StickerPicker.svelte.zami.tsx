@@ -40,7 +40,10 @@ import {
 } from "$lib/matrix/client";
 import { roomsState } from "$lib/stores/rooms.svelte";
 
-import { interfaceState } from "$lib/stores/interface.svelte";
+import {
+    interfaceState,
+    openAppSettingsTab,
+} from "$lib/stores/interface.svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { scrollBehavior } from "$lib/utils/motionPreference";
 import { nextActiveIndex } from "$lib/utils/listboxNavigation";
@@ -82,6 +85,13 @@ const SECTION_GAP = 8; // mb-2 under each pack's grid
 // Zami: expo-image keeps the thumbnails in its disk cache, as Zam's service
 // worker does (utils/pickerThumbCache.ts).
 const STICKER_THUMB_PX = 192;
+
+// Thumbnails whose full image has loaded (or failed, so the broken image
+// shows as it did before). Until a URL is in here its 16px placeholder
+// stays behind it.
+// Zami: module-wide rather than per picker, so it outlives the FlatList's
+// unmounted rows (and a reopened picker skips the placeholder).
+const loadedThumbs = new Set<string>();
 
 const NO_STICKERS: CustomSticker[] = [];
 
@@ -345,6 +355,13 @@ export default function StickerPicker({
         onClose();
     });
 
+    // Close first: the picker's close clears its own slot, and opening the
+    // settings modal before that would let the close tear the modal down.
+    function openEmoteSettings() {
+        onClose();
+        openAppSettingsTab("emotes");
+    }
+
     function onKeydown(e: KeyboardEvent) {
         if (e.key === "Escape") {
             onClose();
@@ -534,10 +551,19 @@ export default function StickerPicker({
             {stickerPacks.length === 0 ? (
                 // flex-1 so the empty state centres in the now fixed-height
                 // touch drawer instead of hugging the top of a half-empty box.
-                <View className="flex-1 items-center justify-center py-8 px-4">
+                <View className="flex-1 items-center justify-center gap-3 py-8 px-4">
                     <Text className="text-center text-zam-textMuted text-sm">
                         {t("stickerPicker.noStickerPacksAvailable")}
                     </Text>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={openEmoteSettings}
+                        className="bg-zam-accent px-3 py-1.5 rounded-lg hover:opacity-90 active:opacity-90 transition-opacity"
+                    >
+                        <Text className="text-center text-white text-sm font-medium">
+                            {t("stickerPicker.openEmoteSettings")}
+                        </Text>
+                    </Pressable>
                 </View>
             ) : (
                 <>
@@ -690,6 +716,18 @@ const StickerCell = memo(function StickerCell({
     // Zami: `class:ring-2` / `class:ring-zam-accent` on the option the
     // cursor is on.
     const selected = useSelected(selection, s);
+    const thumb = pickerThumbUrl(s.mxcUrl, STICKER_THUMB_PX) ?? s.url;
+    const lqip = pickerThumbUrl(s.mxcUrl, 16);
+    // Zami: the FlatList unmounts rows that scroll away, so the set of
+    // settled thumbnails lives outside the cell (loadedThumbs); this state
+    // only re-renders the cell when its own thumbnail settles.
+    const [loaded, setLoaded] = useState(() => loadedThumbs.has(thumb));
+    const settleThumb = () => {
+        loadedThumbs.add(thumb);
+        setLoaded(true);
+    };
+    const thumbLoaded = loaded || loadedThumbs.has(thumb);
+    const size = Math.min(cell - 8, 56);
     return (
         <Pressable
             onPress={() => pick(s)}
@@ -702,17 +740,29 @@ const StickerCell = memo(function StickerCell({
             }`}
         >
             {/* Zami: `w-full h-full max-w-14 max-h-14`. */}
-            <Image
-                source={mediaSource(
-                    pickerThumbUrl(s.mxcUrl, STICKER_THUMB_PX) ?? s.url,
+            <View style={{ width: size, height: size }} className="relative">
+                {lqip && !thumbLoaded && (
+                    <Image
+                        source={mediaSource(lqip)}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                        className="absolute inset-0 w-full h-full scale-110"
+                        contentFit="cover"
+                        blurRadius={8}
+                    />
                 )}
-                accessibilityLabel={s.shortcode}
-                style={{
-                    width: Math.min(cell - 8, 56),
-                    height: Math.min(cell - 8, 56),
-                }}
-                contentFit="contain"
-            />
+                <Image
+                    source={mediaSource(thumb)}
+                    accessibilityLabel={s.shortcode}
+                    onLoad={settleThumb}
+                    onError={settleThumb}
+                    style={{ width: size, height: size }}
+                    contentFit="contain"
+                    // Zami: `transition-opacity` with `class:opacity-0`
+                    // until it loads: expo-image fades it in itself.
+                    transition={200}
+                />
+            </View>
         </Pressable>
     );
 });
