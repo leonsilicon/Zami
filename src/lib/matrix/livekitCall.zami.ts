@@ -54,6 +54,7 @@ import {
 import {
     nativeBitrateChanged,
     nativeBitrateTarget,
+    UplinkCeiling,
     nativeSenderBitrate,
 } from "$lib/utils/nativeShareBitrate";
 import { shareEncoderSteps } from "$lib/utils/shareCrop";
@@ -89,6 +90,7 @@ import {
 import {
     screenShareEncodingFor,
     applyScreenShareEncoding,
+    SHARE_LOW_LAYER_MAX_BPS,
 } from "$lib/utils/screenShareEncoding";
 import { baselineH264Answer } from "$lib/utils/h264Profile";
 import {
@@ -142,6 +144,16 @@ import {
 } from "$lib/stores/settings.svelte";
 import { lazyModule } from "$lib/utils/lazyModule";
 import { RedundancyController } from "$lib/utils/audioRedundancy";
+import { deadTransceivers } from "$lib/utils/deadTransceivers";
+import { ShareLayerHold } from "$lib/utils/shareLayerHold";
+import {
+    SHARE_HEALTH_TOPIC,
+    ShareRateCap,
+    decodeShareHealth,
+    encodeShareHealth,
+    shareHealthBetween,
+    type InboundShareCounters,
+} from "$lib/utils/shareViewerFeedback";
 import {
     AUDIO_LOSS_TOPIC,
     ReportedLoss,
@@ -157,7 +169,7 @@ import {
     type StreamOwner,
     type VideoTrackDebug,
 } from "$lib/utils/callStats";
-import { clampBitrate } from "$lib/utils/screenShareBitrate";
+import { effectiveBitrate } from "$lib/utils/screenShareBitrate";
 import { uploadSampleBps } from "$lib/utils/uploadSample";
 import {
     codecsFromMimeTypes,
@@ -496,11 +508,56 @@ let voicePlaybackMuted = false;
 // The mic state the user last asked for; consulted after connect so a mute
 // toggled during the connect window isn't clobbered.
 let desiredMicMuted = false;
-/** Whether a new call should start with the mic closed (push to talk not
- *  held); registered by the voice call store. */
+/** Whether a new call should start with the mic closed (a system hold);
+ *  registered by the voice call store. */
 let micClosedAtJoin: () => boolean = () => false;
 export function setMicClosedAtJoin(fn: () => boolean): void {
     micClosedAtJoin = fn;
+}
+/** Push to talk / push to mute: the mic stays published and unmuted and only
+ *  sends silence while the gate is shut, so to everyone else it is someone
+ *  who stopped talking, not someone who muted (a LiveKit mute is announced
+ *  to the whole call, and their clients show it and play its sound). */
+let micGateOpen = true;
+let micGateOpenAtJoin: () => boolean = () => true;
+export function setMicGateOpenAtJoin(fn: () => boolean): void {
+    micGateOpenAtJoin = fn;
+}
+/** Open or shut the push-to-talk gate on the live call's mic. */
+export function setMicGateOpen(open: boolean): void {
+    micGateOpen = open;
+    const call = activeVoice;
+    if (!call) return;
+    enforceMicGate(call);
+    syncMicSending(
+        call.local.getTrack(call.lk.Track.Source.Microphone),
+        micSending(),
+    );
+}
+/** Whether the mic should be sending sound now: not muted, gate open. */
+function micSending(): boolean {
+    return !desiredMicMuted && micGateOpen;
+}
+
+/** Mic tracks that re-apply the gate when LiveKit swaps what they send. */
+const gateWatched = new WeakSet<object>();
+
+/** Keep a shut gate shut on the call's mic. LiveKit re-applies its own mute
+ *  when it restarts a track (device switch) or changes its processor, but
+ *  knows nothing of the gate, so the new track would start out sending:
+ *  re-applied on those events, and checked on every speaking poll besides. */
+function enforceMicGate(call: ActiveVoiceCall): void {
+    const track = call.local.getTrack(call.lk.Track.Source.Microphone);
+    if (!track) return;
+    if (!gateWatched.has(track)) {
+        gateWatched.add(track);
+        const resync = () => {
+            if (activeVoice === call) syncMicSending(track, micSending());
+        };
+        track.on(call.lk.TrackEvent.Restarted, resync);
+        track.on(call.lk.TrackEvent.TrackProcessorUpdate, resync);
+    }
+    if (!micGateOpen) syncMicSending(track, false);
 }
 // Whether the user currently wants the camera on. Intent, not LiveKit state:
 // turning the camera off only MUTES the publication, so "is a camera track
@@ -1302,7 +1359,109 @@ function notifyCallSpeakers(call: ActiveVoiceCall): void {
     const ids = new Set<string>();
     for (const list of call.speakersByRoom.values())
         for (const id of list) ids.add(id);
+    // Our own speaking state comes from our mic, not the SFU's report of it,
+    // which lags a round trip plus the server's smoothing.
+    const own = call.lkRoom?.localParticipant.identity;
+    // Zami: not ported: reading our mic's level locally (localMicLoud needs
+    // Web Audio's MediaStream nodes), so the SFU's report of it stays.
+    if (own && CALL_WEB_AUDIO) {
+        ids.delete(own);
+        if (localSpeaking.call === call && localSpeaking.speaking) ids.add(own);
+    }
     for (const cb of activeSpeakerSubscribers) cb([...ids]);
+}
+
+const LOCAL_SPEAKING_LEVEL = 0.03;
+const LOCAL_SPEAKING_HOLD_MS = 600;
+const LOCAL_SPEAKING_POLL_MS = 100;
+
+/** Our own mic's level, read locally for the speaking indicator. One per
+ *  process: it follows the active call and closes when that call ends. */
+const localSpeaking: {
+    call: ActiveVoiceCall | null;
+    timer: ReturnType<typeof setInterval> | null;
+    ctx: AudioContext | null;
+    analyser: AnalyserNode | null;
+    track: MediaStreamTrack | null;
+    lastLoud: number;
+    speaking: boolean;
+} = {
+    call: null,
+    timer: null,
+    ctx: null,
+    analyser: null,
+    track: null,
+    lastLoud: 0,
+    speaking: false,
+};
+
+function stopLocalSpeaking(): void {
+    if (localSpeaking.timer) clearInterval(localSpeaking.timer);
+    void localSpeaking.ctx?.close().catch(() => {});
+    localSpeaking.call = null;
+    localSpeaking.timer = null;
+    localSpeaking.ctx = null;
+    localSpeaking.analyser = null;
+    localSpeaking.track = null;
+    localSpeaking.speaking = false;
+}
+
+function localMicLoud(call: ActiveVoiceCall): boolean {
+    // Push to talk not held: nothing is sent, so nobody hears us speak.
+    if (!micGateOpen) return false;
+    // Zami: no MediaStream nodes to meter the mic with (see notifyCallSpeakers).
+    if (!CALL_WEB_AUDIO) return false;
+    const pub = call.local.getTrack(call.lk.Track.Source.Microphone) as
+        | LivekitClient.LocalAudioTrack
+        | undefined;
+    const track = pub && !pub.isMuted ? pub.mediaStreamTrack : null;
+    if (!track || track.readyState !== "live") return false;
+    if (localSpeaking.track !== track) {
+        void localSpeaking.ctx?.close().catch(() => {});
+        localSpeaking.ctx = null;
+        localSpeaking.analyser = null;
+        localSpeaking.track = track;
+        try {
+            const ctx = new AudioContext();
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 512;
+            ctx.createMediaStreamSource(new MediaStream([track])).connect(
+                analyser,
+            );
+            localSpeaking.ctx = ctx;
+            localSpeaking.analyser = analyser;
+        } catch {
+            return false;
+        }
+    }
+    const analyser = localSpeaking.analyser;
+    if (!analyser) return false;
+    const samples = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (const v of samples) sum += v * v;
+    return Math.sqrt(sum / samples.length) > LOCAL_SPEAKING_LEVEL;
+}
+
+/** Start polling our mic for `call` (idempotent). Stops itself once the
+ *  call is no longer the active one. */
+function ensureLocalSpeaking(call: ActiveVoiceCall): void {
+    if (localSpeaking.call === call) return;
+    stopLocalSpeaking();
+    localSpeaking.call = call;
+    localSpeaking.timer = setInterval(() => {
+        if (activeVoice !== call) {
+            if (localSpeaking.call === call) stopLocalSpeaking();
+            return;
+        }
+        enforceMicGate(call);
+        const now = Date.now();
+        if (localMicLoud(call)) localSpeaking.lastLoud = now;
+        const speaking = now - localSpeaking.lastLoud < LOCAL_SPEAKING_HOLD_MS;
+        if (speaking === localSpeaking.speaking) return;
+        localSpeaking.speaking = speaking;
+        notifyCallSpeakers(call);
+    }, LOCAL_SPEAKING_POLL_MS);
 }
 
 /** Remote audio from any transport: an element per track, at the sender's
@@ -1390,6 +1549,11 @@ function handleCallData(
     if (activeVoice !== call) return;
     // Plugin topics first: they are namespaced, so never core topics.
     if (topic && handlePluginCallData(topic, payload, identity)) return;
+    if (topic === SHARE_HEALTH_TOPIC) {
+        const health = decodeShareHealth(payload);
+        if (health) shareRateCapOf(call).note(identity, health, Date.now());
+        return;
+    }
     if (topic === AUDIO_LOSS_TOPIC) {
         const loss = decodeLossReport(payload);
         if (loss !== null)
@@ -1440,6 +1604,7 @@ function callListener(
             refreshPlaybackBlocked(call);
         },
         speakers: (identities) => {
+            ensureLocalSpeaking(call);
             call.speakersByRoom.set(transport(), identities);
             notifyCallSpeakers(call);
         },
@@ -1497,6 +1662,9 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
     // What the people we publish to decode (utils/videoCodecs): LiveKit
     // hands over everyone's attributes on joining and reports changes.
     if (lkRoom === call.lkRoom) {
+        lkRoom.on(lk.RoomEvent.LocalTrackUnpublished, () =>
+            reapDeadTransceivers(call, lkRoom),
+        );
         const codecsChanged = () => notifyCallCodecs(call);
         lkRoom.on(lk.RoomEvent.ParticipantConnected, codecsChanged);
         lkRoom.on(lk.RoomEvent.ParticipantDisconnected, codecsChanged);
@@ -1516,6 +1684,13 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
                 notifyCallVideo(call);
         };
         lkRoom.on(lk.RoomEvent.LocalTrackPublished, shareAudioChanged);
+        lkRoom.on(
+            lk.RoomEvent.LocalTrackPublished,
+            (pub: { source: unknown }) => {
+                if (pub.source === lk.Track.Source.ScreenShare)
+                    retargetShareEncodings(call);
+            },
+        );
         lkRoom.on(lk.RoomEvent.LocalTrackUnpublished, shareAudioChanged);
     }
     lkRoom.on(lk.RoomEvent.AudioPlaybackStatusChanged, () =>
@@ -2496,9 +2671,11 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
     for (const m of session.memberships) call.meshAsked.add(m.memberId);
     activeVoice = call;
     installDecodePreferences();
+    ensureLocalSpeaking(call);
     startUploadSampling(call);
     ensureVoiceDeviceWatch();
     desiredMicMuted = !!micFailure || micClosedAtJoin();
+    micGateOpen = micGateOpenAtJoin();
     desiredCameraOn = false;
     notifyVoiceConnState("connecting");
     if (micFailure) notifyCallMicUnavailable(micFailure.err);
@@ -2886,6 +3063,7 @@ async function leaveVoiceCallInternal(): Promise<void> {
         voicePlaybackMuted = false;
         // Notify subscribers before the network teardown below so the UI clears
         // instantly; the join seq guard protects a racing join.
+        stopLocalSpeaking();
         for (const cb of activeSpeakerSubscribers) cb([]);
         for (const cb of participantMuteSubscribers) cb([]);
         for (const cb of videoTracksSubscribers) cb([]);
@@ -2943,12 +3121,20 @@ function syncMicSending(
     track: LivekitClient.LocalTrack | undefined,
     sending: boolean,
 ): void {
+    if (!track) return;
     const processed = (
-        track as
-            | { processor?: { processedTrack?: MediaStreamTrack } }
-            | undefined
-    )?.processor?.processedTrack;
-    if (processed) processed.enabled = sending;
+        track as unknown as {
+            processor?: { processedTrack?: MediaStreamTrack };
+        }
+    ).processor?.processedTrack;
+    if (processed) {
+        processed.enabled = sending;
+        return;
+    }
+    // No processor: the mic track itself is what's sent. A real mute has
+    // LiveKit disable it already; the gate disables it without telling
+    // anyone.
+    if (!track.isMuted) track.mediaStreamTrack.enabled = sending;
 }
 
 /** Turn the call's mic on or off. Once a mic track exists this is LiveKit's
@@ -2974,7 +3160,7 @@ async function setCallMicEnabled(
     ).chain;
     if (!enabled || !chain || local.getTrack(source)) {
         await local.setMicrophoneEnabled(enabled);
-        syncMicSending(local.getTrack(source), enabled);
+        syncMicSending(local.getTrack(source), enabled && micGateOpen);
         return;
     }
     const run = (async () => {
@@ -2995,7 +3181,7 @@ async function setCallMicEnabled(
             );
         }
         await local.publishTrack(track, { source });
-        syncMicSending(track, !desiredMicMuted);
+        syncMicSending(track, micSending());
     })();
     micCreation = run;
     try {
@@ -3166,6 +3352,11 @@ interface NativeShareState {
     worker: Worker | null;
     /** The bitrate last sent to the helper. */
     bitrate: number | null;
+    /** The low simulcast layer's bitrate last sent (Windows helper). */
+    lowBitrate?: number | null;
+    /** Where the uplink collapsed under this share (utils/nativeShareBitrate
+     *  UplinkCeiling), so the helper levels off below it. */
+    uplink?: UplinkCeiling;
     timer: ReturnType<typeof setInterval> | null;
     /** What the helper reported it started with (encoder, size). */
     helper: NativeShareHelperInfo;
@@ -3190,7 +3381,10 @@ let nativeDisabled = false;
 /** Each SFU room's E2EE worker (the encoder of an encrypted room). */
 const roomWorkers = new WeakMap<LivekitRoom, Worker>();
 const NATIVE_PORT_WAIT_MS = 1500;
-const NATIVE_TUNE_MS = 2000;
+/** How often the helper's bitrate follows WebRTC's uplink estimate. Fast
+ *  enough to keep up with the estimate's own swings on a jittery link (2 s
+ *  left the helper sending far over it, and the share stuttering). */
+const NATIVE_TUNE_MS = 500;
 /** How long a native share's publish waits for the helper's picture size. */
 const NATIVE_SIZE_WAIT_MS = 1500;
 
@@ -3221,7 +3415,9 @@ function nativeSharePublishOptions() {
         degradationPreference: "maintain-resolution" as const,
         videoCodec: "h264" as const,
         backupCodec: false as const,
-        simulcast: false,
+        // The helper encodes a half-size layer too (--simulcast), and the
+        // placeholder is published with two layers to carry it.
+        simulcast: true,
     };
 }
 
@@ -3257,6 +3453,7 @@ async function startNativeShare(
     const helper: NativeShareHelperInfo = { info: null, size: null };
     processor = createNativeShareProcessor(picked.port, {
         fps: Number(settingsState.screenShareFps),
+        layered: true,
         onInfo: nativeShareLogger(helper),
         onEnded: (reason) => {
             if (!processor || nativeShare?.handle !== processor) return;
@@ -3450,15 +3647,43 @@ async function tuneNativeBitrate(n: NativeShareState): Promise<void> {
             )
                 available = pair.availableOutgoingBitrate;
         }
-    const target = nativeBitrateTarget(screenShareBitrateNow(), available);
-    if (!nativeBitrateChanged(n.bitrate, target)) return;
+    // Hold the helper under where the uplink last collapsed: it follows the
+    // estimate at a constant bitrate, so without this it climbs into the
+    // link's limit, crashes the estimate to the floor and climbs again.
+    available = (n.uplink ??= new UplinkCeiling()).limit(available, Date.now());
+    if (n.published) {
+        // Android: one layer, held under the viewers' cap as a whole.
+        const target = nativeBitrateTarget(screenShareBitrateNow(), available);
+        if (!nativeBitrateChanged(n.bitrate, target)) return;
+        n.bitrate = target;
+        n.handle.send({ cmd: "bitrate", bps: target });
+        return;
+    }
+    // Windows: two layers. The full one follows the pick and the uplink;
+    // the half-size one is what slow viewers are on, so it takes their cap.
+    const target = nativeBitrateTarget(screenShareBitratePicked(), available);
+    const cap = shareRateCaps.get(n.call)?.current() ?? null;
+    const low = Math.max(
+        100_000,
+        Math.min(
+            Math.floor(target / 4),
+            SHARE_LOW_LAYER_MAX_BPS,
+            cap ?? Infinity,
+        ),
+    );
+    if (
+        !nativeBitrateChanged(n.bitrate, target) &&
+        !nativeBitrateChanged(n.lowBitrate ?? null, low)
+    )
+        return;
     n.bitrate = target;
-    n.handle.send({ cmd: "bitrate", bps: target });
+    n.lowBitrate = low;
+    n.handle.send({ cmd: "bitrate", bps: target, lowBps: low });
 }
 
 /** The screen-share quality settings, to notice a change mid-picker. */
 function screenShareQualityKey(): string {
-    return `${settingsState.screenShareResolution}|${settingsState.screenShareFps}|${screenShareBitrateNow()}`;
+    return `${settingsState.screenShareResolution}|${settingsState.screenShareFps}|${screenShareBitratePicked()}`;
 }
 
 /** Start/stop publishing a screen share (with system audio per settings).
@@ -3483,7 +3708,10 @@ export async function setScreenShareEnabled(on: boolean): Promise<boolean> {
         configureNativeShare({
             enabled: nativeRequested,
             fps: res.frameRate,
-            bitrate: screenShareBitrateNow(),
+            // Low until WebRTC has an uplink estimate; tuneNativeBitrate then
+            // follows it up to the pick.
+            bitrate: nativeBitrateTarget(screenShareBitratePicked(), null),
+            simulcast: true,
             maxWidth: res.width,
             maxHeight: res.height,
         });
@@ -3810,12 +4038,64 @@ function stopShareAudio(): void {
     }
 }
 
-/** The picked screen-share bitrate, held under the measured upload. */
-function screenShareBitrateNow(): number {
-    return clampBitrate(
+/** Stop the publisher's transceivers that an unpublish left empty
+ *  (utils/deadTransceivers): LiveKit never does, so every share, camera
+ *  toggle and codec republish kept its encoder's memory for the rest of the
+ *  call. Waits for the unpublish's own negotiation to settle first. */
+function reapDeadTransceivers(
+    call: ActiveVoiceCall,
+    lkRoom: LivekitRoom,
+): void {
+    let tries = 0;
+    const tick = () => {
+        if (activeVoice !== call) return;
+        const pc = publisherConnection(lkRoom);
+        if (!pc || pc.connectionState === "closed") return;
+        const dead =
+            pc.signalingState === "stable"
+                ? deadTransceivers(pc.getTransceivers())
+                : [];
+        for (const t of dead) {
+            try {
+                t.stop();
+            } catch {
+                // Already stopping, or the connection is going away.
+            }
+        }
+        if (dead.length > 0) {
+            // Stopping sets the connection's negotiation-needed flag, and
+            // LiveKit only negotiates when it publishes. Left set, the next
+            // publish fires no negotiationneeded event, which is where a
+            // plain call's native share attaches its substitution transform
+            // (queueSenderTransform): negotiate now so the flag clears.
+            void lkRoom.engine.negotiate().catch((err: unknown) => {
+                console.warn(
+                    "Renegotiating after stopping old transceivers failed:",
+                    err,
+                );
+            });
+            return;
+        }
+        if (++tries < 12) setTimeout(tick, 500);
+    };
+    setTimeout(tick, 500);
+}
+
+/** The picked screen-share bitrate: held under the measured upload (and
+ *  8 Mbps) unless the user picked more than that by hand. */
+function screenShareBitratePicked(): number {
+    return effectiveBitrate(
         settingsState.screenShareBitrate,
         screenShareBitrateCeiling(),
     );
+}
+
+/** What the share sends now: the pick, held under what its viewers say
+ *  they can take (see applyShareRateCap). */
+function screenShareBitrateNow(): number {
+    const picked = screenShareBitratePicked();
+    const cap = activeVoice ? shareRateCaps.get(activeVoice)?.current() : null;
+    return typeof cap === "number" ? Math.min(picked, cap) : picked;
 }
 
 /** Re-target the currently published screen share to a new quality without
@@ -4043,7 +4323,7 @@ export async function setVoiceCaptureConstraints(opts: {
     }
     // A restart or a new processor brings a new processed track: keep it
     // silent while the mic is closed.
-    syncMicSending(track, !desiredMicMuted);
+    syncMicSending(track, micSending());
     if (failure) {
         console.error("Voice capture constraints change failed:", failure);
         if (activeVoice === call)
@@ -4404,9 +4684,6 @@ interface LocalVideoCodecs {
     decode: VideoCodec[];
     /** The sendable ones it encodes on the GPU. */
     hardware: VideoCodec[];
-    /** The sendable H.264/HEVC ones whose GPU encoder also does temporal
-     *  layers (L1T3). LiveKit only layers VP9/AV1 by itself. */
-    temporalHardware: VideoCodec[];
 }
 
 const WEBRTC_MIME: Record<VideoCodec, string> = {
@@ -4463,30 +4740,6 @@ async function localVideoCodecs(lk: LivekitModule): Promise<LocalVideoCodecs> {
             }
         }),
     );
-    const temporalHardware = await Promise.all(
-        send.map(async (codec): Promise<VideoCodec | null> => {
-            if (codec !== "h264" && codec !== "h265") return null;
-            try {
-                const info =
-                    await webrtcWindow().navigator.mediaCapabilities.encodingInfo(
-                        {
-                            type: "webrtc",
-                            video: {
-                                contentType: WEBRTC_MIME[codec],
-                                width: 1920,
-                                height: 1080,
-                                bitrate: 4_000_000,
-                                framerate: 30,
-                                scalabilityMode: "L1T3",
-                            },
-                        } as MediaEncodingConfiguration,
-                    );
-                return info.supported && info.powerEfficient ? codec : null;
-            } catch {
-                return null;
-            }
-        }),
-    );
     // The receiver's capability list is what the call server and the other
     // participants go by, and it can name codecs no decoder here backs. Ask
     // MediaCapabilities too, and keep only what it confirms.
@@ -4518,9 +4771,6 @@ async function localVideoCodecs(lk: LivekitModule): Promise<LocalVideoCodecs> {
         send,
         decode: decode.filter((c): c is VideoCodec => c !== null),
         hardware: hardware.filter((c): c is VideoCodec => c !== null),
-        temporalHardware: temporalHardware.filter(
-            (c): c is VideoCodec => c !== null,
-        ),
     };
 }
 
@@ -4575,8 +4825,14 @@ function videoCodecPublishOptions(
  *  moves, so busy content froze over and over. One layer has nothing to
  *  switch between. H.264 matters: it's the only encoder some machines have
  *  (NVIDIA on Linux). */
-function shareSimulcast(codec: VideoCodec | undefined): boolean {
-    return codec !== "h264";
+function shareSimulcast(_codec: VideoCodec | undefined): boolean {
+    // Back on for every codec: without a lower layer the SFU forwards a share
+    // into a viewer's link even when it doesn't fit (measured on LiveKit
+    // 1.13.11: no pause, ~60% loss, 0 frames). Layer switches are now rare:
+    // the viewer holds itself on the low layer once the top one keeps
+    // struggling, with no probe back up (utils/shareLayerHold), and encrypted
+    // H.264 keyframes no longer get dropped by viewers (utils/h264ClearPps).
+    return true;
 }
 
 /** The codec options for a screen share, once its capture exists: HEVC only
@@ -4591,7 +4847,7 @@ function shareCodecOptions(
         return {
             videoCodec: "h264" as const,
             backupCodec: false as const,
-            simulcast: false,
+            simulcast: true,
         };
     const options = shareCodecPick(call, track);
     return { ...options, simulcast: shareSimulcast(options.videoCodec) };
@@ -4887,58 +5143,35 @@ function installDecodePreferences(): void {
     // On the RTCPeerConnection of every window calls use (webrtcRealm).
     onWebrtcRealm(patchDecodePreferences);
     onWebrtcRealm(patchBaselineAnswer);
-    onWebrtcRealm(patchTemporalLayers);
+    onWebrtcRealm(patchNativeShareTransform);
 }
 
-/** Whether the video we publish now is H.264/HEVC that a GPU encoder can
- *  give temporal layers (a backup codec has to manage them too). */
-function sendsTemporalLayers(call: ActiveVoiceCall): boolean {
-    const { current, backup } = codecPlan(call);
-    const ok = (c: VideoCodec) => call.codecs.temporalHardware.includes(c);
-    return ok(current) && (!backup || ok(backup));
-}
-
-/** LiveKit asks for scalabilityMode only on VP9/AV1. Where the GPU encoder
- *  does temporal layers for H.264/HEVC, add L1T3 to the encodings of the
- *  video transceivers it creates, so a viewer short on bandwidth can drop
- *  frames instead of quality. Without it, or if the browser refuses it, the
- *  transceiver is made as before. */
-function patchTemporalLayers(pc: typeof RTCPeerConnection): void {
+/** A plain call's native share is sent through a substitution transform,
+ *  attached at the sender's first negotiation (queueSenderTransform). After a
+ *  GPU exit the call fully reconnects on new peer connections (webrtcRealm,
+ *  scheduleGpuReconnect) and LiveKit publishes the same track again on a new
+ *  transceiver, where nothing attached it: viewers got the raw 64x64 grey
+ *  placeholders for the rest of the share. Queue it again wherever that track
+ *  is added. The worker takes any number of transforms. */
+function patchNativeShareTransform(pc: typeof RTCPeerConnection): void {
     const original = pc.prototype.addTransceiver;
     pc.prototype.addTransceiver = function (
         this: RTCPeerConnection,
         ...args: Parameters<RTCPeerConnection["addTransceiver"]>
     ) {
-        const [source, init] = args;
-        const call = activeVoice;
-        const isVideo =
-            typeof source === "string"
-                ? source === "video"
-                : source.kind === "video";
-        if (call && isVideo && init?.sendEncodings?.length) {
-            let layered = false;
-            try {
-                layered = sendsTemporalLayers(call);
-            } catch {
-                /* plan unavailable: send as before */
-            }
-            if (layered) {
-                try {
-                    return original.call(this, source, {
-                        ...init,
-                        sendEncodings: init.sendEncodings.map((e) => ({
-                            ...e,
-                            scalabilityMode: "L1T3",
-                        })),
-                    } as RTCRtpTransceiverInit);
-                } catch (err) {
-                    console.warn("Temporal layers refused:", err);
-                }
-            }
-        }
+        const n = nativeShare;
+        const [source] = args;
+        if (n?.worker && typeof source !== "string" && source === n.track)
+            queueSenderTransform(this, source, n.worker);
         return original.apply(this, args);
     };
 }
+
+// No temporal layers (L1T3) on H.264/HEVC: Zam used to add them where the
+// GPU encoder offered them, and viewers then saw the share jump back a frame
+// or two several times a second (measured on a local LiveKit 1.13.11:
+// Chromium-encoded H.264, 49 backward jumps in 30 s with L1T3, none
+// without). Simulcast gives a slow viewer a lighter stream instead.
 
 /** The server's answer names H.264 profile 42e01f, which GPU encoders aren't
  *  offered, so the share is encoded in software (see utils/h264Profile).
@@ -5253,6 +5486,13 @@ const UPLOAD_SAMPLE_MS = 3000;
 
 function startUploadSampling(call: ActiveVoiceCall): void {
     clearLiveUploadEstimate();
+    const holdTimer = setInterval(() => {
+        if (activeVoice !== call) {
+            clearInterval(holdTimer);
+            return;
+        }
+        void holdShareLayers(call);
+    }, 1000);
     const timer = setInterval(() => {
         if (activeVoice !== call) {
             clearInterval(timer);
@@ -5262,10 +5502,278 @@ function startUploadSampling(call: ActiveVoiceCall): void {
         void sampleUpload(call);
         void checkDecodeHealth(call);
         void sampleAudioRedundancy(call);
+        void reportShareHealth(call);
+        applyShareRateCap(call);
     }, UPLOAD_SAMPLE_MS);
 }
 
 const micRedundancy = new WeakMap<ActiveVoiceCall, RedundancyController>();
+
+// Viewer feedback on screen shares (utils/shareViewerFeedback).
+
+const shareRateCaps = new WeakMap<ActiveVoiceCall, ShareRateCap>();
+/** Each watched share's last inbound counters, by room and track sid. */
+const shareCounters = new WeakMap<
+    LivekitRoom,
+    Map<string, InboundShareCounters>
+>();
+
+function shareRateCapOf(call: ActiveVoiceCall): ShareRateCap {
+    let c = shareRateCaps.get(call);
+    if (!c) {
+        c = new ShareRateCap();
+        shareRateCaps.set(call, c);
+    }
+    return c;
+}
+
+const NO_COUNTERS: InboundShareCounters = {
+    packetsReceived: 0,
+    packetsLost: 0,
+    freezeCount: 0,
+};
+
+/** The bitrate our screen share is held at because a viewer can't keep up,
+ *  or null when it sends what was picked. */
+export function shareBitrateHeldAt(): number | null {
+    return activeVoice
+        ? (shareRateCaps.get(activeVoice)?.current() ?? null)
+        : null;
+}
+
+/** Zam's encodings for a published (non-native) share's sender: with more
+ *  than one layer, the top layer at the pick and the viewers' cap on the
+ *  lower ones (the slow viewers are the ones on them); with one layer, the
+ *  pick held under the cap. */
+function applyShareLayers(params: RTCRtpSendParameters): boolean {
+    const fps = Number(settingsState.screenShareFps);
+    const layered = (params.encodings?.length ?? 0) > 1;
+    if (!layered)
+        return applyScreenShareEncoding(
+            params,
+            screenShareEncodingFor(screenShareBitrateNow(), fps),
+        );
+    const cap = activeVoice
+        ? (shareRateCaps.get(activeVoice)?.current() ?? null)
+        : null;
+    return applyScreenShareEncoding(
+        params,
+        screenShareEncodingFor(screenShareBitratePicked(), fps),
+        cap,
+    );
+}
+
+/** Re-apply the share's encodings as Zam sets them (utils/screenShareEncoding:
+ *  the low simulcast layer held to what a slow link carries). LiveKit builds
+ *  the first encodings itself on every publish, with a low layer at a quarter
+ *  of the top, which didn't fit the links it is there for. */
+function retargetShareEncodings(call: ActiveVoiceCall): void {
+    screenShareQualityChain = screenShareQualityChain.then(async () => {
+        if (activeVoice !== call) return;
+        const track = call.local.getTrack(call.lk.Track.Source.ScreenShare);
+        if (!track || isNativeShareTrack(track)) return;
+        const sender = track.sender;
+        const params = sender?.getParameters();
+        if (!sender || !params || !applyShareLayers(params)) return;
+        params.degradationPreference = "maintain-resolution";
+        await sender.setParameters(params).catch((err: unknown) => {
+            console.warn("[share] couldn't set the share's layers:", err);
+        });
+    });
+}
+
+/** Each watched simulcast share's layer hold (utils/shareLayerHold) and its
+ *  last inbound counters. */
+const layerHolds = new WeakMap<
+    object,
+    {
+        hold: ShareLayerHold;
+        prev: {
+            id: string;
+            received: number;
+            lost: number;
+            decoded: number;
+        } | null;
+    }
+>();
+
+/** As a viewer, once a second: put each watched simulcast share on the low
+ *  layer once its top layer keeps struggling, and keep it there, so the
+ *  server doesn't flip the viewer between layers (a keyframe wait each
+ *  time). */
+async function holdShareLayers(call: ActiveVoiceCall): Promise<void> {
+    const share = call.lk.Track.Source.ScreenShare;
+    const now = Date.now();
+    for (const lkRoom of callLkRooms(call))
+        for (const p of lkRoom.remoteParticipants.values())
+            for (const pub of p.videoTrackPublications.values()) {
+                const track = pub.track;
+                if (pub.source !== share || !track || !pub.isEnabled) continue;
+                if (!pub.simulcasted) continue;
+                let state = layerHolds.get(pub);
+                if (!state) {
+                    state = { hold: new ShareLayerHold(), prev: null };
+                    layerHolds.set(pub, state);
+                }
+                const report = await track
+                    .getRTCStatsReport()
+                    .catch(() => undefined);
+                if (activeVoice !== call) return;
+                let r: RTCInboundRtpStreamStats | null = null;
+                for (const s of report?.values() ?? [])
+                    if (
+                        (s as RTCStats).type === "inbound-rtp" &&
+                        (s as RTCInboundRtpStreamStats).kind === "video"
+                    )
+                        r = s as RTCInboundRtpStreamStats;
+                if (!r) continue;
+                const cur = {
+                    id: r.id,
+                    received: r.packetsReceived ?? 0,
+                    lost: r.packetsLost ?? 0,
+                    decoded: r.framesDecoded ?? 0,
+                };
+                const prev = state.prev;
+                state.prev = cur;
+                if (!prev || prev.id !== cur.id) continue;
+                const received = cur.received - prev.received;
+                const lost = Math.max(0, cur.lost - prev.lost);
+                const change = state.hold.sample(
+                    {
+                        loss:
+                            received + lost > 0 ? lost / (received + lost) : 0,
+                        stalled: received > 0 && cur.decoded === prev.decoded,
+                    },
+                    now,
+                );
+                if (change === "low")
+                    pub.setVideoQuality(call.lk.VideoQuality.LOW);
+            }
+}
+
+/** Whether we hold ourselves on a simulcast share's low layer, or the share
+ *  has one layer: only then does our trouble with it ask the sharer to cut
+ *  its bitrate (otherwise the low layer is the fix, and one slow viewer
+ *  shouldn't lower the share for everyone). */
+function shareReportsCount(pub: object & { simulcasted?: boolean }): boolean {
+    if (!pub.simulcasted) return true;
+    // A sample from just after the drop still describes the top layer.
+    return (
+        (layerHolds.get(pub)?.hold.heldLowFor(Date.now()) ?? 0) >=
+        UPLOAD_SAMPLE_MS + 1000
+    );
+}
+
+/** As a viewer: tell each sharer we watch how its share arrives. */
+async function reportShareHealth(call: ActiveVoiceCall): Promise<void> {
+    const share = call.lk.Track.Source.ScreenShare;
+    for (const lkRoom of callLkRooms(call)) {
+        let counters = shareCounters.get(lkRoom);
+        if (!counters) {
+            counters = new Map();
+            shareCounters.set(lkRoom, counters);
+        }
+        const seen = new Set<string>();
+        for (const p of lkRoom.remoteParticipants.values()) {
+            for (const pub of p.videoTrackPublications.values()) {
+                const track = pub.track;
+                if (pub.source !== share || !track || !pub.isEnabled) continue;
+                const sid = pub.trackSid;
+                seen.add(sid);
+                const report = await track
+                    .getRTCStatsReport()
+                    .catch(() => undefined);
+                if (activeVoice !== call) return;
+                let cur: InboundShareCounters | null = null;
+                for (const s of report?.values() ?? []) {
+                    const r = s as RTCInboundRtpStreamStats & {
+                        freezeCount?: number;
+                    };
+                    if (r.type !== "inbound-rtp" || r.kind !== "video")
+                        continue;
+                    cur = {
+                        packetsReceived: r.packetsReceived ?? 0,
+                        packetsLost: r.packetsLost ?? 0,
+                        freezeCount: r.freezeCount ?? 0,
+                        bytesReceived: r.bytesReceived ?? 0,
+                    };
+                }
+                const paused =
+                    track.streamState === call.lk.Track.StreamState.Paused;
+                const health = shareHealthBetween(
+                    counters.get(sid) ?? null,
+                    cur ?? NO_COUNTERS,
+                    paused,
+                    UPLOAD_SAMPLE_MS / 1000,
+                );
+                if (cur) counters.set(sid, cur);
+                if (!health || (!cur && !paused)) continue;
+                if (!shareReportsCount(pub)) continue;
+                void lkRoom.localParticipant
+                    .publishData(encodeShareHealth(health), {
+                        reliable: true,
+                        topic: SHARE_HEALTH_TOPIC,
+                        destinationIdentities: [p.identity],
+                    })
+                    .catch(() => {});
+            }
+        }
+        for (const sid of [...counters.keys()])
+            if (!seen.has(sid)) counters.delete(sid);
+    }
+}
+
+/** As a sharer: hold the share's bitrate under what its viewers take. A
+ *  share sent as one layer (H.264, every native share) leaves the call server
+ *  nothing lighter for a viewer who can't keep up, so without this it pauses
+ *  and resumes them or forwards into loss: the stutter and rubber-banding
+ *  people saw while the picture itself looked sharp. */
+function applyShareRateCap(call: ActiveVoiceCall): void {
+    const cap = shareRateCapOf(call);
+    const track = call.local.getTrack(call.lk.Track.Source.ScreenShare);
+    if (!track) {
+        cap.reset();
+        return;
+    }
+    const before = cap.current();
+    // With simulcast the cap is for the low layer (applyShareLayers), so it
+    // is measured from that layer's own bitrate, not the top's.
+    const layered = (track.sender?.getParameters().encodings?.length ?? 0) > 1;
+    const reference = layered
+        ? Math.min(
+              Math.floor(screenShareBitratePicked() / 4),
+              SHARE_LOW_LAYER_MAX_BPS,
+          )
+        : screenShareBitratePicked();
+    const after = cap.update(reference, Date.now());
+    if (after === before) return;
+    console.info(
+        after === null
+            ? "[share] viewers keep up again; sending at the picked bitrate"
+            : `[share] a viewer can't keep up; share bitrate held at ${Math.round(after / 1000)} kbps`,
+    );
+    const native = nativeShare;
+    if (native?.call === call && isNativeShareTrack(track)) {
+        // The helper's own encoder makes the bitrate; its tuning reads
+        // screenShareBitrateNow.
+        native.bitrate = null;
+        native.lowBitrate = null;
+        void tuneNativeBitrate(native);
+        return;
+    }
+    screenShareQualityChain = screenShareQualityChain.then(async () => {
+        if (activeVoice !== call) return;
+        const sender = call.local.getTrack(
+            call.lk.Track.Source.ScreenShare,
+        )?.sender;
+        const params = sender?.getParameters();
+        if (!sender || !params || !applyShareLayers(params)) return;
+        params.degradationPreference = "maintain-resolution";
+        await sender.setParameters(params).catch((err: unknown) => {
+            console.warn("[share] couldn't change the share bitrate:", err);
+        });
+    });
+}
 const reportedLoss = new WeakMap<ActiveVoiceCall, ReportedLoss>();
 const redundancyDepth = new WeakMap<ActiveVoiceCall, number>();
 const lastSubscriberSample = new WeakMap<LivekitRoom, TransportSummary>();

@@ -7,7 +7,7 @@ import Portal from "$lib/components/ui/Portal.svelte";
 import ModalDialog from "$lib/components/ui/ModalDialog.svelte";
 import { openModal, clearModalIfOwner } from "$lib/stores/interface.svelte";
 import { voiceCallState } from "$lib/stores/voiceCall.svelte";
-import { getRoom } from "$lib/matrix/client";
+import { getRoom, shareBitrateHeldAt } from "$lib/matrix/client";
 import {
     getCallDebugStats,
     type CallDebugConnection,
@@ -244,7 +244,11 @@ export default function CallStatsPanel({ onClose }: Props) {
         return member?.name || userId;
     }
 
+    /** Our share's bitrate as held down by struggling viewers, or null. */
+    const [shareHeldAt, setShareHeldAt] = useState<number | null>(null);
+
     async function poll(): Promise<void> {
+        setShareHeldAt(shareBitrateHeldAt());
         const raw = await getCallDebugStats();
         const at = performance.now();
         if (!raw) {
@@ -857,6 +861,13 @@ export default function CallStatsPanel({ onClose }: Props) {
                         (setShareSmoothingMs + refreshShareSmoothing). It
                         sets the receiver's playoutDelayHint, which
                         react-native-webrtc's RTCRtpReceiver doesn't have. */}
+                    {shareHeldAt !== null && (
+                        <Text className="mt-1 text-xs text-zam-warning">
+                            {t("callStats.shareHeldByViewers", {
+                                rate: (shareHeldAt / 1_000_000).toFixed(1),
+                            })}
+                        </Text>
+                    )}
                     {connections === null ? (
                         <Text className="text-sm text-zam-textMuted">
                             {t("callStats.loading")}

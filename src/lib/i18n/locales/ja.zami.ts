@@ -281,6 +281,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "共有の音声のミュートを解除",
     "callView.you": "あなた",
     "callView.sScreen": "{name} の画面",
+    "callView.yourScreen": "あなたの画面",
     "callView.exitSpotlightFor": "{label} のスポットライトを解除",
     "callView.spotlight": "{label} をスポットライト",
     "createPollDialog.createPoll": "投票を作成",
@@ -934,6 +935,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "返信先:",
     "linkPreview.showMore": "もっと見る",
     "linkPreview.showLess": "閉じる",
+    "linkPreview.translatedFrom": "{language}から翻訳",
+    "linkPreview.showOriginal": "原文を表示",
+    "linkPreview.showTranslation": "翻訳を表示",
     "linkPreview.pollVotes": "{count, plural, other {{votes}票}}",
     "linkPreview.pollFinal": "最終結果",
     "linkPreview.pollEnds": "{date}に終了",
@@ -2118,6 +2122,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "アップロードの実測値は {upload} なので、最大 {max} まで上がります。",
     "screenShareQualityChips.bitrateUnmeasured":
         "アップロードはまだ測定されていません。ビデオ送信中に測定されるため、当面は最大 {max} までです。",
+    "screenShareQualityChips.bitrateHighWarning":
+        "{safe} を超える値は手動での選択です。アップロード速度は確認されず、遅い回線や端末の視聴者にはカクつきやフリーズが起きることがあります。",
     "screenShareQualityChips.nativeCapture": "Windows キャプチャヘルパー",
     "screenShareQualityChips.nativeCaptureHint":
         "ブラウザの外で共有をキャプチャしてエンコードするため、負荷の高いゲーム中も映像がかくつきません。次の共有から適用されます。",
@@ -2825,6 +2831,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "帯域幅",
     "callStats.limitNone": "なし",
+    "callStats.shareHeldByViewers":
+        "視聴者の回線が追いつかないため、共有を {rate} Mbps に抑えています",
     "callStats.limitOther": "その他",
     "callStats.frameTime": "1フレームあたりの時間",
     "callStats.resent": "再送",

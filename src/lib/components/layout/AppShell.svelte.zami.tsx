@@ -236,6 +236,7 @@ import {
     onAccountData,
     onLocalEchoUpdated,
     onThreadNameChange,
+    onPermissionStateChanged,
     onThreadSummaryChange,
     clearReadThreadCounts,
     onTimelineEvent,
@@ -3041,6 +3042,11 @@ export default function AppShell() {
         const unsubThreadNames = onThreadNameChange(
             () => roomsState.roomsTick++,
         );
+        // Power levels that land after the first render (a space with no
+        // recent messages, a room just subscribed) must re-gate the UI.
+        const unsubPermissions = onPermissionStateChanged(
+            () => roomsState.roomsTick++,
+        );
         // A message you just sent is a local echo until the server accepts it;
         // the DM preview shows it from the moment it is sent.
         const unsubLocalEcho = onLocalEchoUpdated(() => bumpUnreadTick());
@@ -3144,6 +3150,7 @@ export default function AppShell() {
             unsubLocalEcho();
             unsubUnreadCounted();
             unsubThreadNames();
+            unsubPermissions();
             unsubThreadSummaries();
             unsubUpdateWatch();
             stopRichPresence();

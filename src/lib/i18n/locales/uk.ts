@@ -311,6 +311,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Увімкнути звук демонстрації",
     "callView.you": "Ви",
     "callView.sScreen": "Екран {name}",
+    "callView.yourScreen": "Ваш екран",
     "callView.exitSpotlightFor": "Вийти з фокусу для {label}",
     "callView.spotlight": "Фокус на {label}",
 
@@ -1152,6 +1153,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "У відповідь",
     "linkPreview.showMore": "Показати більше",
     "linkPreview.showLess": "Згорнути",
+    "linkPreview.translatedFrom": "Перекладено з мови: {language}",
+    "linkPreview.showOriginal": "Показати оригінал",
+    "linkPreview.showTranslation": "Показати переклад",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} голос} few {{votes} голоси} many {{votes} голосів} other {{votes} голосу}}",
     "linkPreview.pollFinal": "Остаточні результати",
@@ -2458,6 +2462,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Ваше вивантаження вимірюється як {upload}, тож це досягає {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Ваше вивантаження ще не виміряно. Його вимірюють, поки ви надсилаєте відео, тож наразі це досягає {max}.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Понад {safe}: ваш вибір, швидкість вивантаження не перевіряється, і глядачі з повільнішим з'єднанням чи пристроєм можуть бачити ривки або зависання.",
     "screenShareQualityChips.nativeCapture": "Помічник захоплення Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Захоплює й кодує трансляцію поза браузером, тож важка гра її не смикає. Застосовується до наступної трансляції.",
@@ -3201,6 +3207,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "процесор",
     "callStats.limitBandwidth": "пропускну здатність",
     "callStats.limitNone": "нічого",
+    "callStats.shareHeldByViewers":
+        "Глядач не встигає: вашу трансляцію обмежено до {rate} Мбіт/с",
     "callStats.limitOther": "інше",
     "callStats.frameTime": "Час на кадр",
     "callStats.resent": "Надіслано повторно",

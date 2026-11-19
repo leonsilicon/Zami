@@ -4,6 +4,69 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.66.10
+
+🐛 **Fixed**
+
+- **Screen shares jumping back a frame or two, over and over:** on computers whose graphics card encodes H.264 or HEVC, shares were sent in a layered form that made viewers' pictures skip backwards several times a second, at any bitrate. Shares are now sent without it.
+- **Push to talk looking like a mute:** letting go of the push-to-talk key muted the mic the same way the mute button does, so everyone else saw a muted mic and heard their mute and unmute sounds. Now it just looks like you stopped talking. The mute button still mutes.
+- **A Windows capture-helper share at a high bitrate climbing and crashing over and over:** after the connection gives way once, the share now levels off just below that point instead of repeatedly climbing back into it.
+
+✨ **New**
+
+- **Middle-click autoscroll** now works on Linux and macOS too, not just Windows.
+
+## v1.66.9
+
+🐛 **Fixed**
+
+- **Encrypted screen shares from the Windows capture helper freezing for seconds at a time:** about half of the share's keyframes were thrown away by viewers before they could be decrypted, so every bit of packet loss or quality change froze the picture until one got through. Keyframes now reach viewers intact.
+- **Shares stuttering for viewers on slower connections:** shares are sent as two layers again (the Windows capture helper included), and a viewer whose connection can't carry the full picture moves to the smaller one and stays there, instead of being flipped back and forth.
+
+✨ **Changed**
+
+- **Screen shares default to 8 Mbps.** The upload measurement can only lower it. More than 8 Mbps can still be picked by hand, with a warning that slower viewers may stutter; saved picks above 8 Mbps are reset to 8 once.
+
+## v1.66.8
+
+🐛 **Fixed**
+
+- **A share frozen for a viewer on a slower connection:** when a viewer's connection couldn't carry a share's full bitrate, the call server kept sending it anyway and the viewer's picture froze for good. Viewers now tell the sharer how much actually reaches them, and the share drops to a bitrate that fits within a few seconds, then stays there for a while before trying higher again.
+
+## v1.66.7
+
+🐛 **Fixed**
+
+- **Memory growing over a long call:** every screen share, camera toggle and codec switch left its video sender behind for the rest of the call, holding its memory. Encrypted calls switch codec whenever someone joins or leaves, so busy calls grew fastest. Old senders are now cleaned up.
+- **A Windows window share turning grey for viewers after a graphics crash** in unencrypted calls (common while a game fills the video memory): the share now keeps going after the call reconnects.
+
+## v1.66.6
+
+🐛 **Fixed**
+
+- **Windows window shares freezing, especially while streaming a game:** the native share's placeholder frames could stop reaching the encoder, so the share froze for viewers while the capture kept running in the background. This was most likely with the GPU busy, as it is in a game.
+- **Stutter at the start of a native share and on unsteady connections:** a native share now starts at a modest bitrate and follows the connection every half second instead of every two, and a timing bug that made viewers drop frames and ask for keyframes on a jittery link is gone.
+
+## v1.66.5
+
+🐛 **Fixed**
+
+- **Missing buttons and menus after startup:** permission-gated controls (space settings, pin and delete in the message menu, the call participant menu) stayed hidden when a room's power levels arrived after it was first shown. They now appear as soon as the power levels load.
+- **Join call button** for calls whose members joined from newer clients now shows up once those members load, without switching rooms.
+
+## v1.66.4
+
+🐛 **Fixed**
+
+- **Stuttering, freezing screen shares:** a share sent as one layer (every H.264 share, including the native Windows encoder) left the call server nothing lighter for a viewer whose connection couldn't keep up, so it kept pausing and resuming them. Viewers now tell the sharer when that happens, and the share lowers its bitrate until everyone can follow, then climbs back. The call stats panel says when your share is being held down.
+- **Stopping a native Windows share** could take the capture helper down, and a helper whose share had already fallen back to the browser kept encoding in the background, using more and more memory.
+- **A closed shared window** left a native share frozen on its last frame, and an encoder error froze it for good. The share now ends, or the encoder restarts.
+- **Share audio cutting out** while a share is busy: its buffer now grows a little after each dropout instead of starting over.
+- **Join call button missing** for a call in the first room you open after starting Zam.
+- **Your own speaking indicator** now lights up as you talk, instead of waiting for the server.
+- **"You's screen"** now reads "Your screen".
+- **Direct file transfer:** a resent part that differs from the first one starts that block over.
+
 ## v1.66.3
 
 ✨ **New**

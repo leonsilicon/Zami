@@ -16,13 +16,14 @@ import {
 import { ZAM_NATIVE_SHARE, ZAM_REDUNDANCY } from "./protocol";
 import {
     isNativePlaceholder,
-    NativeSubstitute,
+    LayeredSubstitute,
     type EncodedFrameLike,
 } from "$lib/utils/nativeShareSubstitute";
+import { clearIdrPpsId } from "$lib/utils/h264ClearPps";
 
 /** The native screen share's substitution, once a port is attached
  *  (matrix/call/nativeShare.ts). Null otherwise: frames pass untouched. */
-let nativeShare: NativeSubstitute | null = null;
+let nativeShare: LayeredSubstitute | null = null;
 
 /** Replaces each native-share placeholder frame's data with the helper's next
  *  access unit (utils/nativeShareSubstitute). Frames that are not
@@ -44,9 +45,35 @@ function nativeShareStage(): TransformStream<
     });
 }
 
+/** Rewrites outgoing H.264 keyframes so their pps_id stays in the bytes
+ *  LiveKit leaves unencrypted (utils/h264ClearPps): otherwise a viewer's
+ *  WebRTC reads it from ciphertext and drops about half of all keyframes,
+ *  freezing the picture after every layer switch or loss. */
+function h264KeyStage(): TransformStream<
+    EncodedFrameLike & AudioFrameLike,
+    EncodedFrameLike & AudioFrameLike
+> {
+    return new TransformStream({
+        transform(frame, controller) {
+            if (
+                frame.type !== undefined &&
+                /h264/i.test(frame.getMetadata?.().mimeType ?? "")
+            ) {
+                try {
+                    const fixed = clearIdrPpsId(new Uint8Array(frame.data));
+                    if (fixed) frame.data = fixed.buffer as ArrayBuffer;
+                } catch {
+                    // Sent as it was.
+                }
+            }
+            controller.enqueue(frame);
+        },
+    });
+}
+
 function attachNativeShare(port: MessagePort): void {
-    const sub = new NativeSubstitute({
-        requestKey: () => port.postMessage({ req: "key" }),
+    const sub = new LayeredSubstitute({
+        requestKey: (layer) => port.postMessage({ req: "key", layer }),
         requestCatchUp: () => port.postMessage({ req: "catchup" }),
     });
     nativeShare = sub;
@@ -58,11 +85,17 @@ function attachNativeShare(port: MessagePort): void {
             key?: boolean;
             data?: ArrayBuffer;
             ts?: number;
+            layer?: number;
         } | null>,
     ) => {
         const au = ev.data;
         if (au?.data && typeof au.key === "boolean" && nativeShare === sub)
-            sub.push({ key: au.key, data: au.data, ts: au.ts });
+            sub.push({
+                key: au.key,
+                data: au.data,
+                ts: au.ts,
+                layer: au.layer === 1 ? 1 : 0,
+            });
     };
 }
 
@@ -122,10 +155,17 @@ self.addEventListener("message", (ev) => {
     } else if (msg.kind === "encode" && data.readableStream) {
         // Every outgoing stream goes through the native-share stage first
         // (a pass-through unless a share's port is attached), then the
-        // redundancy stage (video frames pass through that one untouched).
+        // H.264 keyframe fix, then the redundancy stage (video frames pass
+        // through that one untouched).
         data.readableStream = data.readableStream
             .pipeThrough(
                 nativeShareStage() as TransformStream<
+                    AudioFrameLike,
+                    AudioFrameLike
+                >,
+            )
+            .pipeThrough(
+                h264KeyStage() as TransformStream<
                     AudioFrameLike,
                     AudioFrameLike
                 >,

@@ -309,6 +309,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Freigabe-Ton aktivieren",
     "callView.you": "Du",
     "callView.sScreen": "Bildschirm von {name}",
+    "callView.yourScreen": "Dein Bildschirm",
     "callView.exitSpotlightFor": "Hervorhebung von {label} beenden",
     "callView.spotlight": "{label} hervorheben",
 
@@ -992,6 +993,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "Antwort an",
     "linkPreview.showMore": "Mehr anzeigen",
     "linkPreview.showLess": "Weniger anzeigen",
+    "linkPreview.translatedFrom": "Übersetzt aus: {language}",
+    "linkPreview.showOriginal": "Original anzeigen",
+    "linkPreview.showTranslation": "Übersetzung anzeigen",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} Stimme} other {{votes} Stimmen}}",
     "linkPreview.pollFinal": "Endergebnis",
@@ -2299,6 +2303,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Dein Upload liegt bei {upload}, daher geht dies bis {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Dein Upload wurde noch nicht gemessen. Er wird gemessen, während du Video sendest, daher geht dies vorerst bis {max}.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Über {safe} entscheidest du selbst: Dein Upload wird nicht geprüft, und Zuschauer mit langsameren Verbindungen oder Geräten sehen eventuell Ruckeln oder Standbilder.",
     "screenShareQualityChips.nativeCapture": "Windows-Aufnahmehilfe",
     "screenShareQualityChips.nativeCaptureHint":
         "Erfasst und kodiert die Freigabe außerhalb des Browsers, damit ein stark belastetes Spiel sie nicht ruckeln lässt. Gilt für die nächste Freigabe.",
@@ -3165,6 +3171,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "Bandbreite",
     "callStats.limitNone": "nichts",
+    "callStats.shareHeldByViewers":
+        "Ein Zuschauer kommt nicht mit: deine Übertragung ist auf {rate} Mbit/s begrenzt",
     "callStats.limitOther": "anderes",
     "callStats.frameTime": "Zeit pro Bild",
     "callStats.resent": "Erneut gesendet",

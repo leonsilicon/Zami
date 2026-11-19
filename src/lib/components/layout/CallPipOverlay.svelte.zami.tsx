@@ -112,12 +112,11 @@ export default function CallPipOverlay() {
         void roomsState.roomsTick;
         if (!tile) return "";
         const room = voiceCallState.roomId && getRoom(voiceCallState.roomId);
-        const name =
-            tile.userId === auth.userId
-                ? t("callView.you")
-                : room
-                  ? getMemberName(room, tile.userId)
-                  : tile.userId;
+        if (tile.userId === auth.userId)
+            return tile.source === "screenshare"
+                ? t("callView.yourScreen")
+                : t("callView.you");
+        const name = room ? getMemberName(room, tile.userId) : tile.userId;
         return tile.source === "screenshare"
             ? t("callView.sScreen", { name })
             : name;

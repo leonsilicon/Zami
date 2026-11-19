@@ -310,6 +310,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Reativar áudio compartilhado",
     "callView.you": "Você",
     "callView.sScreen": "Tela de {name}",
+    "callView.yourScreen": "Sua tela",
     "callView.exitSpotlightFor": "Sair do destaque de {label}",
     "callView.spotlight": "Destacar {label}",
 
@@ -1121,6 +1122,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "Em resposta a",
     "linkPreview.showMore": "Mostrar mais",
     "linkPreview.showLess": "Mostrar menos",
+    "linkPreview.translatedFrom": "Traduzido do {language}",
+    "linkPreview.showOriginal": "Mostrar original",
+    "linkPreview.showTranslation": "Mostrar tradução",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} voto} other {{votes} votos}}",
     "linkPreview.pollFinal": "Resultados finais",
@@ -2430,6 +2434,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Seu envio mede {upload}, então isto chega a {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Seu envio ainda não foi medido. Ele é medido enquanto você envia vídeo, então por enquanto isto chega a {max}.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Acima de {safe} a escolha é sua: seu envio não é verificado, e quem assiste com conexões ou dispositivos mais lentos pode ver travadas ou congelamentos.",
     "screenShareQualityChips.nativeCapture": "Auxiliar de captura do Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Captura e codifica o compartilhamento fora do navegador, para que um jogo pesado não o trave. Vale para o próximo compartilhamento.",
@@ -3213,6 +3219,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "largura de banda",
     "callStats.limitNone": "nada",
+    "callStats.shareHeldByViewers":
+        "Um espectador não está acompanhando: sua tela está limitada a {rate} Mbps",
     "callStats.limitOther": "outro",
     "callStats.frameTime": "Tempo por quadro",
     "callStats.resent": "Reenviados",

@@ -24,9 +24,12 @@ import { switchCallVideoCodec } from "$lib/matrix/client";
 import { VIDEO_CODEC_LABELS, type VideoCodec } from "$lib/utils/videoCodecs";
 import {
     BITRATE_SLIDER_STEPS,
+    MAX_SCREEN_SHARE_BITRATE,
+    SAFE_SCREEN_SHARE_BITRATE,
     bitrateFromSlider,
     bitrateParts,
     clampBitrate,
+    isHighBitrate,
     sliderFromBitrate,
 } from "$lib/utils/screenShareBitrate";
 import { SCREEN_RESOLUTIONS, SCREEN_FPS_OPTIONS } from "$lib/utils/voiceCall";
@@ -63,15 +66,18 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
     }
 
     // The bitrate is picked apart from resolution and fps, from about 240p's
-    // bitrate up to 10% under the measured upload. While dragging only the
-    // label follows; the pick is saved (and a live share retargeted) on
-    // release.
+    // bitrate up to 50 Mbps. Up to 8 Mbps the measured upload can hold it
+    // lower (`ceiling`); above 8 it is the user's own call, with a warning.
+    // While dragging only the label follows; the pick is saved (and a live
+    // share retargeted) on release.
     const ceiling = useRune(() => screenShareBitrateCeiling());
     const measured = useRune(() => measuredUpload());
     const overridden = useRune(() => uploadOverride() !== null);
     const [draftBitrate, setDraftBitrate] = useState<number | null>(null);
     const shownBitrate =
-        draftBitrate ?? clampBitrate(screenShareBitrate, ceiling);
+        draftBitrate ??
+        clampBitrate(screenShareBitrate, MAX_SCREEN_SHARE_BITRATE);
+    const highBitrate = isHighBitrate(shownBitrate);
 
     function bitrateLabel(bps: number): string {
         const { unit, n } = bitrateParts(bps);
@@ -97,7 +103,9 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
 
     function commitBitrate(position: number): void {
         setDraftBitrate(null);
-        setScreenShareBitrate(bitrateFromSlider(position, ceiling));
+        setScreenShareBitrate(
+            bitrateFromSlider(position, MAX_SCREEN_SHARE_BITRATE),
+        );
         onQualityChange?.(
             settingsState.screenShareResolution,
             Number(settingsState.screenShareFps),
@@ -285,32 +293,58 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                     max={BITRATE_SLIDER_STEPS}
                     step={1}
                     className="w-full"
-                    value={sliderFromBitrate(shownBitrate, ceiling)}
+                    ticks={[
+                        sliderFromBitrate(
+                            SAFE_SCREEN_SHARE_BITRATE,
+                            MAX_SCREEN_SHARE_BITRATE,
+                        ),
+                    ]}
+                    value={sliderFromBitrate(
+                        shownBitrate,
+                        MAX_SCREEN_SHARE_BITRATE,
+                    )}
                     accessibilityLabel={t("screenShareQualityChips.bitrate")}
                     accessibilityValueText={bitrateLabel(shownBitrate)}
                     onChange={(position) =>
-                        setDraftBitrate(bitrateFromSlider(position, ceiling))
+                        setDraftBitrate(
+                            bitrateFromSlider(
+                                position,
+                                MAX_SCREEN_SHARE_BITRATE,
+                            ),
+                        )
                     }
                     onChangeEnd={(position) => commitBitrate(position)}
                 />
+                {highBitrate && (
+                    <Text
+                        className="text-xs text-zam-warning mt-0.5"
+                        accessibilityRole="alert"
+                    >
+                        {t("screenShareQualityChips.bitrateHighWarning", {
+                            safe: bitrateLabel(SAFE_SCREEN_SHARE_BITRATE),
+                        })}
+                    </Text>
+                )}
                 <Text className="text-xs text-zam-textMuted mt-0.5">
                     {t("screenShareQualityChips.bitrateCapHint")}
                 </Text>
-                <Text className="text-xs text-zam-textMuted mt-0.5">
-                    {overridden && measured !== null
-                        ? t("screenShareQualityChips.bitrateOverridden", {
-                              upload: bitrateLabel(measured),
-                              max: bitrateLabel(ceiling),
-                          })
-                        : measured === null
-                          ? t("screenShareQualityChips.bitrateUnmeasured", {
-                                max: bitrateLabel(ceiling),
-                            })
-                          : t("screenShareQualityChips.bitrateMeasured", {
-                                upload: bitrateLabel(measured),
-                                max: bitrateLabel(ceiling),
-                            })}
-                </Text>
+                {!highBitrate && (
+                    <Text className="text-xs text-zam-textMuted mt-0.5">
+                        {overridden && measured !== null
+                            ? t("screenShareQualityChips.bitrateOverridden", {
+                                  upload: bitrateLabel(measured),
+                                  max: bitrateLabel(ceiling),
+                              })
+                            : measured === null
+                              ? t("screenShareQualityChips.bitrateUnmeasured", {
+                                    max: bitrateLabel(ceiling),
+                                })
+                              : t("screenShareQualityChips.bitrateMeasured", {
+                                    upload: bitrateLabel(measured),
+                                    max: bitrateLabel(ceiling),
+                                })}
+                    </Text>
+                )}
                 <View className="flex-row items-center justify-between gap-2 mt-1.5">
                     <Text className="flex-shrink text-xs text-zam-textMuted">
                         {t("screenShareQualityChips.uploadOverride")}

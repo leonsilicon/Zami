@@ -15,6 +15,7 @@
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#include <atomic>
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi.h>
@@ -183,6 +184,9 @@ struct Options {
     uint32_t maxW = 1920;
     uint32_t maxH = 1080;
     bool cursor = true;
+    // Also encode a half-size layer (at most 30 fps) for simulcast; its AUs
+    // carry flag bit 1.
+    bool simulcast = false;
 };
 static Options g_opt;
 
@@ -192,9 +196,12 @@ struct Shared {
     bool stop = false;
     std::string stopReason;
     bool keyReq = false;
+    bool keyReqLow = false;
     uint32_t fps = 60;
     uint32_t bitrate = 8000000;
     bool bitrateDirty = false;
+    // The low layer's bitrate; 0 = derived from the full one.
+    uint32_t lowBitrate = 0;
     ComPtr<ID3D11Texture2D> captured;  // latest captured frame (BGRA, owned by us)
     uint32_t capW = 0, capH = 0;
     uint64_t seq = 0;  // incremented per captured frame
@@ -235,8 +242,24 @@ static ComPtr<T> dxgiOf(const winrt::Windows::Foundation::IInspectable& obj) {
 
 // ---------------------------------------------------------------- capture
 
+// Set before the pool closes; g_framesInFlight counts handlers still running,
+// so the pool and session are not closed under one (an exception escaping a
+// WinRT delegate ends the process, which users saw as a crash on stop).
+static std::atomic<bool> g_captureClosing{false};
+static std::atomic<int> g_framesInFlight{0};
+
 static void onFrameArrived(WGC::Direct3D11CaptureFramePool const& pool) {
-    auto frame = pool.TryGetNextFrame();
+    struct InFlight {
+        InFlight() { g_framesInFlight++; }
+        ~InFlight() { g_framesInFlight--; }
+    } inFlight;
+    if (g_captureClosing) return;
+    WGC::Direct3D11CaptureFrame frame{nullptr};
+    try {
+        frame = pool.TryGetNextFrame();
+    } catch (...) {
+        return;
+    }
     if (!frame) return;
     try {
         auto content = frame.ContentSize();
@@ -290,7 +313,10 @@ static void onFrameArrived(WGC::Direct3D11CaptureFramePool const& pool) {
     } catch (...) {
         logf_("share: frame handling failed");
     }
-    frame.Close();
+    try {
+        frame.Close();
+    } catch (...) {
+    }
     SetEvent(g_sh.wake);
 }
 
@@ -514,6 +540,7 @@ struct Encoder {
     ComPtr<ID3D11Texture2D> staging;
     int ringIdx = 0;
     std::string name;
+    uint8_t layer = 0;  // 1 = the half-size simulcast layer (AU flag bit 1)
     bool inited = false, hardware = false, async = false, gpu = false, outProvides = false;
     uint32_t w = 0, h = 0, fps = 0, bitrate = 0;
     LONGLONG lastSampleTime = -1;
@@ -920,7 +947,7 @@ struct Encoder {
         }
         std::vector<uint8_t> body;
         body.reserve(13 + au.size());
-        body.push_back(idr ? 1 : 0);
+        body.push_back((uint8_t)((idr ? 1 : 0) | (layer ? 2 : 0)));
         for (int i = 0; i < 8; ++i) body.push_back((uint8_t)((ts >> (8 * i)) & 0xff));
         body.push_back((uint8_t)(w & 0xff));
         body.push_back((uint8_t)(w >> 8));
@@ -1101,6 +1128,14 @@ static int runPacer() {
         return 1;
     }
 
+    // The half-size simulcast layer (--simulcast).
+    Encoder encLow;
+    encLow.layer = 1;
+    Converter convLow;
+    bool pendingKeyLow = false;
+    uint32_t lowW = 0, lowH = 0;
+    uint64_t slotCount = 0;
+    int lowReopens = 0;
     int64_t lastEncodeUs = 0;
     // Encode slots: one per 1/fps, so the encode rate is capped at fps. (A
     // minimum gap from the last encode let jitter encode up to ~1.15x fps.)
@@ -1108,20 +1143,33 @@ static int runPacer() {
     bool everEncoded = false;
     uint64_t encodedSeq = 0;
     bool pendingKey = false;
+    // Times the encoder failed and was reopened; past a few the share ends.
+    int reopens = 0;
     int64_t lastStatsUs = nowUs();
     uint64_t lastCap = 0;
     uint32_t encW = 0, encH = 0;
+    int64_t windowCheckUs = 0;
 
     for (;;) {
         int64_t now = nowUs();
-        bool stop = false, keyReq = false, bitrateDirty = false;
-        uint32_t fps = 60, bitrate = 0, cw = 0, ch = 0;
+        // WGC's Closed event needs a message pump this thread doesn't run, so
+        // a shared window that closed left the helper running on, its share
+        // frozen on the last frame. Look for the window ourselves.
+        if (g_opt.useWindow && now - windowCheckUs >= 250000) {
+            windowCheckUs = now;
+            if (!IsWindow(g_opt.hwnd)) stopNow("closed");
+        }
+        bool stop = false, keyReq = false, keyReqLow = false, bitrateDirty = false;
+        uint32_t fps = 60, bitrate = 0, lowBitrateSet = 0, cw = 0, ch = 0;
         uint64_t seq = 0;
         {
             std::lock_guard<std::mutex> lk(g_sh.m);
             stop = g_sh.stop;
             keyReq = g_sh.keyReq;
             g_sh.keyReq = false;
+            keyReqLow = g_sh.keyReqLow;
+            g_sh.keyReqLow = false;
+            lowBitrateSet = g_sh.lowBitrate;
             bitrateDirty = g_sh.bitrateDirty;
             g_sh.bitrateDirty = false;
             fps = g_sh.fps;
@@ -1132,13 +1180,21 @@ static int runPacer() {
         }
         if (stop) break;
         if (keyReq) pendingKey = true;
+        if (keyReqLow) pendingKeyLow = true;
+        // The low layer: what was asked for, else a quarter of the full one,
+        // at most 1.2 Mbps (screenShareEncoding SHARE_LOW_LAYER_MAX_BPS).
+        uint32_t lowBitrate = lowBitrateSet ? lowBitrateSet : std::min<uint32_t>(bitrate / 4, 1200000);
+        lowBitrate = std::max<uint32_t>(lowBitrate, 100000);
         if (bitrateDirty) {
             enc.bitrate = bitrate;
             if (enc.inited) enc.setBitrate(bitrate);
+            encLow.bitrate = lowBitrate;
+            if (encLow.inited) encLow.setBitrate(lowBitrate);
         }
 
         if (now - lastStatsUs >= 1000000) emitStats(now, lastCap, lastStatsUs);
         if (enc.inited && now - enc.lastAdjustUs >= 1000000) enc.adjustRate(now);
+        if (encLow.inited && now - encLow.lastAdjustUs >= 1000000) encLow.adjustRate(now);
 
         int64_t deadline = lastStatsUs + 1000000;
         if (seq > 0) {
@@ -1173,10 +1229,56 @@ static int runPacer() {
                 bool key = pendingKey;
                 if (!encodeFrame(enc, conv, encW, encH, fps, key, usedSeq)) {
                     logf_("share: frame dropped");
+                    if (enc.failed) {
+                        // A failed encoder (a driver reset, an MEError) drops
+                        // every frame from now on, which viewers saw as a
+                        // share frozen for good. Open a fresh one (it starts
+                        // on a keyframe), and end the share if that keeps
+                        // failing so the page can say so.
+                        logf_("share: encoder failed, reopening");
+                        enc.close();
+                        if (++reopens > 3) {
+                            sendError("the H.264 encoder keeps failing");
+                            return 1;
+                        }
+                        nextSlotUs = std::max<int64_t>(nextSlotUs, now) + interval;
+                        continue;
+                    }
                 } else {
                     encodedSeq = usedSeq;
                 }
                 pendingKey = false;
+                slotCount++;
+                if (g_opt.simulcast) {
+                    // At most 30 fps: every other slot at 60.
+                    uint32_t lowFps = std::min<uint32_t>(fps, 30);
+                    uint32_t every = (fps + lowFps - 1) / lowFps;
+                    if (pendingKeyLow || slotCount % every == 0) {
+                        uint32_t lw = 0, lh = 0;
+                        computeEncodeSize(encW, encH, std::max<uint32_t>(2, encW / 2),
+                                          std::max<uint32_t>(2, encH / 2), lw, lh);
+                        if (!encLow.inited || lowW != lw || lowH != lh || encLow.fps != lowFps) {
+                            encLow.close();
+                            lowW = lw;
+                            lowH = lh;
+                            if (!openEncoder(encLow, lowW, lowH, lowFps, lowBitrate)) {
+                                logf_("share: low layer encoder failed to open");
+                            }
+                        }
+                        if (encLow.inited) {
+                            uint64_t lowSeq = 0;
+                            if (!encodeFrame(encLow, convLow, lowW, lowH, lowFps, pendingKeyLow, lowSeq)) {
+                                if (encLow.failed) {
+                                    // Never fatal: the full layer keeps the share going.
+                                    logf_("share: low layer encoder failed, reopening");
+                                    encLow.close();
+                                    if (++lowReopens > 3) g_opt.simulcast = false;
+                                }
+                            }
+                            pendingKeyLow = false;
+                        }
+                    }
+                }
                 lastEncodeUs = now;
                 everEncoded = true;
                 // The next slot is one interval after this encode: never above fps.
@@ -1188,6 +1290,7 @@ static int runPacer() {
     }
 
     enc.close();
+    encLow.close();
     CloseHandle(timer);
     return 0;
 }
@@ -1204,12 +1307,15 @@ static void stdinLoop() {
             return;
         } else if (cmd == "key") {
             std::lock_guard<std::mutex> lk(g_sh.m);
-            g_sh.keyReq = true;
+            if (jsonNumberField(s, "layer", 0) == 1) g_sh.keyReqLow = true;
+            else g_sh.keyReq = true;
         } else if (cmd == "bitrate") {
             long long v = jsonNumberField(s, "bps", 0);
             if (v >= 100000 && v <= 200000000) {
+                long long low = jsonNumberField(s, "lowBps", 0);
                 std::lock_guard<std::mutex> lk(g_sh.m);
                 g_sh.bitrate = (uint32_t)v;
+                g_sh.lowBitrate = (low >= 100000 && low <= 200000000) ? (uint32_t)low : 0;
                 g_sh.bitrateDirty = true;
             }
         } else if (cmd == "fps") {
@@ -1246,6 +1352,10 @@ static bool parseArgs(int argc, wchar_t** argv, std::string& err) {
             if (!v) return false;
             g_opt.haveMonitor = true;
             g_opt.monitor = _wtoi(v);
+        } else if (a == L"--simulcast") {
+            const wchar_t* v = val(L"--simulcast");
+            if (!v) return false;
+            g_opt.simulcast = _wtoi(v) != 0;
         } else if (a == L"--fps") {
             const wchar_t* v = val(L"--fps");
             if (!v) return false;
@@ -1426,7 +1536,10 @@ int wmain(int argc, wchar_t** argv) {
 
         code = runPacer();
 
+        g_captureClosing = true;
         pool.FrameArrived(frameToken);
+        // Let a handler that already started finish before the pool goes.
+        for (int i = 0; i < 100 && g_framesInFlight > 0; i++) Sleep(5);
         item.Closed(closedToken);
         session.Close();
         pool.Close();
