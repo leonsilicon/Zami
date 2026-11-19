@@ -4,6 +4,11 @@
  * of any LiveKit import so it stays unit-testable; the track object is carried
  * through opaquely as `unknown`.
  */
+import { androidShare } from "$lib/stores/androidScreenShare.svelte";
+import {
+    androidShareEnv,
+    androidWebViewCanShare,
+} from "$lib/utils/androidScreenShare";
 
 export type VideoSource = "camera" | "screenshare";
 
@@ -13,6 +18,8 @@ export interface VideoPublicationInput {
     source: VideoSource;
     isLocal: boolean;
     track: unknown; // LiveKit Track — never inspected here
+    /** Someone else's screen share the user stopped watching. */
+    unwatched?: boolean;
 }
 
 export interface VideoTileDescriptor {
@@ -22,6 +29,9 @@ export interface VideoTileDescriptor {
     source: VideoSource;
     isLocal: boolean;
     track: unknown;
+    /** Someone else's screen share the user stopped watching: the tile stays
+     *  as a placeholder they can start watching again from. */
+    unwatched?: boolean;
 }
 
 /** Screenshares first (they're the reason to look), then cameras; stable by
@@ -40,6 +50,7 @@ export function buildVideoTiles(
             source: p.source,
             isLocal: p.isLocal,
             track: p.track,
+            ...(p.unwatched ? { unwatched: true } : {}),
         });
     }
     const rank = (s: VideoSource) => (s === "screenshare" ? 0 : 1);
@@ -65,7 +76,11 @@ export function nextFocus(
     if (current) return null;
     const prev = new Set(prevKeys);
     const fresh = tiles.find(
-        (t) => t.source === "screenshare" && !t.isLocal && !prev.has(t.key),
+        (t) =>
+            t.source === "screenshare" &&
+            !t.isLocal &&
+            !t.unwatched &&
+            !prev.has(t.key),
     );
     return fresh?.key ?? null;
 }
@@ -95,11 +110,13 @@ export function pickPipTile(
         speakingUserIds: { has(userId: string): boolean };
     },
 ): VideoTileDescriptor | null {
+    // A share the user stopped watching has no picture to float.
+    const watched = tiles.filter((t) => !t.unwatched);
     const byKey = (key: string | null) =>
-        tiles.find((t) => t.key === key) ?? null;
+        watched.find((t) => t.key === key) ?? null;
     const chosen = byKey(opts.pinned) ?? byKey(opts.focused);
     if (chosen) return chosen;
-    const remote = tiles.filter((t) => !t.isLocal);
+    const remote = watched.filter((t) => !t.isLocal);
     return (
         remote.find((t) => t.source === "screenshare") ??
         remote.find((t) => opts.speakingUserIds.has(t.userId)) ??
@@ -153,10 +170,17 @@ export function canScreenShare(env: { getDisplayMedia?: unknown }): boolean {
     return typeof env.getDisplayMedia === "function";
 }
 
-/** The impure adapter for the above — the one line of `navigator` poking that
- *  every call surface would otherwise copy. Support is fixed for the session,
- *  so callers may hold the result in a plain const. */
+/** Whether this app can share its screen here. Web and desktop feature-detect
+ *  getDisplayMedia. Android has no getDisplayMedia: it shares through the
+ *  native plugin, once the plugin says it can and the WebView has the frame
+ *  APIs. The Android answer arrives asynchronously, so callers read this in a
+ *  $derived (Svelte re-runs it when the answer lands). */
 export function screenShareSupportedHere(): boolean {
+    if (androidShare.native)
+        return (
+            androidShare.available === true &&
+            androidWebViewCanShare(androidShareEnv())
+        );
     return canScreenShare({
         getDisplayMedia:
             typeof navigator !== "undefined"

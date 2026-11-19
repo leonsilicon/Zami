@@ -1,0 +1,9 @@
+{
+  "extends": "../../../../../apps/zami/tsconfig.json",
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "../../../../../apps/zami/vite-env.d.ts",
+    "../../../../../apps/zami/uniwind-types.d.ts"
+  ]
+}

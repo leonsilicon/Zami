@@ -16,12 +16,15 @@
         setCallOutputVolume,
         setNoiseSuppressionMode,
         setEchoCancellation,
+        setMeshRelayOnly,
+        setMeshPublicStun,
         setMicGainMode,
         setNormalizeCallAudio,
         setCallSoundsEnabled,
         setCallSoundsVolume,
         setRingEnabled,
         setRingVolume,
+        setRingtone,
         setMirrorCamera,
         setPushToTalk,
         setCallVideoCodec,
@@ -65,7 +68,11 @@
         listMicFilters,
         micFilterUsable,
     } from "$lib/audio/micFilters";
-    import { pluginRegistry } from "$lib/stores/plugins.svelte";
+    import { pluginRegistry, getPluginHost } from "$lib/stores/plugins.svelte";
+    import {
+        pluginRingtoneOptions,
+        previewRingtone,
+    } from "$lib/audio/ringtoneChoice";
     import { playSpeakerTestTone } from "$lib/audio/speakerTest";
     import {
         playCallSound,
@@ -124,6 +131,19 @@
     let cameraError = $state<string | null>(null);
     // Why incoming-call OS alerts stay silent (blocked/unsupported), or null.
     let ringNotifyHint = $state<string | null>(null);
+    // Plugin ringtones for the picker, labelled "name (Plugin Name)".
+    const ringtoneOptions = $derived.by(() => {
+        void pluginRegistry.tick;
+        return pluginRingtoneOptions(pluginRegistry.ringtones).map((o) => ({
+            ...o,
+            label: t("voiceAudioSettings.ringtonePluginOption", {
+                name: o.name,
+                plugin:
+                    getPluginHost(o.pluginId)?.zam.plugin.manifest.name ??
+                    o.pluginId,
+            }),
+        }));
+    });
     // Android 14+: whether an incoming DM call may ring full screen over the
     // lock screen. Re-checked when the user comes back from system settings.
     let fullScreenCallsGranted = $state(true);
@@ -446,13 +466,13 @@
     });
 
     const selectClass =
-        "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+        "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
 </script>
 
 <div class="space-y-6">
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.inputDevice")}
         </p>
@@ -467,27 +487,27 @@
             {/each}
         </select>
         {#if inputFallback}
-            <p class="text-xs text-discord-warning mt-1">
+            <p class="text-xs text-zam-warning mt-1">
                 {t("voiceAudioSettings.savedMicrophoneNotFoundUsingThe")}
             </p>
         {/if}
         {#if micError}
-            <p class="text-xs text-discord-danger mt-2">{micError}</p>
+            <p class="text-xs text-zam-danger mt-2">{micError}</p>
         {:else}
             <div
-                class="mt-3 h-2 rounded bg-discord-backgroundTertiary overflow-hidden"
+                class="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
                 title={t("voiceAudioSettings.microphoneLevel")}
             >
                 <div
-                    class="h-full bg-discord-accent"
+                    class="h-full bg-zam-accent"
                     style="width: {Math.round(micLevel * 100)}%"
                 ></div>
             </div>
             <button
                 onclick={() => void toggleLoopback()}
                 class="mt-2 px-3 py-1 rounded text-xs font-medium {loopbackOn
-                    ? 'bg-discord-accent text-white'
-                    : 'bg-discord-backgroundTertiary text-discord-textMuted hover:bg-discord-messageHover'}"
+                    ? 'bg-zam-accent text-white'
+                    : 'bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover'}"
             >
                 {loopbackOn
                     ? t("voiceAudioSettings.stopTest")
@@ -496,18 +516,18 @@
         {/if}
         <div class="mt-3 flex items-center gap-3">
             <div class="flex-1">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("voiceAudioSettings.pushToTalk")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("voiceAudioSettings.pushToTalkHint")}
                 </p>
                 {#if pttNeedsKey}
-                    <p class="text-xs text-discord-warning mt-1">
+                    <p class="text-xs text-zam-warning mt-1">
                         {t("voiceAudioSettings.pushToTalkNoKey")}
                         <button
                             type="button"
-                            class="underline text-discord-accent hover:no-underline"
+                            class="underline text-zam-accent hover:no-underline"
                             onclick={() => openAppSettingsTab("keybinds")}
                         >
                             {t("voiceAudioSettings.pushToTalkSetKey")}
@@ -525,7 +545,7 @@
 
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.outputDevice")}
         </p>
@@ -543,12 +563,12 @@
         {:else if outputMode === "browser-prompt"}
             <button
                 onclick={() => void chooseOutputViaBrowser()}
-                class="px-3 py-1.5 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary hover:bg-discord-messageHover"
+                class="px-3 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary hover:bg-zam-messageHover"
             >
                 {t("voiceAudioSettings.chooseOutputDevice")}
             </button>
         {:else}
-            <p class="text-xs text-discord-textMuted">
+            <p class="text-xs text-zam-textMuted">
                 {t("voiceAudioSettings.audioOutputIsRoutedByThe")}
             </p>
         {/if}
@@ -556,13 +576,13 @@
             <button
                 onclick={() =>
                     void playSpeakerTestTone(settingsState.audioOutputDeviceId)}
-                class="mt-2 px-3 py-1 rounded text-xs font-medium bg-discord-backgroundTertiary text-discord-textMuted hover:bg-discord-messageHover"
+                class="mt-2 px-3 py-1 rounded text-xs font-medium bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover"
             >
                 {t("voiceAudioSettings.testSpeaker")}
             </button>
         {/if}
         <div class="mt-3 flex items-center gap-3">
-            <p class="text-sm text-discord-textPrimary flex-shrink-0">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
                 {t("voiceAudioSettings.callVolume")}
             </p>
             <input
@@ -570,7 +590,7 @@
                 min="0"
                 max="1"
                 step="0.01"
-                class="w-full accent-discord-accent"
+                class="w-full accent-zam-accent"
                 value={settingsState.callOutputVolume}
                 oninput={(e) => {
                     const v = Number(e.currentTarget.value);
@@ -581,10 +601,10 @@
         </div>
         <div class="mt-3 flex items-center gap-3">
             <div class="flex-1">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("voiceAudioSettings.normalizeVoices")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("voiceAudioSettings.normalizeVoicesHint")}
                 </p>
             </div>
@@ -599,15 +619,15 @@
         </div>
         {#if voiceCallState.connState === "connected"}
             <div
-                class="mt-3 h-2 rounded bg-discord-backgroundTertiary overflow-hidden"
+                class="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
                 title={t("voiceAudioSettings.incomingCallAudio")}
             >
                 <div
-                    class="h-full bg-discord-accent transition-[width] duration-75"
+                    class="h-full bg-zam-accent transition-[width] duration-75"
                     style="width: {Math.round(outLevel * 100)}%"
                 ></div>
             </div>
-            <p class="text-xs text-discord-textMuted mt-1">
+            <p class="text-xs text-zam-textMuted mt-1">
                 {t("voiceAudioSettings.incomingCallAudioIfThisMoves")}
             </p>
         {/if}
@@ -615,21 +635,19 @@
 
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.voiceProcessing")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1">
                 <label
                     for="noise-suppression-mode"
-                    class="text-sm text-discord-textPrimary"
+                    class="text-sm text-zam-textPrimary"
                 >
                     {t("voiceAudioSettings.noiseSuppression")}
                 </label>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {isPluginFilterKey(nsMode)
                         ? !dfSupported
                             ? t("voiceAudioSettings.nsPluginUnsupported")
@@ -669,7 +687,7 @@
             </div>
             <select
                 id="noise-suppression-mode"
-                class="flex-shrink-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                class="flex-shrink-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                 value={settingsState.noiseSuppressionMode}
                 onchange={(e) => {
                     setNoiseSuppressionMode(
@@ -709,13 +727,13 @@
         </div>
         {#if gpuSupported && noiseSuppressionHasGpu(settingsState.noiseSuppressionMode)}
             <div
-                class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
             >
                 <div class="flex-1">
-                    <p class="text-sm text-discord-textPrimary">
+                    <p class="text-sm text-zam-textPrimary">
                         {t("voiceAudioSettings.noiseSuppressionGpu")}
                     </p>
-                    <p class="text-xs text-discord-textMuted">
+                    <p class="text-xs text-zam-textMuted">
                         {t("voiceAudioSettings.noiseSuppressionGpuHint")}
                     </p>
                 </div>
@@ -735,10 +753,8 @@
                 />
             </div>
         {/if}
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
-            <p class="flex-1 text-sm text-discord-textPrimary">
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <p class="flex-1 text-sm text-zam-textPrimary">
                 {t("voiceAudioSettings.echoCancellation")}
             </p>
             <ToggleSwitch
@@ -750,17 +766,42 @@
                 label={t("voiceAudioSettings.echoCancellation")}
             />
         </div>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1">
-                <label
-                    for="mic-gain-mode"
-                    class="text-sm text-discord-textPrimary"
-                >
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.meshRelayOnly")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.meshRelayOnlyHint")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.meshRelayOnly}
+                onChange={setMeshRelayOnly}
+                label={t("voiceAudioSettings.meshRelayOnly")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.meshPublicStun")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.meshPublicStunHint")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.meshPublicStun}
+                onChange={setMeshPublicStun}
+                label={t("voiceAudioSettings.meshPublicStun")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <label for="mic-gain-mode" class="text-sm text-zam-textPrimary">
                     {t("voiceAudioSettings.autoGainControl")}
                 </label>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {settingsState.micGainMode === "normalize"
                         ? t("voiceAudioSettings.agcNormalizeHint")
                         : settingsState.micGainMode === "zam"
@@ -772,7 +813,7 @@
             </div>
             <select
                 id="mic-gain-mode"
-                class="flex-shrink-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                class="flex-shrink-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                 value={settingsState.micGainMode}
                 onchange={(e) => {
                     setMicGainMode(
@@ -795,7 +836,7 @@
 
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.camera")}
         </p>
@@ -816,10 +857,10 @@
         </select>
         <div class="flex items-center justify-between py-2">
             <div>
-                <div class="text-sm font-medium text-discord-textPrimary">
+                <div class="text-sm font-medium text-zam-textPrimary">
                     {t("voiceAudioSettings.mirrorMyCamera")}
                 </div>
-                <div class="text-xs text-discord-textMuted">
+                <div class="text-xs text-zam-textMuted">
                     {t("voiceAudioSettings.flipYourOwnPreviewOthersAlways")}
                 </div>
             </div>
@@ -831,15 +872,15 @@
         </div>
         <div class="flex items-center justify-between gap-3 py-2">
             <div>
-                <div class="text-sm font-medium text-discord-textPrimary">
+                <div class="text-sm font-medium text-zam-textPrimary">
                     {t("voiceAudioSettings.videoCodec")}
                 </div>
-                <div class="text-xs text-discord-textMuted">
+                <div class="text-xs text-zam-textMuted">
                     {t("voiceAudioSettings.videoCodecHint")}
                 </div>
             </div>
             <select
-                class="bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 border border-discord-divider focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                class="bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
                 value={settingsState.callVideoCodec}
                 onchange={(e) => setCallVideoCodec(e.currentTarget.value)}
                 aria-label={t("voiceAudioSettings.videoCodec")}
@@ -853,10 +894,10 @@
             </select>
         </div>
         <div class="py-2">
-            <div class="text-sm font-medium text-discord-textPrimary">
+            <div class="text-sm font-medium text-zam-textPrimary">
                 {t("voiceAudioSettings.cannotWatch")}
             </div>
-            <div class="text-xs text-discord-textMuted mb-1.5">
+            <div class="text-xs text-zam-textMuted mb-1.5">
                 {t("voiceAudioSettings.cannotWatchHint")}
             </div>
             <div class="flex flex-wrap gap-1.5">
@@ -867,8 +908,8 @@
                         type="button"
                         aria-pressed={blocked}
                         class="px-2.5 py-1 rounded text-xs font-medium border transition-colors {blocked
-                            ? 'bg-discord-accent text-white border-discord-accent'
-                            : 'bg-discord-backgroundTertiary text-discord-textMuted border-transparent hover:bg-discord-messageHover'}"
+                            ? 'bg-zam-accent text-white border-zam-accent'
+                            : 'bg-zam-backgroundTertiary text-zam-textMuted border-transparent hover:bg-zam-messageHover'}"
                         onclick={() => {
                             setBlockedDecodeCodecs(
                                 blocked
@@ -890,10 +931,10 @@
         </div>
         <div class="flex items-center justify-between gap-3 py-2">
             <div>
-                <div class="text-sm font-medium text-discord-textPrimary">
+                <div class="text-sm font-medium text-zam-textPrimary">
                     {t("voiceAudioSettings.adaptiveStream")}
                 </div>
-                <div class="text-xs text-discord-textMuted">
+                <div class="text-xs text-zam-textMuted">
                     {t("voiceAudioSettings.adaptiveStreamHint")}
                 </div>
             </div>
@@ -907,8 +948,8 @@
             <button
                 onclick={() => void toggleCamera()}
                 class="mt-2 px-3 py-1 rounded text-xs font-medium {cameraOn
-                    ? 'bg-discord-accent text-white'
-                    : 'bg-discord-backgroundTertiary text-discord-textMuted hover:bg-discord-messageHover'}"
+                    ? 'bg-zam-accent text-white'
+                    : 'bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover'}"
             >
                 {cameraOn
                     ? t("voiceAudioSettings.stopPreview")
@@ -916,7 +957,7 @@
             </button>
         {/if}
         {#if cameraError}
-            <p class="text-xs text-discord-danger mt-2">{cameraError}</p>
+            <p class="text-xs text-zam-danger mt-2">{cameraError}</p>
         {/if}
         <!-- svelte-ignore a11y_media_has_caption -->
         <video
@@ -932,14 +973,12 @@
 
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.callSounds")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
-            <p class="flex-1 text-sm text-discord-textPrimary">
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <p class="flex-1 text-sm text-zam-textPrimary">
                 {t("voiceAudioSettings.playCallSounds")}
             </p>
             <ToggleSwitch
@@ -953,7 +992,7 @@
             />
         </div>
         <div class="mt-3 flex items-center gap-3">
-            <p class="text-sm text-discord-textPrimary flex-shrink-0">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
                 {t("voiceAudioSettings.soundVolume")}
             </p>
             <input
@@ -961,7 +1000,7 @@
                 min="0"
                 max="1"
                 step="0.01"
-                class="w-full accent-discord-accent"
+                class="w-full accent-zam-accent"
                 value={settingsState.callSoundsVolume}
                 oninput={(e) => {
                     const v = Number(e.currentTarget.value);
@@ -975,18 +1014,16 @@
 
     <section>
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("voiceAudioSettings.ringing")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("voiceAudioSettings.ringForIncomingDmCalls")}
                 </p>
-                <p class="text-xs text-discord-textMuted mt-0.5">
+                <p class="text-xs text-zam-textMuted mt-0.5">
                     {t("voiceAudioSettings.directMessagesRingRoomsNeverDo")}
                 </p>
             </div>
@@ -1015,30 +1052,30 @@
             />
         </div>
         {#if ringNotifyHint}
-            <p class="text-xs text-discord-danger mt-2">{ringNotifyHint}</p>
+            <p class="text-xs text-zam-danger mt-2">{ringNotifyHint}</p>
         {/if}
         {#if settingsState.ringEnabled && !fullScreenCallsGranted}
             <div
-                class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
             >
                 <div class="flex-1">
-                    <p class="text-sm text-discord-textPrimary">
+                    <p class="text-sm text-zam-textPrimary">
                         {t("voiceAudioSettings.fullScreenCalls")}
                     </p>
-                    <p class="text-xs text-discord-textMuted mt-0.5">
+                    <p class="text-xs text-zam-textMuted mt-0.5">
                         {t("voiceAudioSettings.fullScreenCallsHint")}
                     </p>
                 </div>
                 <button
                     onclick={() => void openFullScreenCallSettings()}
-                    class="px-3 py-1.5 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary hover:bg-discord-messageHover flex-shrink-0"
+                    class="px-3 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary hover:bg-zam-messageHover flex-shrink-0"
                 >
                     {t("voiceAudioSettings.fullScreenCallsAllow")}
                 </button>
             </div>
         {/if}
         <div class="mt-3 flex items-center gap-3">
-            <p class="text-sm text-discord-textPrimary flex-shrink-0">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
                 {t("voiceAudioSettings.ringtoneVolume")}
             </p>
             <input
@@ -1046,7 +1083,7 @@
                 min="0"
                 max="1"
                 step="0.01"
-                class="w-full accent-discord-accent"
+                class="w-full accent-zam-accent"
                 value={settingsState.ringVolume}
                 oninput={(e) => {
                     const v = Number(e.currentTarget.value);
@@ -1055,6 +1092,43 @@
                 }}
                 onchange={() => playRingPreview()}
             />
+        </div>
+        <div
+            class="flex items-center gap-3 py-2 mt-3 border-t border-zam-divider"
+        >
+            <p class="flex-1 text-sm text-zam-textPrimary">
+                {t("voiceAudioSettings.ringtone")}
+            </p>
+            <select
+                aria-label={t("voiceAudioSettings.ringtone")}
+                class="max-w-[60%] bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                value={settingsState.ringtone}
+                onchange={(e) => {
+                    const key = e.currentTarget.value;
+                    setRingtone(key);
+                    previewRingtone(
+                        key,
+                        pluginRegistry.ringtones,
+                        {
+                            enabled: settingsState.ringEnabled,
+                            volume: settingsState.ringVolume,
+                        },
+                        playRingPreview,
+                    );
+                }}
+            >
+                <option value=""
+                    >{t("voiceAudioSettings.ringtoneDefault")}</option
+                >
+                {#each ringtoneOptions as o (o.key)}
+                    <option value={o.key}>{o.label}</option>
+                {/each}
+                {#if settingsState.ringtone && !ringtoneOptions.some((o) => o.key === settingsState.ringtone)}
+                    <option value={settingsState.ringtone}
+                        >{t("voiceAudioSettings.ringtoneUnavailable")}</option
+                    >
+                {/if}
+            </select>
         </div>
     </section>
 </div>

@@ -12,19 +12,24 @@ import {
     type ListViewToken,
 } from "react-native";
 import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
-import { Image, SvgIcon, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, SvgIcon, Video, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import FavouriteFileImg from "$lib/components/ui/FavouriteFileImg.svelte";
 import {
     eventFavouriteFile,
+    favouriteMediaHttpUrl,
+    isMatrixMediaUrl,
+    mediaUrlFavouriteFile,
     parseEventFavouriteSource,
+    reusableMediaOfFile,
 } from "$lib/matrix/favouriteFile";
 import {
     favouritesState,
     addFavouriteGif,
     removeFavouriteGif,
     isFavouriteGif,
+    setFavouriteGifMxc,
     setFavouriteGifTags,
     upgradeFavouriteGifs,
     type FavouriteGif,
@@ -37,8 +42,11 @@ import {
     loadGifs,
     queueSearch,
     loadMore,
+    type GifSource,
 } from "$lib/stores/gifSearch.svelte";
-import { Star } from "lucide-svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { normalizeProviderPage } from "$lib/plugins/pluginGifs";
+import { Film, Star } from "lucide-svelte";
 import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { safeAspectRatio } from "$lib/utils/mediaDimensions";
 import {
@@ -60,7 +68,8 @@ interface Props {
     onSwitchToSticker?: () => void;
 }
 
-type Tab = "gifs" | "favourites";
+// "gifs" is KLIPY; `plugin:<entryId>` is a plugin's GIF provider.
+type Tab = string;
 
 const STAR =
     "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
@@ -89,10 +98,32 @@ export default function GifPicker({
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
     const windowSize = useWindowDimensions();
 
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const providerTabs = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.gifProviders.map((e) => ({
+                value: `plugin:${e.entryId}`,
+                label: e.value.label,
+                source: {
+                    key: `plugin:${e.pluginId}:${e.value.id}`,
+                    fetch: async (query: string, page: number) =>
+                        normalizeProviderPage(
+                            await e.value.search(query.trim(), page),
+                        ),
+                } satisfies GifSource,
+            }))
+        ),
+        [pluginTick],
+    );
+
     // Land on the configured tab ("gifs" or "favourites").
     const [tab, setTab] = useState<Tab>(() =>
         settingsState.gifDefaultTab === "favourites" ? "favourites" : "gifs",
     );
+    // Zami: after `tab`, which upstream's `$derived` reads before declaring.
+    const providerTab = providerTabs.find((p) => p.value === tab);
+    const gifSource: GifSource | undefined = providerTab?.source;
 
     const [search, setSearch] = useState("");
     const searchEl = useRef<TextInputInstance>(null);
@@ -107,10 +138,15 @@ export default function GifPicker({
     useEffect(() => {
         const t = tab;
         if (t === "favourites") return;
+        // A provider whose plugin was disabled while its tab was open.
+        if (t !== "gifs" && !providerTab) {
+            setTab("gifs");
+            return;
+        }
         const kind: GifKind = "gifs";
-        loadGifs(kind, search);
+        loadGifs(kind, search, gifSource);
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- `search` is read untracked.
-    }, [tab]);
+    }, [tab, providerTab, gifSource]);
 
     function onSearchInput(value: string) {
         setSearch(value);
@@ -121,7 +157,7 @@ export default function GifPicker({
         moveCursor(-1);
         if (tab !== "favourites") {
             const kind: GifKind = "gifs";
-            queueSearch(kind, value);
+            queueSearch(kind, value, gifSource);
         }
     }
 
@@ -238,15 +274,39 @@ export default function GifPicker({
         onClose();
     }
 
-    // Zami: unused upstream too (a favourite's tile sends pickUrl(gif.url)).
-    // oxlint-disable-next-line no-unused-vars -- kept so upstream's diffs map.
     async function pickFavourite(gif: FavouriteGif) {
         const source = parseEventFavouriteSource(gif.source);
-        if (!source) return pickUrl(gif.url);
-        const file = await eventFavouriteFile(source).catch(() => null);
-        if (!file) return;
-        onSelectFile?.(file);
-        onClose();
+        if (source) {
+            const file = await eventFavouriteFile(source).catch(() => null);
+            if (!file) return;
+            // Favourites starred before the mxc was stored learn it now, so a
+            // message sent from this pick can be matched back to the star.
+            const mxc = reusableMediaOfFile(file)?.file?.url;
+            if (mxc && !gif.mxc) void setFavouriteGifMxc(gif.url, mxc);
+            onSelectFile?.(file);
+            onClose();
+            return;
+        }
+        // An upload starred from an unencrypted room is keyed by its Matrix
+        // media URL. That needs the access token, so it cannot be previewed
+        // from the URL; attach the bytes, as for an encrypted favourite, and it
+        // is sent as an image. A URL naming another homeserver is routed
+        // through ours.
+        if (onSelectFile && isMatrixMediaUrl(gif.url)) {
+            const file = await mediaUrlFavouriteFile(
+                gif.url,
+                gif.width,
+                gif.height,
+                gif.name,
+                gif.video ? gif.previewUrl : undefined,
+            ).catch(() => null);
+            if (file) {
+                onSelectFile(file);
+                onClose();
+                return;
+            }
+        }
+        pickUrl(gif.url);
     }
 
     // Favourites starred before the picker sent klipy.com page links are keyed
@@ -376,7 +436,12 @@ export default function GifPicker({
         // closes the picker.
         if (e.key === "Enter" && activeIndex >= 0) {
             e.preventDefault();
-            pickUrl(activeKeys[activeIndex]);
+            if (tab === "favourites") {
+                const gif = visibleFavourites[activeIndex];
+                if (gif) void pickFavourite(gif);
+            } else {
+                pickUrl(activeKeys[activeIndex]);
+            }
         }
     }
 
@@ -414,19 +479,19 @@ export default function GifPicker({
         <View
             className={`${
                 isTouchscreen ? "w-full rounded-t-xl" : "rounded-xl"
-            } relative bg-discord-backgroundSecondary border border-discord-divider shadow-2xl flex flex-col`}
+            } relative bg-zam-backgroundSecondary border border-zam-divider shadow-2xl flex flex-col`}
             style={panelStyle}
         >
             {isTouchscreen ? (
                 // Outer picker tabs (Emoji / Stickers / GIFs)
-                <View className="flex-row border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row border-b border-zam-divider flex-shrink-0">
                     {onSwitchToEmoji ? (
                         <Pressable
                             onPress={onSwitchToEmoji}
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.emoji")}
                             </Text>
                         </Pressable>
@@ -437,7 +502,7 @@ export default function GifPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.stickers")}
                             </Text>
                         </Pressable>
@@ -445,9 +510,9 @@ export default function GifPicker({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: true }}
-                        className="flex-1 py-2 items-center border-b-2 border-discord-accent"
+                        className="flex-1 py-2 items-center border-b-2 border-zam-accent"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("common.gifs")}
                         </Text>
                     </Pressable>
@@ -459,8 +524,9 @@ export default function GifPicker({
                 {(
                     [
                         ["gifs", "GIFs"],
+                        ...providerTabs.map((p) => [p.value, p.label]),
                         ["favourites", "Favourites"],
-                    ] as const
+                    ] as [string, string][]
                 ).map(([value, label]) => (
                     <Pressable
                         key={value}
@@ -468,7 +534,7 @@ export default function GifPicker({
                         accessibilityRole="button"
                         accessibilityState={{ selected: tab === value }}
                         className={`flex-1 py-1.5 rounded transition-colors ${
-                            tab === value ? "bg-discord-backgroundTertiary" : ""
+                            tab === value ? "bg-zam-backgroundTertiary" : ""
                         }`}
                     >
                         <View className="flex-row items-center justify-center gap-1">
@@ -477,16 +543,16 @@ export default function GifPicker({
                                     size={14}
                                     className={
                                         tab === value
-                                            ? "text-discord-textPrimary"
-                                            : "text-discord-textMuted"
+                                            ? "text-zam-textPrimary"
+                                            : "text-zam-textMuted"
                                     }
                                 />
                             ) : null}
                             <Text
                                 className={`text-xs font-semibold ${
                                     tab === value
-                                        ? "text-discord-textPrimary"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-textPrimary"
+                                        : "text-zam-textMuted"
                                 }`}
                             >
                                 {label}
@@ -509,7 +575,7 @@ export default function GifPicker({
                             ? t("gifPicker.searchFavourites")
                             : t("gifPicker.searchKlipy")
                     }
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityRole="search"
                     accessibilityLabel={
                         tab === "favourites"
@@ -523,7 +589,7 @@ export default function GifPicker({
                     // Zami: Enter picks the selected GIF (onSearchKeydown) and
                     // otherwise does nothing, rather than blurring.
                     submitBehavior="submit"
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
 
@@ -540,7 +606,7 @@ export default function GifPicker({
             >
                 {tab === "favourites" ? (
                     visibleFavourites.length === 0 ? (
-                        <Text className="text-center text-discord-textMuted text-sm py-8 px-4">
+                        <Text className="text-center text-zam-textMuted text-sm py-8 px-4">
                             {favourites.length === 0
                                 ? t("gifPicker.noFavouriteGifsYetStarA")
                                 : t("common.noResults")}
@@ -583,7 +649,7 @@ export default function GifPicker({
                                     editing={editingUrl === gif.url}
                                     tagDraft={tagDraft}
                                     onTagDraftChange={setTagDraft}
-                                    onPick={() => pickUrl(gif.url)}
+                                    onPick={() => void pickFavourite(gif)}
                                     onStartEditing={() => startEditing(gif)}
                                     onSaveTags={() => void saveTags()}
                                 />
@@ -600,16 +666,16 @@ export default function GifPicker({
                 ) : // KLIPY GIFs
                 error && items.length === 0 ? (
                     <Pressable
-                        onPress={() => loadGifs("gifs", search)}
+                        onPress={() => loadGifs("gifs", search, gifSource)}
                         accessibilityRole="button"
                         className="w-full py-8 px-4"
                     >
-                        <Text className="text-center text-discord-textMuted text-sm">
+                        <Text className="text-center text-zam-textMuted text-sm">
                             {error}
                         </Text>
                     </Pressable>
                 ) : items.length === 0 && !loading ? (
-                    <Text className="text-center text-discord-textMuted text-sm py-8 px-4">
+                    <Text className="text-center text-zam-textMuted text-sm py-8 px-4">
                         {t("common.noResults")}
                     </Text>
                 ) : (
@@ -660,7 +726,7 @@ export default function GifPicker({
                         ListFooterComponent={
                             <>
                                 {loading ? (
-                                    <Text className="text-center text-discord-textMuted text-xs py-3">
+                                    <Text className="text-center text-zam-textMuted text-xs py-3">
                                         {t("common.loading")}
                                     </Text>
                                 ) : null}
@@ -670,7 +736,7 @@ export default function GifPicker({
                                         accessibilityRole="button"
                                         className="w-full py-3"
                                     >
-                                        <Text className="text-center text-discord-textMuted text-xs">
+                                        <Text className="text-center text-zam-textMuted text-xs">
                                             {error}
                                         </Text>
                                     </Pressable>
@@ -682,8 +748,8 @@ export default function GifPicker({
             </View>
 
             {tab !== "favourites" ? (
-                <View className="px-3 py-1.5 flex-shrink-0 border-t border-discord-divider">
-                    <Text className="text-[10px] text-discord-textMuted text-right">
+                <View className="px-3 py-1.5 flex-shrink-0 border-t border-zam-divider">
+                    <Text className="text-[10px] text-zam-textMuted text-right">
                         {t("gifPicker.poweredByKlipy")}
                     </Text>
                 </View>
@@ -753,15 +819,30 @@ function FavouriteTile({
                         : t("gifPicker.favouriteGif", { value: idx + 1 })
                 }
                 accessibilityState={{ selected }}
-                className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
-                    selected ? " border-2 border-discord-accent" : ""
+                className={`relative w-full rounded overflow-hidden active:opacity-80 transition-opacity${
+                    selected ? " border-2 border-zam-accent" : ""
                 }`}
             >
                 {source ? (
                     <FavouriteFileImg
                         source={source}
-                        class="w-full rounded bg-discord-backgroundTertiary"
+                        video={!!gif.video}
+                        class="w-full rounded bg-zam-backgroundTertiary pointer-events-none"
                         style={aspectStyle}
+                    />
+                ) : gif.video ? (
+                    // A starred plaintext video: streamed with the session's
+                    // token, its poster shown until the first frame.
+                    <Video
+                        src={favouriteMediaHttpUrl(gif.url)}
+                        poster={gif.previewUrl || undefined}
+                        className="w-full rounded bg-zam-backgroundTertiary"
+                        style={{
+                            aspectRatio: cssAspectRatio(aspectStyle) ?? 1,
+                        }}
+                        autoplay
+                        muted
+                        loop
                     />
                 ) : (
                     // Zami: the preview itself, which expo-image animates
@@ -772,7 +853,7 @@ function FavouriteTile({
                     <Image
                         source={mediaSource(gif.previewUrl)}
                         accessible={false}
-                        className="w-full rounded bg-discord-backgroundTertiary"
+                        className="w-full rounded bg-zam-backgroundTertiary"
                         style={{ aspectRatio: cssAspectRatio(aspectStyle) }}
                         onLoad={(e) =>
                             learnGifAspect(
@@ -783,6 +864,16 @@ function FavouriteTile({
                         }
                     />
                 )}
+                {gif.video ? (
+                    <View
+                        pointerEvents="none"
+                        accessible={false}
+                        importantForAccessibility="no-hide-descendants"
+                        className="absolute bottom-1 start-1 p-0.5 rounded bg-black/60"
+                    >
+                        <Film size={12} className="text-white" />
+                    </View>
+                ) : null}
             </Pressable>
             {/* Touchscreens have no hover, so the controls stay visible there
                 instead of revealing on hover. The selected tile reveals its
@@ -811,7 +902,7 @@ function FavouriteTile({
                 >
                     <SvgIcon
                         d={STAR}
-                        className="w-3.5 h-3.5 text-discord-warning"
+                        className="w-3.5 h-3.5 text-zam-warning"
                     />
                 </Pressable>
             </View>
@@ -836,12 +927,12 @@ function FavouriteTile({
                         autoFocus
                         selectTextOnFocus
                         placeholder={t("gifPicker.catFunny")}
-                        placeholderTextColorClassName="accent-discord-textMuted"
+                        placeholderTextColorClassName="accent-zam-textMuted"
                         autoCapitalize="none"
                         returnKeyType="done"
-                        className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-xs rounded px-1.5 py-1 border border-transparent focus:border-discord-accent/30"
+                        className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-xs rounded px-1.5 py-1 border border-transparent focus:border-zam-accent/30"
                     />
-                    <Text className="text-[10px] text-discord-textMuted">
+                    <Text className="text-[10px] text-zam-textMuted">
                         {t("gifPicker.commaSeparatedEnterToSave")}
                     </Text>
                 </View>
@@ -886,7 +977,7 @@ function ResultTile({
                 })}
                 accessibilityState={{ selected }}
                 className={`w-full rounded overflow-hidden active:opacity-80 transition-opacity${
-                    selected ? " border-2 border-discord-accent" : ""
+                    selected ? " border-2 border-zam-accent" : ""
                 }`}
             >
                 {/* Zami: the animated preview through expo-image, rather than
@@ -897,7 +988,7 @@ function ResultTile({
                 <Image
                     source={mediaSource(r.previewUrl)}
                     accessible={false}
-                    className="w-full rounded bg-discord-backgroundTertiary"
+                    className="w-full rounded bg-zam-backgroundTertiary"
                     style={{
                         aspectRatio:
                             cssAspectRatio(
@@ -920,7 +1011,7 @@ function ResultTile({
                 <SvgIcon
                     d={STAR}
                     className={`w-3.5 h-3.5 ${
-                        favourited ? "text-discord-warning" : "text-white"
+                        favourited ? "text-zam-warning" : "text-white"
                     }`}
                 />
             </Pressable>

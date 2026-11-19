@@ -213,9 +213,9 @@ const elapsed = (ms: number) => {
 };
 
 const smallButtonClass =
-    "px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover disabled:opacity-50";
+    "px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50";
 // Zami: the text half of upstream's small button classes, for the Text inside.
-const smallButtonTextClass = "text-xs font-semibold text-discord-textPrimary";
+const smallButtonTextClass = "text-xs font-semibold text-zam-textPrimary";
 
 // Zami: Text classes sit on each Text; a `<pre>` is a nested ScrollView of selectable
 // Text, and `<details>` the shared Details.
@@ -308,6 +308,27 @@ export default function GpuDebug() {
             await window.desktop?.gpu?.setHardwareAcceleration(enabled);
         } catch (e) {
             setReport((r) => r && { ...r, hardwareAcceleration: !enabled });
+            setError((e as Error)?.message ?? String(e));
+        }
+    }
+
+    async function setGameAuto(enabled: boolean) {
+        const ga = report?.gameAuto;
+        if (!report || !ga) return;
+        setReport({ ...report, gameAuto: { ...ga, enabled } });
+        try {
+            await window.desktop?.gpu?.setGameAuto(enabled);
+        } catch (e) {
+            setReport(
+                (r) =>
+                    r && {
+                        ...r,
+                        gameAuto: r.gameAuto && {
+                            ...r.gameAuto,
+                            enabled: !enabled,
+                        },
+                    },
+            );
             setError((e as Error)?.message ?? String(e));
         }
     }
@@ -565,12 +586,13 @@ export default function GpuDebug() {
     const decodeClass = (d: Decode) =>
         `font-mono text-xs ${
             d === "hardware"
-                ? "text-discord-textPositive"
+                ? "text-zam-textPositive"
                 : d === "software"
-                  ? "text-discord-warning"
-                  : "text-discord-danger"
+                  ? "text-zam-warning"
+                  : "text-zam-danger"
         }`;
 
+    const ga = report?.gameAuto;
     const sg = report?.skiaGraphite;
     const ve = report?.videoEncode;
     const nv = report?.nvidiaVideo;
@@ -579,7 +601,7 @@ export default function GpuDebug() {
     return (
         <View>
             <View className="mb-2 flex-row items-center gap-2">
-                <Text className="flex-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="flex-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("gpuDebug.title")}
                 </Text>
                 <Pressable
@@ -605,12 +627,12 @@ export default function GpuDebug() {
             </View>
 
             {desktop && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.hardwareAcceleration")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.hardwareAccelerationHint")}
                         </Text>
                     </View>
@@ -621,16 +643,36 @@ export default function GpuDebug() {
                     />
                 </View>
             )}
-            {report && sg && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+            {ga && (
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("gpuDebug.gameAuto")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("gpuDebug.gameAutoHint")}
+                            {ga.pausedAtLaunch
+                                ? ` ${t("gpuDebug.gameAutoActive")}`
+                                : ""}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={ga.enabled}
+                        onChange={setGameAuto}
+                        label={t("gpuDebug.gameAuto")}
+                    />
+                </View>
+            )}
+            {report && sg && (
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.skiaGraphite")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.skiaGraphiteHint")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {report.featureStatus?.skia_graphite?.startsWith(
                                 "enabled",
                             )
@@ -638,7 +680,7 @@ export default function GpuDebug() {
                                 : t("gpuDebug.nvidiaVideoInactive")}
                         </Text>
                         {sg.failedAt && !sg.enabled ? (
-                            <Text className="text-xs text-discord-warning">
+                            <Text className="text-xs text-zam-warning">
                                 {t("gpuDebug.skiaGraphiteFailed")}
                             </Text>
                         ) : null}
@@ -651,15 +693,15 @@ export default function GpuDebug() {
                 </View>
             )}
             {ve && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.videoEncode")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.videoEncodeHint")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {ve.activeAtLaunch
                                 ? t("gpuDebug.nvidiaVideoActive")
                                 : t("gpuDebug.nvidiaVideoInactive")}
@@ -673,27 +715,27 @@ export default function GpuDebug() {
                 </View>
             )}
             {nv && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.nvidiaVideo")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.nvidiaVideoHint")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {nv.activeAtLaunch
                                 ? t("gpuDebug.nvidiaVideoActive")
                                 : t("gpuDebug.nvidiaVideoInactive")}
                         </Text>
                         {nv.failedAt && nv.mode === "auto" ? (
-                            <Text className="text-xs text-discord-warning">
+                            <Text className="text-xs text-zam-warning">
                                 {t("gpuDebug.nvidiaVideoFailed")}
                             </Text>
                         ) : null}
                     </View>
                     <Select
-                        className="bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 border border-discord-divider focus:outline-none focus:ring-2 focus:ring-discord-accent sm:max-w-[16rem]"
+                        className="bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent sm:max-w-[16rem]"
                         value={nv.mode}
                         onChange={(mode) => setNvidiaVideo(mode)}
                         accessibilityLabel={t("gpuDebug.nvidiaVideo")}
@@ -715,15 +757,15 @@ export default function GpuDebug() {
                 </View>
             )}
             {ne && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.nvidiaEncode")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.nvidiaEncodeHint")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {ne.activeAtLaunch
                                 ? t("gpuDebug.nvidiaVideoActive")
                                 : t("gpuDebug.nvidiaVideoInactive")}
@@ -743,14 +785,14 @@ export default function GpuDebug() {
                     encodeChanged ||
                     graphiteChanged ||
                     nvidiaEncodeChanged) && (
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                        <Text className="flex-1 text-xs text-discord-warning">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                        <Text className="flex-1 text-xs text-zam-warning">
                             {t("gpuDebug.restartToApply")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => window.desktop?.gpu?.relaunch()}
-                            className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover"
+                            className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover"
                         >
                             <Text className="text-sm font-medium text-white">
                                 {t("gpuDebug.restart")}
@@ -760,12 +802,12 @@ export default function GpuDebug() {
                 )}
 
             {window.desktop?.gpu?.repaint && (
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("gpuDebug.repaint")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("gpuDebug.repaintHint")}
                         </Text>
                     </View>
@@ -782,13 +824,13 @@ export default function GpuDebug() {
             )}
 
             {canMeasureMemory && (
-                <View className="py-2 border-b border-discord-divider">
+                <View className="py-2 border-b border-zam-divider">
                     <View className="flex-row items-center gap-3">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("gpuDebug.memoryReport")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("gpuDebug.memoryReportHint")}
                             </Text>
                         </View>
@@ -819,7 +861,7 @@ export default function GpuDebug() {
                         </Pressable>
                     </View>
                     {memory && "error" in memory ? (
-                        <Text className="mt-2 text-xs text-discord-danger break-all">
+                        <Text className="mt-2 text-xs text-zam-danger break-all">
                             {memory.error}
                         </Text>
                     ) : memoryText ? (
@@ -829,10 +871,10 @@ export default function GpuDebug() {
                         <>
                             <View className="mt-3 flex-row items-center gap-3">
                                 <View className="flex-1 min-w-0">
-                                    <Text className="text-sm text-discord-textPrimary">
+                                    <Text className="text-sm text-zam-textPrimary">
                                         {t("gpuDebug.memoryRecord")}
                                     </Text>
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t("gpuDebug.memoryRecordHint")}
                                     </Text>
                                 </View>
@@ -845,7 +887,7 @@ export default function GpuDebug() {
                                     accessibilityLabel={t(
                                         "gpuDebug.memoryRecordInterval",
                                     )}
-                                    className="rounded bg-discord-backgroundSecondary px-1.5 py-1 text-xs text-discord-textPrimary disabled:opacity-50"
+                                    className="rounded bg-zam-backgroundSecondary px-1.5 py-1 text-xs text-zam-textPrimary disabled:opacity-50"
                                     options={[5, 10, 30, 60].map((s) => ({
                                         value: String(s * 1000),
                                         label: t("gpuDebug.memoryRecordEvery", {
@@ -858,15 +900,15 @@ export default function GpuDebug() {
                                     onPress={toggleRecording}
                                     className={`px-2.5 py-1 rounded ${
                                         recording
-                                            ? "bg-discord-danger"
-                                            : "bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                                            ? "bg-zam-danger"
+                                            : "bg-zam-backgroundSecondary hover:bg-zam-messageHover"
                                     }`}
                                 >
                                     <Text
                                         className={`text-xs font-semibold ${
                                             recording
                                                 ? "text-white"
-                                                : "text-discord-textPrimary"
+                                                : "text-zam-textPrimary"
                                         }`}
                                     >
                                         {recording
@@ -878,7 +920,7 @@ export default function GpuDebug() {
                             {(samples.length > 0 || recording) && (
                                 <>
                                     <View className="mt-2 flex-row items-center gap-2">
-                                        <Text className="flex-1 text-xs text-discord-textMuted">
+                                        <Text className="flex-1 text-xs text-zam-textMuted">
                                             {t("gpuDebug.memoryRecordStatus", {
                                                 count: samples.length,
                                                 elapsed: elapsed(
@@ -941,24 +983,24 @@ export default function GpuDebug() {
             )}
 
             {error ? (
-                <Text className="mt-2 text-xs text-discord-danger break-all">
+                <Text className="mt-2 text-xs text-zam-danger break-all">
                     {error}
                 </Text>
             ) : (desktop ? !report : loading && !decode.length) ? (
-                <Text className="mt-2 text-xs text-discord-textMuted">
+                <Text className="mt-2 text-xs text-zam-textMuted">
                     {t("common.loading")}
                 </Text>
             ) : (
                 <>
-                    <Text className="mt-3 mb-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="mt-3 mb-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("gpuDebug.videoDecoding")}
                     </Text>
                     {decode.map(([name, d]) => (
                         <View
                             key={name}
-                            className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                            className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                         >
-                            <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                            <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
                                 {name}
                             </Text>
                             <Text className={decodeClass(d)}>
@@ -969,15 +1011,15 @@ export default function GpuDebug() {
 
                     {encode.length > 0 && (
                         <>
-                            <Text className="mt-3 mb-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                            <Text className="mt-3 mb-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                                 {t("gpuDebug.videoEncoding")}
                             </Text>
                             {encode.map(([name, d]) => (
                                 <View
                                     key={name}
-                                    className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                                    className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                                 >
-                                    <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                                    <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
                                         {name}
                                     </Text>
                                     <Text className={decodeClass(d)}>
@@ -985,7 +1027,7 @@ export default function GpuDebug() {
                                     </Text>
                                 </View>
                             ))}
-                            <Text className="mt-1 text-xs text-discord-textMuted">
+                            <Text className="mt-1 text-xs text-zam-textMuted">
                                 {t("gpuDebug.videoEncodingHint")}
                             </Text>
                             {canRunEncodeTest && (
@@ -1003,19 +1045,19 @@ export default function GpuDebug() {
                                                 {t("gpuDebug.encodeTest")}
                                             </Text>
                                         </Pressable>
-                                        <Text className="flex-1 text-xs text-discord-textMuted">
+                                        <Text className="flex-1 text-xs text-zam-textMuted">
                                             {t("gpuDebug.encodeTestHint")}
                                         </Text>
                                     </View>
                                     {encodeTest.map(([label, result], i) => (
                                         <View
                                             key={i}
-                                            className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                                            className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                                         >
-                                            <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                                            <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
                                                 {label}
                                             </Text>
-                                            <Text className="flex-1 font-mono text-xs text-discord-textPrimary break-all">
+                                            <Text className="flex-1 font-mono text-xs text-zam-textPrimary break-all">
                                                 {result}
                                             </Text>
                                         </View>
@@ -1027,19 +1069,19 @@ export default function GpuDebug() {
 
                     {report && (
                         <>
-                            <Text className="mt-3 mb-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                            <Text className="mt-3 mb-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                                 {t("gpuDebug.featureStatus")}
                             </Text>
                             {Object.entries(report.featureStatus).map(
                                 ([feature, status]) => (
                                     <View
                                         key={feature}
-                                        className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                                        className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                                     >
-                                        <Text className="text-discord-textMuted flex-shrink-0 w-44 break-all font-mono text-xs">
+                                        <Text className="text-zam-textMuted flex-shrink-0 w-44 break-all font-mono text-xs">
                                             {feature}
                                         </Text>
-                                        <Text className="flex-1 text-discord-textPrimary break-all font-mono text-xs">
+                                        <Text className="flex-1 text-zam-textPrimary break-all font-mono text-xs">
                                             {status}
                                         </Text>
                                     </View>
@@ -1049,7 +1091,7 @@ export default function GpuDebug() {
                             <Details
                                 className="mt-3"
                                 summary={t("gpuDebug.details")}
-                                summaryTextClassName="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                                summaryTextClassName="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                             >
                                 <Pre className="mt-1 max-h-80" wrap>
                                     {reportJson}
@@ -1063,8 +1105,8 @@ export default function GpuDebug() {
     );
 }
 
-// Zami: <pre class="… overflow-auto rounded bg-discord-backgroundTertiary p-2
-// text-xs font-mono text-discord-textPrimary select-text"> → a nested ScrollView of
+// Zami: <pre class="… overflow-auto rounded bg-zam-backgroundTertiary p-2
+// text-xs font-mono text-zam-textPrimary select-text"> → a nested ScrollView of
 // selectable Text, which keeps the spaces and line breaks. `whitespace-pre` lines
 // don't wrap, so they scroll sideways; `wrap` is `whitespace-pre-wrap`.
 function Pre({
@@ -1077,14 +1119,14 @@ function Pre({
     children: string;
 }) {
     const text = (
-        <Text selectable className="text-xs font-mono text-discord-textPrimary">
+        <Text selectable className="text-xs font-mono text-zam-textPrimary">
             {children}
         </Text>
     );
     return (
         <ScrollView
             nestedScrollEnabled
-            className={`rounded bg-discord-backgroundTertiary ${className}`}
+            className={`rounded bg-zam-backgroundTertiary ${className}`}
             contentContainerClassName="p-2"
         >
             {wrap ? (

@@ -40,22 +40,22 @@ export default function WhatsNew() {
 
     return (
         <View>
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                 {t("whatsNew.whatSNew")}
             </Text>
 
             {loading ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("whatsNew.loadingReleaseNotes")}
                 </Text>
             ) : failed || releases.length === 0 ? (
-                <Text className="text-sm text-discord-textMuted">
+                <Text className="text-sm text-zam-textMuted">
                     {t("whatsNew.releaseNotesUnavailable")}{" "}
                     {/* Zami: openReleasePage() calls window.open; the link opens
                         with the system instead. */}
                     <Text
                         accessibilityRole="button"
-                        className="text-sm underline text-discord-accent hover:text-discord-textPrimary"
+                        className="text-sm underline text-zam-accent hover:text-zam-textPrimary"
                         onPress={() =>
                             openLink(
                                 `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
@@ -68,11 +68,11 @@ export default function WhatsNew() {
             ) : (
                 <>
                     {current && (
-                        <View className="py-2 border-b border-discord-divider">
-                            <Text className="text-sm font-semibold text-discord-textPrimary mb-1">
+                        <View className="py-2 border-b border-zam-divider">
+                            <Text className="text-sm font-semibold text-zam-textPrimary mb-1">
                                 {current.name}
                                 {formatDate(current.published_at) ? (
-                                    <Text className="text-xs text-discord-textMuted font-normal">
+                                    <Text className="text-xs text-zam-textMuted font-normal">
                                         {" "}
                                         · {formatDate(current.published_at)}
                                     </Text>
@@ -84,12 +84,12 @@ export default function WhatsNew() {
                     {older.map((r) => (
                         <Details
                             key={r.tag_name}
-                            className="py-2 border-b border-discord-divider"
+                            className="py-2 border-b border-zam-divider"
                             summary={
-                                <Text className="shrink text-sm text-discord-textPrimary cursor-pointer select-none">
+                                <Text className="shrink text-sm text-zam-textPrimary cursor-pointer select-none">
                                     {r.name}
                                     {formatDate(r.published_at) ? (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {" "}
                                             · {formatDate(r.published_at)}
                                         </Text>

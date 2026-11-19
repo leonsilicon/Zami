@@ -161,9 +161,12 @@ export const en = {
 
     // src/lib/components/settings/AppearanceSettings.svelte
     "appearanceSettings.rightAlignMyMessagesBubbleLayout":
-        "Right-align my messages (bubble layout)",
+        "Right-align my messages",
     "appearanceSettings.displayYourOwnMessagesOnThe":
-        "Display your own messages on the right in a colored bubble",
+        "Display your own messages on the right",
+    "appearanceSettings.bubbleAllMessages": "Bubbles for all messages",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "Show everyone's messages in bubbles, not just your own",
     "appearanceSettings.showNameColours": "Show name colours",
     "appearanceSettings.drawPeopleSNamesInThe":
         "Draw people's names in the colour they picked in their profile. Turn off to use the normal text colour for everyone.",
@@ -253,6 +256,7 @@ export const en = {
     "callParticipantMenu.soundboardVolume": "Soundboard Volume",
     "callParticipantMenu.shareVolume": "Share Volume",
     "callParticipantMenu.hideVideo": "Hide video",
+    "callParticipantMenu.muteShare": "Mute screen share",
     "callParticipantMenu.kicking": "Kicking…",
     "callParticipantMenu.confirmKick": "Confirm kick {name}?",
     "callParticipantMenu.kickFromRoom": "Kick {name} from room",
@@ -294,6 +298,8 @@ export const en = {
     "callView.deafen": "Deafen",
     "callView.disconnect": "Disconnect",
     "callView.joinCall": "Join Call",
+    "callView.muteShareAudio": "Mute share audio",
+    "callView.unmuteShareAudio": "Unmute share audio",
     "callView.you": "You",
     "callView.sScreen": "{name}'s screen",
     "callView.exitSpotlightFor": "Exit spotlight for {label}",
@@ -434,6 +440,10 @@ export const en = {
     "gpuDebug.hardwareAcceleration": "Hardware acceleration",
     "gpuDebug.hardwareAccelerationHint":
         "Turn this off if videos show up black or the window draws wrongly. Applies after a restart.",
+    "gpuDebug.gameAuto": "Pause the GPU while a game runs",
+    "gpuDebug.gameAutoHint":
+        "If the GPU keeps crashing while a game is running (the game holds its memory), Zam restarts without hardware acceleration and restarts again with it once the game closes. Needs game detection in Settings > General. Waits for the end of a call.",
+    "gpuDebug.gameAutoActive": "Running without the GPU until the game closes.",
     "gpuDebug.nvidiaVideo": "NVIDIA video decoding",
     "gpuDebug.nvidiaVideoHint":
         "Decodes video on NVIDIA GPUs through Chromium's Vulkan renderer. Automatic turns it on when an NVIDIA GPU drives your screens. On Wayland, Vulkan is not used and Automatic leaves it off; choosing Vulkan there tries hardware decoding through OpenGL instead (experimental).",
@@ -592,6 +602,55 @@ export const en = {
     "debugSettings.orderHints": "Message order hints",
     "debugSettings.orderHintsHint":
         "Zam adds a hint to your messages saying what was at the bottom of your chat log, and puts other Zam users' messages below the one they name. Off, messages show in the server's order, as in Element.",
+    "debugSettings.disableGallerySend": "Don't send galleries",
+    "debugSettings.disableGallerySendHint":
+        "Attachments picked together normally go as one gallery message with one caption (MSC4274, sent as dm.filament.gallery). On, each goes as its own message instead. Galleries from others are still shown.",
+    "debugSettings.stickyCallMembership": "Sticky call membership",
+    "debugSettings.stickyCallMembershipHint":
+        "Join calls with a sticky m.rtc.member event (MSC4354) instead of an m.call.member state event. Clients that only read state events, including Zam before 1.51, won't see you in the call. Applies from your next call.",
+    "debugSettings.indexSync": "Message index sync",
+    "debugSettings.indexSyncHint":
+        "Search-index entries are traded with your other verified sessions. Both sessions need to be running this version. Sessions: eligible / verified / all. Chunks: sent / received.",
+    "debugSettings.indexSyncOff":
+        "Index sync isn't running: it needs encrypted-room indexing turned on.",
+    "debugSettings.indexSyncNow": "Sync now",
+    "debugSettings.indexSyncNever": "never",
+    "debugSettings.searchIndex": "Search index",
+    "debugSettings.searchIndexHint":
+        "Index the full history of every encrypted room on this device now, instead of slowly in the background. Uses network and storage while it runs.",
+    "debugSettings.searchIndexBuild": "Build full index now",
+    "debugSettings.searchIndexCancel": "Cancel",
+    "debugSettings.searchIndexBar": "Full index progress",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} rooms, {messages} messages",
+    "debugSettings.searchIndexComplete":
+        "Finished: every encrypted room is indexed.",
+    "debugSettings.searchIndexPartial":
+        "Finished, but {failed} rooms are not done yet. The background crawler will retry them.",
+    "debugSettings.searchIndexStorage": "Stopped: storage is nearly full.",
+    "debugSettings.prefetchTitle": "Background download (Android)",
+    "debugSettings.prefetchHint":
+        "Downloads encrypted history pages in the background while the app is not in front. They stay encrypted until the index reads them.",
+    "debugSettings.prefetchPages": "Pages waiting",
+    "debugSettings.prefetchSize": "Size",
+    "debugSettings.prefetchRooms": "Rooms",
+    "debugSettings.prefetchLastRun": "Last run",
+    "debugSettings.prefetchLastResult": "Last result",
+    "debugSettings.prefetchLastError": "Last error",
+    "debugSettings.prefetchRefresh": "Refresh",
+    "debugSettings.searchIndexAborted": "Cancelled.",
+    "debugSettings.searchIndexUnavailable":
+        "Stopped: the index isn't running on this device.",
+    "debugSettings.searchIndexDisabled":
+        "Turn on indexing for encrypted rooms in privacy settings first.",
+    "debugSettings.searchIndexNotRunning":
+        "The index isn't running right now. It starts once the app has finished loading.",
+    "debugSettings.indexSyncSessions": "Sessions",
+    "debugSettings.indexSyncAsked": "Asked",
+    "debugSettings.indexSyncRoomsMissing": "Rooms with holes",
+    "debugSettings.indexSyncRequestsReceived": "Requests received",
+    "debugSettings.indexSyncChunks": "Chunks",
+    "debugSettings.indexSyncMerged": "Entries merged",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "Display every Matrix timeline event in the chat log.",
     "debugSettings.ignoreCodecSupport": "Ignore reported codec support",
@@ -609,7 +668,7 @@ export const en = {
         "The most the noise filter (DeepFilterNet3 or DPDFNet) may take off any part of the signal (default {value}). 100 is unlimited.",
     "debugSettings.soundboardInterval": "Soundboard interval: {value} ms",
     "debugSettings.soundboardIntervalHint":
-        "Shortest gap between one person's soundboard sounds. Others' sounds that come faster are ignored (default 1500).",
+        "Shortest gap between one person's soundboard sounds. Others' sounds that come faster are ignored (default 250).",
     "debugSettings.syncStatus": "Sync Status",
     "debugSettings.clientLogs": "Client logs",
     "debugSettings.clientLogsHint":
@@ -765,6 +824,12 @@ export const en = {
         "No direct connections, and call servers never see your IP address: calls go through the proxy to the call server's TURN relay over TCP or TLS. If the server offers no TURN relay, calls won't connect. Expect more delay.",
     "proxySettings.callsDirectUnavailable":
         "Calls can't bypass the system proxy settings. Set the proxy here (Manual or PAC) for this to work.",
+    "proxySettings.callsDirectUnavailableManual":
+        "Calls can't bypass the system proxy settings. Set the proxy here (Manual) for this to work.",
+    "proxySettings.androidBackgroundHint":
+        "Notifications and quick replies are fetched outside the WebView and only work through socks5:// or http:// proxies.",
+    "proxySettings.unsupported":
+        "This version of Android System WebView can't set a proxy. Update it from the Play Store.",
     "proxySettings.callsDirectAddresses": "Sent direct:",
     "proxySettings.save": "Save",
     "proxySettings.saved": "Saved",
@@ -847,6 +912,7 @@ export const en = {
     "richPresence.viaScan": "Process scan",
     "richPresence.viaRpc": "Discord Rich Presence",
     "richPresence.viaMedia": "Media player",
+    "richPresence.viaPlugin": "Plugin",
     "richPresence.blocked": "Blocked",
     "richPresence.allowed": "Allowed",
 
@@ -1003,6 +1069,11 @@ export const en = {
     "lightbox.zoomIn": "Zoom in",
     "lightbox.zoomOut": "Zoom out",
     "lightbox.zoomReset": "Reset zoom",
+    "lightbox.fitToScreen": "Fit to screen",
+    "lightbox.actualSize": "Actual size",
+    "messagesMediaSettings.fitImagesToScreen": "Fit images to the screen",
+    "messagesMediaSettings.fitImagesToScreenDescription":
+        "In the image viewer, enlarge images smaller than the screen to fill it. The viewer's fit button switches this for the image you're looking at.",
 
     // src/lib/components/messages/LinkPreview.svelte
     "linkPreview.youtubeVideo": "YouTube video",
@@ -1011,6 +1082,18 @@ export const en = {
         "Loading it contacts the site hosting it, which reveals your IP address",
     "linkPreview.loadPreviewMedia": "Load preview media",
     "linkPreview.playVideo": "Play video",
+    "linkPreview.replyingTo": "Replying to",
+    "linkPreview.showMore": "Show more",
+    "linkPreview.showLess": "Show less",
+    "linkPreview.pollVotes":
+        "{count, plural, one {{votes} vote} other {{votes} votes}}",
+    "linkPreview.pollFinal": "Final results",
+    "linkPreview.pollEnds": "Ends {date}",
+    "linkPreview.quoteUnavailable": "This post is unavailable.",
+    "linkPreview.communityNote": "Readers added context",
+    "linkPreview.repostCount":
+        "{count, plural, one {# repost} other {# reposts}}",
+    "linkPreview.likeCount": "{count, plural, one {# like} other {# likes}}",
 
     // src/lib/components/layout/LiveLocationBanner.svelte
     "liveLocationBanner.openMap": "Open map",
@@ -1222,6 +1305,8 @@ export const en = {
     "memberList.admins": "Admins: {length}",
     "memberList.admin": "Admin",
     "memberList.moderators": "Moderators: {length}",
+    "memberList.defaultRoleMember": "Member",
+    "memberList.roleSection": "{name}: {length}",
 
     // src/lib/components/messages/MessageActionsSheet.svelte
     "messageActionsSheet.thisMessage": "{label} this message?",
@@ -1252,7 +1337,14 @@ export const en = {
     "messageArea.thisIsTheBeginningOfThe": "This is the beginning of the #",
     "messageArea.loadingHistory": "Loading older messages",
     "messageArea.room": "room.",
+    "messageArea.dmStart":
+        "This is the beginning of your direct message history with {name}.",
     "messageArea.newMessages": "New Messages",
+    "messageArea.unreadSince":
+        "{count, plural, one {# new message since {since}} other {# new messages since {since}}}",
+    "messageArea.markAsRead": "Mark as read",
+    "messageArea.unreadSinceMany": "{count}+ new messages since {since}",
+    "messageArea.unreadMany": "{count}+ new messages",
     "messageArea.messageFromABlockedUser": "Message from a blocked user",
     "messageArea.showBlockedMessage": "Show blocked message",
     "messageArea.thisRoomHasBeenUpgraded": "This room has been upgraded",
@@ -1267,8 +1359,18 @@ export const en = {
     "messageArea.pinnedMessagesCount": "Pinned messages ({count})",
 
     // src/lib/components/messages/MessageInput.svelte
+    "messagesMediaSettings.pingOnReply": "Ping on reply",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "New replies ping the author of the message you reply to, like an @mention. You can still turn it off per reply from the reply bar.",
+    "messageInput.pingOn": "@ ON",
+    "messageInput.pingOff": "@ OFF",
+    "messageInput.pingOnTitle": "Ping the author",
+    "messageInput.pingOffTitle": "Don't ping the author",
     "messageInput.replyingTo": "Replying to {replyTargetName}",
     "messageInput.cancelReplyEsc": "Cancel reply (Esc)",
+    "messageInput.editingMessage": "Editing message",
+    "messageInput.cancelEditEsc": "Cancel edit (Esc)",
+    "messageInput.editFailed": "Couldn't save the edit",
     "messageInput.editAttachment": "Edit attachment",
     "messageInput.editAttachment2": "Edit attachment {name}",
     "messageInput.custom": "custom",
@@ -1315,6 +1417,9 @@ export const en = {
     "messageItem.originalMessageDeleted": "Original message deleted",
     "messageItem.originalMessageUnavailable": "Original message unavailable",
     "messageItem.replyPreviewSticker": "Sticker",
+    "messageItem.forwarded": "Forwarded",
+    "messageItem.forwardedFrom": "Forwarded from {name}",
+    "messageItem.forwardedEmoteActor": "Sender",
     "messageItem.requestKeys": "Request keys",
     "messageItem.keysRequested": "Keys requested",
     "messageItem.requestKeysHelp":
@@ -1324,10 +1429,19 @@ export const en = {
     "messageItem.replyPreviewVideo": "Video",
     "messageItem.replyPreviewAudio": "Audio",
     "messageItem.replyPreviewFile": "File",
+    "messageItem.replyPreviewGallery":
+        "{n, plural, one {# attachment} other {# attachments}}",
+    "messageItem.galleryLabel":
+        "Gallery, {n, plural, one {# item} other {# items}}",
+    "messageItem.galleryOpenItem": "Open {name}",
+    "messageItem.galleryDownload": "Download {name}",
+    "messageItem.galleryEmpty": "Empty gallery",
     "messageItem.edited": "(edited)",
     "messageItem.decryptingImage": "Decrypting image...",
     "messageItem.couldnTDecryptImage": "Couldn't decrypt image",
     "messageItem.imageUnavailable": "[Image unavailable]",
+    "messageItem.spoiler": "Spoiler",
+    "messageItem.revealSpoiler": "Reveal spoiler",
     "messageItem.decryptingVideo": "Decrypting video...",
     "messageItem.couldnTDecryptVideo": "Couldn't decrypt video",
     "messageItem.video": "Video",
@@ -1342,8 +1456,6 @@ export const en = {
     "mediaProgress.ofTotal": "{loaded} of {total}",
     "messageItem.fileAttachment": "File attachment",
     "messageItem.download": "Download",
-    "messageItem.toSave": "to save ·",
-    "messageItem.toCancel": "to cancel",
     "messageItem.openThread": "Open thread",
     "messageItem.failedToSend": "Failed to send.",
     "messageItem.retrying": "Retrying…",
@@ -1374,6 +1486,13 @@ export const en = {
     "messageItem.failedToUnpinMessage": "Failed to unpin message",
     "messageItem.failedToPinMessage": "Failed to pin message",
     "messageItem.couldNotOpenTheMatrixLink": "Could not open the Matrix link",
+    "messageItem.viewSource": "View source",
+
+    // src/lib/components/messages/ViewSourceDialog.svelte
+    "viewSource.title": "Message source",
+    "viewSource.decrypted": "Decrypted event",
+    "viewSource.encrypted": "Original (encrypted) event",
+    "viewSource.copied": "Copied",
 
     // src/lib/components/messages/MessageRedactAction.svelte
     "messageRedactAction.removeMessage": "Remove message",
@@ -1572,6 +1691,16 @@ export const en = {
         "Notifications are turned off for this account",
     "notificationSettings.accountNotificationsOffDetail":
         "Every notification for this account is switched off on the server, probably from another app, so nothing notifies on any device whatever the settings below say.",
+    "notificationSettings.accountNotifications":
+        "Notifications for this account",
+    "notificationSettings.accountNotificationsDetail":
+        "Turns notifications on or off for this account on all your devices.",
+    "notificationSettings.thisDeviceNotifications":
+        "Notifications on this device",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "Turns off pop-ups, sounds and push on this device only. Your other devices keep notifying.",
+    "notificationSettings.couldNotUpdateNotifications":
+        "Couldn't update notification settings",
     "notificationSettings.turnOn": "Turn on",
     "notificationSettings.couldNotTurnOnNotifications":
         "Couldn't turn notifications on",
@@ -1725,6 +1854,9 @@ export const en = {
         "Let other people in a room see when you are typing. Turn off to type without anyone being told.",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "Hide your read receipts from other users. Your unread counts still work; others just can't see how far you've read.",
+    "privacySafetySettings.streamerMode": "Streamer mode",
+    "privacySafetySettings.streamerModeHint":
+        "Blurs your account ID, email addresses and recovery key, and hides message text in notifications, so nothing private shows up on a stream. Applies to this device only.",
     "privacySafetySettings.hideMessageTextInNotifications":
         "Hide message text in notifications",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1863,6 +1995,14 @@ export const en = {
     "quickActions.couldNotSendTheJoinRequest":
         "Could not send the join request",
 
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "Reactions",
+    "reactionsViewer.count":
+        "{count, plural, one {# reaction} other {# reactions}}",
+    "reactionsViewer.empty": "No reactions on this message.",
+    "reactionsViewer.removeYours": "Remove your reaction",
+    "reactionsViewer.sending": "sending…",
+    "reactionsViewer.couldNotRemove": "Could not remove your reaction.",
     // src/lib/components/messages/ReactorPopover.svelte
     "reactorPopover.more": "+{overflow} more",
     "reactorPopover.reactedWith": "Reacted with {label}",
@@ -1871,6 +2011,9 @@ export const en = {
     // src/lib/components/messages/RenameAttachmentDialog.svelte
     "renameAttachmentDialog.editAttachment": "Edit attachment",
     "renameAttachmentDialog.filename": "Filename",
+    "renameAttachmentDialog.markSpoiler": "Mark as spoiler",
+    "renameAttachmentDialog.markSpoilerHint":
+        "Hides the image behind a cover until someone clicks it.",
     "renameThreadDialog.nameThread": "Name thread",
     "renameThreadDialog.renameThread": "Rename thread",
     "renameThreadDialog.threadName": "Thread name",
@@ -1917,6 +2060,11 @@ export const en = {
     "roomList.doneReordering": "Done reordering",
     "roomList.reorderRooms": "Reorder rooms",
     "roomList.spaceSettings": "Space Settings",
+    "roomList.sortDmsBy": "Sort DMs by",
+    "roomList.dmSortRecent": "Latest message",
+    "roomList.dmSortUnread": "Unread first",
+    "roomList.dmSortOnline": "Online first",
+    "roomList.dmSortName": "Name (A–Z)",
     "roomList.pendingInvites": "Pending Invites",
     "roomList.inVoice": "{name} - in voice",
     "roomList.orderValue": "Order value",
@@ -1939,6 +2087,7 @@ export const en = {
     "roomList.emptyCategory": "No rooms",
     "roomList.copyRoomLink": "Copy Room Link",
     "roomList.markAsRead": "Mark as Read",
+    "roomList.markAsUnread": "Mark as Unread",
     "roomList.addToSpace": "Add to Space",
     "roomList.clickAgainToLeave": "Click again to leave",
     "roomList.clickAgainToLeaveLastMember":
@@ -2066,6 +2215,28 @@ export const en = {
     "roomSettings.admin100": "Admin (100)",
     "roomSettings.moderator50": "Moderator (50)",
     "roomSettings.member0": "Member (0)",
+    "roomSettings.roleTags": "Role tags",
+    "roomSettings.roleTagsHint":
+        "Name, colour and icon shown for each power level (MSC3949). Levels without a tag use the nearest lower one.",
+    "roomSettings.roleTagLevel": "Power level",
+    "roomSettings.roleTagName": "Name",
+    "roomSettings.roleTagColor": "Colour",
+    "roomSettings.roleTagIcon": "Icon (emoji)",
+    "roomSettings.roleTagPickEmoji": "Pick emoji",
+    "roomSettings.roleTagUploadIcon": "Upload image",
+    "roomSettings.roleTagRemoveIcon": "Remove icon",
+    "roomSettings.addRoleTag": "Add tag",
+    "roomSettings.removeRoleTag": "Remove tag",
+    "roomSettings.saveRoleTags": "Save tags",
+    "roomSettings.roleTagsSaved": "Role tags saved",
+    "roomSettings.roleTagsSaveFailed": "Could not save role tags: {error}",
+    "roomSettings.roleTagDuplicateLevel": "Two tags use power level {level}",
+    "roomSettings.roleTagNameRequired": "Every tag needs a name",
+    "roomSettings.roleTagLevelInvalid": "Power level must be a whole number",
+    "roomSettings.roleTagClearColor": "Clear colour",
+    "roomSettings.customLevel": "Custom ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "This room has no tags yet; showing the default ones.",
     "roomSettings.muted1": "Muted (-1)",
     "roomSettings.kick": "Kick",
     "roomSettings.ban": "Ban",
@@ -2173,6 +2344,9 @@ export const en = {
         "Your upload measures {upload}, so this goes up to {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Your upload hasn't been measured yet. It's measured while you send video, so this goes up to {max} for now.",
+    "screenShareQualityChips.nativeCapture": "Windows capture helper",
+    "screenShareQualityChips.nativeCaptureHint":
+        "Captures and encodes the share outside the browser, so a busy game doesn't stutter it. Applies to the next share.",
     "screenShareQualityChips.shareSystemAudio": "Share system audio",
     "screenShareQualityChips.appliesToNextShare": "Applies to next share",
     "screenShareQualityChips.shareSystemAudioAppliesToNext":
@@ -2419,6 +2593,10 @@ export const en = {
     "spaceSidebar.setColor": "Set Color",
     "spaceSidebar.dissolveFolder": "Dissolve Folder",
     "spaceSidebar.somethingWentWrong": "Something went wrong",
+    "spaceSidebar.folder": "Folder",
+    "spaceSidebar.liveBadge": "LIVE",
+    "spaceSidebar.inVoiceCount": "{count} in voice",
+    "spaceSidebar.moreParticipants": "+{count} more",
 
     // src/lib/components/layout/Splash.svelte
     "splash.restoringSession": "Restoring session…",
@@ -2461,7 +2639,10 @@ export const en = {
     "themeColorEditor.messageDisplay": "Message display",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "Saved on this device only. Not synced across your account.",
-    "themeColorEditor.appTextSize": "App text size: {round}%",
+    "themeColorEditor.interfaceScale": "Interface scale: {percent}%",
+    "themeColorEditor.messageTextScale": "Message text size: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "Scales chat messages and the message composer only.",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "Scales all text and spacing across the app.",
     "themeColorEditor.font": "Font",
@@ -2488,6 +2669,21 @@ export const en = {
     "threadPanel.loadOlderReplies": "Load older replies",
 
     // src/lib/components/layout/ThreadsListPanel.svelte
+    // src/lib/components/ui/ChannelTypeIcon.svelte (ZDMB channel types)
+    "bridgedChannels.voice": "Voice channel",
+    "bridgedChannels.stage": "Stage channel",
+    "bridgedChannels.announcement": "Announcement channel",
+    "bridgedChannels.forum": "Forum",
+    "bridgedChannels.media": "Media channel",
+    "bridgedChannels.privateThread": "Private thread",
+    // src/lib/stores/bridgedThreads.svelte.ts (ZDMB Discord threads)
+    "bridgedThreads.joinFailed": "Couldn't join the thread.",
+    "bridgedThreads.joinThread": "Join thread",
+    "bridgedThreads.threadRooms": "Thread rooms",
+    "bridgedThreads.thread": "Thread",
+    "bridgedThreads.goToParent": "Go to {name}",
+    "bridgedThreads.memberCount":
+        "{count, plural, one {# member} other {# members}}",
     "threadsListPanel.threads": "Threads",
     "threadsListPanel.closeThreadsPanel": "Close threads panel",
     "threadsListPanel.noThreadsInThisRoomYet": "No threads in this room yet.",
@@ -2619,9 +2815,16 @@ export const en = {
     "verificationModal.session": "session",
 
     // src/lib/components/layout/VideoTile.svelte
+    "videoTile.watchingCount": "{count} watching",
+    "videoTile.watchers": "Watching",
+    "videoTile.noWatchers": "Nobody is watching",
+    "videoTile.muteShareAudio": "Mute screen share audio",
+    "videoTile.unmuteShareAudio": "Unmute screen share audio",
     "videoTile.fullscreen": "Fullscreen",
     "videoTile.pictureInPicture": "Picture in picture",
     "videoTile.exitPictureInPicture": "Exit picture in picture",
+    "videoTile.watchStream": "Watch stream",
+    "videoTile.stopWatching": "Stop watching",
 
     // src/lib/components/settings/VoiceAudioSettings.svelte
     "voiceAudioSettings.inputDevice": "Input device",
@@ -2725,6 +2928,11 @@ export const en = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "Direct messages ring. Rooms never do - you join those from the room itself.",
     "voiceAudioSettings.ringtoneVolume": "Ringtone volume",
+    "voiceAudioSettings.ringtone": "Ringtone",
+    "voiceAudioSettings.ringtoneDefault": "Default",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "Plugin ringtone (plugin not loaded)",
     "voiceAudioSettings.fullScreenCalls": "Show calls on the lock screen",
     "voiceAudioSettings.fullScreenCallsHint":
         "Lets an incoming DM call wake the screen and ring full screen, like a phone call. Android asks for this separately.",
@@ -2922,6 +3130,26 @@ export const en = {
     "composerActionsMenu.recordVoiceMessage": "Record voice message",
     "composerActionsMenu.shareLocation": "Share location",
     "composerActionsMenu.createThread": "Create thread",
+    "composerActionsMenu.inviteToGame": "Invite to game",
+    "gameInvite.title": "Invite to game",
+    "gameInvite.game": "Game",
+    "gameInvite.note": "Note (optional)",
+    "gameInvite.notePlaceholder": "Say something…",
+    "gameInvite.send": "Send invite",
+    "gameInvite.noGames": "No running Steam game can be invited right now.",
+    "gameInvite.failedToSend": "Couldn't send the invite.",
+    "gameInvite.cardTitle": "Game invite",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "{current} of {max} in party",
+    "gameInvite.confirmSteam": "Launch {game} with arguments: {connect}",
+    "gameInvite.confirmLobby": "Join {game}'s lobby",
+    "gameInvite.joinGame": "Join game",
+    "gameInvite.joinSent": "Join sent to the game.",
+    "gameInvite.openInDesktop": "Open in the Zam desktop app to join.",
+    "gameInvite.joinUnsupported":
+        "Joining this game is not supported on this computer.",
+    "gameInvite.joinInvalid": "This invite is not valid.",
+    "gameInvite.joinFailed": "Couldn't join the game.",
 
     // src/lib/components/messages/Reactions.svelte
     "reactions.couldNotAddReaction": "Could not add reaction",
@@ -3037,6 +3265,9 @@ export const en = {
     "client.codecCouldNotBeDecoded":
         "This device can't decode {codec} video. Asking for H.264 instead.",
     "client.couldNotSwitchVideoCodec": "Couldn't switch the video codec",
+    "client.androidShareNeedsWebView":
+        "Screen sharing in this room needs a newer Android System WebView.",
+    "client.screenShareStopped": "Screen sharing stopped.",
     "client.couldNotStartScreenShare": "Could not start screen share",
     "client.couldNotShareScreenAudio": "Screen share started without its audio",
     "client.couldnTChangeScreenShareQuality":
@@ -3159,6 +3390,14 @@ export const en = {
     "previewRewriter.rulesDescription":
         "Applied in order to the address a preview is fetched from. The link itself is not changed.",
 
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "Message link pills",
+    "messageLinkPill.description":
+        "Shows pasted message links as a compact pill naming the room or DM they point to, and highlights the matching preview when you hover one.",
+    "messageLinkPill.viewMessage": "View message",
+    "messageLinkPill.viewMessageIn": "View quoted message in {room}",
+    "messageLinkPill.viewQuotedMessage": "View quoted message",
+
     // src/lib/plugins/pluginBoot.ts
     "pluginBoot.noPluginSyncDataOnYour":
         "No plugin sync data on your account yet.",
@@ -3198,6 +3437,7 @@ export const en = {
     "repoList.thatRepoIsAlreadyAdded": "That repo is already added.",
 
     // src/lib/stores/gifSearch.svelte.ts
+    "gifSearch.couldNotLoadGifsTryAgain": "Couldn't load GIFs - try again.",
     "gifSearch.couldnTReachKlipyTryAgain": "Couldn't reach KLIPY - try again.",
 
     // src/lib/stores/liveLocation.svelte.ts
@@ -3376,6 +3616,7 @@ export const en = {
     "encryptionState.historicalNotJoined":
         "This message was sent while you weren't in the room.",
     "encryptionState.encryptedMessage": "🔒 Encrypted message",
+    "encryptionState.decryptingMessage": "Decrypting message...",
 
     // src/lib/utils/eventShield.ts
     "eventShield.thisMessageSEncryptionCouldNot":
@@ -3514,7 +3755,32 @@ export const en = {
     "messageActionsMenu.unpin": "Unpin",
     "messageActionsMenu.pin": "Pin",
     "messageActionsMenu.copyLink": "Copy link",
+    "messageActionsMenu.viewReactions": "View reactions",
+    "messageActionsMenu.markUnread": "Mark as unread",
+    "messageActionsMenu.couldNotMarkUnread": "Couldn't mark as unread",
     "messageActionsMenu.report": "Report",
+    "roomSettings.readReceipts": "Read receipts",
+    "roomSettings.readReceiptsRoomHelp":
+        "Choose whether other members can see which messages you've read in this room.",
+    "roomSettings.readReceiptsSpaceHelp":
+        "Choose whether other members can see which messages you've read in this space and its rooms. A room's own choice takes priority.",
+    "roomSettings.readReceiptsDefaultShare":
+        "Follows your privacy settings, currently shared with others",
+    "roomSettings.readReceiptsDefaultHide":
+        "Follows your privacy settings, currently hidden from others",
+    "roomSettings.readReceiptsShare": "Share my read receipts",
+    "roomSettings.readReceiptsShareDesc":
+        "Others can see which messages you've read.",
+    "roomSettings.readReceiptsHide": "Hide my read receipts",
+    "roomSettings.readReceiptsHideDesc":
+        "Your unread state still syncs, but others can't see what you've read.",
+    "privacySafetySettings.receiptsOverrideHint":
+        "Rooms and spaces can override this in their Notifications settings.",
+    "messageActionsMenu.copyText": "Copy message text",
+    "messageActionsMenu.textCopied": "Message text copied",
+    "messageActionsMenu.couldnTCopyText": "Couldn't copy the message text",
+    "messageActionsMenu.selectHint":
+        "Press and hold the text to select part of it",
 
     // src/lib/utils/messageDisplay.ts
     "messageDisplay.systemDefault": "System default",
@@ -3570,7 +3836,17 @@ export const en = {
     "presence.seenAsOnlineWhileTheApp":
         "Seen as online while the app is syncing",
     "presence.shownAsIdleToOtherUsers": "Shown as idle to other users",
+    "presence.doNotDisturb": "Do Not Disturb",
+    "presence.doNotDisturbDescription":
+        "Silences notifications and calls on all your devices",
     "presence.invisible": "Invisible",
+    "presence.invisibleHidesActivity":
+        "Invisible also hides your read receipts and typing from other users.",
+    "presence.unsupportedByServer":
+        "This homeserver does not support presence, so there is no status to set.",
+    "presence.shareViaProfile": "Share my status through my profile",
+    "presence.shareViaProfileDescription":
+        "This homeserver has presence turned off. Zam can publish your status in a profile field instead. Other Zam users will see it, and so can anyone who can read your profile.",
     "presence.appearOfflineToOtherUsers": "Appear offline to other users",
 
     // src/lib/utils/pushRuleWrite.ts
@@ -3791,6 +4067,8 @@ export const en = {
     "settingsSearch.clearCache": "Clear cache",
     "settingsSearch.showAllEvents": "Show all events",
     "settingsSearch.orderHints": "Message order hints",
+    "settingsSearch.disableGallerySend": "Don't send galleries",
+    "settingsSearch.stickyCallMembership": "Sticky call membership",
     "settingsSearch.pushDiagnostics": "Push diagnostics",
     "settingsSearch.pushService": "Push service (UnifiedPush / Firebase)",
     "settingsSearch.language": "Language",
@@ -3887,12 +4165,18 @@ export const en = {
     "updateStatus.updateReadyRestartToApply":
         "Update ready{versionSuffix} - restart to apply",
     "updateStatus.restartToApply": "Restart to apply",
+    "updateStatus.reopenToApply":
+        "Update installed{versionSuffix}. Quit Zam and open it again to finish",
     "updateStatus.updateReadyReloadToApply":
         "Update ready{versionSuffix} - reload to apply",
     "updateStatus.reloadToApply": "Reload to apply",
     "updateStatus.aNewVersionIsAvailable":
         "A new version is available{versionSuffix}",
     "updateStatus.openReleasePage": "Open release page",
+    "updateStatus.flatpakManualUpdate":
+        "Update available{versionSuffix}. Install it from your software center or with flatpak update",
+    "updateStatus.packageManagerUpdate":
+        "Update available{versionSuffix}. Update it with {manager}",
     "updateStatus.updateCheckFailed": "Update check failed",
     "updateStatus.checkForUpdatesToInstallThe":
         "Check for updates to install the latest version.",
@@ -3939,6 +4223,8 @@ export const en = {
     // src/routes/+page.svelte
     "rootPage.failedToReconnectPleaseLogIn":
         "Failed to reconnect. Please log in again.",
+    "rootPage.storageWipedSessionRecovered":
+        "Your browser reset Zam's storage, probably because the disk was full. Your sign-in was recovered, but some settings may be back to their defaults.",
     "rootPage.sessionOpenInAnotherTab":
         "This session is open in another tab. This tab will continue once that one closes.",
     "rootPage.signedInButSyncingCouldNot":
@@ -3966,6 +4252,13 @@ export const en = {
     "fileOffer.cancel": "Cancel",
     "fileOffer.withdraw": "Withdraw",
     "fileOffer.connecting": "Connecting to the sender...",
+    "fileOffer.preparingReceive":
+        "Waiting for the sender to get the file ready",
+    "fileOffer.preparingSend": "Getting the file ready",
+    "fileOffer.acceptedElsewhere":
+        "Accepted on another of your devices ({device})",
+    "fileOffer.untrusted":
+        "This offer can't be trusted: it didn't come from the device it names.",
     "fileOffer.progress": "{done} of {total}, {rate}/s",
     "fileOffer.verifying": "Verifying the file...",
     "fileOffer.savedDone": "File saved and verified.",
@@ -3975,8 +4268,8 @@ export const en = {
     "fileOffer.failedOffline":
         "The sender isn't available. They need Zam open.",
     "fileOffer.failedRefused": "The sender's session refused this transfer.",
-    "fileOffer.failedNoSfu":
-        "The sender's server has no call service to carry the file.",
+    "fileOffer.failedNoRelay":
+        "A relay server is required for peer-to-peer connections, but there is no relay (TURN) server, so the file can't be sent without showing an IP address.",
     "fileOffer.failedConnection": "The connection was lost.",
     "fileOffer.failedStalled": "The transfer stopped making progress.",
     "fileOffer.failedCorrupt":
@@ -4077,6 +4370,87 @@ export const en = {
     "messageEmbed.deleted": "Message deleted",
     "messageEmbed.inRoom": "in {room}",
     "messageEmbed.jumpToMessage": "Jump to the linked message:",
+    // src/lib/components/settings/RichPresenceSettings.svelte (Steam)
+    "richPresence.steam": "Steam rich presence",
+    "richPresence.steamHint":
+        "Show the Steam game you are playing along with its rich presence status, such as the map or mode. This turns on Steam's local debugging port, which only listens on this computer. Steam has to be restarted once for it to take effect.",
+    "richPresence.steamConnected": "Connected to Steam.",
+    "richPresence.steamNeedsRestart":
+        "Steam's debugging port isn't open yet. Restart Steam to open it.",
+    "richPresence.steamNotRunning":
+        "Steam isn't running. Start it and Zam will connect automatically.",
+    "richPresence.restartSteam": "Restart Steam",
+    "richPresence.restartSteamTitle": "Restart Steam?",
+    "richPresence.restartSteamBody":
+        "Steam will close and start again. Games launched from Steam may be closed along with it.",
+    "richPresence.restartSteamFailed": "Couldn't restart Steam: {error}",
+    "richPresence.steamEnableFailed":
+        "Couldn't turn on Steam's debugging port: {error}",
+    "richPresence.steamDisableFailed":
+        "Couldn't turn off Steam's debugging port: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows asked for administrator permission and it wasn't granted, so nothing was changed.",
+    "richPresence.steamFailed": "Steam rich presence failed: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "This call connects you directly to others",
+    "meshConsent.titleNewcomer":
+        "Someone in this call can only be reached directly",
+    "meshConsent.noCallServer":
+        "Your homeserver has no call server, so your audio, video and screen share go straight from your device to each person in the call.",
+    "meshConsent.someoneWithoutCallServer":
+        "Someone in this call is on a homeserver without a call server. To hear and see them, your device connects to theirs directly.",
+    "meshConsent.ipVisible":
+        "Your homeserver has no relay (TURN) server, so everyone you connect to directly can see your IP address, which can reveal roughly where you are.",
+    "meshConsent.relayed":
+        "This goes through your homeserver's relay server, so the others see its address, not your IP address. If the relay can't reach someone, you connect to them directly, which shows them your IP address. To prevent that, turn on \"Require a relay server for peer-to-peer calls\" in Voice & Video settings.",
+    "meshConsent.relayRequired":
+        '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server, so this can\'t connect. Turn it off in Voice & Video settings to connect directly.',
+    "meshConsent.titleFileTransfer":
+        "This file transfer connects you directly to the other person",
+    "meshConsent.fileTransferDirect":
+        "Your homeserver or theirs has no call server, so the file goes straight from one device to the other.",
+    "meshConsent.join": "Join",
+    "meshConsent.connectDirectly": "Connect directly",
+    "meshConsent.joinWithoutThem": "Join without them",
+    "meshConsent.notNow": "Not now",
+    "meshConsent.titlePluginPublish": "Join this call over {label}?",
+    "meshConsent.titlePluginReceive": "Someone in this call uses {label}",
+    "meshConsent.pluginPublish":
+        "Your audio, video and screen share go over {label}, a way of carrying calls that a plugin adds. Only people whose Zam has the same plugin can hear and see you.",
+    "meshConsent.pluginReceive":
+        "Someone in this call sends their audio and video over {label}, which a plugin adds. To hear and see them, Zam uses it too.",
+    "meshConsent.pluginIpVisible":
+        "People you reach over {label} can see your IP address, which can reveal roughly where you are.",
+    "meshConsent.pluginIpHidden":
+        "{label} doesn't show your IP address to the people at the other end.",
+    "meshConsent.pluginThirdParty":
+        "Your call media also passes through {thirdParty}.",
+    "meshConsent.pluginJoinWithout": "Join without it",
+    "meshConsent.usePlugin": "Use {label}",
+    "voiceCall.pluginTransportGone":
+        "{label} stopped, so nobody in this call hears or sees you until you rejoin.",
+    "voiceCall.pluginTransportFailed": "{label} couldn't start for this call.",
+    "voiceCall.meshNeedsTurn":
+        '"Require a relay server for peer-to-peer calls" is on, but your homeserver has no relay (TURN) server. Turn it off in Voice & Video settings to join.',
+    "voiceAudioSettings.meshRelayOnly":
+        "Require a relay server for peer-to-peer calls",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "Peer-to-peer calls and file transfers go through your homeserver's relay (TURN) server when it has one, so nobody sees your IP address. Without one, or when the relay can't reach someone, they connect directly, which shows it. With this on, they never connect directly: without a working relay they don't connect at all.",
+    "voiceCall.meshPeerUnreachable":
+        "Someone in this call can only be reached directly, but a relay server is required and your homeserver has no relay (TURN) server, so you won't hear them.",
+    "meshConsent.usePublicStun": "Use a public STUN server.",
+    "meshConsent.usePublicStunHint":
+        "Your homeserver has no server that helps connections through home routers, so most direct connections fail without one. Cloudflare's STUN server would learn your IP address, but nothing about the call.",
+    "voiceAudioSettings.meshPublicStun": "Use a public STUN server",
+    "voiceAudioSettings.meshPublicStunHint":
+        "Only when your homeserver offers no relay or STUN server: peer-to-peer calls ask Cloudflare's STUN server for your public address, which most home routers need. It sees your IP address, never the call.",
+    "settingsSearch.meshPublicStun": "Use a public STUN server",
+    "voiceCall.meshFailed":
+        "Couldn't connect directly to {name}. Their network may block it, or their homeserver offers no way through home routers.",
+    "voiceCall.meshFailedNoServers":
+        'Couldn\'t connect directly to {name}. Your homeserver offers no relay or STUN server, so connections through home routers usually fail. Turning on "Use a public STUN server" in Voice & Video settings may help.',
+    "settingsSearch.meshRelayOnly":
+        "Require a relay server for peer-to-peer calls",
 };
 
 export type MessageKey = keyof typeof en;

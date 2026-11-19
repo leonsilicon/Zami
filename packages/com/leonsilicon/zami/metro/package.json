@@ -9,7 +9,8 @@
   },
   "exports": {
     ".": "./+.js",
-    "./transformer": "./+transformer.js"
+    "./transformer": "./+transformer.js",
+    "./bindings": "./+bindings.js"
   },
   "dependencies": {
     "esbuild": "catalog:",

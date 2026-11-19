@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const slot = vi.hoisted(() => ({ client: null as unknown }));
+const room = vi.hoisted(() => ({ encrypted: false }));
 
 vi.mock("./runtime", () => ({
     get matrixClient() {
@@ -19,8 +20,8 @@ vi.mock("./client", () => ({
     }),
 }));
 vi.mock("$lib/matrix/crypto", () => ({
-    isRoomEncrypted: () => false,
-    isRoomEncryptedForSend: async () => false,
+    isRoomEncrypted: () => room.encrypted,
+    isRoomEncryptedForSend: async () => room.encrypted,
 }));
 
 const faststart = vi.hoisted(() => ({
@@ -31,7 +32,8 @@ const faststart = vi.hoisted(() => ({
 }));
 vi.mock("$lib/utils/mp4Faststart", () => ({ faststartMp4: faststart.fn }));
 
-import { sendFile } from "./media";
+import { sendExistingMedia, sendFile, sendGallery } from "./media";
+import type { ReusableMedia } from "./favouriteFile";
 import { setFaststartVideos } from "$lib/stores/settings.svelte";
 
 function makeClient() {
@@ -50,6 +52,111 @@ function sentContent(client: ReturnType<typeof makeClient>) {
 
 beforeEach(() => {
     slot.client = makeClient();
+    room.encrypted = false;
+});
+
+describe("sendExistingMedia", () => {
+    const client = () => slot.client as ReturnType<typeof makeClient>;
+    const plain: ReusableMedia = {
+        url: "mxc://s/original",
+        info: { mimetype: "image/gif", size: 9, w: 4, h: 3 },
+    };
+    const encryptedFile = {
+        url: "mxc://s/secret",
+        key: { k: "KEY", kty: "oct", alg: "A256CTR", ext: true },
+        iv: "IV",
+        hashes: { sha256: "HASH" },
+        v: "v2",
+    };
+    const encrypted: ReusableMedia = {
+        file: encryptedFile,
+        info: { mimetype: "image/png", size: 9 },
+    };
+
+    it("points a new m.image at plaintext media without uploading", async () => {
+        expect(await sendExistingMedia("!r", plain, "cat.gif")).toBe(true);
+        expect(client().uploadContent).not.toHaveBeenCalled();
+        expect(sentContent(client())).toEqual({
+            msgtype: "m.image",
+            body: "cat.gif",
+            url: "mxc://s/original",
+            info: { mimetype: "image/gif", size: 9, w: 4, h: 3 },
+            "m.mentions": {},
+        });
+    });
+
+    it("points a new m.video at a reused video", async () => {
+        const video: ReusableMedia = {
+            url: "mxc://s/clip",
+            info: { mimetype: "video/mp4", size: 9 },
+        };
+        expect(await sendExistingMedia("!r", video, "clip.mp4")).toBe(true);
+        expect(sentContent(client()).msgtype).toBe("m.video");
+    });
+
+    it("sends encrypted media in an encrypted room, without uploading", async () => {
+        room.encrypted = true;
+        expect(await sendExistingMedia("!r", encrypted, "cat.png")).toBe(true);
+        expect(client().uploadContent).not.toHaveBeenCalled();
+        const content = sentContent(client());
+        expect(content.file).toEqual(encryptedFile);
+        expect(content).not.toHaveProperty("url");
+    });
+
+    it("sends nothing for encrypted media in a plaintext room", async () => {
+        expect(await sendExistingMedia("!r", encrypted, "cat.png")).toBe(false);
+        expect(client().sendMessage).not.toHaveBeenCalled();
+        expect(client().uploadContent).not.toHaveBeenCalled();
+    });
+
+    it("refuses media that has neither a url nor a file", async () => {
+        expect(
+            await sendExistingMedia("!r", { info: {} } as ReusableMedia, "x"),
+        ).toBe(false);
+        expect(client().sendMessage).not.toHaveBeenCalled();
+    });
+
+    it("builds caption fields the way sendFile does", async () => {
+        await sendExistingMedia("!r", plain, "cat.gif", {
+            body: "look",
+            formattedBody: "<b>look</b>",
+            mentions: { room: true },
+        });
+        expect(sentContent(client())).toMatchObject({
+            body: "look",
+            filename: "cat.gif",
+            format: "org.matrix.custom.html",
+            formatted_body: "<b>look</b>",
+            "m.mentions": { room: true },
+        });
+    });
+
+    it("applies the transform and the thread relation, and waits before sending", async () => {
+        const order: string[] = [];
+        const transform = vi.fn((c: Record<string, unknown>) => {
+            order.push("transform");
+            return { ...c, "com.example.tag": true };
+        });
+        const beforeSend = vi.fn(async () => {
+            order.push("ready");
+        });
+        await sendExistingMedia(
+            "!r",
+            plain,
+            "cat.gif",
+            undefined,
+            { rootEventId: "$root" },
+            transform,
+            beforeSend,
+        );
+        expect(order).toEqual(["transform", "ready"]);
+        const content = sentContent(client());
+        expect(content["com.example.tag"]).toBe(true);
+        expect(content["m.relates_to"]).toMatchObject({
+            rel_type: "m.thread",
+            event_id: "$root",
+        });
+    });
 });
 
 describe("sendFile content transform", () => {
@@ -161,5 +268,79 @@ describe("sendFile video faststart", () => {
         await send(doc);
         expect(faststart.fn).not.toHaveBeenCalled();
         expect(uploaded()).toBe(doc);
+    });
+});
+
+describe("sendGallery", () => {
+    const client = () => slot.client as ReturnType<typeof makeClient>;
+    const a = new File(["a"], "a.txt", { type: "text/plain" });
+    const b = new File(["bb"], "b.txt", { type: "text/plain" });
+
+    it("sends one gallery event with one item per file, in order", async () => {
+        await sendGallery("!r", [a, b], { body: "two files" });
+        expect(client().sendMessage).toHaveBeenCalledTimes(1);
+        const content = sentContent(client());
+        expect(content.msgtype).toBe("dm.filament.gallery");
+        expect(content.body).toBe("two files");
+        const items = content.itemtypes as Record<string, unknown>[];
+        expect(items.map((i) => i.body)).toEqual(["a.txt", "b.txt"]);
+        expect(items.map((i) => i.itemtype)).toEqual(["m.file", "m.file"]);
+        expect(items[0]).not.toHaveProperty("msgtype");
+        expect(items[0].url).toBe("mxc://s/file");
+    });
+
+    it("sends an empty caption when none is given", async () => {
+        await sendGallery("!r", [a, b]);
+        expect(sentContent(client()).body).toBe("");
+    });
+
+    it("reports progress by file index", async () => {
+        const onProgress = vi.fn();
+        client().uploadContent.mockImplementation(
+            async (
+                _file: unknown,
+                opts?: { progressHandler?: (l: number, t: number) => void },
+            ) => {
+                opts?.progressHandler?.(1, 2);
+                return { content_uri: "mxc://s/file" };
+            },
+        );
+        await sendGallery(
+            "!r",
+            [a, b],
+            undefined,
+            undefined,
+            undefined,
+            onProgress,
+        );
+        const indexes = new Set(onProgress.mock.calls.map((c) => c[0]));
+        expect(indexes).toEqual(new Set([0, 1]));
+    });
+
+    it("puts a reply relation on the gallery, not on the items", async () => {
+        await sendGallery("!r", [a, b], undefined, { replyToEventId: "$q" });
+        const content = sentContent(client());
+        expect(content["m.relates_to"]).toEqual({
+            "m.in_reply_to": { event_id: "$q" },
+        });
+        for (const item of content.itemtypes as Record<string, unknown>[]) {
+            expect(item).not.toHaveProperty("m.relates_to");
+        }
+    });
+
+    it("sends nothing when beforeSend rejects", async () => {
+        const beforeSend = vi.fn().mockRejectedValue(new Error("stop"));
+        await expect(
+            sendGallery(
+                "!r",
+                [a, b],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                beforeSend,
+            ),
+        ).rejects.toThrow("stop");
+        expect(client().sendMessage).not.toHaveBeenCalled();
     });
 });

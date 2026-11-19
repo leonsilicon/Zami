@@ -5,6 +5,7 @@ import {
     getRoom,
     getRoomsInSpace,
     getRoomTags,
+    isAcceptingInvite,
     isRoomLandable,
     isVideoRoom,
     markRoomPendingArrival,
@@ -26,9 +27,11 @@ const STORAGE_KEY = "matrix_last_room_by_space";
 const SPACE_KEY = "matrix_last_space";
 const HOME_KEY = "__home__";
 
-function loadLastRooms(): Record<string, string> {
+function loadLastRooms(
+    userId: string | null = auth.userId,
+): Record<string, string> {
     try {
-        return JSON.parse(readScoped(STORAGE_KEY, auth.userId) ?? "{}");
+        return JSON.parse(readScoped(STORAGE_KEY, userId) ?? "{}");
     } catch {
         return {};
     }
@@ -40,8 +43,21 @@ function saveLastRoom(spaceId: string | null, roomId: string): void {
     writeScoped(STORAGE_KEY, auth.userId, JSON.stringify(map));
 }
 
-function getLastRoom(spaceId: string | null): string | null {
-    return loadLastRooms()[spaceId ?? HOME_KEY] ?? null;
+function getLastRoom(
+    spaceId: string | null,
+    userId: string | null = auth.userId,
+): string | null {
+    return loadLastRooms(userId)[spaceId ?? HOME_KEY] ?? null;
+}
+
+/**
+ * The room this account would land in on boot, read straight from storage.
+ * Sync has not started when the room-list cache is hydrated, so `auth.userId`
+ * is not set yet and `roomsState` still holds module-init defaults: boot passes
+ * the stored session's user id here instead.
+ */
+export function getLastOpenedRoomId(userId: string | null): string | null {
+    return getLastRoom(readScoped(SPACE_KEY, userId), userId);
 }
 
 function loadLastSpace(): string | null {
@@ -222,6 +238,20 @@ export function showSpaceHome(): void {
         interfaceState.leftOpen = false;
 }
 
+/**
+ * Leave the space's home page for the room last open in this space. Falls back
+ * to the landing chain (first room) when that room is gone or was never set.
+ */
+export function restoreLastRoom(): void {
+    const last = getLastRoom(roomsState.activeSpaceId);
+    roomsState.showSpaceHome = false;
+    if (last && isRoomLandable(last)) setActiveRoom(last);
+    else {
+        roomsState.activeRoomId = null;
+        resolveLandingSurface();
+    }
+}
+
 /** Room ids of the current context, in the order the sidebar renders them. */
 function sidebarOrderedIds(rooms: readonly Room[]): string[] {
     return sortRoomsByTag(rooms, (r) => getRoomTags(r.roomId)).map(
@@ -356,7 +386,31 @@ export function setActiveRoom(roomId: string): void {
  * up and, via `scrollToMessage`, fetches a context window if the event is not in
  * the loaded timeline — so an old message still lands.
  */
+/** Whether `roomId` is an invite still waiting for an answer. */
+export function isPendingInvite(roomId: string): boolean {
+    return (
+        !isAcceptingInvite(roomId) &&
+        roomsState.invitedRooms.some((r) => r.roomId === roomId)
+    );
+}
+
+/** Show the invites inbox in the main pane. */
+export function showInviteInbox(): void {
+    roomsState.draftDm = null;
+    roomsState.activeRoomId = null;
+    roomsState.showSpaceHome = false;
+    roomsState.showInbox = true;
+    roomsState.pendingJump = null;
+    if (interfaceState.isMobile) interfaceState.leftOpen = false;
+}
+
 export function navigateToRoom(roomId: string, eventId?: string): void {
+    // A pending invite has no timeline to show: open the invites inbox, where
+    // it can be accepted or declined (an invite notification's tap).
+    if (isPendingInvite(roomId)) {
+        showInviteInbox();
+        return;
+    }
     const targetSpace = findSpaceForRoom(roomId);
     if (targetSpace !== roomsState.activeSpaceId) {
         roomsState.activeSpaceId = targetSpace;

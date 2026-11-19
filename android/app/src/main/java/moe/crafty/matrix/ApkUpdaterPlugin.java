@@ -18,6 +18,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import org.json.JSONObject;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -317,6 +319,55 @@ public class ApkUpdaterPlugin extends Plugin {
     }
 
     /**
+     * The app store or package manager that installed this app, when it is one
+     * that updates apps itself; null for a sideload. Such an install must not
+     * fetch its own APK: the store would see an update it did not make.
+     */
+    @PluginMethod
+    public void installSource(final PluginCall call) {
+        String installer = null;
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            String pkg = getContext().getPackageName();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                installer = pm.getInstallSourceInfo(pkg).getInstallingPackageName();
+            } else {
+                installer = pm.getInstallerPackageName(pkg);
+            }
+        } catch (Exception ignored) {
+            // Unknown: treated as a sideload.
+        }
+        String manager = null;
+        if (installer != null) {
+            switch (installer) {
+                case "org.fdroid.fdroid":
+                case "org.fdroid.basic":
+                    manager = "F-Droid";
+                    break;
+                case "com.looker.droidify":
+                    manager = "Droid-ify";
+                    break;
+                case "com.machiav3lli.fdroid":
+                    manager = "Neo Store";
+                    break;
+                case "dev.imranr.obtainium":
+                case "dev.imranr.obtainium.fdroid":
+                    manager = "Obtainium";
+                    break;
+                case "com.android.vending":
+                    manager = "Google Play";
+                    break;
+                default:
+                    break;
+            }
+        }
+        JSObject ret = new JSObject();
+        if (manager != null) ret.put("manager", manager);
+        else ret.put("manager", JSONObject.NULL);
+        call.resolve(ret);
+    }
+
+    /**
      * Open the system "Install unknown apps" settings screen for this app so
      * the user can grant the permission, then return and retry the install.
      */
@@ -423,7 +474,7 @@ public class ApkUpdaterPlugin extends Plugin {
         for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
             URL parsed = new URL(current);
             if (!isAllowedUrl(parsed, hop)) return null;
-            HttpURLConnection conn = (HttpURLConnection) parsed.openConnection();
+            HttpURLConnection conn = ZamProxy.open(parsed);
             // Anything that leaves this block without handing `conn` to the
             // caller must disconnect it — including a throwing connect() /
             // getResponseCode(), whose connection the caller cannot see and

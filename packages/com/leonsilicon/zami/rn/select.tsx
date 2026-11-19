@@ -119,7 +119,7 @@ export function Select<T extends string = string>({
         {/* As wide as the longest option, as a <select> is, unless its classes size it:
             then it fills the box, or shrinks with it and truncates. */}
         <View style={styles.label}>
-          <Text numberOfLines={1} className="text-sm text-discord-textPrimary">
+          <Text numberOfLines={1} className="text-sm text-zam-textPrimary">
             {selected?.label ?? ""}
           </Text>
           <View
@@ -131,21 +131,21 @@ export function Select<T extends string = string>({
               <Text
                 key={option.key ?? option.value}
                 numberOfLines={1}
-                className="text-sm text-discord-textPrimary"
+                className="text-sm text-zam-textPrimary"
               >
                 {option.label}
               </Text>
             ))}
           </View>
         </View>
-        <ChevronDownIcon size={16} className="text-discord-textMuted" />
+        <ChevronDownIcon size={16} className="text-zam-textMuted" />
       </Pressable>
       {open && anchor && placement ? (
         <Portal>
           <View style={styles.layer} accessibilityViewIsModal onAccessibilityEscape={close}>
             <Pressable style={StyleSheet.absoluteFill} accessible={false} onPress={close} />
             <View
-              className="absolute rounded bg-discord-backgroundSecondary border border-discord-divider overflow-hidden"
+              className="absolute rounded bg-zam-backgroundSecondary border border-zam-divider overflow-hidden"
               style={{
                 left: anchor.x,
                 minWidth: anchor.width,
@@ -164,17 +164,14 @@ export function Select<T extends string = string>({
                       onChange(option.value);
                     }}
                     className={`flex-row items-center justify-between gap-2 px-3 py-2 ${
-                      option.value === value ? "bg-discord-accent/20" : ""
+                      option.value === value ? "bg-zam-accent/20" : ""
                     }`}
                   >
-                    <Text
-                      numberOfLines={1}
-                      className="flex-shrink text-sm text-discord-textPrimary"
-                    >
+                    <Text numberOfLines={1} className="flex-shrink text-sm text-zam-textPrimary">
                       {option.label}
                     </Text>
                     {option.value === value ? (
-                      <CheckIcon size={14} className="text-discord-accent" />
+                      <CheckIcon size={14} className="text-zam-accent" />
                     ) : null}
                   </Pressable>
                 ))}

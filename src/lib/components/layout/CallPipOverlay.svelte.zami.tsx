@@ -27,6 +27,7 @@ import {
     pipWindowSupported,
     openPipWindow,
     showPipTrack,
+    setPipLabel,
     closePipWindow,
     bindPipCallActions,
     reportPipCallState,
@@ -142,8 +143,12 @@ export default function CallPipOverlay() {
             toggleMic: toggleCallMute,
             toggleCamera: cameraDisabled ? null : () => void toggleCamera(),
             hangUp: leaveCall,
+            openCall,
         });
     }, [windowOpen, cameraDisabled]);
+    useEffect(() => {
+        if (windowOpen) setPipLabel(label);
+    }, [windowOpen, label]);
     useEffect(() => {
         if (!windowOpen) return;
         reportPipCallState(!micMuted, cameraOn);
@@ -281,7 +286,7 @@ export default function CallPipOverlay() {
                 // Zami: `transition-[left,top]` is a Reanimated CSS transition on
                 // the Animated.View.
                 <Animated.View
-                    className={`absolute z-40 aspect-video rounded-lg overflow-hidden bg-black shadow-2xl border border-discord-divider touch-none select-none ${
+                    className={`absolute z-40 aspect-video rounded-lg overflow-hidden bg-black shadow-2xl border border-zam-divider touch-none select-none ${
                         dragPos ? "cursor-grabbing" : "cursor-pointer"
                     } ${
                         !dragPos && motionOK()

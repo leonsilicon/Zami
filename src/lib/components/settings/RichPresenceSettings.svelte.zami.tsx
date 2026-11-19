@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
@@ -15,20 +15,24 @@ import {
 } from "$lib/stores/settings.svelte";
 import {
     addCustomGame,
+    disableSteam,
+    enableSteam,
     forgetApp,
     listRunningPrograms,
+    refreshRichPresenceStatus,
     removeCustomGame,
     richPresenceAvailable,
     richPresenceState,
     setAppAllowed,
     syncRichPresence,
+    type SteamDebugOutcome,
 } from "$lib/stores/richPresence.svelte";
 
 // Zami: Text classes sit on each Text; `title` tooltips are dropped. `<code>` is a
 // selectable Text with the monospace font the browser gives it. `data-setting-anchor`
 // (settings search scrolls to it) is not ported. Rich presence needs the desktop
 // bridge (`window.desktop.richPresence`), so on React Native richPresenceAvailable()
-// is false and this renders nothing, as on Zam's web build.
+// is false and this lists only what plugins publish, as on Zam's web build.
 export default function RichPresenceSettings() {
     // Desktop only: apps on this computer report what they are doing and it is
     // published to the profile (MSC4544). Off until switched on here, and each
@@ -39,6 +43,9 @@ export default function RichPresenceSettings() {
         (a, b) => b[1].lastSeen - a[1].lastSeen,
     );
     const status = useDeepRune(() => richPresenceState.status);
+    const desktop = richPresenceAvailable();
+    // Off the desktop app only plugins publish, so only they are listed.
+    const hasPlugins = apps.some(([, a]) => a.source === "plugin");
     const games = useDeepRune(() => richPresenceState.games);
     const publishError = useRune(() => richPresenceState.error);
     const richPresenceEnabled = useRune(
@@ -53,6 +60,7 @@ export default function RichPresenceSettings() {
     const richPresenceFakeDiscord = useRune(
         () => settingsState.richPresenceFakeDiscord,
     );
+    const richPresenceSteam = useRune(() => settingsState.richPresenceSteam);
 
     function onToggleShare(next: boolean): void {
         setRichPresenceEnabled(next);
@@ -82,6 +90,96 @@ export default function RichPresenceSettings() {
     function onToggleFake(next: boolean): void {
         setRichPresenceFakeDiscord(next);
         void syncRichPresence();
+    }
+
+    // Steam: the debug flag is written first (Windows asks for permission), so
+    // the source only turns on once that worked. Turning it off always tries to
+    // remove the flag; the outcome is shown rather than swallowed.
+    const [steamBusy, setSteamBusy] = useState(false);
+    const [steamEnableError, setSteamEnableError] = useState<string | null>(
+        null,
+    );
+    const [steamDisable, setSteamDisable] = useState<SteamDebugOutcome | null>(
+        null,
+    );
+    const [confirmingSteamRestart, setConfirmingSteamRestart] = useState(false);
+    const [steamRestarting, setSteamRestarting] = useState(false);
+    const [steamRestartError, setSteamRestartError] = useState<string | null>(
+        null,
+    );
+    const steamPoll = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const steamVisible =
+        status?.steam?.supported !== false ||
+        status?.steam?.needsPermission === true;
+    // The flag is still set after a failed removal, per the last status read.
+    const steamFlagLeft =
+        !richPresenceSteam &&
+        steamDisable !== null &&
+        !steamDisable.ok &&
+        status?.steam?.enabled !== false;
+
+    function stopSteamPoll(): void {
+        if (steamPoll.current) clearInterval(steamPoll.current);
+        steamPoll.current = null;
+    }
+
+    useEffect(() => stopSteamPoll, []);
+
+    /** After a restart Steam's port takes a moment: look every 2s, for 30s. */
+    function pollSteamPort(): void {
+        stopSteamPoll();
+        let tries = 0;
+        steamPoll.current = setInterval(async () => {
+            tries++;
+            await refreshRichPresenceStatus();
+            if (richPresenceState.status?.steam?.portOpen || tries >= 15)
+                stopSteamPoll();
+        }, 2000);
+    }
+
+    // Zami: a ref beside `steamBusy`, so a second tap before the first
+    // settles sees it busy, as the `$state` read does.
+    const steamBusyRef = useRef(false);
+    async function onToggleSteam(next: boolean): Promise<void> {
+        if (steamBusyRef.current) return;
+        setSteamEnableError(null);
+        setSteamDisable(null);
+        steamBusyRef.current = true;
+        setSteamBusy(true);
+        if (next) {
+            const res = await enableSteam();
+            if (!res.ok)
+                setSteamEnableError(
+                    res.cancelled
+                        ? t("richPresence.steamUacCancelled")
+                        : t("richPresence.steamEnableFailed", {
+                              error: res.error ?? "",
+                          }),
+                );
+        } else {
+            stopSteamPoll();
+            setSteamDisable(await disableSteam());
+        }
+        steamBusyRef.current = false;
+        setSteamBusy(false);
+    }
+
+    async function restartSteam(): Promise<void> {
+        setConfirmingSteamRestart(false);
+        setSteamRestarting(true);
+        setSteamRestartError(null);
+        let restartError: string | null = null;
+        try {
+            const res = await window.desktop?.richPresence?.restartSteam();
+            if (res && !res.ok) restartError = res.error ?? "";
+        } catch (e) {
+            restartError = String((e as Error)?.message ?? e);
+        }
+        setSteamRestartError(restartError);
+        await refreshRichPresenceStatus();
+        setSteamRestarting(false);
+        if (restartError === null) pollSteamPort();
     }
 
     // Discord holds the first slot when it started before Zam.
@@ -173,312 +271,500 @@ export default function RichPresenceSettings() {
 
     return (
         <>
-            {richPresenceAvailable() && (
+            {(desktop || hasPlugins) && (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                         {t("richPresence.heading")}
                     </Text>
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                        <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
-                                {t("richPresence.share")}
-                            </Text>
-                            <Text className="text-xs text-discord-textMuted">
-                                {t("richPresence.shareHint")}
-                            </Text>
-                            {richPresenceEnabled &&
-                                status?.msc4544.listening && (
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("richPresence.listening", {
-                                            port: String(status.msc4544.port),
-                                        })}
-                                    </Text>
-                                )}
-                            {richPresenceEnabled && status?.msc4544.socket ? (
-                                <Text className="text-xs text-discord-textMuted break-all">
-                                    {t("richPresence.socket", {
-                                        path: status.msc4544.socket,
-                                    })}
-                                </Text>
-                            ) : null}
-                            {richPresenceEnabled && status?.msc4544.error ? (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.listenFailed", {
-                                        error: status.msc4544.error,
-                                    })}
-                                </Text>
-                            ) : null}
-                            {publishError ? (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.publishFailed")}{" "}
-                                    {publishError}
-                                </Text>
-                            ) : null}
-                        </View>
-                        <ToggleSwitch
-                            checked={richPresenceEnabled}
-                            onChange={onToggleShare}
-                            label={t("richPresence.share")}
-                        />
-                    </View>
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                        <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
-                                {t("richPresence.arrpc")}
-                            </Text>
-                            <Text className="text-xs text-discord-textMuted">
-                                {t("richPresence.arrpcHint")}
-                            </Text>
-                            {!richPresenceEnabled && (
-                                <Text className="text-xs text-discord-textMuted">
-                                    {t("richPresence.arrpcNeedsShare")}
-                                </Text>
-                            )}
-                            {discordFirst && (
-                                <>
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("richPresence.discordFirst")}
-                                    </Text>
-                                    {status?.arrpc.canRestartDiscord ? (
-                                        <Pressable
-                                            accessibilityRole="button"
-                                            className="mt-1 self-start rounded bg-discord-backgroundSecondary px-2 py-1 hover:bg-discord-backgroundSecondaryAlt disabled:opacity-50"
-                                            disabled={restarting}
-                                            onPress={() =>
-                                                setConfirmingRestart(true)
-                                            }
-                                        >
-                                            <Text className="text-xs text-discord-textPrimary">
-                                                {t(
-                                                    "richPresence.restartDiscord",
-                                                )}
-                                            </Text>
-                                        </Pressable>
-                                    ) : status?.arrpc.needsPermission ? (
-                                        <>
-                                            <Text className="text-xs text-discord-textMuted">
-                                                {t(
-                                                    "richPresence.hostNeedsPermission",
-                                                )}
-                                            </Text>
-                                            <Text
-                                                selectable
-                                                className="mt-1 break-all rounded bg-discord-backgroundTertiary p-2 font-mono text-xs text-discord-textPrimary"
-                                            >
-                                                {t(
-                                                    "richPresence.scanGrantCommand",
-                                                )}
-                                            </Text>
-                                        </>
-                                    ) : null}
-                                </>
-                            )}
-                            {restartError !== null && (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.restartDiscordFailed", {
-                                        error: restartError,
-                                    })}
-                                </Text>
-                            )}
-                            {richPresenceEnabled &&
-                            richPresenceArrpc &&
-                            status?.arrpc.error ? (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.arrpcFailed", {
-                                        error: status.arrpc.error,
-                                    })}
-                                </Text>
-                            ) : null}
-                        </View>
-                        <ToggleSwitch
-                            checked={richPresenceArrpc}
-                            onChange={onToggleArrpc}
-                            label={t("richPresence.arrpc")}
-                        />
-                    </View>
-
-                    {richPresenceEnabled &&
-                        richPresenceArrpc &&
-                        status?.arrpc.canRestartDiscord && (
-                            <View className="flex-row items-center gap-3 py-2 ps-4 border-b border-discord-divider">
+                    {!desktop && publishError ? (
+                        <Text className="text-xs text-zam-danger mb-2">
+                            {t("richPresence.publishFailed")} {publishError}
+                        </Text>
+                    ) : null}
+                    {desktop && (
+                        <>
+                            <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                                 <View className="flex-1 min-w-0">
-                                    <Text className="text-sm text-discord-textPrimary">
-                                        {t("richPresence.autoRestart")}
+                                    <Text className="text-sm text-zam-textPrimary">
+                                        {t("richPresence.share")}
                                     </Text>
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("richPresence.autoRestartHint")}
+                                    <Text className="text-xs text-zam-textMuted">
+                                        {t("richPresence.shareHint")}
                                     </Text>
+                                    {richPresenceEnabled &&
+                                        status?.msc4544.listening && (
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t("richPresence.listening", {
+                                                    port: String(
+                                                        status.msc4544.port,
+                                                    ),
+                                                })}
+                                            </Text>
+                                        )}
+                                    {richPresenceEnabled &&
+                                    status?.msc4544.socket ? (
+                                        <Text className="text-xs text-zam-textMuted break-all">
+                                            {t("richPresence.socket", {
+                                                path: status.msc4544.socket,
+                                            })}
+                                        </Text>
+                                    ) : null}
+                                    {richPresenceEnabled &&
+                                    status?.msc4544.error ? (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t("richPresence.listenFailed", {
+                                                error: status.msc4544.error,
+                                            })}
+                                        </Text>
+                                    ) : null}
+                                    {publishError ? (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t("richPresence.publishFailed")}{" "}
+                                            {publishError}
+                                        </Text>
+                                    ) : null}
                                 </View>
                                 <ToggleSwitch
-                                    checked={richPresenceAutoRestartDiscord}
-                                    onChange={onToggleAutoRestart}
-                                    label={t("richPresence.autoRestart")}
+                                    checked={richPresenceEnabled}
+                                    onChange={onToggleShare}
+                                    label={t("richPresence.share")}
                                 />
                             </View>
-                        )}
-
-                    {richPresenceEnabled &&
-                        richPresenceArrpc &&
-                        status?.fake?.supported && (
-                            <View className="flex-row items-center gap-3 py-2 ps-4 border-b border-discord-divider">
+                            <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                                 <View className="flex-1 min-w-0">
-                                    <Text className="text-sm text-discord-textPrimary">
-                                        {t("richPresence.fake")}
+                                    <Text className="text-sm text-zam-textPrimary">
+                                        {t("richPresence.arrpc")}
                                     </Text>
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("richPresence.fakeHint")}
+                                    <Text className="text-xs text-zam-textMuted">
+                                        {t("richPresence.arrpcHint")}
                                     </Text>
-                                    {status.fake.needsPermission && (
+                                    {!richPresenceEnabled && (
+                                        <Text className="text-xs text-zam-textMuted">
+                                            {t("richPresence.arrpcNeedsShare")}
+                                        </Text>
+                                    )}
+                                    {discordFirst && (
                                         <>
-                                            <Text className="text-xs text-discord-textMuted">
-                                                {t(
-                                                    "richPresence.hostNeedsPermission",
-                                                )}
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t("richPresence.discordFirst")}
                                             </Text>
-                                            <Text
-                                                selectable
-                                                className="mt-1 break-all rounded bg-discord-backgroundTertiary p-2 font-mono text-xs text-discord-textPrimary"
-                                            >
-                                                {t(
-                                                    "richPresence.scanGrantCommand",
-                                                )}
-                                            </Text>
+                                            {status?.arrpc.canRestartDiscord ? (
+                                                <Pressable
+                                                    accessibilityRole="button"
+                                                    className="mt-1 self-start rounded bg-zam-backgroundSecondary px-2 py-1 hover:bg-zam-backgroundSecondaryAlt disabled:opacity-50"
+                                                    disabled={restarting}
+                                                    onPress={() =>
+                                                        setConfirmingRestart(
+                                                            true,
+                                                        )
+                                                    }
+                                                >
+                                                    <Text className="text-xs text-zam-textPrimary">
+                                                        {t(
+                                                            "richPresence.restartDiscord",
+                                                        )}
+                                                    </Text>
+                                                </Pressable>
+                                            ) : status?.arrpc
+                                                  .needsPermission ? (
+                                                <>
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "richPresence.hostNeedsPermission",
+                                                        )}
+                                                    </Text>
+                                                    <Text
+                                                        selectable
+                                                        className="mt-1 break-all rounded bg-zam-backgroundTertiary p-2 font-mono text-xs text-zam-textPrimary"
+                                                    >
+                                                        {t(
+                                                            "richPresence.scanGrantCommand",
+                                                        )}
+                                                    </Text>
+                                                </>
+                                            ) : null}
                                         </>
                                     )}
-                                    {richPresenceFakeDiscord &&
-                                    status.fake.error ? (
-                                        <Text className="text-xs text-discord-danger">
-                                            {t("richPresence.fakeFailed", {
-                                                error: status.fake.error,
+                                    {restartError !== null && (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t(
+                                                "richPresence.restartDiscordFailed",
+                                                {
+                                                    error: restartError,
+                                                },
+                                            )}
+                                        </Text>
+                                    )}
+                                    {richPresenceEnabled &&
+                                    richPresenceArrpc &&
+                                    status?.arrpc.error ? (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t("richPresence.arrpcFailed", {
+                                                error: status.arrpc.error,
                                             })}
                                         </Text>
                                     ) : null}
                                 </View>
                                 <ToggleSwitch
-                                    checked={richPresenceFakeDiscord}
-                                    onChange={onToggleFake}
-                                    label={t("richPresence.fake")}
+                                    checked={richPresenceArrpc}
+                                    onChange={onToggleArrpc}
+                                    label={t("richPresence.arrpc")}
                                 />
                             </View>
-                        )}
 
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                        <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
-                                {t("richPresence.scan")}
-                            </Text>
-                            <Text className="text-xs text-discord-textMuted">
-                                {t("richPresence.scanHint")}
-                            </Text>
                             {richPresenceEnabled &&
-                            richPresenceScan &&
-                            status?.scan.needsPermission ? (
-                                <>
-                                    <Text className="text-xs text-discord-textMuted">
-                                        {t("richPresence.scanNeedsPermission")}
-                                    </Text>
-                                    <Text
-                                        selectable
-                                        className="mt-1 break-all rounded bg-discord-backgroundTertiary p-2 font-mono text-xs text-discord-textPrimary"
-                                    >
-                                        {t("richPresence.scanGrantCommand")}
-                                    </Text>
-                                </>
-                            ) : !richPresenceEnabled ? (
-                                <Text className="text-xs text-discord-textMuted">
-                                    {t("richPresence.arrpcNeedsShare")}
-                                </Text>
-                            ) : null}
-                            {richPresenceEnabled &&
-                            richPresenceScan &&
-                            status?.scan.error ? (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.scanFailed", {
-                                        error: status.scan.error,
-                                    })}
-                                </Text>
-                            ) : null}
-                            {richPresenceEnabled &&
-                                (richPresenceScan || richPresenceArrpc) &&
-                                status?.games && (
-                                    <>
-                                        {status.games.downloading ? (
-                                            <Text className="text-xs text-discord-textMuted">
+                                richPresenceArrpc &&
+                                status?.arrpc.canRestartDiscord && (
+                                    <View className="flex-row items-center gap-3 py-2 ps-4 border-b border-zam-divider">
+                                        <View className="flex-1 min-w-0">
+                                            <Text className="text-sm text-zam-textPrimary">
+                                                {t("richPresence.autoRestart")}
+                                            </Text>
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {t(
-                                                    "richPresence.gameListDownloading",
+                                                    "richPresence.autoRestartHint",
                                                 )}
                                             </Text>
-                                        ) : status.games.updated !== null ? (
-                                            <Text className="text-xs text-discord-textMuted">
-                                                {t("richPresence.gameList", {
-                                                    count: String(
-                                                        status.games.count,
-                                                    ),
-                                                    when: new Date(
-                                                        status.games.updated,
-                                                    ).toLocaleDateString(),
+                                        </View>
+                                        <ToggleSwitch
+                                            checked={
+                                                richPresenceAutoRestartDiscord
+                                            }
+                                            onChange={onToggleAutoRestart}
+                                            label={t(
+                                                "richPresence.autoRestart",
+                                            )}
+                                        />
+                                    </View>
+                                )}
+
+                            {richPresenceEnabled &&
+                                richPresenceArrpc &&
+                                status?.fake?.supported && (
+                                    <View className="flex-row items-center gap-3 py-2 ps-4 border-b border-zam-divider">
+                                        <View className="flex-1 min-w-0">
+                                            <Text className="text-sm text-zam-textPrimary">
+                                                {t("richPresence.fake")}
+                                            </Text>
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t("richPresence.fakeHint")}
+                                            </Text>
+                                            {status.fake.needsPermission && (
+                                                <>
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "richPresence.hostNeedsPermission",
+                                                        )}
+                                                    </Text>
+                                                    <Text
+                                                        selectable
+                                                        className="mt-1 break-all rounded bg-zam-backgroundTertiary p-2 font-mono text-xs text-zam-textPrimary"
+                                                    >
+                                                        {t(
+                                                            "richPresence.scanGrantCommand",
+                                                        )}
+                                                    </Text>
+                                                </>
+                                            )}
+                                            {richPresenceFakeDiscord &&
+                                            status.fake.error ? (
+                                                <Text className="text-xs text-zam-danger">
+                                                    {t(
+                                                        "richPresence.fakeFailed",
+                                                        {
+                                                            error: status.fake
+                                                                .error,
+                                                        },
+                                                    )}
+                                                </Text>
+                                            ) : null}
+                                        </View>
+                                        <ToggleSwitch
+                                            checked={richPresenceFakeDiscord}
+                                            onChange={onToggleFake}
+                                            label={t("richPresence.fake")}
+                                        />
+                                    </View>
+                                )}
+
+                            <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                                <View className="flex-1 min-w-0">
+                                    <Text className="text-sm text-zam-textPrimary">
+                                        {t("richPresence.scan")}
+                                    </Text>
+                                    <Text className="text-xs text-zam-textMuted">
+                                        {t("richPresence.scanHint")}
+                                    </Text>
+                                    {richPresenceEnabled &&
+                                    richPresenceScan &&
+                                    status?.scan.needsPermission ? (
+                                        <>
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t(
+                                                    "richPresence.scanNeedsPermission",
+                                                )}
+                                            </Text>
+                                            <Text
+                                                selectable
+                                                className="mt-1 break-all rounded bg-zam-backgroundTertiary p-2 font-mono text-xs text-zam-textPrimary"
+                                            >
+                                                {t(
+                                                    "richPresence.scanGrantCommand",
+                                                )}
+                                            </Text>
+                                        </>
+                                    ) : !richPresenceEnabled ? (
+                                        <Text className="text-xs text-zam-textMuted">
+                                            {t("richPresence.arrpcNeedsShare")}
+                                        </Text>
+                                    ) : null}
+                                    {richPresenceEnabled &&
+                                    richPresenceScan &&
+                                    status?.scan.error ? (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t("richPresence.scanFailed", {
+                                                error: status.scan.error,
+                                            })}
+                                        </Text>
+                                    ) : null}
+                                    {richPresenceEnabled &&
+                                        (richPresenceScan ||
+                                            richPresenceArrpc) &&
+                                        status?.games && (
+                                            <>
+                                                {status.games.downloading ? (
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "richPresence.gameListDownloading",
+                                                        )}
+                                                    </Text>
+                                                ) : status.games.updated !==
+                                                  null ? (
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "richPresence.gameList",
+                                                            {
+                                                                count: String(
+                                                                    status.games
+                                                                        .count,
+                                                                ),
+                                                                when: new Date(
+                                                                    status.games
+                                                                        .updated,
+                                                                ).toLocaleDateString(),
+                                                            },
+                                                        )}
+                                                    </Text>
+                                                ) : null}
+                                                {status.games.error ? (
+                                                    <Text className="text-xs text-zam-danger">
+                                                        {t(
+                                                            "richPresence.gameListFailed",
+                                                            {
+                                                                error: status
+                                                                    .games
+                                                                    .error,
+                                                            },
+                                                        )}
+                                                    </Text>
+                                                ) : null}
+                                            </>
+                                        )}
+                                </View>
+                                <ToggleSwitch
+                                    checked={richPresenceScan}
+                                    onChange={onToggleScan}
+                                    label={t("richPresence.scan")}
+                                />
+                            </View>
+
+                            {steamVisible && (
+                                <View
+                                    className={`flex-row items-center gap-3 py-2 border-b border-zam-divider ${
+                                        steamBusy
+                                            ? "opacity-50 pointer-events-none"
+                                            : ""
+                                    }`}
+                                    accessibilityState={{ busy: steamBusy }}
+                                >
+                                    <View className="flex-1 min-w-0">
+                                        <Text className="text-sm text-zam-textPrimary">
+                                            {t("richPresence.steam")}
+                                        </Text>
+                                        <Text className="text-xs text-zam-textMuted">
+                                            {t("richPresence.steamHint")}
+                                        </Text>
+                                        {!richPresenceEnabled && (
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t(
+                                                    "richPresence.arrpcNeedsShare",
+                                                )}
+                                            </Text>
+                                        )}
+                                        {status?.steam?.needsPermission && (
+                                            <>
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {t(
+                                                        "richPresence.hostNeedsPermission",
+                                                    )}
+                                                </Text>
+                                                <Text
+                                                    selectable
+                                                    className="mt-1 break-all rounded bg-zam-backgroundTertiary p-2 font-mono text-xs text-zam-textPrimary"
+                                                >
+                                                    {t(
+                                                        "richPresence.scanGrantCommand",
+                                                    )}
+                                                </Text>
+                                            </>
+                                        )}
+                                        {steamEnableError !== null && (
+                                            <Text className="text-xs text-zam-danger">
+                                                {steamEnableError}
+                                            </Text>
+                                        )}
+                                        {steamFlagLeft && steamDisable && (
+                                            <Text className="text-xs text-zam-danger">
+                                                {steamDisable.cancelled
+                                                    ? t(
+                                                          "richPresence.steamUacCancelled",
+                                                      )
+                                                    : t(
+                                                          "richPresence.steamDisableFailed",
+                                                          {
+                                                              error:
+                                                                  steamDisable.error ??
+                                                                  "",
+                                                          },
+                                                      )}
+                                            </Text>
+                                        )}
+                                        {richPresenceEnabled &&
+                                        richPresenceSteam &&
+                                        status?.steam?.error ? (
+                                            <Text className="text-xs text-zam-danger">
+                                                {t("richPresence.steamFailed", {
+                                                    error: status.steam.error,
                                                 })}
                                             </Text>
                                         ) : null}
-                                        {status.games.error ? (
-                                            <Text className="text-xs text-discord-danger">
+                                        {richPresenceEnabled &&
+                                            richPresenceSteam &&
+                                            status?.steam?.connected && (
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {t(
+                                                        "richPresence.steamConnected",
+                                                    )}
+                                                </Text>
+                                            )}
+                                        {richPresenceSteam &&
+                                            status?.steam &&
+                                            !status.steam.portOpen &&
+                                            (status.steam.steamRunning ? (
+                                                <>
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "richPresence.steamNeedsRestart",
+                                                        )}
+                                                    </Text>
+                                                    <Pressable
+                                                        accessibilityRole="button"
+                                                        accessibilityState={{
+                                                            disabled:
+                                                                steamRestarting,
+                                                        }}
+                                                        className={`mt-1 self-start rounded bg-zam-backgroundSecondary px-2 py-1 hover:bg-zam-backgroundSecondaryAlt ${
+                                                            steamRestarting
+                                                                ? "opacity-50"
+                                                                : ""
+                                                        }`}
+                                                        disabled={
+                                                            steamRestarting
+                                                        }
+                                                        onPress={() =>
+                                                            setConfirmingSteamRestart(
+                                                                true,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Text className="text-xs text-zam-textPrimary">
+                                                            {t(
+                                                                "richPresence.restartSteam",
+                                                            )}
+                                                        </Text>
+                                                    </Pressable>
+                                                </>
+                                            ) : (
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {t(
+                                                        "richPresence.steamNotRunning",
+                                                    )}
+                                                </Text>
+                                            ))}
+                                        {steamRestartError !== null && (
+                                            <Text className="text-xs text-zam-danger">
                                                 {t(
-                                                    "richPresence.gameListFailed",
+                                                    "richPresence.restartSteamFailed",
                                                     {
-                                                        error: status.games
-                                                            .error,
+                                                        error: steamRestartError,
                                                     },
                                                 )}
                                             </Text>
-                                        ) : null}
-                                    </>
-                                )}
-                        </View>
-                        <ToggleSwitch
-                            checked={richPresenceScan}
-                            onChange={onToggleScan}
-                            label={t("richPresence.scan")}
-                        />
-                    </View>
-
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
-                        <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
-                                {t("richPresence.media")}
-                            </Text>
-                            <Text className="text-xs text-discord-textMuted">
-                                {t("richPresence.mediaHint")}
-                            </Text>
-                            {!richPresenceEnabled && (
-                                <Text className="text-xs text-discord-textMuted">
-                                    {t("richPresence.arrpcNeedsShare")}
-                                </Text>
+                                        )}
+                                    </View>
+                                    <ToggleSwitch
+                                        checked={richPresenceSteam}
+                                        onChange={(next) =>
+                                            void onToggleSteam(next)
+                                        }
+                                        label={t("richPresence.steam")}
+                                    />
+                                </View>
                             )}
-                            {richPresenceEnabled &&
-                            richPresenceMedia &&
-                            status?.media?.error ? (
-                                <Text className="text-xs text-discord-danger">
-                                    {t("richPresence.mediaFailed", {
-                                        error: status.media.error,
-                                    })}
-                                </Text>
-                            ) : null}
-                        </View>
-                        <ToggleSwitch
-                            checked={richPresenceMedia}
-                            onChange={onToggleMedia}
-                            label={t("richPresence.media")}
-                        />
-                    </View>
 
-                    <Text className="text-sm text-discord-textPrimary mt-4 mb-1">
-                        {t("richPresence.addedGames")}
-                    </Text>
-                    <Text className="text-xs text-discord-textMuted mb-2">
-                        {t("richPresence.addedGamesHint")}
-                    </Text>
+                            <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                                <View className="flex-1 min-w-0">
+                                    <Text className="text-sm text-zam-textPrimary">
+                                        {t("richPresence.media")}
+                                    </Text>
+                                    <Text className="text-xs text-zam-textMuted">
+                                        {t("richPresence.mediaHint")}
+                                    </Text>
+                                    {!richPresenceEnabled && (
+                                        <Text className="text-xs text-zam-textMuted">
+                                            {t("richPresence.arrpcNeedsShare")}
+                                        </Text>
+                                    )}
+                                    {richPresenceEnabled &&
+                                    richPresenceMedia &&
+                                    status?.media?.error ? (
+                                        <Text className="text-xs text-zam-danger">
+                                            {t("richPresence.mediaFailed", {
+                                                error: status.media.error,
+                                            })}
+                                        </Text>
+                                    ) : null}
+                                </View>
+                                <ToggleSwitch
+                                    checked={richPresenceMedia}
+                                    onChange={onToggleMedia}
+                                    label={t("richPresence.media")}
+                                />
+                            </View>
+                        </>
+                    )}
+                    {desktop && (
+                        <>
+                            <Text className="text-sm text-zam-textPrimary mt-4 mb-1">
+                                {t("richPresence.addedGames")}
+                            </Text>
+                            <Text className="text-xs text-zam-textMuted mb-2">
+                                {t("richPresence.addedGamesHint")}
+                            </Text>
+                        </>
+                    )}
                     {apps.length === 0 ? (
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("richPresence.noApps")}
                         </Text>
                     ) : (
@@ -490,51 +776,60 @@ export default function RichPresenceSettings() {
                                 return (
                                     <View
                                         key={key}
-                                        className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                                        className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
                                     >
                                         <View className="flex-1 min-w-0">
                                             <Text
                                                 numberOfLines={1}
-                                                className="text-sm text-discord-textPrimary truncate"
+                                                className="text-sm text-zam-textPrimary truncate"
                                             >
                                                 {app.name}
                                             </Text>
                                             {added ? (
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="text-xs text-discord-textMuted truncate"
+                                                    className="text-xs text-zam-textMuted truncate"
                                                 >
                                                     {added.exe}
                                                 </Text>
                                             ) : (
-                                                <Text className="text-xs text-discord-textMuted">
-                                                    {app.source !== "arrpc"
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {app.source === "plugin"
                                                         ? t(
-                                                              "richPresence.viaMatrix",
+                                                              "richPresence.viaPlugin",
                                                           )
-                                                        : app.viaMedia
+                                                        : app.source !== "arrpc"
                                                           ? t(
-                                                                "richPresence.viaMedia",
+                                                                "richPresence.viaMatrix",
                                                             )
-                                                          : app.viaScan ||
-                                                              app.viaRpc
-                                                            ? [
-                                                                  app.viaRpc &&
-                                                                      t(
-                                                                          "richPresence.viaRpc",
-                                                                      ),
-                                                                  app.viaScan &&
-                                                                      t(
-                                                                          "richPresence.viaScan",
-                                                                      ),
-                                                              ]
-                                                                  .filter(
-                                                                      Boolean,
-                                                                  )
-                                                                  .join(" + ")
-                                                            : t(
-                                                                  "richPresence.viaDiscord",
-                                                              )}{" "}
+                                                          : app.viaMedia
+                                                            ? t(
+                                                                  "richPresence.viaMedia",
+                                                              )
+                                                            : app.viaScan ||
+                                                                app.viaRpc ||
+                                                                app.viaSteam
+                                                              ? [
+                                                                    app.viaRpc &&
+                                                                        t(
+                                                                            "richPresence.viaRpc",
+                                                                        ),
+                                                                    app.viaScan &&
+                                                                        t(
+                                                                            "richPresence.viaScan",
+                                                                        ),
+                                                                    app.viaSteam &&
+                                                                        t(
+                                                                            "richPresence.viaSteam",
+                                                                        ),
+                                                                ]
+                                                                    .filter(
+                                                                        Boolean,
+                                                                    )
+                                                                    .join(" + ")
+                                                              : t(
+                                                                    "richPresence.viaDiscord",
+                                                                )}{" "}
                                                     · {lastPlayed(app.lastSeen)}
                                                 </Text>
                                             )}
@@ -553,7 +848,7 @@ export default function RichPresenceSettings() {
                                                     : forgetApp(key)
                                             }
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                 {added
                                                     ? t("common.remove")
                                                     : t("richPresence.forget")}
@@ -574,14 +869,14 @@ export default function RichPresenceSettings() {
                         </View>
                     )}
                     {picking ? (
-                        <View className="mt-2 rounded bg-discord-backgroundTertiary p-3 gap-2">
+                        <View className="mt-2 rounded bg-zam-backgroundTertiary p-3 gap-2">
                             {chosen ? (
                                 <>
-                                    <Text className="text-xs text-discord-textMuted break-all">
+                                    <Text className="text-xs text-zam-textMuted break-all">
                                         {chosen.path}
                                     </Text>
                                     <View>
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {t("richPresence.gameName")}
                                         </Text>
                                         <TextInput
@@ -591,13 +886,13 @@ export default function RichPresenceSettings() {
                                             accessibilityLabel={t(
                                                 "richPresence.gameName",
                                             )}
-                                            className="mt-1 w-full rounded bg-discord-background px-2 py-1.5 text-sm text-discord-textPrimary"
+                                            className="mt-1 w-full rounded bg-zam-background px-2 py-1.5 text-sm text-zam-textPrimary"
                                         />
                                     </View>
                                     <View className="flex-row gap-2">
                                         <Pressable
                                             accessibilityRole="button"
-                                            className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
+                                            className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover disabled:opacity-50"
                                             disabled={!gameName.trim()}
                                             onPress={confirmAdd}
                                         >
@@ -610,7 +905,7 @@ export default function RichPresenceSettings() {
                                             className="px-3 py-1.5 rounded"
                                             onPress={() => setChosen(null)}
                                         >
-                                            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                                                 {t("common.cancel")}
                                             </Text>
                                         </Pressable>
@@ -625,7 +920,7 @@ export default function RichPresenceSettings() {
                                             placeholder={t(
                                                 "richPresence.searchPrograms",
                                             )}
-                                            placeholderTextColorClassName="accent-discord-textMuted"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
                                             accessibilityLabel={t(
                                                 "richPresence.searchPrograms",
                                             )}
@@ -633,14 +928,14 @@ export default function RichPresenceSettings() {
                                             clearButtonMode="while-editing"
                                             autoCapitalize="none"
                                             autoCorrect={false}
-                                            className="flex-1 min-w-0 rounded bg-discord-background px-2 py-1.5 text-sm text-discord-textPrimary"
+                                            className="flex-1 min-w-0 rounded bg-zam-background px-2 py-1.5 text-sm text-zam-textPrimary"
                                         />
                                         <Pressable
                                             accessibilityRole="button"
                                             disabled={loadingPrograms}
                                             onPress={loadPrograms}
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                 {t(
                                                     "richPresence.refreshPrograms",
                                                 )}
@@ -650,13 +945,13 @@ export default function RichPresenceSettings() {
                                             accessibilityRole="button"
                                             onPress={() => setPicking(false)}
                                         >
-                                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                                 {t("common.cancel")}
                                             </Text>
                                         </Pressable>
                                     </View>
                                     {shownPrograms.length === 0 ? (
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {loadingPrograms
                                                 ? t("common.loading")
                                                 : t("richPresence.noPrograms")}
@@ -671,18 +966,18 @@ export default function RichPresenceSettings() {
                                                 <Pressable
                                                     key={p.path}
                                                     accessibilityRole="button"
-                                                    className="w-full rounded px-2 py-1 hover:bg-discord-messageHover"
+                                                    className="w-full rounded px-2 py-1 hover:bg-zam-messageHover"
                                                     onPress={() => choose(p)}
                                                 >
                                                     <Text
                                                         numberOfLines={1}
-                                                        className="text-sm text-discord-textPrimary truncate"
+                                                        className="text-sm text-zam-textPrimary truncate"
                                                     >
                                                         {p.name}
                                                     </Text>
                                                     <Text
                                                         numberOfLines={1}
-                                                        className="text-xs text-discord-textMuted truncate"
+                                                        className="text-xs text-zam-textMuted truncate"
                                                     >
                                                         {p.path}
                                                     </Text>
@@ -693,34 +988,34 @@ export default function RichPresenceSettings() {
                                 </>
                             )}
                         </View>
-                    ) : (
+                    ) : desktop ? (
                         <Pressable
                             accessibilityRole="button"
-                            className="mt-2 self-start px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                            className="mt-2 self-start px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                             onPress={startPicking}
                         >
-                            <Text className="text-sm font-semibold text-discord-textPrimary">
+                            <Text className="text-sm font-semibold text-zam-textPrimary">
                                 {t("richPresence.addGame")}
                             </Text>
                         </Pressable>
-                    )}
+                    ) : null}
                 </View>
             )}
 
             {confirmingRestart && (
                 <ModalDialog
                     onClose={() => setConfirmingRestart(false)}
-                    labelledBy="restart-discord-title"
-                    panelClass="relative w-full max-w-sm rounded-lg bg-discord-backgroundSecondary p-4 shadow-xl"
+                    labelledBy="restart-zam-title"
+                    panelClass="relative w-full max-w-sm rounded-lg bg-zam-backgroundSecondary p-4 shadow-xl"
                 >
                     <Text
-                        nativeID="restart-discord-title"
+                        nativeID="restart-zam-title"
                         accessibilityRole="header"
-                        className="mb-2 text-base font-semibold text-discord-textPrimary"
+                        className="mb-2 text-base font-semibold text-zam-textPrimary"
                     >
                         {t("richPresence.restartDiscordTitle")}
                     </Text>
-                    <Text className="mb-3 text-sm text-discord-textSecondary">
+                    <Text className="mb-3 text-sm text-zam-textSecondary">
                         {t("richPresence.restartDiscordBody")}
                     </Text>
                     <View className="flex-row justify-end gap-2">
@@ -729,17 +1024,56 @@ export default function RichPresenceSettings() {
                             className="px-3 py-1"
                             onPress={() => setConfirmingRestart(false)}
                         >
-                            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
                         <Pressable
                             accessibilityRole="button"
-                            className="rounded bg-discord-accent px-3 py-1"
+                            className="rounded bg-zam-accent px-3 py-1"
                             onPress={restartDiscord}
                         >
                             <Text className="text-sm text-white">
                                 {t("richPresence.restartDiscord")}
+                            </Text>
+                        </Pressable>
+                    </View>
+                </ModalDialog>
+            )}
+
+            {confirmingSteamRestart && (
+                <ModalDialog
+                    onClose={() => setConfirmingSteamRestart(false)}
+                    labelledBy="restart-steam-title"
+                    panelClass="relative w-full max-w-sm rounded-lg bg-zam-backgroundSecondary p-4 shadow-xl"
+                >
+                    <Text
+                        nativeID="restart-steam-title"
+                        accessibilityRole="header"
+                        className="mb-2 text-base font-semibold text-zam-textPrimary"
+                    >
+                        {t("richPresence.restartSteamTitle")}
+                    </Text>
+                    <Text className="mb-3 text-sm text-zam-textSecondary">
+                        {t("richPresence.restartSteamBody")}
+                    </Text>
+                    <View className="flex-row justify-end gap-2">
+                        <Pressable
+                            accessibilityRole="button"
+                            className="px-3 py-1"
+                            onPress={() => setConfirmingSteamRestart(false)}
+                        >
+                            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
+                                {t("common.cancel")}
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            accessibilityRole="button"
+                            className="rounded bg-zam-accent px-3 py-1"
+                            onPress={restartSteam}
+                        >
+                            <Text className="text-sm text-white">
+                                {t("richPresence.restartSteam")}
                             </Text>
                         </Pressable>
                     </View>

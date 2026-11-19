@@ -34,6 +34,7 @@ import type { Room, MatrixEvent } from "matrix-js-sdk";
 import MessageItem from "$lib/components/messages/MessageItem.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { sedEditLastMessage } from "$lib/matrix/editMessage";
+import { lastEditableOwnMessage } from "$lib/utils/editableMessage";
 import {
     getThreadMessages,
     paginateThreadBack,
@@ -95,6 +96,8 @@ export default function ThreadPanel({
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [noMoreOlder, setNoMoreOlder] = useState(false);
     const [replyToEvent, setReplyToEvent] = useState<MatrixEvent | null>(null);
+    // The message being edited in this thread's composer (edit mode).
+    const [editEvent, setEditEvent] = useState<MatrixEvent | null>(null);
     const messageInputEl = useRef<MessageInputHandle>(null);
     // Plain (non-reactive) scroll bookkeeping for the auto-scroll effect below.
     const atBottom = useRef(true);
@@ -225,6 +228,7 @@ export default function ThreadPanel({
         setNoMoreOlder(false);
         setLoadingOlder(false);
         setReplyToEvent(null);
+        setEditEvent(null);
         atBottom.current = true;
         lastLatestId.current = null;
     }, [rootEventId]);
@@ -307,6 +311,8 @@ export default function ThreadPanel({
         setReplyToEvent(e);
         messageInputEl.current?.focus();
     }, []);
+    const onStartEdit = useCallback((ev: MatrixEvent) => setEditEvent(ev), []);
+    const editEventId = editEvent?.getId() ?? null;
 
     // Zami: stable while what it reads is, so a render of the panel doesn't
     // re-render every reply; each is a memo'd ReplyRow (B7).
@@ -325,12 +331,24 @@ export default function ThreadPanel({
                             ? highlight.n
                             : 0
                     }
+                    onStartEdit={onStartEdit}
+                    isBeingEdited={
+                        !!editEventId && editEventId === event.getId()
+                    }
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                 />
             );
         },
-        [messages, room, highlight, onReply, jumpToReply],
+        [
+            messages,
+            room,
+            highlight,
+            onStartEdit,
+            editEventId,
+            onReply,
+            jumpToReply,
+        ],
     );
 
     const titleLabel = threadName
@@ -342,13 +360,13 @@ export default function ThreadPanel({
             <View
                 className={`${
                     fullscreen ? "w-full" : "w-80 border-l"
-                } h-full flex-shrink-0 flex flex-col border-discord-divider bg-discord-background overflow-hidden`}
+                } h-full flex-shrink-0 flex flex-col border-zam-divider bg-zam-background overflow-hidden`}
             >
                 {/* Header */}
-                <View className="h-12 px-4 flex-row items-center justify-between border-b border-discord-divider flex-shrink-0">
+                <View className="h-12 px-4 flex-row items-center justify-between border-b border-zam-divider flex-shrink-0">
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink font-semibold text-discord-textPrimary text-sm min-w-0"
+                        className="flex-shrink font-semibold text-zam-textPrimary text-sm min-w-0"
                     >
                         {threadName ?? t("threadPanel.thread")}
                     </Text>
@@ -357,11 +375,11 @@ export default function ThreadPanel({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={openRename}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                                 accessibilityLabel={titleLabel}
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 text-discord-textMuted"
+                                    className="w-4 h-4 text-zam-textMuted"
                                     d={RENAME_PATH}
                                 />
                             </Pressable>
@@ -370,7 +388,7 @@ export default function ThreadPanel({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={onToggleFullscreen}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                                 accessibilityLabel={
                                     fullscreen
                                         ? t("threadPanel.collapseThread")
@@ -379,12 +397,12 @@ export default function ThreadPanel({
                             >
                                 {fullscreen ? (
                                     <SvgIcon
-                                        className="w-4 h-4 text-discord-textMuted"
+                                        className="w-4 h-4 text-zam-textMuted"
                                         d={COLLAPSE_PATH}
                                     />
                                 ) : (
                                     <SvgIcon
-                                        className="w-4 h-4 text-discord-textMuted"
+                                        className="w-4 h-4 text-zam-textMuted"
                                         d={EXPAND_PATH}
                                     />
                                 )}
@@ -393,11 +411,11 @@ export default function ThreadPanel({
                         <Pressable
                             accessibilityRole="button"
                             onPress={onClose}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                             accessibilityLabel={t("threadPanel.closeThread")}
                         >
                             <SvgIcon
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                                 d={CLOSE_PATH}
                             />
                         </Pressable>
@@ -409,13 +427,18 @@ export default function ThreadPanel({
                     replies off screen. */}
                 {rootEvent ? (
                     <ScrollView
-                        className="border-b border-discord-divider flex-shrink-0 flex-grow-0 bg-discord-backgroundSecondary max-h-60"
+                        className="border-b border-zam-divider flex-shrink-0 flex-grow-0 bg-zam-backgroundSecondary max-h-60"
                         contentContainerClassName="py-1"
                     >
                         <MessageItem
                             event={rootEvent}
                             room={room}
                             showHeader={true}
+                            onStartEdit={onStartEdit}
+                            isBeingEdited={
+                                !!editEventId &&
+                                editEventId === rootEvent.getId()
+                            }
                             onReply={onReply}
                             jumpToReply={jumpToReply}
                         />
@@ -447,7 +470,7 @@ export default function ThreadPanel({
                     ListFooterComponent={
                         <>
                             {messages.length === 0 ? (
-                                <Text className="text-xs text-discord-textMuted text-center mt-4 px-4">
+                                <Text className="text-xs text-zam-textMuted text-center mt-4 px-4">
                                     {t(
                                         "threadPanel.noRepliesYetStartTheThread",
                                     )}
@@ -464,7 +487,7 @@ export default function ThreadPanel({
                                         disabled={loadingOlder}
                                         className="disabled:opacity-40 transition-colors"
                                     >
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {loadingOlder
                                                 ? t("common.loading")
                                                 : t(
@@ -487,6 +510,17 @@ export default function ThreadPanel({
                         room={room}
                         threadRootId={rootEventId}
                         replyToEvent={replyToEvent}
+                        editEvent={editEvent}
+                        onCancelEdit={() => {
+                            setEditEvent(null);
+                        }}
+                        onRequestEditLast={() => {
+                            const last = lastEditableOwnMessage(
+                                messages,
+                                auth.userId,
+                            );
+                            if (last) setEditEvent(last);
+                        }}
                         onCancelReply={() => {
                             setReplyToEvent(null);
                         }}
@@ -522,6 +556,8 @@ interface ReplyRowProps {
     index: number;
     showHeader: boolean;
     highlightN: number;
+    onStartEdit: (event: MatrixEvent) => void;
+    isBeingEdited: boolean;
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
 }
@@ -538,6 +574,8 @@ const ReplyRow = memo(function ReplyRow({
     index: i,
     showHeader,
     highlightN,
+    onStartEdit,
+    isBeingEdited,
     onReply,
     jumpToReply,
 }: ReplyRowProps) {
@@ -551,6 +589,8 @@ const ReplyRow = memo(function ReplyRow({
                 showHeader={showHeader}
                 timelineEvents={messages}
                 timelineIndex={i}
+                onStartEdit={onStartEdit}
+                isBeingEdited={isBeingEdited}
                 onReply={onReply}
                 jumpToReply={jumpToReply}
             />
@@ -629,7 +669,7 @@ function MessageHighlight({ n }: { n: number }) {
         <Animated.View
             pointerEvents="none"
             style={style}
-            className="absolute inset-0 bg-[rgb(var(--discord-mention-highlight-rgb)_/_0.35)]"
+            className="absolute inset-0 bg-[rgb(var(--zam-mention-highlight-rgb)_/_0.35)]"
         />
     );
 }

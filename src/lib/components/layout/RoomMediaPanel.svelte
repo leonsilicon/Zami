@@ -20,6 +20,7 @@
         mediaThumbnailMxc,
         mediaTileSource,
         mediaViewerItem,
+        mediaItemKey,
         type RoomMediaItem,
     } from "$lib/utils/roomMedia";
     import { galleryPositionLabel } from "$lib/utils/mediaGallery";
@@ -53,10 +54,15 @@
     // video, so this is the ORDINARY path for them, not an error case: the tile
     // swaps to a placeholder instead of showing a broken-image glyph.
     let thumbFailed = $state<Record<string, boolean>>({});
-    // Decrypted encrypted thumbnails, keyed by eventId.
+    // Decrypted encrypted thumbnails, keyed by mediaItemKey.
     let decryptedThumbs = $state<Record<string, string>>({});
-    // Decrypted full media for the lightbox viewer, keyed by eventId.
+    // Decrypted full media for the lightbox viewer, keyed by mediaItemKey.
     let decryptedFull = $state<Record<string, string>>({});
+    // Encrypted images either side of the viewed one, decrypted ahead so a
+    // swipe lands on a loaded image. Handed over to decryptedFull when the
+    // viewer steps onto one; revoked once they are no longer neighbours.
+    let prefetchedFull = $state<Record<string, string>>({});
+    const prefetchPending = new Set<string>();
     let viewerDecrypting = $state(false);
     let viewerProgress = $state<DownloadProgress | null>(null);
 
@@ -207,7 +213,8 @@
     });
 
     function openViewer(item: RoomMediaItem): void {
-        const index = gallery.findIndex((i) => i.eventId === item.eventId);
+        const key = mediaItemKey(item);
+        const index = gallery.findIndex((i) => mediaItemKey(i) === key);
         if (index === -1) return;
         viewerIndex = index;
     }
@@ -248,12 +255,16 @@
     function releaseDecryptedBlobs(): void {
         blobGen++;
         thumbPending.clear();
+        prefetchPending.clear();
         for (const url of Object.values(decryptedThumbs))
             URL.revokeObjectURL(url);
         for (const url of Object.values(decryptedFull))
             URL.revokeObjectURL(url);
+        for (const url of Object.values(prefetchedFull))
+            URL.revokeObjectURL(url);
         decryptedThumbs = {};
         decryptedFull = {};
+        prefetchedFull = {};
         viewerDecrypting = false;
     }
     $effect(() => () => releaseDecryptedBlobs());
@@ -263,7 +274,7 @@
     // every "Load more", so it skips anything already decrypted or in flight.
     $effect(() => {
         const wanted = split.visual
-            .map((m) => ({ id: m.eventId, source: mediaTileSource(m) }))
+            .map((m) => ({ id: mediaItemKey(m), source: mediaTileSource(m) }))
             .filter((x) => x.source?.kind === "encrypted");
         untrack(() => {
             const gen = blobGen;
@@ -303,8 +314,17 @@
         // An encrypted video is decrypted by the viewer itself, which can
         // start playing while it is still downloading.
         if (item.kind === "video") return;
-        const id = item.eventId;
+        const id = mediaItemKey(item);
         if (untrack(() => decryptedFull[id])) return; // Already decrypted
+        // Already decrypted ahead as a neighbour: take that copy over.
+        const ahead = untrack(() => prefetchedFull[id]);
+        if (ahead) {
+            untrack(() => {
+                decryptedFull[id] = ahead;
+                delete prefetchedFull[id];
+            });
+            return;
+        }
         const gen = blobGen;
         let cancelled = false;
         viewerDecrypting = true;
@@ -335,24 +355,113 @@
             viewerDecrypting = false;
         };
     });
+
+    // Decrypt the encrypted images either side of the viewed one, through the
+    // same helper the viewer uses, and release any blob that no longer belongs
+    // to a neighbour. Closing the viewer empties `wanted`, which releases all.
+    $effect(() => {
+        const idx = viewerIndex;
+        const wanted =
+            idx === null
+                ? []
+                : [gallery[idx - 1], gallery[idx + 1]].filter(
+                      (m): m is RoomMediaItem =>
+                          !!m &&
+                          m.kind === "image" &&
+                          !!m.encrypted &&
+                          !!m.encryptedFile,
+                  );
+        untrack(() => {
+            const keep = new Set(wanted.map((m) => mediaItemKey(m)));
+            for (const key of Object.keys(prefetchedFull)) {
+                if (keep.has(key)) continue;
+                URL.revokeObjectURL(prefetchedFull[key]);
+                delete prefetchedFull[key];
+            }
+            const gen = blobGen;
+            for (const media of wanted) {
+                const id = mediaItemKey(media);
+                if (
+                    decryptedFull[id] ||
+                    prefetchedFull[id] ||
+                    prefetchPending.has(id)
+                )
+                    continue;
+                prefetchPending.add(id);
+                fetchDecryptedAttachmentBlob(
+                    media.encryptedFile!,
+                    media.mimetype ?? undefined,
+                    { expectedSize: media.size },
+                )
+                    .then((url) => {
+                        // Stale (torn down, or the viewer has since decrypted
+                        // it itself): nothing will own this URL, so release it.
+                        if (gen !== blobGen || decryptedFull[id]) {
+                            URL.revokeObjectURL(url);
+                            return;
+                        }
+                        prefetchedFull[id] = url;
+                    })
+                    .catch(() => {
+                        /* a failed prefetch just means no warm copy */
+                    })
+                    .finally(() => {
+                        if (gen === blobGen) prefetchPending.delete(id);
+                    });
+            }
+        });
+    });
+
+    /** The tile thumbnail the grid shows for an item: the same URL, so the
+     *  viewer's stand-in comes from the browser cache. */
+    function tileThumb(item: RoomMediaItem): string | null {
+        const id = mediaItemKey(item);
+        if (thumbFailed[id]) return null;
+        return item.encrypted
+            ? (decryptedThumbs[id] ?? null)
+            : mxcToHttp(mediaThumbnailMxc(item), 160, 160);
+    }
+
+    /** A swipe neighbour: its full src ("" while not ready, or for a video,
+     *  which the viewer does not preload), plus its tile thumbnail. */
+    function neighbourOf(item: RoomMediaItem | undefined) {
+        if (!item) return null;
+        const id = mediaItemKey(item);
+        const src =
+            item.kind !== "image"
+                ? ""
+                : item.encrypted
+                  ? (decryptedFull[id] ?? prefetchedFull[id] ?? "")
+                  : (mxcToHttp(item.url) ?? "");
+        return { src, placeholders: [tileThumb(item)] };
+    }
+
+    const viewerNeighbours = $derived(
+        viewerIndex === null
+            ? undefined
+            : {
+                  prev: neighbourOf(gallery[viewerIndex - 1]),
+                  next: neighbourOf(gallery[viewerIndex + 1]),
+              },
+    );
 </script>
 
 <div
     class="{interfaceState.isMobile
         ? ''
-        : 'w-72'} h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider"
+        : 'w-72'} h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider"
 >
     <div
-        class="h-12 flex items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0"
+        class="h-12 flex items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0"
     >
         <h3
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
         >
             {t("roomMediaPanel.media")}
         </h3>
         <button
             onclick={onClose}
-            class="text-discord-textMuted hover:text-discord-textPrimary transition-colors"
+            class="text-zam-textMuted hover:text-zam-textPrimary transition-colors"
             title={t("common.close")}
             aria-label={t("roomMediaPanel.closeMediaPanel")}
         >
@@ -365,7 +474,7 @@
     </div>
 
     <div
-        class="flex items-center gap-1 px-2 py-2 border-b border-discord-divider flex-shrink-0"
+        class="flex items-center gap-1 px-2 py-2 border-b border-zam-divider flex-shrink-0"
         role="tablist"
     >
         <button
@@ -376,8 +485,8 @@
             onclick={() => (tab = "media")}
             class="flex-1 py-1 text-xs rounded transition-colors {tab ===
             'media'
-                ? 'bg-discord-messageHover text-discord-textPrimary'
-                : 'text-discord-textMuted hover:text-discord-textPrimary'}"
+                ? 'bg-zam-messageHover text-zam-textPrimary'
+                : 'text-zam-textMuted hover:text-zam-textPrimary'}"
         >
             {t("roomMediaPanel.media2", {
                 length: split.visual.length,
@@ -392,8 +501,8 @@
             onclick={() => (tab = "files")}
             class="flex-1 py-1 text-xs rounded transition-colors {tab ===
             'files'
-                ? 'bg-discord-messageHover text-discord-textPrimary'
-                : 'text-discord-textMuted hover:text-discord-textPrimary'}"
+                ? 'bg-zam-messageHover text-zam-textPrimary'
+                : 'text-zam-textMuted hover:text-zam-textPrimary'}"
         >
             {t("roomMediaPanel.files", {
                 length: split.files.length,
@@ -413,38 +522,38 @@
         {#if loading}
             <div class="flex justify-center mt-8">
                 <div
-                    class="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full animate-spin"
+                    class="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full animate-spin"
                 ></div>
             </div>
         {:else if error}
-            <p class="text-sm text-discord-danger text-center mt-8 px-4">
+            <p class="text-sm text-zam-danger text-center mt-8 px-4">
                 {error}
             </p>
             <div class="px-2 pt-2">
                 <button
                     onclick={() => pull(true)}
-                    class="w-full py-1.5 text-xs text-discord-accent hover:underline disabled:opacity-50"
+                    class="w-full py-1.5 text-xs text-zam-accent hover:underline disabled:opacity-50"
                 >
                     {t("roomMediaPanel.tryAgain")}
                 </button>
             </div>
         {:else if visible.length === 0}
-            <p class="text-sm text-discord-textMuted text-center mt-8 px-4">
+            <p class="text-sm text-zam-textMuted text-center mt-8 px-4">
                 {emptyMessage}
             </p>
         {:else if tab === "media"}
             <div class="grid grid-cols-3 gap-1 p-2">
-                {#each split.visual as media (media.eventId)}
+                {#each split.visual as media (mediaItemKey(media))}
                     {@const thumbMxc = mediaThumbnailMxc(media)}
-                    {@const thumb = thumbFailed[media.eventId]
+                    {@const thumb = thumbFailed[mediaItemKey(media)]
                         ? null
                         : media.encrypted
-                          ? (decryptedThumbs[media.eventId] ?? null)
+                          ? (decryptedThumbs[mediaItemKey(media)] ?? null)
                           : mxcToHttp(thumbMxc, 160, 160)}
                     {@const duration = formatMediaDuration(media.durationMs)}
                     <button
                         onclick={() => openViewer(media)}
-                        class="relative aspect-square rounded overflow-hidden bg-discord-background hover:opacity-80 transition-opacity"
+                        class="relative aspect-square rounded overflow-hidden bg-zam-background hover:opacity-80 transition-opacity"
                         title={media.kind === "video"
                             ? t("roomMediaPanel.play", { name: media.name })
                             : media.name}
@@ -457,13 +566,13 @@
                                 loading="lazy"
                                 class="w-full h-full object-cover"
                                 onerror={() =>
-                                    (thumbFailed[media.eventId] = true)}
+                                    (thumbFailed[mediaItemKey(media)] = true)}
                             />
                         {:else if media.kind === "video"}
                             <!-- Nothing to show: a flat tile that lets the play
                                  badge below carry the meaning on its own. -->
                             <div
-                                class="w-full h-full bg-discord-backgroundTertiary"
+                                class="w-full h-full bg-zam-backgroundTertiary"
                             ></div>
                         {/if}
                         {#if media.kind === "video"}
@@ -493,17 +602,17 @@
             </div>
         {:else}
             <div class="p-2 space-y-1">
-                {#each split.files as file (file.eventId)}
+                {#each split.files as file (mediaItemKey(file))}
                     <button
                         onclick={(e) => download(file, e.shiftKey)}
-                        class="w-full text-start p-2 rounded-lg hover:bg-discord-messageHover transition-colors"
+                        class="w-full text-start p-2 rounded-lg hover:bg-zam-messageHover transition-colors"
                     >
                         <p
-                            class="text-xs font-semibold text-discord-textPrimary truncate"
+                            class="text-xs font-semibold text-zam-textPrimary truncate"
                         >
                             {file.name}
                         </p>
-                        <p class="text-xs text-discord-textMuted">
+                        <p class="text-xs text-zam-textMuted">
                             {formatMediaSize(file.size) ||
                                 (file.kind === "audio"
                                     ? t("roomMediaPanel.audio")
@@ -517,7 +626,7 @@
         {#if loadMoreError}
             <!-- Inline, not the full-panel error branch: whatever already
                  loaded stays on screen and "Load more" can simply be retried. -->
-            <p class="text-xs text-discord-danger text-center px-2 pb-1">
+            <p class="text-xs text-zam-danger text-center px-2 pb-1">
                 {loadMoreError}
             </p>
         {/if}
@@ -527,7 +636,7 @@
                 <button
                     onclick={() => pull(false)}
                     disabled={loadingMore}
-                    class="w-full py-1.5 text-xs text-discord-accent hover:underline disabled:opacity-50"
+                    class="w-full py-1.5 text-xs text-zam-accent hover:underline disabled:opacity-50"
                 >
                     {loadingMore ? t("common.loading") : t("common.loadMore")}
                 </button>
@@ -543,13 +652,13 @@
         // ciphertext, which the viewer would download and fail to show.
         full: (mxc) =>
             item.encrypted && item.kind !== "video"
-                ? (decryptedFull[item.eventId] ?? null)
+                ? (decryptedFull[mediaItemKey(item)] ?? null)
                 : mxcToHttp(mxc),
         // "scale" rather than the default crop: a poster must match the video's
         // own aspect ratio or the player letterboxes a distorted still.
         poster: (mxc) =>
-            item.encrypted && decryptedThumbs[item.eventId]
-                ? decryptedThumbs[item.eventId]
+            item.encrypted && decryptedThumbs[mediaItemKey(item)]
+                ? decryptedThumbs[mediaItemKey(item)]
                 : mxcToHttp(mxc, 800, 600, "scale"),
     })}
     {#if viewerDecrypting}
@@ -575,7 +684,7 @@
                 ? // An encrypted video has no thumbnail_url, so mediaViewerItem
                   // never asks for one: use the decrypted thumbnail_file tile.
                   view.kind === "video"
-                    ? (decryptedThumbs[item.eventId] ?? null)
+                    ? (decryptedThumbs[mediaItemKey(item)] ?? null)
                     : null
                 : view.poster}
             filename={view.filename}
@@ -594,6 +703,8 @@
                 viewerIndex,
                 hasMore,
             )}
+            placeholders={[tileThumb(item)]}
+            neighbours={viewerNeighbours}
         />
     {:else}
         <!-- mediaViewerItem resolved to nothing (bad mxc / signed-out media
@@ -607,14 +718,14 @@
             aria-label={t("roomMediaPanel.mediaCouldNotBeLoaded")}
         >
             <div
-                class="bg-discord-backgroundSecondary rounded-lg p-6 max-w-sm text-center shadow-lg"
+                class="bg-zam-backgroundSecondary rounded-lg p-6 max-w-sm text-center shadow-lg"
             >
-                <p class="text-sm text-discord-textPrimary mb-4">
+                <p class="text-sm text-zam-textPrimary mb-4">
                     {t("roomMediaPanel.couldNotLoadThisMedia")}
                 </p>
                 <button
                     onclick={() => (viewerIndex = null)}
-                    class="px-4 py-1.5 text-sm rounded bg-discord-accent text-white hover:opacity-90 transition-opacity"
+                    class="px-4 py-1.5 text-sm rounded bg-zam-accent text-white hover:opacity-90 transition-opacity"
                 >
                     {t("common.close")}
                 </button>

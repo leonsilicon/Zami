@@ -32,26 +32,26 @@ export default function JoinConsentDialog() {
         <ModalDialog
             onClose={() => resolveJoinConsent(false)}
             labelledBy="join-consent-title"
-            panelClass="relative z-10 w-full max-w-[28rem] mx-4 rounded-lg bg-discord-backgroundSecondary p-5 shadow-xl"
+            panelClass="relative z-10 w-full max-w-[28rem] mx-4 rounded-lg bg-zam-backgroundSecondary p-5 shadow-xl"
         >
             <Text
                 nativeID="join-consent-title"
                 role="heading"
-                className="mb-2 text-lg font-semibold text-discord-textPrimary"
+                className="mb-2 text-lg font-semibold text-zam-textPrimary"
             >
                 {t("joinConsentDialog.joinThisRoom")}
             </Text>
-            <Text className="mb-3 text-sm text-discord-textMuted">
+            <Text className="mb-3 text-sm text-zam-textMuted">
                 {t("joinConsentDialog.youClickedALinkTo")}{" "}
-                <Text className="break-all font-medium text-sm text-discord-textPrimary">
+                <Text className="break-all font-medium text-sm text-zam-textPrimary">
                     {pending.display}
                 </Text>
                 {t("joinConsentDialog.joiningSharesYourMatrixIdWith")}
             </Text>
             {showResolved && (
-                <Text className="mb-3 text-sm text-discord-textMuted">
+                <Text className="mb-3 text-sm text-zam-textMuted">
                     {t("joinConsentDialog.thisOpensRoom")}{" "}
-                    <Text className="break-all font-medium text-sm text-discord-textPrimary">
+                    <Text className="break-all font-medium text-sm text-zam-textPrimary">
                         {pending.resolvedRoomId}
                     </Text>
                     .
@@ -59,7 +59,7 @@ export default function JoinConsentDialog() {
             )}
             {pending.serverMismatch && (
                 <Text
-                    className="mb-3 rounded border border-discord-danger/40 bg-discord-danger/10 px-3 py-2 text-sm text-discord-danger"
+                    className="mb-3 rounded border border-zam-danger/40 bg-zam-danger/10 px-3 py-2 text-sm text-zam-danger"
                     role="alert"
                 >
                     {t("joinConsentDialog.warningThisLinkPointsAtA")}
@@ -71,14 +71,14 @@ export default function JoinConsentDialog() {
                     onPress={() => resolveJoinConsent(false)}
                     className="rounded px-4 py-2 transition-colors"
                 >
-                    <Text className="text-sm font-medium text-discord-textSecondary hover:text-discord-textPrimary hover:underline">
+                    <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline">
                         {t("common.cancel")}
                     </Text>
                 </Pressable>
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => resolveJoinConsent(true)}
-                    className="rounded bg-discord-accent px-4 py-2 hover:opacity-90"
+                    className="rounded bg-zam-accent px-4 py-2 hover:opacity-90"
                 >
                     <Text className="text-sm font-medium text-white">
                         {t("joinConsentDialog.joinRoom")}

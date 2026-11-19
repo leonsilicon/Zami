@@ -206,12 +206,12 @@ export default function LinkDeviceDialog({
         <ModalDialog
             onClose={close}
             labelledBy="qr-link-title"
-            panelClass="relative z-10 w-[92vw] max-w-[26rem] rounded-lg bg-discord-backgroundSecondary border border-discord-divider p-5 shadow-xl"
+            panelClass="relative z-10 w-[92vw] max-w-[26rem] rounded-lg bg-zam-backgroundSecondary border border-zam-divider p-5 shadow-xl"
         >
             <Text
                 nativeID="qr-link-title"
                 role="heading"
-                className="text-lg font-semibold text-discord-textPrimary"
+                className="text-lg font-semibold text-zam-textPrimary"
             >
                 {mode === "code"
                     ? t("qrLogin.codeTitle")
@@ -222,10 +222,10 @@ export default function LinkDeviceDialog({
 
             {step === "show" ? (
                 <>
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.showIntro")}
                     </Text>
-                    <Text className="mt-2 text-xs text-discord-textMuted">
+                    <Text className="mt-2 text-xs text-zam-textMuted">
                         {t("qrLogin.linkWarning")}
                     </Text>
                     <View className="mt-4 flex-row justify-center">
@@ -240,7 +240,7 @@ export default function LinkDeviceDialog({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => void startShowing()}
-                                className="px-3 py-2 bg-discord-accent hover:bg-discord-accentHover rounded"
+                                className="px-3 py-2 bg-zam-accent hover:bg-zam-accentHover rounded"
                             >
                                 <Text className="text-white font-semibold text-sm">
                                     {t("qrLogin.showRetry")}
@@ -250,7 +250,7 @@ export default function LinkDeviceDialog({
                             <Spin>
                                 <Loader2
                                     size={28}
-                                    className="text-discord-accent"
+                                    className="text-zam-accent"
                                 />
                             </Spin>
                         )}
@@ -258,12 +258,12 @@ export default function LinkDeviceDialog({
                 </>
             ) : step === "number" ? (
                 <View className="mt-3 flex-col gap-3">
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("qrLogin.showEnterNumber")}
                     </Text>
                     <Text
                         nativeID="show-number-label"
-                        className="text-xs text-discord-textMuted"
+                        className="text-xs text-zam-textMuted"
                     >
                         {t("qrLogin.numberLabel")}
                     </Text>
@@ -280,7 +280,7 @@ export default function LinkDeviceDialog({
                         autoFocus
                         returnKeyType="done"
                         onSubmitEditing={submitNumber}
-                        className="w-24 px-3 py-2 text-lg tracking-widest text-center bg-discord-backgroundTertiary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent focus:outline-none"
+                        className="w-24 px-3 py-2 text-lg tracking-widest text-center bg-zam-backgroundTertiary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent focus:outline-none"
                     />
                     <Pressable
                         accessibilityRole="button"
@@ -289,7 +289,7 @@ export default function LinkDeviceDialog({
                         }}
                         disabled={typedNumber.trim().length === 0}
                         onPress={submitNumber}
-                        className="py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-60"
+                        className="py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-60"
                     >
                         <Text className="text-center text-white font-semibold text-sm">
                             {t("qrLogin.confirm")}
@@ -300,7 +300,7 @@ export default function LinkDeviceDialog({
 
             {step === "choose" ? (
                 <>
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.chooseIntro")}
                     </Text>
                     <View className="mt-3 gap-2">
@@ -313,12 +313,12 @@ export default function LinkDeviceDialog({
                                     pickDevice.current = null;
                                     setStep("approve");
                                 }}
-                                className="w-full px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                                className="w-full px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
                             >
-                                <Text className="font-medium text-sm text-discord-textPrimary">
+                                <Text className="font-medium text-sm text-zam-textPrimary">
                                     {device.displayName || device.deviceId}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {device.deviceId}
                                     {device.lastSeenIp
                                         ? ` · ${device.lastSeenIp}`
@@ -332,15 +332,15 @@ export default function LinkDeviceDialog({
               step === "number" /* shown above */ ? null : step === "scan" &&
               mode === "code" ? (
                 <View className="mt-3 flex-col gap-3">
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {t("qrLogin.codeIntro")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("qrLogin.linkWarning")}
                     </Text>
                     <Text
                         nativeID="link-user-code-label"
-                        className="text-xs text-discord-textMuted"
+                        className="text-xs text-zam-textMuted"
                     >
                         {t("qrLogin.codeLabel")}
                     </Text>
@@ -358,14 +358,14 @@ export default function LinkDeviceDialog({
                         onSubmitEditing={() => {
                             if (typedCode.trim()) void onSubmitCode();
                         }}
-                        className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-center text-xl tracking-widest uppercase rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                        className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-center text-xl tracking-widest uppercase rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                     />
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ disabled: !typedCode.trim() }}
                         disabled={!typedCode.trim()}
                         onPress={() => void onSubmitCode()}
-                        className="w-full py-2 bg-discord-accent hover:bg-discord-accentHover rounded disabled:opacity-50"
+                        className="w-full py-2 bg-zam-accent hover:bg-zam-accentHover rounded disabled:opacity-50"
                     >
                         <Text className="text-center text-white font-semibold text-sm">
                             {t("qrLogin.codeContinue")}
@@ -374,10 +374,10 @@ export default function LinkDeviceDialog({
                 </View>
             ) : step === "scan" ? (
                 <>
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.linkIntro")}
                     </Text>
-                    <Text className="mt-2 text-xs text-discord-textMuted">
+                    <Text className="mt-2 text-xs text-zam-textMuted">
                         {t("qrLogin.linkWarning")}
                     </Text>
                     <View className="mt-4 flex-col items-center gap-2">
@@ -393,18 +393,18 @@ export default function LinkDeviceDialog({
                 <>
                     {checkCode ? (
                         <>
-                            <Text className="mt-3 text-sm text-discord-textSecondary">
+                            <Text className="mt-3 text-sm text-zam-textSecondary">
                                 {t("qrLogin.linkShowNumber")}
                             </Text>
                             <Text
-                                className="mt-2 text-center text-4xl font-semibold tracking-widest text-discord-textPrimary"
+                                className="mt-2 text-center text-4xl font-semibold tracking-widest text-zam-textPrimary"
                                 accessibilityLiveRegion="polite"
                             >
                                 {checkCode}
                             </Text>
                         </>
                     ) : null}
-                    <Text className="mt-3 text-sm text-discord-textSecondary">
+                    <Text className="mt-3 text-sm text-zam-textSecondary">
                         {t("qrLogin.linkApprove", { host: approvalHost })}
                     </Text>
                     {approvalUrl ? (
@@ -412,7 +412,7 @@ export default function LinkDeviceDialog({
                             <Pressable
                                 accessibilityRole="link"
                                 onPress={() => openInApp(approvalUrl)}
-                                className="mt-3 w-full py-2 bg-discord-accent hover:bg-discord-accentHover rounded"
+                                className="mt-3 w-full py-2 bg-zam-accent hover:bg-zam-accentHover rounded"
                             >
                                 <Text className="text-center text-white font-semibold text-sm">
                                     {t("qrLogin.linkApproveButton", {
@@ -424,10 +424,10 @@ export default function LinkDeviceDialog({
                                 <Spin>
                                     <Loader2
                                         size={16}
-                                        className="text-discord-accent"
+                                        className="text-zam-accent"
                                     />
                                 </Spin>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("qrLogin.linkWaiting")}
                                 </Text>
                             </View>
@@ -437,7 +437,7 @@ export default function LinkDeviceDialog({
                             <Spin>
                                 <Loader2
                                     size={24}
-                                    className="text-discord-accent"
+                                    className="text-zam-accent"
                                 />
                             </Spin>
                         </View>
@@ -445,8 +445,8 @@ export default function LinkDeviceDialog({
                 </>
             ) : (
                 <View className="mt-5 flex-col items-center gap-2">
-                    <CheckCircle2 size={40} className="text-discord-accent" />
-                    <Text className="text-center text-sm text-discord-textPrimary">
+                    <CheckCircle2 size={40} className="text-zam-accent" />
+                    <Text className="text-center text-sm text-zam-textPrimary">
                         {checkCode
                             ? t("qrLogin.linkDoneVerified")
                             : verifying
@@ -457,7 +457,7 @@ export default function LinkDeviceDialog({
             )}
 
             {error ? (
-                <Text className="mt-3 text-sm text-discord-danger" role="alert">
+                <Text className="mt-3 text-sm text-zam-danger" role="alert">
                     {error}
                 </Text>
             ) : null}
@@ -465,9 +465,9 @@ export default function LinkDeviceDialog({
             <Pressable
                 accessibilityRole="button"
                 onPress={close}
-                className="mt-5 w-full py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover"
+                className="mt-5 w-full py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover"
             >
-                <Text className="text-center text-discord-textPrimary text-sm">
+                <Text className="text-center text-zam-textPrimary text-sm">
                     {step === "done"
                         ? t("qrLogin.linkClose")
                         : t("qrLogin.cancel")}

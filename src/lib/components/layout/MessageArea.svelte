@@ -43,6 +43,9 @@
         getRoom,
         isRoomCachedOnly,
         getReadUpToEventId,
+        getOwnReadReceipt,
+        getMarkedUnread,
+        onMarkedUnreadChange,
         getReceiptsByDisplayedEvent,
         onReceiptEvent,
         getRoomCallMemberships,
@@ -52,8 +55,10 @@
         getCallSummaries,
         getContextCallSummaries,
         getOwnUserId,
+        getDirectRoomIds,
         type ReadReceiptInfo,
     } from "$lib/matrix/client";
+    import Avatar from "$lib/components/ui/Avatar.svelte";
     import { logSync } from "$lib/matrix/syncLog";
     import { setActiveRoom } from "$lib/stores/rooms.svelte";
     import {
@@ -101,13 +106,13 @@
     import {
         shouldShowHeader,
         dateSeparatorLabel,
-        unreadDividerBefore,
+        unreadDividerIndex,
         isNearBottom,
         timelineKey,
     } from "$lib/utils/timelineDisplay";
     import { shouldDismissSelectionOnScroll } from "$lib/utils/scrollDismiss";
     import { targetCanScrollHoriz } from "$lib/utils/scrollHoriz";
-    import { daySeparator } from "$lib/utils/timeFormat";
+    import { daySeparator, messageTimestamp } from "$lib/utils/timeFormat";
     import { renderPlainTextWithTwemoji } from "$lib/utils/twemojiText";
     import { canSendReceipt } from "$lib/utils/receiptGate";
     import {
@@ -137,6 +142,7 @@
     import { pluginRegistry } from "$lib/stores/plugins.svelte";
     import {
         pluginPanel,
+        registeredPanelKey,
         openPluginPanel,
     } from "$lib/plugins/pluginPanel.svelte";
     import { pluginMount } from "$lib/plugins/pluginMount";
@@ -156,7 +162,13 @@
         Image,
         MoreHorizontal,
         X,
+        ChevronRight,
     } from "lucide-svelte";
+    import { bridgedThreadParent } from "$lib/stores/bridgedThreads.svelte";
+    import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+    import { channelIconKind } from "$lib/utils/bridgedChannels";
+    import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+    import { navigateToRoom } from "$lib/stores/rooms.svelte";
     import RoomHeaderOverflowMenu from "$lib/components/layout/RoomHeaderOverflowMenu.svelte";
     import RoomTopicSheet from "$lib/components/layout/RoomTopicSheet.svelte";
     import {
@@ -241,15 +253,16 @@
             if (hostBridge.startReply === handler) hostBridge.startReply = null;
         };
     });
-    let editRequestedEventId = $state<string | null>(null);
-    // Plugin composer.startEdit → start inline edit of your own text message.
+    // The message being edited in the composer (edit mode). Set by a message's
+    // Edit action, ArrowUp in the composer, or a plugin's composer.startEdit.
+    // Cleared on room switch, and by the composer when the edit ends.
+    let editEvent = $state<MatrixEvent | null>(null);
+    // Plugin composer.startEdit → edit your own text message in the composer.
     // Single slot; the mounted room area owns it and only acts on its own room.
-    // Guards own + editable text (parity with requestEditLastMessage). The
-    // transient editRequestedEventId pulse is how the matching MessageItem
-    // enters edit mode (its editRequested prop → $effect → startEdit()).
+    // Guards own + editable text (parity with requestEditLastMessage).
     $effect(() => {
         const activeRoom = room;
-        const handler = async (ctx: { roomId: string; eventId: string }) => {
+        const handler = (ctx: { roomId: string; eventId: string }) => {
             if (ctx.roomId !== activeRoom.roomId) return;
             const ev = findEventById(activeRoom, ctx.eventId);
             if (
@@ -259,9 +272,7 @@
                 !isEditableContent(ev.getContent())
             )
                 return;
-            editRequestedEventId = ctx.eventId;
-            await tick();
-            editRequestedEventId = null;
+            editEvent = ev;
         };
         hostBridge.startEdit = handler;
         return () => {
@@ -373,12 +384,10 @@
         }
     }
 
-    async function requestEditLastMessage() {
+    function requestEditLastMessage() {
         const last = lastEditableOwnMessage(messages, auth.userId);
         if (!last) return;
-        editRequestedEventId = last.getId()!;
-        await tick();
-        editRequestedEventId = null;
+        editEvent = last;
     }
     // Right-side panels live in the shared interfaceState.sidebar slot, so only
     // one is ever open and the central Escape/back handler can dismiss them.
@@ -564,7 +573,11 @@
             if (
                 interfaceState.sidebar === "plugin" &&
                 cur &&
-                !pluginHeaderBtns.some((b) => b.key === cur.key)
+                !pluginHeaderBtns.some((b) => b.key === cur.key) &&
+                !pluginRegistry.panels.some(
+                    (e) =>
+                        registeredPanelKey(e.pluginId, e.value.id) === cur.key,
+                )
             ) {
                 closeSidebar();
             }
@@ -637,6 +650,7 @@
                 if (win && room.roomId === rid) {
                     contextWindow = win;
                     contextMessages = getContextWindowEvents(win);
+                    contextAtReadPosition = false;
                     await tick();
                 }
             } finally {
@@ -645,18 +659,44 @@
             el = await revealRow(eventId);
             if (!el) return;
         }
-        const target = el as HTMLElement;
+        let target = el as HTMLElement;
         // Cancel any previous scroll loop so we never leak an interval that
         // would keep yanking the scroll position and block the user.
         stopScrollIntoView();
-        intervalId = setInterval(
-            () =>
-                target.scrollIntoView({
-                    behavior: scrollBehavior(),
-                    block: "center",
-                }),
-            50,
-        );
+        // Smooth-scroll only to a message that is nearly on screen. Further
+        // away, the animation ran through spacer where no rows are mounted
+        // (window updates wait for the jump), so it showed blank space for
+        // most of the way. Land there at once with its neighbours mounted.
+        const far = isFarFromView(target);
+        if (far) {
+            const i = messages.findIndex((e) => e.getId() === eventId);
+            if (i >= 0) {
+                // Leaving the bottom: a window stuck to the end would
+                // stretch from the target all the way down.
+                isAtBottom = false;
+                setRowWindow(windowAround(i, messages.length));
+                await tick();
+                const again = scrollEl?.querySelector<HTMLElement>(
+                    `[data-event-id="${CSS.escape(eventId)}"]`,
+                );
+                if (again) target = again;
+            }
+        }
+        target.scrollIntoView({
+            behavior: far ? "instant" : scrollBehavior(),
+            block: "center",
+        });
+        // Keep it centred while things around it settle (images, previews,
+        // rows mounting), but only re-aim when it actually moved in the list:
+        // re-issuing a smooth scroll every 50ms restarted the animation each
+        // time, so the jump crawled and stuttered.
+        let lastTop = listTop(target);
+        intervalId = setInterval(() => {
+            const top = listTop(target);
+            if (Math.abs(top - lastTop) < 1) return;
+            lastTop = top;
+            target.scrollIntoView({ behavior: "instant", block: "center" });
+        }, 50);
         target.classList.remove("message-highlight");
         void target.offsetWidth;
         target.classList.add("message-highlight");
@@ -667,6 +707,27 @@
             // scrolling, so onScroll would never page it forward.
             catchUpContextView();
         }, 2000);
+    }
+
+    /** Where `el` sits in the scrolled content, independent of scrolling. */
+    function listTop(el: HTMLElement): number {
+        if (!scrollEl) return 0;
+        return (
+            el.getBoundingClientRect().top -
+            scrollEl.getBoundingClientRect().top +
+            scrollEl.scrollTop
+        );
+    }
+
+    /** More than a screen and a half between `el` and the viewport centre. */
+    function isFarFromView(el: HTMLElement): boolean {
+        if (!scrollEl) return false;
+        const view = scrollEl.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        const gap = Math.abs(
+            (r.top + r.bottom) / 2 - (view.top + view.bottom) / 2,
+        );
+        return gap > view.height * 1.5;
     }
 
     // Ensure the scroll loop never outlives the component (e.g. room switch).
@@ -943,6 +1004,28 @@
     const roomName = $derived(
         (void roomsState.roomsTick, getRoomDisplayName(room)),
     );
+    // DMs get their own chat-start wording: users don't know a DM is a room.
+    const isDirectRoom = $derived(
+        (void roomsState.roomsTick, getDirectRoomIds().has(room.roomId)),
+    );
+    // A Discord thread bridged by ZDMB: the header leads with its channel,
+    // like Discord's "#channel > thread". Only a joined channel (not a forum,
+    // which is a space) gets the link.
+    const threadParentRoom = $derived.by(() => {
+        void roomsState.roomsTick;
+        const parent = bridgedThreadParent(room.roomId);
+        const r = parent ? getRoom(parent.roomId) : null;
+        return r && !r.isSpaceRoom() && r.getMyMembership() === "join"
+            ? { roomId: r.roomId, name: getRoomDisplayName(r) }
+            : null;
+    });
+    // Discord-style channel icon from ZDMB's channel tag; other rooms keep #.
+    const headerIconKind = $derived.by(() => {
+        void roomsState.roomsTick;
+        return channelIconKind(bridgedChannel(room.roomId)?.type, {
+            isThread: bridgedThreadParent(room.roomId) !== null,
+        });
+    });
     // Re-reads the live Room's state; depends on roomsTick to refresh when the
     // m.room.encryption state event lands (the Room mutates in place).
     const roomEncrypted = $derived(
@@ -984,6 +1067,11 @@
     // back to the live timeline (see rejoinLive / maybeLoadNewer).
     let contextWindow = $state<TimelineWindow | null>(null);
     let contextMessages = $state<MatrixEvent[] | null>(null);
+    // The window was opened at the read position by entering the room, not
+    // by jumping to a message. It's an ordinary visit: "Jump to present"
+    // stays and the "Viewing message context" banner never shows, even once
+    // the room is read and the unread bar goes away.
+    let contextAtReadPosition = $state(false);
     let loadingNewer = $state(false);
     const messages = $derived(contextMessages ?? getMessages(roomId));
     const receiptsByEvent = $derived.by(() => {
@@ -1066,28 +1154,108 @@
         }
         w ??= { start: Math.max(0, n - INITIAL_WINDOW_ROWS), end: n };
         if (isAtBottom && !isContextView) w.end = n;
-        // An edit request is a one-tick pulse its MessageItem has to see:
-        // mount that row now, not on the next scroll.
-        if (editRequestedEventId) {
-            const i = messages.findIndex(
-                (e) => e.getId() === editRequestedEventId,
-            );
-            if (i >= 0) {
-                w.start = Math.min(w.start, i);
-                w.end = Math.max(w.end, i + 1);
-            }
-        }
         return w;
     });
 
+    // Native scroll anchoring (Chromium, Firefox) cancels shifts from rows
+    // mounting above the viewport by itself, adjusting a running wheel or
+    // fling animation rather than cutting it off. WebKit has none.
+    const nativeAnchoring =
+        typeof CSS !== "undefined" &&
+        !!CSS.supports?.("overflow-anchor", "auto");
+
+    // Pixels the top spacer is off from its estimate (WebKit only). Rows
+    // mounting above the viewport rarely measure what the spacer assumed (and
+    // the average the estimate uses drifts as rows get measured), so
+    // everything below them shifts. Without native anchoring that shift is
+    // cancelled by resizing this spacer, not by writing scrollTop: a scrollTop
+    // write in the middle of a touch fling stops iOS momentum scrolling dead,
+    // which made scrolling back through history on a phone laggy and jumpy.
+    // The slack is paid back with one scroll write once scrolling stops
+    // (settleTopSlack). It belongs to the list it was measured in: another
+    // room or context window starts at zero.
+    //
+    // Never with native anchoring: Chromium keeps its own anchor (the top
+    // row) still by re-scrolling whenever the spacer is resized, so a shift
+    // between its anchor and ours was never cancelled and every attempt
+    // re-ran the mutation observer — an endless loop that froze the page.
+    // Turning native anchoring off instead made every prepend correction a
+    // scrollTop write, which cancels Chromium's wheel animation and swallowed
+    // scroll input.
+    let topSlack = $state.raw<{ key: unknown; px: number }>({
+        key: null,
+        px: 0,
+    });
+    const slackKey = $derived(contextWindow ?? roomId);
+
     const spacerHeights = $derived.by(() => {
-        let top = 0;
+        let estTop = 0;
         let bottom = 0;
-        for (let i = 0; i < rowWindow.start; i++) top += rowHeight(messages[i]);
+        for (let i = 0; i < rowWindow.start; i++)
+            estTop += rowHeight(messages[i]);
         for (let i = rowWindow.end; i < messages.length; i++)
             bottom += rowHeight(messages[i]);
-        return { top, bottom };
+        // With the oldest loaded row mounted nothing is above it: any slack
+        // would show as a gap under the room's welcome header.
+        const slack =
+            topSlack.key === slackKey && rowWindow.start > 0 ? topSlack.px : 0;
+        return { top: Math.max(0, estTop + slack), estTop, bottom };
     });
+
+    /** Cancel a shift of `delta`px (positive = down) of everything below the
+     *  top spacer: on WebKit by resizing the spacer as far as it can, and
+     *  scrolling for the rest. Returns how far scrollTop had to move. */
+    function cancelShift(delta: number): number {
+        if (!scrollEl) return 0;
+        let rest = delta;
+        if (
+            topSpacerEl &&
+            canWindow &&
+            !nativeAnchoring &&
+            rowWindow.start > 0
+        ) {
+            const h = topSpacerEl.getBoundingClientRect().height;
+            const next = Math.max(0, h - delta);
+            if (next !== h) {
+                topSpacerEl.style.height = `${next}px`;
+                topSlack = { key: slackKey, px: next - spacerHeights.estTop };
+                rest = delta - (h - next);
+            }
+        }
+        if (rest > 0.5 || rest < -0.5) scrollEl.scrollTop += rest;
+        return rest;
+    }
+
+    // Once scrolling has stopped, give the top spacer back its estimated
+    // height and scroll by the difference, so slack never piles up into a
+    // gap above the oldest message or a spacer too short to scroll into.
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let touching = false;
+    const SETTLE_MS = 250;
+
+    function scheduleSettle() {
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(settleTopSlack, SETTLE_MS);
+    }
+
+    function settleTopSlack() {
+        if (!scrollEl || !topSpacerEl || touching) return;
+        if (topSlack.key !== slackKey || topSlack.px === 0) return;
+        // A load or jump in progress positions the view itself; try later.
+        if (loadingOlder || intervalId !== undefined) {
+            scheduleSettle();
+            return;
+        }
+        const h = topSpacerEl.getBoundingClientRect().height;
+        const next = Math.max(0, spacerHeights.estTop);
+        topSlack = { key: slackKey, px: 0 };
+        topSpacerEl.style.height = `${next}px`;
+        // At the bottom the stick-to-bottom observer keeps the view there.
+        if (!isAtBottom) scrollEl.scrollTop += next - h;
+        captureScrollAnchor();
+    }
+
+    $effect(() => () => clearTimeout(settleTimer));
 
     const rowKeyOf = new WeakMap<Element, string>();
     let rowObserver: ResizeObserver | null = null;
@@ -1180,12 +1348,22 @@
         }
         const height = scrollEl.clientHeight;
         if (height === 0) return; // hidden: nothing to fit
+        const current = rowWindow;
+        // Slack is ignored while the oldest row is mounted (spacerHeights);
+        // drop it so it can't reappear as a jump once that row unmounts.
+        if (current.start === 0 && topSlack.px !== 0)
+            topSlack = { key: slackKey, px: 0 };
+        const offsets = rowOffsets(messages.map(rowHeight));
+        // In list coordinates, measured from the first mounted row: the top
+        // spacer carries slack (see topSlack), so its height is not where
+        // the list puts that row.
+        const spacer = topSpacerEl.getBoundingClientRect();
         const viewTop =
             scrollEl.getBoundingClientRect().top -
-            topSpacerEl.getBoundingClientRect().top;
-        const current = rowWindow;
+            spacer.bottom +
+            offsets[Math.min(current.start, n)];
         const next = nextWindow({
-            offsets: rowOffsets(messages.map(rowHeight)),
+            offsets,
             viewTop,
             viewBottom: viewTop + height,
             margin: Math.max(
@@ -1196,8 +1374,13 @@
             pinned: pinnedRows(),
             stickToEnd: isAtBottom && !isContextView,
         });
-        if (next.start !== current.start || next.end !== current.end)
+        if (next.start !== current.start || next.end !== current.end) {
+            // The reading anchor from the last scroll event can predate a
+            // scroll whose event hasn't fired yet; measured against it, the
+            // user's own scroll looked like a shift and was undone.
+            captureScrollAnchor();
             setRowWindow(next);
+        }
     }
 
     let windowFrame = 0;
@@ -1277,15 +1460,145 @@
             : getCallSummaries(room)),
     );
 
-    // The event ID the user has read up to — used to show "New messages" divider on load
+    // The event ID the user had read up to when they opened the room, while
+    // that read state is still unacknowledged. Drives the unread bar and turns
+    // off sticking to the bottom; cleared once the room is marked read.
+    // Gap left above the divider on open: some read history plus the bar.
+    const UNREAD_DIVIDER_TOP_GAP = 72;
+    // Put the "New Messages" divider near the top (a little read history
+    // above it, room for the unread bar) and keep it there while rows and
+    // media around it settle, as a jump to a message does. Any wheel, touch
+    // or key input hands control back at once. Few unread messages clamp
+    // this to the bottom, which counts as reading them.
+    function holdDividerNearTop() {
+        const el = scrollEl;
+        if (!el) return;
+        stopScrollIntoView();
+        const place = () => {
+            const divider = el.querySelector<HTMLElement>(
+                "[data-unread-divider]",
+            );
+            if (!divider) return;
+            const delta =
+                divider.getBoundingClientRect().top -
+                el.getBoundingClientRect().top -
+                UNREAD_DIVIDER_TOP_GAP;
+            if (Math.abs(delta) > 1) el.scrollTop += delta;
+        };
+        const userTookOver = () => finish();
+        const inputs = ["wheel", "touchstart", "keydown", "pointerdown"];
+        const finish = () => {
+            for (const type of inputs)
+                el.removeEventListener(type, userTookOver);
+            // Something else (a jump, a room switch) already took over.
+            if (intervalId !== hold) return;
+            stopScrollIntoView();
+            isAtBottom = measureAtBottom();
+            captureScrollAnchor();
+            if (isAtBottom && atLiveEdge()) markAsReadIfDisplayable();
+        };
+        for (const type of inputs)
+            el.addEventListener(type, userTookOver, { passive: true });
+        place();
+        const hold = setInterval(place, 50);
+        intervalId = hold;
+        scrollStopTimeout = setTimeout(finish, UNREAD_HOLD_MS);
+    }
+    const UNREAD_HOLD_MS = 1500;
+
+    // Whether the bottom of what's shown is the newest message: always in the
+    // live timeline; in a window only once it has paged up to the live edge.
+    // Reaching the bottom only counts as reading the room there.
+    function atLiveEdge(): boolean {
+        if (!isContextView) return true;
+        return (
+            !!contextWindow && !contextWindowCanPaginate(contextWindow, true)
+        );
+    }
     let unreadMarkerEventId = $state<string | null>(null);
+    // Where the "New Messages" divider sits. Unlike the marker above it stays
+    // for the whole visit (as in Discord), so reaching the bottom doesn't wipe
+    // out where the new messages started. Re-derived on every room open.
+    let unreadDividerEventId = $state<string | null>(null);
+    // When the receipt's event isn't loaded, its time places the divider.
+    let unreadReadTs = $state<number | null>(null);
+    // "Mark as unread" names the first UNREAD message, so the divider goes
+    // above unreadDividerEventId instead of below it.
+    let unreadFromFirst = $state(false);
+    // Marked unread while looking at the room: reaching the bottom or
+    // refocusing doesn't read it again; leaving, Escape or "Mark as read" do.
+    let keepUnreadHere = $state(false);
+    // Row the divider sits above; -1 while the loaded rows don't reach back
+    // to the read position (or nothing is unread).
+    const dividerIndex = $derived.by(() => {
+        if (!unreadDividerEventId) return -1;
+        if (unreadFromFirst) {
+            const i = messages.findIndex(
+                (e) => e.getId() === unreadDividerEventId,
+            );
+            return i >= 0
+                ? i
+                : unreadDividerIndex(messages, null, unreadReadTs);
+        }
+        return unreadDividerIndex(messages, unreadDividerEventId, unreadReadTs);
+    });
+    // The unread bar's "N new messages since <time>". When the read position
+    // is further back than the loaded history, the count is a lower bound and
+    // "since" is when the user last read the room.
+    const unreadSummary = $derived.by(() => {
+        if (!unreadMarkerEventId) return null;
+        void messagesState.timelineTick;
+        if (dividerIndex >= 0) {
+            const since = messageTimestamp(messages[dividerIndex].getTs());
+            const loaded = messages.length - dividerIndex;
+            // A window opened at the read position holds only part of the
+            // unread run; the server's count covers all of it when the room
+            // notifies, else what's loaded is a lower bound.
+            if (!isContextView || atLiveEdge())
+                return {
+                    key: "messageArea.unreadSince",
+                    params: { count: loaded, since },
+                } as const;
+            const counted = room.getUnreadNotificationCount() ?? 0;
+            return counted >= loaded
+                ? ({
+                      key: "messageArea.unreadSince",
+                      params: { count: counted, since },
+                  } as const)
+                : ({
+                      key: "messageArea.unreadSinceMany",
+                      params: { count: loaded, since },
+                  } as const);
+        }
+        if (
+            !unreadFromFirst &&
+            messages.some((e) => e.getId() === unreadMarkerEventId)
+        )
+            return null;
+        const newest = messages[messages.length - 1];
+        if (unreadReadTs !== null && newest && newest.getTs() <= unreadReadTs)
+            return null;
+        void messagesState.timelineTick;
+        const count = Math.max(
+            room.getUnreadNotificationCount() ?? 0,
+            messages.length,
+        );
+        return unreadReadTs
+            ? ({
+                  key: "messageArea.unreadSinceMany",
+                  params: { count, since: messageTimestamp(unreadReadTs) },
+              } as const)
+            : ({ key: "messageArea.unreadMany", params: { count } } as const);
+    });
 
     // Clear reply and context view when switching rooms
     $effect(() => {
         room.roomId; // track room changes
         replyToEvent = null;
+        editEvent = null;
         contextWindow = null;
         contextMessages = null;
+        contextAtReadPosition = false;
         // Release the backfill lock so the new room's initial backfill isn't
         // blocked by a load still in flight for the previous room (F2). The
         // finally in loadOlderMessages only clears the lock for its own room.
@@ -1298,6 +1611,8 @@
     $effect(() => {
         const id = room.roomId; // track room changes
         let readUpTo: string | null = null;
+        let readTs: number | null = null;
+        let fromFirst = false;
         untrack(() => {
             const events = getTimelineMessages(room);
             setMessages(id, events);
@@ -1308,21 +1623,114 @@
             // post-gap messages (older ones "vanished") and scrolling to the
             // top did nothing. loadPreviousMessages re-checks the real token.
             setCanLoadMore(id, true);
-            // Determine if there are unread messages by checking read marker vs last event
+            // Unread when our receipt is behind the newest event. Under
+            // sliding sync the receipt's event is usually not loaded yet
+            // (rooms open with only their newest event), so getReadUpToEventId
+            // is null and the receipt's own time has to tell.
             const marker = getReadUpToEventId(room);
-            const lastEventId = events[events.length - 1]?.getId();
-            if (marker && marker !== lastEventId) {
-                readUpTo = marker;
+            const receipt = getOwnReadReceipt(room);
+            const last = events[events.length - 1];
+            // "Mark as unread" wins over the receipt (which can't move back):
+            // from the chosen message, or the newest one when the room was
+            // marked without a position (room menu, another client).
+            const marked = getMarkedUnread(room);
+            const from =
+                marked?.from ??
+                (marked && last?.getId()
+                    ? { eventId: last.getId()!, ts: last.getTs() }
+                    : null);
+            if (from) {
+                readUpTo = from.eventId;
+                readTs = from.ts - 1;
+                fromFirst = true;
+                return;
             }
+            if (marker) {
+                // Unread only when a shown message from someone else follows
+                // the receipt. It often sits on a hidden event (a join, a
+                // reaction, an edit) newer than the last shown message; a
+                // plain "not the last shown message" check called such a
+                // fully read room unread and opened it at the receipt.
+                const live = room.getLiveTimeline().getEvents();
+                const at = live.findIndex((e) => e.getId() === marker);
+                if (at < 0) {
+                    if (marker !== last?.getId()) readUpTo = marker;
+                } else {
+                    const shown = new Set(events);
+                    if (
+                        live
+                            .slice(at + 1)
+                            .some(
+                                (e) =>
+                                    shown.has(e) &&
+                                    e.getSender() !== auth.userId,
+                            )
+                    )
+                        readUpTo = marker;
+                }
+            } else if (
+                receipt &&
+                receipt.ts > 0 &&
+                last &&
+                last.getId() !== receipt.eventId &&
+                last.getSender() !== auth.userId &&
+                last.getTs() > receipt.ts
+            ) {
+                readUpTo = receipt.eventId;
+            }
+            readTs = receipt && receipt.ts > 0 ? receipt.ts : null;
         });
         unreadMarkerEventId = readUpTo;
+        unreadDividerEventId = readUpTo;
+        unreadReadTs = readTs;
+        unreadFromFirst = fromFirst;
+        keepUnreadHere = false;
         tick().then(async () => {
             if (readUpTo) {
+                // The read position isn't loaded (under sliding sync a room
+                // opens with only its newest event). Open a window AT it, as
+                // a jump to that message would, instead of paging back from
+                // the present: an active room can have a huge gap, and pages
+                // are slow. Scrolling down pages the window forward; jumping
+                // to the present goes straight to the live timeline.
+                if (dividerIndex < 0) {
+                    jumpingToEventId = readUpTo;
+                    let win: TimelineWindow | null = null;
+                    try {
+                        win = await createContextWindow(room, readUpTo);
+                    } catch (err) {
+                        console.warn(
+                            "Opening at the read position failed:",
+                            err,
+                        );
+                    } finally {
+                        jumpingToEventId = null;
+                    }
+                    if (room.roomId !== id) return;
+                    if (win) {
+                        contextWindow = win;
+                        contextMessages = getContextWindowEvents(win);
+                        contextAtReadPosition = true;
+                        await tick();
+                    }
+                }
+                if (room.roomId !== id) return;
                 // Scroll so the first unread message is visible near the top
-                const markerEl = await revealRow(readUpTo);
+                const firstUnreadId =
+                    dividerIndex >= 0 ? messages[dividerIndex].getId() : null;
+                const markerEl = firstUnreadId
+                    ? await revealRow(firstUnreadId)
+                    : null;
                 if (room.roomId !== id) return;
                 if (markerEl && scrollEl) {
-                    markerEl.scrollIntoView({ block: "end" });
+                    const divider = scrollEl.querySelector<HTMLElement>(
+                        "[data-unread-divider]",
+                    );
+                    if (divider) {
+                        holdDividerNearTop();
+                    } else {
+                        markerEl.scrollIntoView({ block: "start" });
+                    }
                 } else {
                     scrollToBottom(true);
                 }
@@ -1331,7 +1739,11 @@
             }
             // If the scroll area isn't tall enough to scroll, onScroll never fires,
             // so markAsRead() is never called. Handle that here.
-            if (scrollEl && scrollEl.scrollHeight <= scrollEl.clientHeight) {
+            if (
+                scrollEl &&
+                scrollEl.scrollHeight <= scrollEl.clientHeight &&
+                atLiveEdge()
+            ) {
                 markAsReadIfDisplayable();
             }
             backfillFromTop();
@@ -1707,7 +2119,52 @@
         });
     });
 
+    // Another device, or Escape (Settings > Keybinds), can read the room while
+    // it's open: drop the unread bar once our receipt reaches the latest event.
+    $effect(() => {
+        void receiptTick;
+        untrack(() => {
+            if (!unreadMarkerEventId || getMarkedUnread(room)) return;
+            const last = getLatestTimelineEvent(room);
+            if (last && getReadUpToEventId(room) === last.getId())
+                unreadMarkerEventId = null;
+        });
+    });
+
+    // Show the room as unread from `from` without leaving it (a message's
+    // "Mark as unread", here or on another device).
+    function showMarkedUnread(from: { eventId: string; ts: number }) {
+        unreadMarkerEventId = from.eventId;
+        unreadDividerEventId = from.eventId;
+        unreadReadTs = from.ts - 1;
+        unreadFromFirst = true;
+        keepUnreadHere = true;
+    }
+    $effect(() => {
+        interfaceState.markUnreadFrom = showMarkedUnread;
+        return () => {
+            interfaceState.markUnreadFrom = null;
+        };
+    });
+    // The flag changing for this room while it's open: marked elsewhere shows
+    // it; cleared (Escape, another device reading it) ends it.
+    $effect(() => {
+        const current = room;
+        return onMarkedUnreadChange((roomId) => {
+            if (roomId !== current.roomId) return;
+            const marked = getMarkedUnread(current);
+            if (marked?.from) {
+                if (unreadDividerEventId !== marked.from.eventId)
+                    showMarkedUnread(marked.from);
+            } else if (!marked && keepUnreadHere) {
+                keepUnreadHere = false;
+                unreadMarkerEventId = null;
+            }
+        });
+    });
+
     function markAsRead() {
+        keepUnreadHere = false;
         const currentRoom = room;
         const last = getLatestTimelineEvent(currentRoom);
         if (!last) return;
@@ -1723,6 +2180,7 @@
     // in the background. While gated out, local unread state deliberately
     // persists — it clears when the user next focuses (onWindowFocusRegained).
     function markAsReadIfDisplayable() {
+        if (keepUnreadHere) return;
         if (
             canSendReceipt({
                 hasFocus: document.hasFocus(),
@@ -1762,7 +2220,11 @@
     // Shift+PageUp (Settings > Keybinds): back to the oldest unread message.
     $effect(() => {
         interfaceState.jumpToUnread = () => {
-            if (unreadMarkerEventId) void scrollToMessage(unreadMarkerEventId);
+            if (dividerIndex >= 0) {
+                const firstUnread = messages[dividerIndex].getId();
+                if (firstUnread) void scrollToMessage(firstUnread);
+            } else if (unreadDividerEventId)
+                void scrollToMessage(unreadDividerEventId);
         };
         return () => {
             interfaceState.jumpToUnread = null;
@@ -1817,10 +2279,38 @@
     // best; ~0.35 is the fallback candidate if it feels low (feel call — tune live).
     const READING_LINE_FRACTION = 0.5;
 
+    // Native anchoring holds the same row as the reading anchor. Every row
+    // opts out (the timeline's `*:[overflow-anchor:none]`) except this one,
+    // so Chromium anchors on it instead of the top visible row. Otherwise a
+    // shift between the two (an image or preview loading in the upper half)
+    // went uncorrected natively and restoreScrollAnchor had to write
+    // scrollTop, which cuts off a running wheel animation: scrolling jerked
+    // whenever content loaded. Kept through loads and jumps (backfill relies
+    // on it); dropped at the bottom, where the bottom anchor row must win.
+    let nativeAnchorRow: HTMLElement | null = null;
+
+    function setNativeAnchorRow(row: HTMLElement | null) {
+        if (row === nativeAnchorRow) return;
+        nativeAnchorRow?.style.removeProperty("overflow-anchor");
+        if (row) row.style.overflowAnchor = "auto";
+        nativeAnchorRow = row;
+    }
+
     // Record the message crossing the reading line and its offset from the
     // viewport top.
     function captureScrollAnchor() {
-        if (!anchoringActive()) {
+        if (!scrollEl) return;
+        // Only flush with the bottom does the bottom anchor row take over.
+        // In the slack above it (isAtBottom is true within 100px) that row
+        // is off screen, so Chromium had no anchor at all and rows mounting
+        // above shifted the view by hundreds of pixels.
+        const flushBottom =
+            isAtBottom &&
+            scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight <
+                2;
+        const nominate = nativeAnchoring && !flushBottom;
+        if (!nominate) setNativeAnchorRow(null);
+        if (!anchoringActive() && !nominate) {
             anchorEl = null;
             return;
         }
@@ -1828,42 +2318,79 @@
         const line = scrollEl!.clientHeight * READING_LINE_FRACTION;
         // Fallback for short/gappy content where nothing spans the line: the first
         // message reaching into the viewport, i.e. the old top-visible target.
-        let fallbackEl: HTMLElement | null = null;
-        let fallbackOffset = 0;
+        let found: HTMLElement | null = null;
+        let foundOffset = 0;
         for (const el of scrollEl!.querySelectorAll<HTMLElement>(
             "[data-event-id]",
         )) {
             const r = el.getBoundingClientRect();
             const top = r.top - cTop;
             const bottom = r.bottom - cTop;
-            if (fallbackEl === null && bottom > 8) {
-                fallbackEl = el;
-                fallbackOffset = top;
+            if (found === null && bottom > 8) {
+                found = el;
+                foundOffset = top;
             }
             if (top <= line && bottom >= line) {
-                anchorEl = el;
-                anchorOffset = top;
-                return;
+                found = el;
+                foundOffset = top;
+                break;
             }
         }
-        anchorEl = fallbackEl;
-        if (fallbackEl) anchorOffset = fallbackOffset;
+        if (nominate)
+            setNativeAnchorRow(
+                found?.closest<HTMLElement>("[data-row-index]") ?? null,
+            );
+        if (!anchoringActive()) {
+            anchorEl = null;
+            return;
+        }
+        anchorEl = found;
+        // Kept in content coordinates (offset + scrollTop), so a user scroll
+        // that lands before the next scroll event isn't mistaken for a shift.
+        anchorOffset = foundOffset + scrollEl.scrollTop;
     }
 
     // If the anchored message moved (content above/within it changed size),
     // cancel the move so the reading position stays put. Sub-pixel drift is left
     // to the browser; we only undo real jumps.
+    let correctionsThisFrame = 0;
+    const MAX_CORRECTIONS_PER_FRAME = 4;
+
     function restoreScrollAnchor() {
-        if (!anchoringActive() || !anchorEl || !anchorEl.isConnected) return;
+        if (!anchoringActive()) return;
+        // Native anchoring already holds this same row (setNativeAnchorRow)
+        // against every shift above it, smoothly and within the frame.
+        // Correcting as well only fought it: measured mid-drag, a row mounting
+        // before the next scroll event read the user's own scroll as a shift
+        // and undid it, so content stood still for a frame (8 in 300 in a
+        // mixed-media room). Just make sure a row is nominated.
+        if (nativeAnchoring) {
+            if (!nativeAnchorRow?.isConnected) captureScrollAnchor();
+            return;
+        }
+        if (!anchorEl || !anchorEl.isConnected) return;
         const cTop = scrollEl!.getBoundingClientRect().top;
         const delta =
-            anchorEl.getBoundingClientRect().top - cTop - anchorOffset;
+            anchorEl.getBoundingClientRect().top -
+            cTop +
+            scrollEl!.scrollTop -
+            anchorOffset;
         if (delta > 2 || delta < -2) {
-            scrollEl!.scrollTop += delta;
+            // A correction resizes the spacer, which re-runs this observer. If
+            // something keeps undoing it, give up until the next frame rather
+            // than loop forever in microtasks (that froze the page once).
+            if (++correctionsThisFrame > MAX_CORRECTIONS_PER_FRAME) return;
+            if (correctionsThisFrame === 1)
+                requestAnimationFrame(() => (correctionsThisFrame = 0));
+            // Usually absorbed by the top spacer without scrolling at all.
+            const scrolled = cancelShift(delta);
+            // What scrolling covered is still off in content coordinates:
+            // move the baseline so it isn't corrected again.
+            anchorOffset += scrolled;
             // Keep the selection baseline pinned to content, not raw scrollTop: a
             // reading-anchor correction (late image/preview load above) must not read
             // as a user scroll and dismiss the actions bar.
-            if (selectionScrollTop !== null) selectionScrollTop += delta;
+            if (selectionScrollTop !== null) selectionScrollTop += scrolled;
         }
     }
 
@@ -1875,6 +2402,7 @@
         // Track the reading position so a late content change can be undone.
         captureScrollAnchor();
         scheduleWindowUpdate();
+        scheduleSettle();
 
         // Touch: a meaningful scroll away from where a message was selected dismisses
         // its floating actions bar. Guarded so a bottom-sheet action in progress and
@@ -1955,6 +2483,31 @@
     // (low in rooms full of joins); sizes the next page (utils/backfillSizing).
     let visibleRatio = INITIAL_VISIBLE_RATIO;
 
+    // The row a history prepend is measured against: the one after the first
+    // row on screen. Measuring the oldest rendered row missed its own change:
+    // older messages from the same sender fold its name and avatar away, and
+    // that 32px shrink moved everything below it up mid-scroll. Any row that
+    // can fold is now above the reference.
+    function backfillReferenceRow(): HTMLElement | null {
+        if (!scrollEl) return null;
+        const top = scrollEl.getBoundingClientRect().top;
+        let first: HTMLElement | null = null;
+        for (const el of scrollEl.querySelectorAll<HTMLElement>(
+            "[data-event-id]",
+        )) {
+            first ??= el;
+            if (el.getBoundingClientRect().bottom > top) {
+                const next = el
+                    .closest("[data-row-index]")
+                    ?.nextElementSibling?.querySelector<HTMLElement>(
+                        "[data-event-id]",
+                    );
+                return next ?? el;
+            }
+        }
+        return first;
+    }
+
     async function loadOlderMessages() {
         if (loadingOlder) return;
         // Context view paginates the jumped-to window; the live view paginates
@@ -1974,8 +2527,8 @@
         // drop the result so room A's "no more history" verdict is never written
         // into room B (which would leave B un-paginatable) (F2).
         const rid = room.roomId;
-        // Scroll preservation across a history prepend. The reference is the
-        // oldest rendered message; after prepending we nudge it back to the
+        // Scroll preservation across a history prepend. The reference is a
+        // message on screen (backfillReferenceRow); after prepending we nudge it back to the
         // viewport offset it held just before — a self-correcting form that lands
         // it right whether or not the browser's native scroll anchoring also
         // compensated (Chromium/Firefox do, WebKit doesn't). Do NOT replace this
@@ -1996,7 +2549,7 @@
             if (isContextView && contextWindow) {
                 await paginateContextWindow(contextWindow, false);
                 if (room.roomId !== rid) return;
-                const refEl = scrollEl?.querySelector("[data-event-id]");
+                const refEl = backfillReferenceRow();
                 refId = (refEl as HTMLElement | null)?.dataset.eventId;
                 prevTop = refEl?.getBoundingClientRect().top;
                 contextMessages = getContextWindowEvents(contextWindow);
@@ -2022,7 +2575,7 @@
                     events[0] === current[0]
                 )
                     return;
-                const refEl = scrollEl?.querySelector("[data-event-id]");
+                const refEl = backfillReferenceRow();
                 refId = (refEl as HTMLElement | null)?.dataset.eventId;
                 prevTop = refEl?.getBoundingClientRect().top;
                 setMessages(rid, events);
@@ -2036,10 +2589,11 @@
                 prevTop !== undefined
             ) {
                 const el = scrollEl.querySelector(`[data-event-id="${refId}"]`);
-                if (el) {
-                    scrollEl.scrollTop +=
-                        el.getBoundingClientRect().top - prevTop;
-                }
+                // Native anchoring usually leaves nothing to fix; skip the
+                // no-op write, since any programmatic scroll can cut off a
+                // running wheel or fling animation.
+                const shift = el ? el.getBoundingClientRect().top - prevTop : 0;
+                if (shift >= 1 || shift <= -1) scrollEl.scrollTop += shift;
             }
         } finally {
             // Only release the lock for our own room. On a mid-load switch the
@@ -2127,15 +2681,19 @@
         }
         contextWindow = null;
         contextMessages = null;
+        contextAtReadPosition = false;
         setMessages(roomId, live);
         await tick();
         const el = anchor ? await revealRow(anchor.eventId) : null;
         if (!el || !scrollEl) {
             scrollToBottom(true);
-            return;
+        } else {
+            scrollEl.scrollTop += el.getBoundingClientRect().top - anchor!.top;
+            isAtBottom = measureAtBottom();
         }
-        scrollEl.scrollTop += el.getBoundingClientRect().top - anchor!.top;
-        isAtBottom = measureAtBottom();
+        // Landing at the present from a window opened at the read position
+        // reads the room; no scroll event follows to say so.
+        if (isAtBottom && unreadMarkerEventId) markAsReadIfDisplayable();
     }
 
     // Every message row at least partly on screen, top to bottom, with its
@@ -2277,8 +2835,11 @@
     // first, so the user still sees it flick). restoreScrollAnchor no-ops unless
     // we're calmly reading history and the anchor actually moved, so this is
     // inert at the bottom, during backfill, and during a jump.
+    // The top spacer also changes height without any row mounting (a new
+    // message re-deriving it with a drifted estimate), so it is watched too.
     $effect(() => {
         const root = scrollEl;
+        const spacer = topSpacerEl;
         roomId; // re-establish per room
         if (!root) return;
         const onMediaLoad = (e: Event) => {
@@ -2288,10 +2849,37 @@
         };
         const mo = new MutationObserver(restoreScrollAnchor);
         mo.observe(root, { childList: true, subtree: true });
+        if (spacer)
+            mo.observe(spacer, {
+                attributes: true,
+                attributeFilter: ["style"],
+            });
+        // A finger resting on the screen fires no scroll events but is still
+        // scrolling: settling then would yank the view under it.
+        const onTouchStart = () => {
+            touching = true;
+            clearTimeout(settleTimer);
+        };
+        const onTouchEnd = (e: TouchEvent) => {
+            if (e.touches.length > 0) return;
+            touching = false;
+            scheduleSettle();
+        };
         root.addEventListener("load", onMediaLoad, true);
+        // Passive, unlike Svelte's onwheel: a blocking wheel listener makes
+        // Chromium wait for the main thread before scrolling each notch, so
+        // scrolling stuttered whenever history or rows were loading.
+        root.addEventListener("wheel", stopScrollIntoView, { passive: true });
+        root.addEventListener("touchstart", onTouchStart, { passive: true });
+        root.addEventListener("touchend", onTouchEnd, { passive: true });
+        root.addEventListener("touchcancel", onTouchEnd, { passive: true });
         return () => {
             mo.disconnect();
             root.removeEventListener("load", onMediaLoad, true);
+            root.removeEventListener("wheel", stopScrollIntoView);
+            root.removeEventListener("touchstart", onTouchStart);
+            root.removeEventListener("touchend", onTouchEnd);
+            root.removeEventListener("touchcancel", onTouchEnd);
         };
     });
 
@@ -2362,10 +2950,10 @@
             class="absolute inset-0 z-50 pointer-events-none flex items-center justify-center"
         >
             <div
-                class="absolute inset-2 rounded-xl border-2 border-dashed border-discord-accent bg-discord-accent/10"
+                class="absolute inset-2 rounded-xl border-2 border-dashed border-zam-accent bg-zam-accent/10"
             ></div>
             <div
-                class="relative flex flex-col items-center gap-2 text-discord-accent"
+                class="relative flex flex-col items-center gap-2 text-zam-accent"
             >
                 <svg
                     class="w-12 h-12"
@@ -2387,20 +2975,23 @@
         </div>
     {/if}
 
-    <!-- Main chat area -->
+    <!-- Main chat area. `relative` makes it the containing block for the
+         absolute overlays below (unread bar, jump pills), so they span only
+         the chat column and not the side panels beside it. -->
     <div
         dir={uiDir}
-        class="flex-1 flex flex-col min-w-0 overflow-hidden"
+        class="flex-1 flex flex-col min-w-0 overflow-hidden relative"
         data-chat-area
     >
         <!-- Room header -->
         <div
-            class="h-12 px-4 flex items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0"
+            data-zam-region="room-header"
+            class="h-12 px-4 flex items-center gap-3 border-b border-zam-divider shadow-sm flex-shrink-0"
         >
             {#if isMobile}
                 <button
                     onclick={onMenuOpen}
-                    class="relative p-1.5 -ms-1 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                    class="relative p-1.5 -ms-1 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors flex-shrink-0"
                     title={t("common.openRoomList")}
                 >
                     <svg
@@ -2414,27 +3005,57 @@
                     </svg>
                     {#if hasAnyLoud}
                         <span
-                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-danger border border-discord-background"
+                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-danger border border-zam-background"
                             aria-label={t("messageArea.unreadNotifications")}
                         ></span>
                     {/if}
                 </button>
             {/if}
-            <Hash size={20} class="text-discord-textMuted flex-shrink-0" />
+            {#if threadParentRoom}
+                {@const parent = threadParentRoom}
+                <button
+                    onclick={() => navigateToRoom(parent.roomId)}
+                    class="hidden sm:flex items-center gap-1 min-w-0 max-w-[30%] text-zam-textMuted hover:text-zam-textPrimary transition-colors"
+                    title={t("bridgedThreads.goToParent", {
+                        name: parent.name,
+                    })}
+                >
+                    <ChannelTypeIcon
+                        kind={channelIconKind(
+                            (void roomsState.roomsTick,
+                            bridgedChannel(parent.roomId))?.type,
+                        )}
+                        size={20}
+                        class="flex-shrink-0"
+                    />
+                    <span class="font-semibold truncate"
+                        >{@html renderPlainTextWithTwemoji(parent.name)}</span
+                    >
+                </button>
+                <ChevronRight
+                    size={16}
+                    class="hidden sm:block text-zam-textMuted flex-shrink-0 rtl:-scale-x-100"
+                />
+            {/if}
+            <ChannelTypeIcon
+                kind={headerIconKind}
+                size={20}
+                class="text-zam-textMuted flex-shrink-0"
+            />
             <!-- 5rem floor below md only: the header's buttons cannot shrink, so
                  without a floor the name and topic each get a proportional share of
                  the deficit at 412px and neither renders even an ellipsis. Above md
                  there is ample width, so drop the floor rather than strand short
                  names (a DM titled "Zam" would sit 50px from the lock icon). -->
             <h2
-                class="font-semibold text-discord-textPrimary min-w-[5rem] md:min-w-0 truncate"
+                class="font-semibold text-zam-textPrimary min-w-[5rem] md:min-w-0 truncate"
                 title={roomName}
             >
                 {@html renderPlainTextWithTwemoji(roomName)}
             </h2>
             {#if roomEncrypted}
                 <span
-                    class="flex-shrink-0 text-discord-textMuted"
+                    class="flex-shrink-0 text-zam-textMuted"
                     title={t("messageArea.encryptionEnabled")}
                     aria-label={t("messageArea.encryptionEnabled")}
                 >
@@ -2442,19 +3063,19 @@
                 </span>
             {/if}
             {#if topic}
-                <div class="w-px h-5 bg-discord-divider"></div>
+                <div class="w-px h-5 bg-zam-divider"></div>
                 {#if isMobile}
                     <button
                         type="button"
                         onclick={openTopicSheet}
                         aria-label={t("roomTopicSheet.open")}
-                        class="text-sm text-discord-textMuted truncate flex-auto min-w-0 text-start"
+                        class="text-sm text-zam-textMuted truncate flex-auto min-w-0 text-start"
                     >
                         {topic}
                     </button>
                 {:else}
                     <p
-                        class="text-sm text-discord-textMuted truncate flex-auto min-w-0"
+                        class="text-sm text-zam-textMuted truncate flex-auto min-w-0"
                         title={topic}
                     >
                         {topic}
@@ -2469,7 +3090,7 @@
                 <button
                     onclick={() => joinCall(room.roomId)}
                     disabled={voiceCallState.joinPendingRoomId !== null}
-                    class="p-1.5 rounded transition-colors text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover disabled:opacity-50 {joining
+                    class="p-1.5 rounded transition-colors text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover disabled:opacity-50 {joining
                         ? 'animate-pulse'
                         : ''}"
                     title={joining
@@ -2486,7 +3107,7 @@
             {#if callCount > 0 || isVideoRoomView}
                 <button
                     onclick={() => showCallView(room.roomId)}
-                    class="p-1.5 rounded transition-colors text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover"
+                    class="p-1.5 rounded transition-colors text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover"
                     title={t("messageArea.showCall")}
                     aria-label={t("messageArea.showCall")}
                 >
@@ -2498,8 +3119,8 @@
                 <button
                     onclick={() => toggleSidebar("search")}
                     class="p-1.5 rounded transition-colors {showSearchPanel
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.searchMessages")}
                 >
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"
@@ -2517,8 +3138,8 @@
                 <button
                     onclick={() => toggleSidebar("threads")}
                     class="relative p-1.5 rounded transition-colors {showThreadsPanel
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.threads")}
                     aria-label={t("messageArea.toggleThreadsList")}
                 >
@@ -2529,7 +3150,7 @@
                     >
                     {#if threadRollup.mentions > 0}
                         <span
-                            class="absolute -top-1 -end-1 flex-shrink-0 bg-discord-danger text-white text-[10px] leading-none font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ring-2 ring-discord-backgroundSecondary"
+                            class="absolute -top-1 -end-1 flex-shrink-0 bg-zam-danger text-white text-[10px] leading-none font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ring-2 ring-zam-backgroundSecondary"
                             title={t("messageArea.unreadThreadMentions")}
                             >{threadRollup.mentions > 99
                                 ? "99+"
@@ -2537,7 +3158,7 @@
                         >
                     {:else if threadRollup.anyUnread}
                         <span
-                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-accent ring-2 ring-discord-backgroundSecondary"
+                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-accent ring-2 ring-zam-backgroundSecondary"
                             title={t("messageArea.unreadThreads")}
                         ></span>
                     {/if}
@@ -2546,8 +3167,8 @@
                 <button
                     onclick={() => toggleSidebar("pinned")}
                     class="p-1.5 rounded transition-colors {showPinnedPanel
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={pinnedCount > 0
                         ? t("messageArea.pinnedMessagesCount", {
                               count: pinnedCount,
@@ -2564,8 +3185,8 @@
                 <button
                     onclick={() => toggleSidebar("notifications")}
                     class="p-1.5 rounded transition-colors {showNotificationsPanel
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.notificationsInbox")}
                 >
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"
@@ -2578,8 +3199,8 @@
                 <button
                     onclick={() => toggleSidebar("media")}
                     class="p-1.5 rounded transition-colors {showMediaPanel
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.mediaAndFiles")}
                     aria-label={t("messageArea.mediaAndFiles")}
                 >
@@ -2589,8 +3210,8 @@
                 <button
                     onclick={() => toggleSidebar("members")}
                     class="p-1.5 rounded transition-colors {showMemberList
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.toggleMemberList")}
                 >
                     <Users size={20} />
@@ -2600,8 +3221,8 @@
                         onclick={() => openPluginHeaderPanel(btn)}
                         class="p-1.5 rounded transition-colors {activePluginPanelKey ===
                         btn.key
-                            ? 'text-discord-accent bg-discord-messageHover'
-                            : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                            ? 'text-zam-accent bg-zam-messageHover'
+                            : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                         title={btn.label}
                         aria-label={btn.label}
                     >
@@ -2622,8 +3243,8 @@
                 <button
                     onclick={toggleOverflowMenu}
                     class="relative p-1.5 rounded transition-colors flex-shrink-0 {overflowActive
-                        ? 'text-discord-accent bg-discord-messageHover'
-                        : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                        ? 'text-zam-accent bg-zam-messageHover'
+                        : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                     title={t("messageArea.more")}
                     aria-label={t("messageArea.moreRoomOptions")}
                     aria-haspopup="menu"
@@ -2632,7 +3253,7 @@
                     <MoreHorizontal size={20} />
                     {#if threadRollup.mentions > 0}
                         <span
-                            class="absolute -top-1 -end-1 flex-shrink-0 bg-discord-danger text-white text-[10px] leading-none font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ring-2 ring-discord-backgroundSecondary"
+                            class="absolute -top-1 -end-1 flex-shrink-0 bg-zam-danger text-white text-[10px] leading-none font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center ring-2 ring-zam-backgroundSecondary"
                             title={t("messageArea.unreadThreadMentions")}
                             >{threadRollup.mentions > 99
                                 ? "99+"
@@ -2640,7 +3261,7 @@
                         >
                     {:else if threadRollup.anyUnread}
                         <span
-                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-accent ring-2 ring-discord-backgroundSecondary"
+                            class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-accent ring-2 ring-zam-backgroundSecondary"
                             title={t("messageArea.unreadThreads")}
                         ></span>
                     {/if}
@@ -2658,15 +3279,13 @@
              dedicated sr-only region after this container instead. -->
         <div
             bind:this={scrollEl}
+            data-zam-region="timeline"
             onscroll={onScroll}
-            onwheel={stopScrollIntoView}
             ontouchstart={stopScrollIntoView}
             role="log"
             aria-label={t("messageArea.messageTimeline")}
             aria-live="off"
-            class="overflow-y-auto overflow-x-hidden flex flex-1 flex-col{stickToBottom
-                ? ' *:[overflow-anchor:none]'
-                : ''}"
+            class="overflow-y-auto overflow-x-hidden flex flex-1 flex-col *:[overflow-anchor:none]"
         >
             <!-- Pushes a short timeline down so it hugs the composer, like
                  flex-col-reverse used to. -->
@@ -2685,7 +3304,7 @@
             {#if historyEdgeState === "loading"}
                 <div class="flex justify-center py-4">
                     <div
-                        class="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full animate-spin"
+                        class="w-6 h-6 border-2 border-zam-accent border-t-transparent rounded-full animate-spin"
                         role="status"
                         aria-label={t("messageArea.loadingHistory")}
                     ></div>
@@ -2693,21 +3312,36 @@
             {/if}
 
             <!-- Chat start, shown only once the room's m.room.create is loaded -->
-            {#if historyEdgeState === "start"}
+            {#if historyEdgeState === "start" && isDirectRoom}
+                <div class="px-4 pb-4">
+                    <div class="mb-4">
+                        <Avatar
+                            src={getRoomAvatar(room)}
+                            name={roomName}
+                            id={room.roomId}
+                            size={64}
+                        />
+                    </div>
+                    <h3 class="text-2xl font-bold text-zam-textPrimary mb-1">
+                        {@html renderPlainTextWithTwemoji(roomName)}
+                    </h3>
+                    <p class="text-zam-textMuted">
+                        {t("messageArea.dmStart", { name: roomName })}
+                    </p>
+                </div>
+            {:else if historyEdgeState === "start"}
                 <div class="px-4 pb-4">
                     <div
-                        class="w-16 h-16 rounded-full bg-discord-accent flex items-center justify-center mb-4"
+                        class="w-16 h-16 rounded-full bg-zam-accent flex items-center justify-center mb-4"
                     >
                         <span class="text-3xl font-bold text-white">#</span>
                     </div>
-                    <h3
-                        class="text-2xl font-bold text-discord-textPrimary mb-1"
-                    >
+                    <h3 class="text-2xl font-bold text-zam-textPrimary mb-1">
                         {t(
                             "messageArea.welcomeTo",
                         )}{@html renderPlainTextWithTwemoji(roomName)}!
                     </h3>
-                    <p class="text-discord-textMuted">
+                    <p class="text-zam-textMuted">
                         {t(
                             "messageArea.thisIsTheBeginningOfThe",
                         )}{@html renderPlainTextWithTwemoji(roomName)}
@@ -2729,48 +3363,48 @@
                 {@const sepTs = dateSeparatorLabel(messages, i)}
                 {@const receipts =
                     receiptsByEvent?.get(event.getId() ?? "") ?? NO_RECEIPTS}
-                {@const unreadHere = unreadDividerBefore(
-                    messages,
-                    i,
-                    unreadMarkerEventId,
-                )}
+                {@const unreadHere = i === dividerIndex}
+                {@const anchorHere = unreadHere && unreadMarkerEventId !== null}
                 <!-- One box per row, measured for the spacers. It carries the
                      unread divider's anchoring: a child can't opt back in
                      under a parent that opted out. -->
                 <div
                     data-row-index={i}
                     use:measureRow={rowKey(event)}
-                    class="flex-shrink-0{unreadHere
+                    class="flex-shrink-0{anchorHere
                         ? ' ![overflow-anchor:auto]'
                         : ''}"
                 >
                     {#if sepTs !== null}
                         <div class="flex items-center gap-4 px-4 my-4">
-                            <div class="flex-1 h-px bg-discord-divider"></div>
+                            <div class="flex-1 h-px bg-zam-divider"></div>
                             <span
-                                class="text-xs font-semibold text-discord-textMuted"
+                                class="text-xs font-semibold text-zam-textMuted"
                                 >{daySeparator(sepTs)}</span
                             >
-                            <div class="flex-1 h-px bg-discord-divider"></div>
+                            <div class="flex-1 h-px bg-zam-divider"></div>
                         </div>
                     {/if}
                     {#if unreadHere}
                         <div
-                            class="flex items-center gap-3 px-4 my-2 ![overflow-anchor:auto]"
+                            data-unread-divider
+                            class="flex items-center gap-3 px-4 my-2{anchorHere
+                                ? ' ![overflow-anchor:auto]'
+                                : ''}"
                         >
-                            <div class="flex-1 h-px bg-discord-danger/60"></div>
+                            <div class="flex-1 h-px bg-zam-danger/60"></div>
                             <span
-                                class="text-xs font-semibold text-discord-danger uppercase tracking-wide"
+                                class="text-xs font-semibold text-zam-danger uppercase tracking-wide"
                                 >{t("messageArea.newMessages")}</span
                             >
-                            <div class="flex-1 h-px bg-discord-danger/60"></div>
+                            <div class="flex-1 h-px bg-zam-danger/60"></div>
                         </div>
                     {/if}
                     {#if isRawDebugEvent(event)}
                         <DebugEventItem {event} />
                     {:else if shouldHideMessage(event.getSender(), ignoredUsersState.userIds, auth.userId) && !revealedBlockedIds[event.getId() ?? ""]}
                         <div
-                            class="px-4 py-1.5 flex items-center gap-2 text-xs text-discord-textMuted"
+                            class="px-4 py-1.5 flex items-center gap-2 text-xs text-zam-textMuted"
                         >
                             <svg
                                 class="w-3.5 h-3.5 flex-shrink-0"
@@ -2789,7 +3423,7 @@
                                 onclick={() =>
                                     (revealedBlockedIds[event.getId() ?? ""] =
                                         true)}
-                                class="text-discord-accent hover:underline font-medium"
+                                class="text-zam-accent hover:underline font-medium"
                                 >{t("messageArea.showBlockedMessage")}</button
                             >
                         </div>
@@ -2805,9 +3439,9 @@
                             }}
                             jumpToReply={scrollToMessage}
                             onOpenThread={openThread}
-                            editRequested={editRequestedEventId ===
-                                event.getId()}
-                            onEditDone={() => messageInputEl?.focus()}
+                            onStartEdit={(ev) => (editEvent = ev)}
+                            isBeingEdited={!!editEvent &&
+                                editEvent.getId() === event.getId()}
                             {receipts}
                             mentionHighlight={highlightedIds.has(event.getId())}
                             callSummary={callSummaries.get(
@@ -2826,10 +3460,10 @@
             <!-- Room upgrade tombstone banner -->
             {#if tombstone}
                 <div
-                    class="mx-4 mt-2 mb-4 p-3 rounded-lg bg-discord-backgroundTertiary border border-discord-warning flex items-center gap-3"
+                    class="mx-4 mt-2 mb-4 p-3 rounded-lg bg-zam-backgroundTertiary border border-zam-warning flex items-center gap-3"
                 >
                     <svg
-                        class="w-5 h-5 text-discord-warning flex-shrink-0"
+                        class="w-5 h-5 text-zam-warning flex-shrink-0"
                         fill="currentColor"
                         viewBox="0 0 24 24"
                         ><path
@@ -2837,19 +3471,17 @@
                         /></svg
                     >
                     <div class="flex-1 min-w-0">
-                        <p
-                            class="text-sm font-semibold text-discord-textPrimary"
-                        >
+                        <p class="text-sm font-semibold text-zam-textPrimary">
                             {t("messageArea.thisRoomHasBeenUpgraded")}
                         </p>
-                        <p class="text-xs text-discord-textMuted truncate">
+                        <p class="text-xs text-zam-textMuted truncate">
                             {tombstone.body}
                         </p>
                     </div>
                     <button
                         onclick={joinUpgrade}
                         disabled={joiningUpgrade}
-                        class="flex-shrink-0 px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                        class="flex-shrink-0 px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover text-white text-sm font-semibold transition-colors disabled:opacity-50"
                     >
                         {replacementAlreadyJoined
                             ? t("messageArea.goToNewRoom")
@@ -2884,15 +3516,18 @@
 
         <!-- Scroll to bottom button. Hidden while a composer suggestion list is
              open so it doesn't fight the autocomplete for the same space. -->
-        {#if !isAtBottom && !isContextView && messages.length > 0 && !composerAutocompleteOpen}
+        {#if !isAtBottom && (!isContextView || unreadSummary || contextAtReadPosition) && messages.length > 0 && !composerAutocompleteOpen}
             <div
                 class="absolute start-0 end-0 flex justify-center z-10 pointer-events-none"
                 style="bottom: {composerHeight + 12}px;"
             >
                 <button
                     onpointerdown={(e) => e.preventDefault()}
-                    onclick={() => scrollToBottom(false)}
-                    class="pointer-events-auto bg-discord-backgroundSecondary hover:bg-discord-messageHover text-discord-textPrimary px-3 py-1.5 rounded-full shadow-lg text-sm font-medium border border-discord-divider transition-colors flex items-center gap-1.5"
+                    onclick={() =>
+                        isContextView
+                            ? void rejoinLive()
+                            : scrollToBottom(false)}
+                    class="pointer-events-auto bg-zam-backgroundSecondary hover:bg-zam-messageHover text-zam-textPrimary px-3 py-1.5 rounded-full shadow-lg text-sm font-medium border border-zam-divider transition-colors flex items-center gap-1.5"
                 >
                     <svg
                         class="w-4 h-4"
@@ -2915,23 +3550,51 @@
                 style="bottom: {composerHeight + 12}px;"
             >
                 <div
-                    class="bg-discord-backgroundSecondary text-discord-textMuted px-3 py-1.5 rounded-full shadow-lg text-sm border border-discord-divider flex items-center gap-2"
+                    class="bg-zam-backgroundSecondary text-zam-textMuted px-3 py-1.5 rounded-full shadow-lg text-sm border border-zam-divider flex items-center gap-2"
                 >
                     <div
-                        class="w-3.5 h-3.5 border-2 border-discord-accent border-t-transparent rounded-full animate-spin"
+                        class="w-3.5 h-3.5 border-2 border-zam-accent border-t-transparent rounded-full animate-spin"
                     ></div>
                     {t("messageArea.searchingForMessage")}
                 </div>
             </div>
         {/if}
 
-        <!-- Context view banner -->
-        {#if isContextView}
+        <!-- Unread bar: how much arrived since last visit, with a jump back to
+             the divider and a way to dismiss it without scrolling down. -->
+        {#if unreadSummary}
+            <div
+                class="absolute top-12 start-0 end-0 mx-4 z-10 flex items-stretch rounded-b-lg overflow-hidden shadow-lg bg-zam-accent text-white text-sm font-semibold"
+            >
+                <button
+                    onpointerdown={(e) => e.preventDefault()}
+                    onclick={() => interfaceState.jumpToUnread?.()}
+                    class="flex-1 min-w-0 text-start px-3 py-1 hover:bg-white/10 truncate"
+                    >{t(unreadSummary.key, unreadSummary.params)}</button
+                >
+                <button
+                    onpointerdown={(e) => e.preventDefault()}
+                    onclick={markAsRead}
+                    class="flex-shrink-0 px-3 py-1 hover:bg-white/10 flex items-center gap-1"
+                >
+                    {t("messageArea.markAsRead")}
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"
+                        ><path
+                            d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                        /></svg
+                    >
+                </button>
+            </div>
+        {/if}
+
+        <!-- Context view banner (the unread bar stands in for it while a room
+             is opened at the read position) -->
+        {#if isContextView && !unreadSummary && !contextAtReadPosition}
             <div
                 class="absolute top-12 start-0 end-0 flex justify-center z-10 pointer-events-none"
             >
                 <div
-                    class="pointer-events-auto bg-discord-warning/20 text-discord-warning px-3 py-1.5 rounded-full shadow-lg text-sm border border-discord-warning/40 flex items-center gap-2"
+                    class="pointer-events-auto bg-zam-warning/20 text-zam-warning px-3 py-1.5 rounded-full shadow-lg text-sm border border-zam-warning/40 flex items-center gap-2"
                 >
                     <svg
                         class="w-3.5 h-3.5 flex-shrink-0"
@@ -2959,10 +3622,10 @@
              connection. -->
         {#if cachedOnly}
             <div
-                class="flex-shrink-0 mx-4 mb-4 rounded-lg border border-discord-backgroundModifier bg-discord-backgroundSecondary px-4 py-3"
+                class="flex-shrink-0 mx-4 mb-4 rounded-lg border border-zam-backgroundModifier bg-zam-backgroundSecondary px-4 py-3"
                 dir={uiDir}
             >
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messageArea.cachedRoomHint")}
                 </p>
             </div>
@@ -2975,6 +3638,10 @@
                     {roomName}
                     {room}
                     {replyToEvent}
+                    {editEvent}
+                    onCancelEdit={() => {
+                        editEvent = null;
+                    }}
                     {scrollEl}
                     keepScrollOnSend={isContextView}
                     onCancelReply={() => {
@@ -3113,18 +3780,18 @@
             {@const panel = pluginPanel.current}
             {#if isMobile}
                 <div
-                    class="absolute inset-0 z-40 flex flex-col bg-discord-backgroundPrimary"
+                    class="absolute inset-0 z-40 flex flex-col bg-zam-backgroundPrimary"
                 >
                     <div
-                        class="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-discord-divider"
+                        class="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-zam-divider"
                     >
                         <span
-                            class="font-semibold text-discord-textPrimary truncate"
+                            class="font-semibold text-zam-textPrimary truncate"
                             >{panel.title}</span
                         >
                         <button
                             onclick={closeSidebar}
-                            class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover"
+                            class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover"
                             aria-label={t("messageArea.closePanel")}
                         >
                             <X size={20} />
@@ -3139,18 +3806,18 @@
                 </div>
             {:else}
                 <div
-                    class="w-80 flex-shrink-0 flex flex-col border-l border-discord-divider bg-discord-backgroundSecondary"
+                    class="w-80 flex-shrink-0 flex flex-col border-l border-zam-divider bg-zam-backgroundSecondary"
                 >
                     <div
-                        class="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-discord-divider"
+                        class="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-zam-divider"
                     >
                         <span
-                            class="font-semibold text-discord-textPrimary truncate"
+                            class="font-semibold text-zam-textPrimary truncate"
                             >{panel.title}</span
                         >
                         <button
                             onclick={closeSidebar}
-                            class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover"
+                            class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover"
                             aria-label={t("messageArea.closePanel")}
                         >
                             <X size={20} />

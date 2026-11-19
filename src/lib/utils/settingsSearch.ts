@@ -210,6 +210,18 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "messages-media",
+        label: t("messagesMediaSettings.pingOnReply"),
+        keywords: ["reply", "mention", "ping", "notify", "@"],
+        anchor: "cust-messages",
+    },
+    {
+        tab: "messages-media",
+        label: t("messagesMediaSettings.fitImagesToScreen"),
+        keywords: ["lightbox", "viewer", "zoom", "fit", "image", "enlarge"],
+        anchor: "cust-messages",
+    },
+    {
+        tab: "messages-media",
         label: t("settingsSearch.midiSoundBank"),
         keywords: ["midi", "soundfont", "sf2", "dls", "instruments", "music"],
         anchor: "cust-midi",
@@ -267,6 +279,7 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
             "msc4544",
             "media",
             "now playing",
+            "steam",
         ],
         anchor: "cust-rich-presence",
         available: (p) => p.richPresence,
@@ -276,7 +289,7 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         label: t("settingsSearch.proxy"),
         keywords: ["proxy", "socks", "tor", "pac", "bypass", "network"],
         anchor: "cust-network",
-        available: (p) => p.desktopTray,
+        available: (p) => p.desktopTray || p.nativeApp,
     },
     // appearance (language)
     {
@@ -384,6 +397,12 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "privacy",
+        label: t("privacySafetySettings.streamerMode"),
+        keywords: ["streaming", "obs", "twitch", "hide", "blur", "privacy"],
+        anchor: "notif-privacy",
+    },
+    {
+        tab: "privacy",
         label: t("settingsSearch.hideMessageTextInNotifications"),
         keywords: ["notification content", "preview", "privacy"],
         anchor: "notif-privacy",
@@ -439,6 +458,33 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "voice",
         label: t("settingsSearch.echoCancellation"),
         keywords: ["echo", "feedback"],
+    },
+    {
+        tab: "voice",
+        label: t("settingsSearch.meshRelayOnly"),
+        keywords: [
+            "ip",
+            "address",
+            "privacy",
+            "turn",
+            "relay",
+            "peer",
+            "p2p",
+            "mesh",
+        ],
+    },
+    {
+        tab: "voice",
+        label: t("settingsSearch.meshPublicStun"),
+        keywords: [
+            "stun",
+            "nat",
+            "router",
+            "peer",
+            "p2p",
+            "mesh",
+            "cloudflare",
+        ],
     },
     {
         tab: "voice",
@@ -541,6 +587,16 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "debug",
         label: t("settingsSearch.orderHints"),
         keywords: ["message order", "ordering", "element", "timeline"],
+    },
+    {
+        tab: "debug",
+        label: t("settingsSearch.disableGallerySend"),
+        keywords: ["gallery", "album", "attachments", "msc4274", "m.gallery"],
+    },
+    {
+        tab: "debug",
+        label: t("settingsSearch.stickyCallMembership"),
+        keywords: ["msc4354", "m.rtc.member", "call", "matrixrtc"],
     },
     {
         tab: "debug",

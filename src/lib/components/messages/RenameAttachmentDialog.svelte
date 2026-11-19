@@ -5,6 +5,10 @@
     import { focusTrap } from "$lib/actions/focusTrap";
     import { onMount, untrack } from "svelte";
     import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+    import {
+        isSpoilerFilename,
+        withSpoiler,
+    } from "$lib/utils/spoilerAttachment";
 
     interface Props {
         name: string;
@@ -34,6 +38,10 @@
     let inputEl = $state<HTMLInputElement | null>(null);
     // No path separators or control characters in a filename.
     const cleaned = $derived(value.replace(/[\\/\p{Cc}]/gu, "_").trim());
+    // A spoiler is just the filename prefix, so the toggle reads and writes
+    // the name field and the two can never disagree.
+    const spoiler = $derived(isSpoilerFilename(value.trimStart()));
+    const canSpoiler = $derived(!!previewUrl && !video);
 
     onMount(() => {
         if (!inputEl) return;
@@ -62,7 +70,7 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="rename-attachment-title"
-        class="relative z-10 bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-xl max-h-full overflow-y-auto"
+        class="relative z-10 bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-xl max-h-full overflow-y-auto"
         use:focusTrap={{ onEscape: onClose }}
     >
         <form
@@ -85,18 +93,17 @@
                 <img
                     src={previewUrl}
                     alt=""
-                    class="max-h-[50vh] w-full object-contain rounded bg-discord-backgroundTertiary"
+                    class="max-h-[50vh] w-full object-contain rounded bg-zam-backgroundTertiary"
                 />
             {/if}
             <h2
                 id="rename-attachment-title"
-                class="text-lg font-bold text-discord-textPrimary"
+                class="text-lg font-bold text-zam-textPrimary"
             >
                 {t("renameAttachmentDialog.editAttachment")}
             </h2>
             <label class="flex flex-col gap-1.5">
-                <span
-                    class="text-xs font-bold uppercase text-discord-textSecondary"
+                <span class="text-xs font-bold uppercase text-zam-textSecondary"
                     >{t("renameAttachmentDialog.filename")}</span
                 >
                 <input
@@ -105,16 +112,34 @@
                     type="text"
                     spellcheck="false"
                     autocomplete="off"
-                    class="rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary outline-none focus:ring-2 focus:ring-discord-accent"
+                    class="rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary outline-none focus:ring-2 focus:ring-zam-accent"
                 />
             </label>
+            {#if canSpoiler}
+                <div class="flex items-center justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-zam-textPrimary">
+                            {t("renameAttachmentDialog.markSpoiler")}
+                        </p>
+                        <p class="text-xs text-zam-textMuted">
+                            {t("renameAttachmentDialog.markSpoilerHint")}
+                        </p>
+                    </div>
+                    <ToggleSwitch
+                        checked={spoiler}
+                        onChange={(v) =>
+                            (value = withSpoiler(value.trimStart(), v))}
+                        label={t("renameAttachmentDialog.markSpoiler")}
+                    />
+                </div>
+            {/if}
             {#if onDirectChange}
                 <div class="flex items-center justify-between gap-3">
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-discord-textPrimary">
+                        <p class="text-sm text-zam-textPrimary">
                             {t("messageInput.sendDirectly")}
                         </p>
-                        <p class="text-xs text-discord-textMuted">
+                        <p class="text-xs text-zam-textMuted">
                             {t("messageInput.directFileHint")}
                         </p>
                     </div>
@@ -129,14 +154,14 @@
                 <button
                     type="button"
                     onclick={onClose}
-                    class="rounded px-4 py-2 text-sm font-medium text-discord-textPrimary hover:underline"
+                    class="rounded px-4 py-2 text-sm font-medium text-zam-textPrimary hover:underline"
                 >
                     {t("common.cancel")}
                 </button>
                 <button
                     type="submit"
                     disabled={!cleaned}
-                    class="rounded bg-discord-accent px-4 py-2 text-sm font-medium text-white hover:bg-discord-accentHover disabled:opacity-50"
+                    class="rounded bg-zam-accent px-4 py-2 text-sm font-medium text-white hover:bg-zam-accentHover disabled:opacity-50"
                 >
                     {t("common.save")}
                 </button>

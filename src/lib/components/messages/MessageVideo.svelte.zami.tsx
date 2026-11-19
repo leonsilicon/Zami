@@ -36,9 +36,13 @@ interface Props {
     content: Record<string, unknown>;
     /** The original file name (MSC2530), shown on the play card. */
     filename: string;
+    /** Extra control drawn over the video (the favourite star), told
+     *  whether it sits on the unplayed poster or the playing video. The
+     *  box it sits in is `relative group/vid`. */
+    overlay?: (where: "poster" | "player") => ReactNode;
 }
 
-export default function MessageVideo({ content, filename }: Props) {
+export default function MessageVideo({ content, filename, overlay }: Props) {
     // Video: nothing is requested until the user clicks play, and then the
     // <video> element streams the media URL itself rather than us buffering the
     // whole file into a blob first. The service worker (static/sw.js) injects
@@ -367,7 +371,9 @@ export default function MessageVideo({ content, filename }: Props) {
     // min-content width push past the column and overflow.
     function player(extraClass: string): ReactNode {
         return (
-            <View className={`relative max-w-lg w-full ${extraClass}`}>
+            <View
+                className={`relative group/vid max-w-lg w-full ${extraClass}`}
+            >
                 <AuthedVideo
                     src={
                         videoSrc?.kind === "plain"
@@ -410,6 +416,7 @@ export default function MessageVideo({ content, filename }: Props) {
                         className="w-4 h-4 text-white"
                     />
                 </Pressable>
+                {overlay?.("player")}
             </View>
         );
     }
@@ -423,22 +430,22 @@ export default function MessageVideo({ content, filename }: Props) {
         );
     if (videoDecryptFailed)
         return (
-            <View className="flex-row items-center gap-3 px-4 py-3 mt-1 max-w-sm w-full bg-discord-backgroundTertiary rounded-lg">
+            <View className="flex-row items-center gap-3 px-4 py-3 mt-1 max-w-sm w-full bg-zam-backgroundTertiary rounded-lg">
                 <SvgIcon
                     d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
-                    className="w-4 h-4 text-discord-danger"
+                    className="w-4 h-4 text-zam-danger"
                 />
                 <View className="flex-1 min-w-0">
-                    <Text className="text-xs text-discord-danger">
+                    <Text className="text-xs text-zam-danger">
                         {t("messageItem.couldnTDecryptVideo")}
                     </Text>
                 </View>
                 <Pressable
                     accessibilityRole="button"
-                    className="px-2 py-1 bg-discord-backgroundSecondary active:bg-discord-messageHover rounded transition-colors"
+                    className="px-2 py-1 bg-zam-backgroundSecondary active:bg-zam-messageHover rounded transition-colors"
                     onPress={retryVideoDecrypt}
                 >
-                    <Text className="text-xs font-medium text-discord-textPrimary">
+                    <Text className="text-xs font-medium text-zam-textPrimary">
                         {t("common.retry")}
                     </Text>
                 </Pressable>
@@ -450,21 +457,21 @@ export default function MessageVideo({ content, filename }: Props) {
         // dead click, which is exactly how this gets reported as "videos
         // cannot be played at all".
         return (
-            <View className="flex-row items-center gap-3 px-4 py-3 mt-1 max-w-sm w-full bg-discord-backgroundTertiary rounded-lg">
-                <View className="w-10 h-10 rounded-full bg-discord-backgroundSecondary flex items-center justify-center flex-shrink-0">
+            <View className="flex-row items-center gap-3 px-4 py-3 mt-1 max-w-sm w-full bg-zam-backgroundTertiary rounded-lg">
+                <View className="w-10 h-10 rounded-full bg-zam-backgroundSecondary flex items-center justify-center flex-shrink-0">
                     <SvgIcon
                         d="M8 5v14l11-7z"
-                        className="w-5 h-5 text-discord-textMuted"
+                        className="w-5 h-5 text-zam-textMuted"
                     />
                 </View>
                 <View className="min-w-0 flex-1">
                     <Text
                         numberOfLines={1}
-                        className="text-sm font-medium text-discord-textPrimary"
+                        className="text-sm font-medium text-zam-textPrimary"
                     >
                         {filename || t("messageItem.video")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("messageItem.canTBePlayedHere")}
                     </Text>
                 </View>
@@ -476,7 +483,7 @@ export default function MessageVideo({ content, filename }: Props) {
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={filename || t("messageItem.video")}
-                className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden bg-black"
+                className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden group group/vid bg-black"
                 style={boxStyle}
                 onPress={playVideo}
             >
@@ -497,6 +504,8 @@ export default function MessageVideo({ content, filename }: Props) {
                         />
                     </View>
                 </View>
+                {/* Zami: after the poster, so it draws on top. */}
+                {overlay?.("poster")}
             </Pressable>
         );
     if (videoAttempt > 0 && !videoFailed)
@@ -531,7 +540,7 @@ export default function MessageVideo({ content, filename }: Props) {
         <Pressable
             accessibilityRole="button"
             accessibilityLabel={filename || t("messageItem.video")}
-            className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden bg-black"
+            className="relative max-w-lg w-full mt-1 rounded-lg overflow-hidden group group/vid bg-black"
             style={
                 videoThumbnailUrl && !videoThumbFailed ? boxStyle : undefined
             }
@@ -570,12 +579,10 @@ export default function MessageVideo({ content, filename }: Props) {
                 // server until it is clicked — asking /media/thumbnail for the
                 // video itself would download the whole file (see
                 // videoThumbnailUrl).
-                <View className="flex-row items-center gap-3 px-4 py-3 bg-discord-backgroundTertiary transition-colors rounded-lg">
+                <View className="flex-row items-center gap-3 px-4 py-3 bg-zam-backgroundTertiary transition-colors rounded-lg">
                     <View
                         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            videoFailed
-                                ? "bg-discord-danger"
-                                : "bg-discord-accent"
+                            videoFailed ? "bg-zam-danger" : "bg-zam-accent"
                         }`}
                     >
                         <SvgIcon
@@ -586,7 +593,7 @@ export default function MessageVideo({ content, filename }: Props) {
                     <View className="min-w-0 flex-1">
                         <Text
                             numberOfLines={1}
-                            className="text-sm font-medium text-discord-textPrimary"
+                            className="text-sm font-medium text-zam-textPrimary"
                         >
                             {filename || t("messageItem.video")}
                         </Text>
@@ -596,8 +603,8 @@ export default function MessageVideo({ content, filename }: Props) {
                         <Text
                             className={`text-xs ${
                                 videoFailed
-                                    ? "text-discord-danger"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-danger"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {videoFailed
@@ -611,6 +618,8 @@ export default function MessageVideo({ content, filename }: Props) {
                     </View>
                 </View>
             )}
+            {/* Zami: after the poster, so it draws on top. */}
+            {overlay?.("poster")}
         </Pressable>
     );
 }

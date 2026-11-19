@@ -22,7 +22,12 @@ import { roomsState } from "$lib/stores/rooms.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import { pinnedDate } from "$lib/utils/timeFormat";
-import { Circle } from "lucide-svelte";
+import { ChevronRight, Circle, MessagesSquare } from "lucide-svelte";
+import { getRoomUnreadInfo } from "$lib/matrix/client";
+import {
+    bridgedThreadsOf,
+    openBridgedThread,
+} from "$lib/stores/bridgedThreads.svelte";
 
 interface Props {
     room: Room;
@@ -80,7 +85,26 @@ export default function ThreadsListPanel({
         return buildThreadListItems(getRoomThreads(room));
     }, [threadsTick, unreadTick, room]);
     const items = filterThreadListItems(allItems, filter);
-    const showSpinner = loading && allItems.length === 0;
+
+    // Discord threads bridged by ZDMB live in rooms of their own; "My
+    // threads" keeps the ones we have joined.
+    const bridgedTick = useRune(() => roomsState.roomsTick);
+    const bridged = useMemo(() => {
+        void bridgedTick;
+        void unreadTick;
+        return bridgedThreadsOf(room.roomId).map((info) => ({
+            ...info,
+            counts: info.room
+                ? getRoomUnreadInfo(info.room)
+                : { unread: false, highlight: 0 },
+        }));
+    }, [bridgedTick, unreadTick, room]);
+    const bridgedShown =
+        filter === "mine" ? bridged.filter((b) => b.joined) : bridged;
+    const showSpinner =
+        loading && allItems.length === 0 && bridgedShown.length === 0;
+    // Zami: the list's `p-2`, which the bridged section sits outside of.
+    const listItems = showSpinner ? [] : items;
 
     const filterOptions = [
         { value: "all", label: t("threadsListPanel.allThreads") },
@@ -91,12 +115,12 @@ export default function ThreadsListPanel({
         <View
             className={`${
                 isMobile ? "" : "w-72"
-            } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+            } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
         >
-            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                 >
                     {t("threadsListPanel.threads")}
                 </Text>
@@ -108,14 +132,14 @@ export default function ThreadsListPanel({
                     accessibilityLabel={t("threadsListPanel.closeThreadsPanel")}
                 >
                     <SvgIcon
-                        className="w-4 h-4 text-discord-textMuted"
+                        className="w-4 h-4 text-zam-textMuted"
                         d="M18.3 5.71 12 12.01l-6.3-6.3-1.42 1.42 6.3 6.3-6.3 6.3 1.42 1.42 6.3-6.3 6.3 6.3 1.42-1.42-6.3-6.3 6.3-6.3z"
                     />
                 </Pressable>
             </View>
 
             <View
-                className="flex-row gap-1 px-2 py-2 border-b border-discord-divider flex-shrink-0"
+                className="flex-row gap-1 px-2 py-2 border-b border-zam-divider flex-shrink-0"
                 role="group"
                 accessibilityLabel={t("threadsListPanel.filterThreads")}
             >
@@ -127,15 +151,15 @@ export default function ThreadsListPanel({
                         onPress={() => setFilter(opt.value as ThreadListFilter)}
                         className={`flex-1 px-2 py-1 rounded transition-colors ${
                             filter === opt.value
-                                ? "bg-discord-messageHover"
-                                : "hover:bg-discord-messageHover"
+                                ? "bg-zam-messageHover"
+                                : "hover:bg-zam-messageHover"
                         }`}
                     >
                         <Text
                             className={`text-xs font-medium text-center ${
                                 filter === opt.value
-                                    ? "text-discord-textPrimary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textPrimary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {opt.label}
@@ -147,12 +171,110 @@ export default function ThreadsListPanel({
             <FlatList
                 className="flex-1"
                 contentContainerClassName={
-                    showSpinner || items.length === 0 ? undefined : "p-2"
+                    listItems.length === 0 ? undefined : "pb-2"
                 }
-                data={showSpinner ? [] : items}
+                data={listItems}
                 keyExtractor={(item) => item.rootId}
                 // `space-y-1`
                 ItemSeparatorComponent={RowGap}
+                ListHeaderComponent={
+                    <>
+                        {bridgedShown.length > 0 ? (
+                            <View className="p-2 gap-1 border-b border-zam-divider">
+                                {items.length > 0 ? (
+                                    <Text className="px-2 pt-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
+                                        {t("bridgedThreads.threadRooms")}
+                                    </Text>
+                                ) : null}
+                                {bridgedShown.map((thread) => (
+                                    <Pressable
+                                        key={thread.roomId}
+                                        accessibilityRole="button"
+                                        onPress={() => {
+                                            void openBridgedThread(
+                                                thread.roomId,
+                                            );
+                                            onClose();
+                                        }}
+                                        className="w-full p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex-row items-center gap-2"
+                                    >
+                                        <MessagesSquare
+                                            size={16}
+                                            className="flex-shrink-0 text-zam-textMuted"
+                                        />
+                                        <View className="flex-1 min-w-0">
+                                            <Text
+                                                numberOfLines={1}
+                                                className={`text-sm ${
+                                                    thread.counts.unread
+                                                        ? "font-semibold text-zam-textPrimary"
+                                                        : "text-zam-textSecondary"
+                                                }`}
+                                            >
+                                                {thread.name}
+                                            </Text>
+                                            <Text
+                                                numberOfLines={1}
+                                                className="text-xs text-zam-textMuted"
+                                            >
+                                                {thread.numMembers !== null
+                                                    ? t(
+                                                          "bridgedThreads.memberCount",
+                                                          {
+                                                              count: thread.numMembers,
+                                                          },
+                                                      )
+                                                    : null}
+                                                {!thread.joined ? (
+                                                    <>
+                                                        {thread.numMembers !==
+                                                        null
+                                                            ? " · "
+                                                            : ""}
+                                                        <Text className="text-xs text-zam-accent">
+                                                            {t(
+                                                                "bridgedThreads.joinThread",
+                                                            )}
+                                                        </Text>
+                                                    </>
+                                                ) : null}
+                                            </Text>
+                                        </View>
+                                        {thread.counts.highlight > 0 ? (
+                                            <View
+                                                accessible
+                                                accessibilityLabel={t(
+                                                    "threadsListPanel.unreadMentions",
+                                                )}
+                                                className="flex-shrink-0 bg-zam-danger rounded-full px-1.5 min-w-[1.2rem]"
+                                            >
+                                                <Text className="text-white text-xs font-bold text-center">
+                                                    {thread.counts.highlight >
+                                                    99
+                                                        ? "99+"
+                                                        : thread.counts
+                                                              .highlight}
+                                                </Text>
+                                            </View>
+                                        ) : thread.counts.unread ? (
+                                            <View
+                                                accessibilityLabel={t(
+                                                    "threadsListPanel.unreadReplies",
+                                                )}
+                                                className="flex-shrink-0 w-2 h-2 rounded-full bg-zam-accent"
+                                            />
+                                        ) : null}
+                                        <ChevronRight
+                                            size={14}
+                                            className="flex-shrink-0 text-zam-textMuted"
+                                        />
+                                    </Pressable>
+                                ))}
+                            </View>
+                        ) : null}
+                        {listItems.length > 0 ? <View className="h-2" /> : null}
+                    </>
+                }
                 renderItem={({ item }) => {
                     const senderName = item.rootSenderId
                         ? getMemberName(room, item.rootSenderId)
@@ -171,7 +293,7 @@ export default function ThreadsListPanel({
                                 onOpenThread(item.rootId);
                                 onClose();
                             }}
-                            className="w-full p-2 rounded-lg hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                            className="mx-2 p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                         >
                             <View className="flex-row items-center gap-2 mb-1">
                                 <Avatar
@@ -182,7 +304,7 @@ export default function ThreadsListPanel({
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs font-semibold text-discord-textPrimary"
+                                    className="flex-shrink text-xs font-semibold text-zam-textPrimary"
                                 >
                                     {senderName}
                                 </Text>
@@ -198,7 +320,7 @@ export default function ThreadsListPanel({
                                         <Circle
                                             size={8}
                                             fill="currentColor"
-                                            className="text-discord-accent"
+                                            className="text-zam-accent"
                                         />
                                     </View>
                                 ) : null}
@@ -208,7 +330,7 @@ export default function ThreadsListPanel({
                                         accessibilityLabel={t(
                                             "threadsListPanel.unreadMentions",
                                         )}
-                                        className="ms-auto flex-shrink-0 bg-discord-danger rounded-full px-1.5 min-w-[1.2rem]"
+                                        className="ms-auto flex-shrink-0 bg-zam-danger rounded-full px-1.5 min-w-[1.2rem]"
                                     >
                                         <Text className="text-white text-xs font-bold text-center">
                                             {item.unreadHighlight > 99
@@ -221,11 +343,11 @@ export default function ThreadsListPanel({
                                         accessibilityLabel={t(
                                             "threadsListPanel.unreadReplies",
                                         )}
-                                        className="ms-auto flex-shrink-0 w-2 h-2 rounded-full bg-discord-accent"
+                                        className="ms-auto flex-shrink-0 w-2 h-2 rounded-full bg-zam-accent"
                                     />
                                 ) : null}
                                 <Text
-                                    className={`text-xs text-discord-textMuted ${
+                                    className={`text-xs text-zam-textMuted ${
                                         badge === "none" ? "ms-auto" : "ms-2"
                                     } flex-shrink-0`}
                                 >
@@ -235,29 +357,29 @@ export default function ThreadsListPanel({
                             {item.name ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm font-semibold text-discord-textPrimary"
+                                    className="text-sm font-semibold text-zam-textPrimary"
                                 >
                                     {item.name}
                                 </Text>
                             ) : null}
                             <Text
                                 numberOfLines={item.name ? 1 : 2}
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {item.rootPreview}
                             </Text>
                             <View className="flex-row items-center gap-1 mt-1">
-                                <Text className="text-xs text-discord-accent">
+                                <Text className="text-xs text-zam-accent">
                                     {t("common.replyCount", {
                                         count: item.replyCount,
                                     })}
                                 </Text>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     ·
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs text-discord-textMuted"
+                                    className="flex-shrink text-xs text-zam-textMuted"
                                 >
                                     {item.latestPreview}
                                 </Text>
@@ -266,12 +388,12 @@ export default function ThreadsListPanel({
                     );
                 }}
                 ListEmptyComponent={
-                    showSpinner ? (
+                    bridgedShown.length > 0 ? undefined : showSpinner ? (
                         <View className="flex-row justify-center mt-8">
-                            <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                            <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                         </View>
                     ) : (
-                        <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                        <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                             {filter === "mine" && allItems.length > 0
                                 ? t(
                                       "threadsListPanel.noThreadsYouParticipatedIn",

@@ -8,6 +8,7 @@
         sendFormattedMessage,
         sendSticker,
         sendFile,
+        sendExistingMedia,
         getMediaUploadSizeLimit,
         getMemberName,
         getMemberAvatar,
@@ -34,14 +35,26 @@
         sendThreadReply,
         type CustomEmoji,
         type CustomSticker,
+        type MediaCaption,
+        type MediaRelation,
     } from "$lib/matrix/client";
+    import { reusableMediaOfFile } from "$lib/matrix/favouriteFile";
     import { sendEventContent } from "$lib/matrix/pluginHost";
     import { composerThreadKey } from "$lib/utils/threadContent";
     import {
         buildFormattedBody as buildBody,
         mentionsFromFormatted,
+        mentionsFromHtml,
     } from "$lib/utils/messageBody";
-    import { buildReplyContent } from "$lib/utils/replyContent";
+    import {
+        editableBody,
+        isEmptyEdit,
+        sendMessageEdit,
+    } from "$lib/matrix/editMessage";
+    import {
+        buildReplyContent,
+        withReplyMention,
+    } from "$lib/utils/replyContent";
     import {
         buildTextContent,
         buildFormattedContent,
@@ -100,6 +113,7 @@
     import OutboxStrip from "$lib/components/messages/OutboxStrip.svelte";
     import { pickAudioMimeType } from "$lib/utils/voiceMessage";
     import { openCreatePollDialog } from "$lib/stores/pollDialog.svelte";
+    import { openGameInviteDialog } from "$lib/stores/gameInviteDialog.svelte";
     import { openShareLocationDialog } from "$lib/stores/locationDialog.svelte";
     import {
         getDraft,
@@ -122,6 +136,8 @@
     } from "$lib/stores/composerFileQueue.svelte";
     import { sendQueuedFiles } from "$lib/utils/queuedFileSend";
     import { filesToRestoreAfterSend } from "$lib/utils/composerFileRestore";
+    import { chunkGalleryItems } from "$lib/utils/gallery";
+    import { sendGallery } from "$lib/matrix/media";
     import {
         shouldClearComposerAfterSend,
         shouldClearStoredDraft,
@@ -156,6 +172,7 @@
     import { suppressNextClick } from "$lib/utils/suppressNextClick";
     import {
         Loader2,
+        Pencil,
         Plus,
         ImagePlay,
         Sticker,
@@ -170,6 +187,10 @@
         disabled?: boolean;
         replyToEvent?: MatrixEvent | null;
         onCancelReply?: () => void;
+        /** The message being edited in this composer (edit mode). Its text
+         *  replaces the composer's until the edit is saved or cancelled. */
+        editEvent?: MatrixEvent | null;
+        onCancelEdit?: () => void;
         onRequestEditLast?: () => void;
         /** `s/old/new/`: apply it to the user's last message here (the
          *  caller knows which messages that means). */
@@ -197,6 +218,8 @@
         disabled: disabledProp = false,
         replyToEvent = null,
         onCancelReply,
+        editEvent = null,
+        onCancelEdit,
         onRequestEditLast,
         onSedEdit,
         onThreadCreated,
@@ -217,6 +240,27 @@
 
     let text = $state("");
     let isSending = $state(false);
+    // Edit mode. `activeEdit` is the edit target when it belongs to this room
+    // (a target from another room is ignored). While editing, the composer
+    // holds the edit text and the draft the user had typed waits in
+    // `editStash`. Not reactive: only the edit effect and draft saves read it.
+    const activeEdit = $derived(
+        editEvent && editEvent.getRoomId() === roomId ? editEvent : null,
+    );
+    let editStash: {
+        key: string;
+        text: string;
+        mentions: Map<string, string>;
+    } | null = null;
+    let isSavingEdit = $state(false);
+    // What to persist as this composer's draft: the stashed draft while
+    // editing, so an edit never overwrites the real draft.
+    function draftTextNow(): string {
+        return editStash ? editStash.text : text;
+    }
+    function draftMentionsNow(): Map<string, string> {
+        return editStash ? editStash.mentions : pendingMentions;
+    }
     // In-flight attachment send, scoped to the room the send targeted so a
     // room switch mid-upload doesn't show room A's "sending" note in room B.
     let sendingFileCount = $state(0);
@@ -284,7 +328,7 @@
     $effect(() => {
         const key = effComposerKey;
         return registerDraftFlusher(key, () =>
-            setDraft(key, text, pendingMentions),
+            setDraft(key, draftTextNow(), draftMentionsNow()),
         );
     });
 
@@ -732,10 +776,17 @@
 
     // Mirrors the send button's own disabled condition so the button can go
     // accent-coloured the moment the message becomes sendable.
+    // An edit can be saved once it has text (or a caption, for media) and no
+    // save is already in flight.
+    const editSaveBlocked = $derived(
+        !!activeEdit && (isSavingEdit || isEmptyEdit(activeEdit, text)),
+    );
     const canSend = $derived(
-        (text.trim().length > 0 || fileQueue.length > 0) &&
-            !isSending &&
-            !disabled,
+        activeEdit
+            ? !editSaveBlocked && !disabled
+            : (text.trim().length > 0 || fileQueue.length > 0) &&
+                  !isSending &&
+                  !disabled,
     );
     let textareaFocusedBeforePicker = false;
 
@@ -800,10 +851,18 @@
               ? t("messageInput.selectARoomToStartChatting")
               : isThread
                 ? t("messageInput.replyInThread")
-                : replyToEvent
+                : replyToEvent && !activeEdit
                   ? t("messageInput.replyTo", { replyTargetName })
                   : t("messageInput.message", { roomName }),
     );
+
+    // Whether this reply pings the author. Starts from the setting each time a
+    // different message is picked to reply to; the reply bar toggles it.
+    let replyPing = $state(true);
+    $effect(() => {
+        void replyToEvent?.getId();
+        replyPing = untrack(() => settingsState.replyPingDefault);
+    });
 
     // Focus textarea when reply is set
     $effect(() => {
@@ -928,7 +987,66 @@
             pendingMentions = new Map(draft?.mentions ?? []);
             tick().then(() => renderComposer(text.length));
         });
-        return () => setDraft(key, text, pendingMentions);
+        return () => {
+            setDraft(key, draftTextNow(), draftMentionsNow());
+            // The stash was saved as this room's draft just above. The next
+            // body run loads the incoming draft, so the edit session ends here.
+            editStash = null;
+        };
+    });
+
+    // Edit mode: entering an edit swaps the composer to that message's text
+    // (stashing the draft), and leaving it restores the draft. Tracks only the
+    // target id, so re-rendering the same target never resets the text.
+    $effect(() => {
+        const id = activeEdit?.getId() ?? null;
+        void id;
+        untrack(() => {
+            const ev = activeEdit;
+            if (ev) {
+                // Switching from one edit to another keeps the original draft.
+                if (!editStash)
+                    editStash = {
+                        key: effComposerKey,
+                        text,
+                        mentions: new Map(pendingMentions),
+                    };
+                text = editableBody(ev);
+                pendingMentions = mentionsFromHtml(
+                    ev.getContent().formatted_body as string | undefined,
+                );
+                mentionQuery = null;
+                emojiQuery = null;
+                slashQuery = null;
+                resetUndoHistory(text);
+                if (
+                    showActionsMenu ||
+                    showEmojiPicker ||
+                    showGifPicker ||
+                    showStickerPicker
+                )
+                    closeModal();
+                tick().then(() => {
+                    textareaEl?.focus();
+                    renderComposer(text.length);
+                });
+                return;
+            }
+            // Edit ended: saved, cancelled, or its room was left. A stash from
+            // another room is left for the draft effect to save.
+            const stash = editStash;
+            if (!stash || stash.key !== effComposerKey) return;
+            editStash = null;
+            text = stash.text;
+            pendingMentions = new Map(stash.mentions);
+            resetUndoHistory(text);
+            tick().then(() => {
+                renderComposer(text.length);
+                // Back to typing after a save or cancel. Not on touch, where
+                // focusing would open the keyboard unasked.
+                if (!interfaceState.isMobile) textareaEl?.focus();
+            });
+        });
     });
 
     function splitUserAndReason(arg: string): {
@@ -1141,9 +1259,18 @@
         renderComposer(0);
 
         try {
-            const mentions = formatted
+            const baseMentions = formatted
                 ? mentionsFromFormatted(formatted)
                 : undefined;
+            const mentions =
+                command.kind === "emote"
+                    ? baseMentions
+                    : withReplyMention(
+                          baseMentions,
+                          replyTarget?.getSender(),
+                          replyPing,
+                          auth.userId,
+                      );
             if (command.kind === "emote") {
                 await sendEmote(
                     roomId,
@@ -1271,7 +1398,74 @@
     let heldUnknown: { text: string; key: string; toastId: number } | null =
         null;
 
+    // Sends one queued file as media. A starred GIF re-uses its existing media
+    // instead of uploading the bytes again; when the room can't take that media
+    // (an encrypted one in a plaintext room) the bytes are uploaded as usual.
+    async function sendQueuedMedia(
+        item: QueuedFile,
+        roomId: string,
+        caption: MediaCaption | undefined,
+        relation: MediaRelation | undefined,
+        transform:
+            | ((c: Record<string, unknown>) => Record<string, unknown>)
+            | undefined,
+        onProgress: ((loaded: number, total: number) => void) | undefined,
+        ready: () => Promise<void>,
+    ): Promise<void> {
+        if (
+            item.reuse &&
+            (await sendExistingMedia(
+                roomId,
+                item.reuse,
+                item.name,
+                caption,
+                relation,
+                transform,
+                ready,
+            ))
+        )
+            return;
+        await sendFile(
+            roomId,
+            item.file,
+            caption,
+            relation,
+            transform,
+            onProgress,
+            ready,
+        );
+    }
+
+    // Save the edit in progress: the composer's text becomes the message's new
+    // content. The caller's onCancelEdit ends edit mode (which restores the
+    // draft). On failure the text stays so the user can retry.
+    async function submitEdit(ev: MatrixEvent) {
+        if (isSavingEdit || !room || isEmptyEdit(ev, text)) return;
+        isSavingEdit = true;
+        try {
+            await sendMessageEdit(room, ev, text, pendingMentions);
+            if (editEvent === ev) onCancelEdit?.();
+        } catch (err) {
+            console.error("Failed to edit message:", err);
+            showErrorToast(t("messageInput.editFailed"));
+        } finally {
+            isSavingEdit = false;
+        }
+    }
+
+    function getEditPreview(): string {
+        if (!activeEdit) return "";
+        const body = editableBody(activeEdit);
+        return body.length > 80 ? body.slice(0, 80) + "…" : body;
+    }
+
     async function send() {
+        // Edit mode: Enter and the send button save the edit. Nothing else
+        // (commands, sed, attachments, replies, threads) applies to it.
+        if (activeEdit) {
+            await submitEdit(activeEdit);
+            return;
+        }
         // `s/old/new/` edits the last message instead of sending one. Not with
         // files queued: then the text is a caption.
         if (!isSending && !disabled && fileQueue.length === 0 && onSedEdit) {
@@ -1416,6 +1610,14 @@
             (useCaption || !trimmed)
                 ? (replyTarget.getId() ?? undefined)
                 : undefined;
+        const captionMentions = formatted
+            ? withReplyMention(
+                  mentionsFromFormatted(formatted),
+                  fileReplyToId ? replyTarget?.getSender() : undefined,
+                  replyPing,
+                  auth.userId,
+              )
+            : undefined;
         const fileRelation = (i: number) =>
             isThread || (i === 0 && fileReplyToId)
                 ? {
@@ -1423,6 +1625,31 @@
                       replyToEventId: i === 0 ? fileReplyToId : undefined,
                   }
                 : undefined;
+
+        // MSC4274 galleries (unless the debug setting disableGallerySend is
+        // on): the files that
+        // are neither direct offers nor reused media, in queue order, chunked
+        // to the per-event limit. A gallery needs two or more files; one file
+        // goes as before. Direct and reused files are never gallery items.
+        const galleryCandidates = !settingsState.disableGallerySend
+            ? filesToSend.filter((item) => !item.direct && !item.reuse)
+            : [];
+        const galleryChunks: QueuedFile[][] =
+            galleryCandidates.length >= 2
+                ? chunkGalleryItems(galleryCandidates)
+                : [];
+        const inGallery = galleryChunks.length > 0;
+        const galleried = new Set(galleryChunks.flat());
+        // Everything not in a gallery: the per-file path. With galleries off
+        // this is the whole queue, unchanged.
+        const rest = inGallery
+            ? filesToSend.filter((item) => !galleried.has(item))
+            : filesToSend;
+        // The thread relation alone, for a file that is not the first of a
+        // gallery's chunks (the reply rides on that first chunk only).
+        const threadOnlyRelation = isThread
+            ? { rootEventId: threadRootId!, replyToEventId: undefined }
+            : undefined;
 
         // The SDK creates the local echo synchronously, so a text message shows
         // in the timeline the moment we send it — with a retry/delete affordance
@@ -1452,7 +1679,12 @@
             })
         ) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const baseContent: Record<string, unknown> = replyToEvent
                 ? (buildReplyContent({
                       replyEventId: replyToEvent.getId()!,
@@ -1480,7 +1712,12 @@
         // blocked the next message behind a spinner. Reported in issue #40.
         if (trimmed && formatted && !useCaption) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const replyId = replyToEvent?.getId() ?? undefined;
             const threadArmed = createThreadArmed;
             createThreadArmed = false;
@@ -1541,55 +1778,118 @@
             // it lands. A failed file doesn't stop the rest (their uploads
             // would be orphaned); only the failed files are restored below,
             // so a retry sends just those (audit MEDIA-03).
-            await sendQueuedFiles(
-                filesToSend,
-                (item, i, ready) => {
-                    if (item.direct)
-                        return ready().then(() =>
-                            offerFile(targetRoomId, item.file),
-                        );
-                    if (useCaption && i === 0 && formatted) {
-                        const { html } = formatted;
-                        return sendFile(
+            // Galleries first (MSC4274, when the setting is on): the gallery
+            // files go out as chunks in queue order, and the caption and reply
+            // ride on the first chunk. Every other file then takes the per-file
+            // path below, in queue order, so a direct offer or reused media
+            // posts after the galleries rather than between them. Each phase
+            // keeps its own ordering gate. A failure in one phase doesn't stop
+            // the other; the first failure (galleries first) is rethrown after
+            // both, so the restore below covers every unsent file.
+            let galleryFailure: { error: unknown } | null = null;
+            if (inGallery) {
+                try {
+                    await sendQueuedFiles(
+                        galleryChunks,
+                        (chunk, i, ready) =>
+                            sendGallery(
+                                targetRoomId,
+                                chunk.map((item) => item.file),
+                                useCaption && i === 0 && formatted
+                                    ? {
+                                          body: trimmed,
+                                          formattedBody:
+                                              formatted.html ?? undefined,
+                                          mentions: captionMentions,
+                                      }
+                                    : undefined,
+                                i === 0 ? fileRelation(0) : threadOnlyRelation,
+                                transformOutgoingContent,
+                                (local, loaded, total) =>
+                                    onUploadProgress(
+                                        filesToSend.indexOf(chunk[local]),
+                                    )(loaded, total),
+                                ready,
+                            ),
+                        (chunk, i) => {
+                            for (const item of chunk) sentIds.add(item.id);
+                            // The caption and the reply both ride on the first
+                            // chunk, so they are only safely sent once it is.
+                            if (i !== 0) return;
+                            if (fileReplyToId && replyToEvent === replyTarget)
+                                onCancelReply?.();
+                            if (useCaption)
+                                clearComposerAfterSend(
+                                    targetComposerKey,
+                                    textAtSend,
+                                );
+                        },
+                    );
+                } catch (error) {
+                    galleryFailure = { error };
+                }
+            }
+
+            let restFailure: { error: unknown } | null = null;
+            try {
+                await sendQueuedFiles(
+                    rest,
+                    (item, i, ready) => {
+                        if (item.direct)
+                            return ready().then(() =>
+                                offerFile(targetRoomId, item.file),
+                            );
+                        if (!inGallery && useCaption && i === 0 && formatted) {
+                            const { html } = formatted;
+                            return sendQueuedMedia(
+                                item,
+                                targetRoomId,
+                                {
+                                    body: trimmed,
+                                    formattedBody: html ?? undefined,
+                                    mentions: captionMentions,
+                                },
+                                fileRelation(i),
+                                transformOutgoingContent,
+                                onUploadProgress(filesToSend.indexOf(item)),
+                                ready,
+                            );
+                        }
+                        return sendQueuedMedia(
+                            item,
                             targetRoomId,
-                            item.file,
-                            {
-                                body: trimmed,
-                                formattedBody: html ?? undefined,
-                                mentions: mentionsFromFormatted(formatted),
-                            },
-                            fileRelation(i),
-                            transformOutgoingContent,
-                            onUploadProgress(i),
+                            undefined,
+                            inGallery ? threadOnlyRelation : fileRelation(i),
+                            undefined,
+                            onUploadProgress(filesToSend.indexOf(item)),
                             ready,
                         );
-                    }
-                    return sendFile(
-                        targetRoomId,
-                        item.file,
-                        undefined,
-                        fileRelation(i),
-                        undefined,
-                        onUploadProgress(i),
-                        ready,
-                    );
-                },
-                (item, i) => {
-                    // The drawer was already cleared optimistically; just record
-                    // the success so a later failure won't restore this file.
-                    sentIds.add(item.id);
-                    if (
-                        i === 0 &&
-                        fileReplyToId &&
-                        replyToEvent === replyTarget
-                    )
-                        onCancelReply?.();
-                    // The caption rode on the first file — it's only safely
-                    // sent once that file is.
-                    if (useCaption && i === 0)
-                        clearComposerAfterSend(targetComposerKey, textAtSend);
-                },
-            );
+                    },
+                    (item, i) => {
+                        // The drawer was already cleared optimistically; just record
+                        // the success so a later failure won't restore this file.
+                        sentIds.add(item.id);
+                        if (
+                            !inGallery &&
+                            i === 0 &&
+                            fileReplyToId &&
+                            replyToEvent === replyTarget
+                        )
+                            onCancelReply?.();
+                        // The caption rode on the first file — it's only safely
+                        // sent once that file is.
+                        if (!inGallery && useCaption && i === 0)
+                            clearComposerAfterSend(
+                                targetComposerKey,
+                                textAtSend,
+                            );
+                    },
+                );
+            } catch (error) {
+                restFailure = { error };
+            }
+            const failure = galleryFailure ?? restFailure;
+            if (failure) throw failure.error;
             // Snap scroll to bottom after input shrinks — prevents content from drifting up
             await tick();
             snapTimelineToBottom();
@@ -1622,6 +1922,7 @@
                     item.name,
                     previewUrlFor(item.file),
                     item.direct,
+                    item.reuse,
                 );
             }
         } finally {
@@ -1775,19 +2076,22 @@
             send();
         }
         // Picker dismissal is handled centrally (+page Escape/back). Here we
-        // only cancel an in-progress reply, and only when nothing else is open.
+        // only cancel an in-progress edit or reply, and only when nothing else
+        // is open. An edit is cancelled before a reply.
         if (
             e.key === "Escape" &&
             !interfaceState.modal &&
             !interfaceState.sidebar &&
-            replyToEvent
+            (activeEdit || replyToEvent)
         ) {
-            onCancelReply?.();
+            if (activeEdit) onCancelEdit?.();
+            else onCancelReply?.();
         }
         // Ctrl+E / Ctrl+S (open pickers) are global shortcuts handled
         // centrally in AppShell.
         if (
             e.key === "ArrowUp" &&
+            !activeEdit &&
             !text &&
             !e.altKey &&
             !e.ctrlKey &&
@@ -1839,8 +2143,17 @@
     }
 
     function enqueueFile(file: File, defaultName?: string, direct = false) {
+        // Attachments are not offered while editing a message.
+        if (activeEdit) return;
         const name = file.name || defaultName || "file";
-        addQueuedFile(effComposerKey, file, name, previewUrlFor(file), direct);
+        addQueuedFile(
+            effComposerKey,
+            file,
+            name,
+            previewUrlFor(file),
+            direct,
+            reusableMediaOfFile(file),
+        );
         // Look up the upload size limit now, while the user is still writing,
         // so its round trip isn't added to the send (slow links: Tor).
         void getMediaUploadSizeLimit();
@@ -1962,6 +2275,34 @@
         syncFromEditor(!composing);
     }
 
+    /** Make the soft keyboard commit its pending word before a send. The send
+     *  button keeps focus (so the keyboard stays up), which leaves the IME
+     *  composition / iOS autocorrect candidate open: the send then read the
+     *  uncorrected word, and once the composer was cleared the keyboard
+     *  re-inserted the word (a second send posted it again on Android, and iOS
+     *  showed it still sitting in the composer). A synchronous blur()+focus()
+     *  inside the tap commits it without dismissing the keyboard. */
+    async function commitPendingComposition() {
+        if (
+            !textareaEl ||
+            !interfaceState.isMobile ||
+            document.activeElement !== textareaEl
+        )
+            return;
+        textareaEl.blur();
+        textareaEl.focus({ preventScroll: true });
+        // WebKit delivers the committed text (and compositionend) after the
+        // blur returns; wait a task so the model reads the final word.
+        await new Promise((r) => setTimeout(r, 0));
+        composing = false;
+        syncFromEditor();
+    }
+
+    async function sendFromButton() {
+        await commitPendingComposition();
+        await send();
+    }
+
     function onCompositionEnd() {
         composing = false;
         // WebKit (Safari, and the Android WebView Zam ships in) fires
@@ -2030,6 +2371,7 @@
 </script>
 
 <div
+    data-zam-region={isThread ? undefined : "composer"}
     class="px-4 pt-2 pb-[calc(1rem_+_env(safe-area-inset-bottom,0px))] md:pb-[calc(0.5rem_+_env(safe-area-inset-bottom,0px))] flex-shrink-0 relative"
 >
     <!-- Typing indicator: a reserved (fixed-height) row ABOVE the input, in
@@ -2037,18 +2379,47 @@
          message and never shifts the timeline when it appears or clears. -->
     <div class="h-4 mb-1 px-1">
         {#if typingUsers.length > 0}
-            <p class="truncate text-xs leading-4 text-discord-textMuted">
+            <p class="truncate text-xs leading-4 text-zam-textMuted">
                 {typingText()}
             </p>
         {/if}
     </div>
-    <!-- Reply preview bar -->
-    {#if replyToEvent}
+    <!-- Edit bar: replaces the reply bar while a message is being edited. The
+         reply target itself is kept and returns when the edit ends. -->
+    {#if activeEdit}
         <div
-            class="flex items-center gap-2 mb-1 px-3 py-1.5 bg-discord-backgroundTertiary rounded-t-lg border-s-2 border-discord-accent"
+            class="flex items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent"
+        >
+            <Pencil class="w-4 h-4 text-zam-accent flex-shrink-0" />
+            <div class="flex-1 min-w-0 text-xs flex items-baseline gap-2">
+                <span class="text-zam-accent font-semibold flex-shrink-0">
+                    {t("messageInput.editingMessage")}
+                </span>
+                <span class="text-zam-textMuted min-w-0 truncate"
+                    >{getEditPreview()}</span
+                >
+            </div>
+            <button
+                type="button"
+                onclick={() => onCancelEdit?.()}
+                class="flex-shrink-0 p-0.5 rounded text-zam-textMuted hover:text-zam-textPrimary transition-colors"
+                title={t("messageInput.cancelEditEsc")}
+                aria-label={t("messageInput.cancelEditEsc")}
+            >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                    />
+                </svg>
+            </button>
+        </div>
+    {:else if replyToEvent}
+        <!-- Reply preview bar -->
+        <div
+            class="flex items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent"
         >
             <svg
-                class="w-4 h-4 text-discord-accent flex-shrink-0"
+                class="w-4 h-4 text-zam-accent flex-shrink-0"
                 fill="currentColor"
                 viewBox="0 0 24 24"
             >
@@ -2056,17 +2427,32 @@
                     d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
                 />
             </svg>
-            <div class="flex-1 min-w-0 text-xs">
-                <span class="text-discord-accent font-semibold">
+            <div class="flex-1 min-w-0 text-xs flex items-baseline gap-2">
+                <span class="text-zam-accent font-semibold flex-shrink-0">
                     {t("messageInput.replyingTo", { replyTargetName })}
                 </span>
-                <span class="text-discord-textMuted ms-2 truncate"
+                <span class="text-zam-textMuted min-w-0 truncate"
                     >{getReplyPreview()}</span
                 >
             </div>
             <button
+                type="button"
+                onclick={() => (replyPing = !replyPing)}
+                class="flex-shrink-0 px-1 text-xs font-bold rounded transition-colors {replyPing
+                    ? 'text-zam-accent'
+                    : 'text-zam-textMuted hover:text-zam-textPrimary'}"
+                title={replyPing
+                    ? t("messageInput.pingOffTitle")
+                    : t("messageInput.pingOnTitle")}
+                aria-pressed={replyPing}
+            >
+                {replyPing
+                    ? t("messageInput.pingOn")
+                    : t("messageInput.pingOff")}
+            </button>
+            <button
                 onclick={onCancelReply}
-                class="flex-shrink-0 p-0.5 rounded text-discord-textMuted hover:text-discord-textPrimary transition-colors"
+                class="flex-shrink-0 p-0.5 rounded text-zam-textMuted hover:text-zam-textPrimary transition-colors"
                 title={t("messageInput.cancelReplyEsc")}
             >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -2115,9 +2501,7 @@
 
     <!-- In-flight attachment send indicator (drawer was cleared optimistically) -->
     {#if sendingRoomId === roomId && sendingFileCount > 0}
-        <div
-            class="flex items-center gap-2 mb-2 text-xs text-discord-textMuted"
-        >
+        <div class="flex items-center gap-2 mb-2 text-xs text-zam-textMuted">
             <Loader2 class="w-3.5 h-3.5 animate-spin" />
             <span
                 >{t("messageInput.sendingAttachments", {
@@ -2146,7 +2530,7 @@
                         aria-label={t("messageInput.editAttachment2", {
                             name: item.name,
                         })}
-                        class="w-20 h-20 rounded-lg bg-discord-backgroundTertiary flex items-center justify-center overflow-hidden border border-discord-divider hover:border-discord-accent transition-colors"
+                        class="w-20 h-20 rounded-lg bg-zam-backgroundTertiary flex items-center justify-center overflow-hidden border border-zam-divider hover:border-zam-accent transition-colors"
                     >
                         {#if item.previewUrl && item.file.type.startsWith("video/")}
                             <!-- A file with no decodable picture (unsupported
@@ -2180,7 +2564,7 @@
                             />
                         {:else}
                             <svg
-                                class="w-8 h-8 text-discord-textMuted"
+                                class="w-8 h-8 text-zam-textMuted"
                                 fill="currentColor"
                                 viewBox="0 0 24 24"
                             >
@@ -2194,12 +2578,12 @@
                     <button
                         type="button"
                         onclick={() => openRename(item)}
-                        class="text-[10px] text-discord-textMuted hover:text-discord-textPrimary text-center leading-tight w-full truncate px-0.5"
+                        class="text-[10px] text-zam-textMuted hover:text-zam-textPrimary text-center leading-tight w-full truncate px-0.5"
                         title={item.name}>{item.name}</button
                     >
                     {#if item.direct}
                         <span
-                            class="text-[10px] font-semibold text-discord-accent"
+                            class="text-[10px] font-semibold text-zam-accent"
                             title={t("messageInput.directFileHint")}
                             >{t("messageInput.directFile")}</span
                         >
@@ -2207,7 +2591,7 @@
                     <!-- Remove button -->
                     <button
                         onclick={() => removeFromQueue(item.id)}
-                        class="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-discord-backgroundSecondary border border-discord-divider text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover flex items-center justify-center transition-colors"
+                        class="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-zam-backgroundSecondary border border-zam-divider text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover flex items-center justify-center transition-colors"
                         title={t("common.remove")}
                     >
                         <svg
@@ -2252,7 +2636,7 @@
     <!-- Mention autocomplete picker -->
     {#if mentionQuery !== null && mentionCandidates.length > 0}
         <div
-            class="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg"
+            class="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg"
         >
             {#each mentionCandidates as member, i}
                 <button
@@ -2265,7 +2649,7 @@
                         commitMention(member);
                     }}
                     class="w-full flex items-center gap-2.5 px-3 py-1.5 text-start transition-colors"
-                    class:bg-discord-messageHover={i === mentionSelectedIdx}
+                    class:bg-zam-messageHover={i === mentionSelectedIdx}
                     onpointerenter={() => (mentionSelectedIdx = i)}
                 >
                     <Avatar
@@ -2275,11 +2659,11 @@
                         size={24}
                     />
                     <span
-                        class="text-sm text-discord-textPrimary font-medium truncate"
+                        class="text-sm text-zam-textPrimary font-medium truncate"
                     >
                         {member.rawDisplayName || member.userId}
                     </span>
-                    <span class="text-xs text-discord-textMuted truncate">
+                    <span class="text-xs text-zam-textMuted truncate">
                         {member.userId}
                     </span>
                 </button>
@@ -2290,7 +2674,7 @@
     <!-- Slash-command autocomplete picker -->
     {#if slashQuery !== null && slashCandidates.length > 0}
         <div
-            class="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg"
+            class="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg"
         >
             {#each slashCandidates as command, i}
                 <button
@@ -2303,20 +2687,19 @@
                     }}
                     onpointerenter={() => (slashSelectedIdx = i)}
                     class="w-full flex items-center gap-2.5 px-3 py-1.5 text-start transition-colors"
-                    class:bg-discord-messageHover={i === slashSelectedIdx}
+                    class:bg-zam-messageHover={i === slashSelectedIdx}
                 >
                     <span
-                        class="text-sm font-mono text-discord-textPrimary flex-shrink-0"
+                        class="text-sm font-mono text-zam-textPrimary flex-shrink-0"
                         >/{command.name}</span
                     >
                     {#if command.argHint}
                         <span
-                            class="text-xs text-discord-textMuted font-mono flex-shrink-0"
+                            class="text-xs text-zam-textMuted font-mono flex-shrink-0"
                             >{command.argHint}</span
                         >
                     {/if}
-                    <span
-                        class="text-xs text-discord-textMuted truncate ms-auto"
+                    <span class="text-xs text-zam-textMuted truncate ms-auto"
                         >{command.description}</span
                     >
                 </button>
@@ -2327,7 +2710,7 @@
     <!-- Armed "create thread" banner: mirrors the reply banner pattern -->
     {#if createThreadArmed && !isThread}
         <div
-            class="flex items-center justify-between gap-2 px-3 py-1.5 bg-discord-backgroundSecondary rounded-t-lg text-xs text-discord-textMuted"
+            class="flex items-center justify-between gap-2 px-3 py-1.5 bg-zam-backgroundSecondary rounded-t-lg text-xs text-zam-textMuted"
         >
             <span
                 >{t("messageInput.yourNextMessageWillStartA")}
@@ -2335,7 +2718,7 @@
             >
             <button
                 onclick={() => (createThreadArmed = false)}
-                class="p-0.5 rounded hover:text-discord-textPrimary transition-colors"
+                class="p-0.5 rounded hover:text-zam-textPrimary transition-colors"
                 title={t("messageInput.cancelThreadCreation")}
             >
                 <svg
@@ -2372,8 +2755,8 @@
         />
     {:else}
         <div
-            class="input-box relative flex items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5 border border-transparent transition-colors"
-            class:rounded-ss-none={!!replyToEvent}
+            class="input-box relative flex items-end gap-2 bg-zam-backgroundSecondary rounded-lg px-2.5 py-2.5 border border-transparent transition-colors"
+            class:rounded-ss-none={!!replyToEvent || !!activeEdit}
         >
             <!-- "+" actions menu -->
             <div class="flex-shrink-0 relative">
@@ -2392,8 +2775,8 @@
                             openComposerActions(effComposerKey);
                         }
                     }}
-                    {disabled}
-                    class="relative p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={disabled || !!activeEdit}
+                    class="relative p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     class:z-50={showActionsMenu}
                     title={t("common.add")}
                 >
@@ -2435,6 +2818,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {:else}
@@ -2466,6 +2851,8 @@
                                 onCreateThread={onThreadCreated && !isThread
                                     ? () => (createThreadArmed = true)
                                     : undefined}
+                                onInviteToGame={() =>
+                                    openGameInviteDialog(roomId)}
                             />
                         </div>
                     {/if}
@@ -2506,7 +2893,7 @@
                     ? {}
                     : { autocorrect: "off" }}
                 tabindex={disabled ? -1 : 0}
-                class="composer-editor flex-1 min-w-0 bg-transparent text-discord-textPrimary outline-none focus-visible:outline-none text-[16px] leading-relaxed py-[3px] max-h-48 overflow-y-auto disabled:cursor-not-allowed"
+                class="composer-editor flex-1 min-w-0 self-center bg-transparent text-zam-textPrimary outline-none focus-visible:outline-none composer-text leading-relaxed py-[3px] !min-h-[32px] max-h-48 overflow-y-auto disabled:cursor-not-allowed"
             ></div>
 
             <!-- GIF picker button -->
@@ -2525,10 +2912,10 @@
             >
                 <button
                     onclick={() => openPicker("gif")}
-                    {disabled}
+                    disabled={disabled || !!activeEdit}
                     class="{interfaceState.isTouchscreen
                         ? 'hidden'
-                        : ''} p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        : ''} p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title={t("messageInput.favouriteGifs")}
                 >
                     <ImagePlay size={20} />
@@ -2576,9 +2963,9 @@
                     onclick={() => openPicker("sticker")}
                     class="{interfaceState.isTouchscreen
                         ? 'hidden'
-                        : ''} p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        : ''} p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title={t("common.stickers")}
-                    {disabled}
+                    disabled={disabled || !!activeEdit}
                 >
                     <Sticker size={20} />
                 </button>
@@ -2617,7 +3004,7 @@
             <div class="flex-shrink-0">
                 <button
                     onclick={() => openPicker("emoji")}
-                    class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title={t("common.emoji")}
                     {disabled}
                 >
@@ -2678,8 +3065,8 @@
                                 );
                             }
                         }}
-                        {disabled}
-                        class="p-1.5 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={disabled || !!activeEdit}
+                        class="p-1.5 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         title={btn.label}
                         aria-label={btn.label}
                     >
@@ -2699,17 +3086,19 @@
             {/each}
 
             <button
-                onclick={send}
+                onclick={sendFromButton}
                 onpointerdown={(e) => e.preventDefault()}
-                disabled={(!text.trim() && fileQueue.length === 0) ||
-                    isSending ||
-                    disabled}
+                disabled={activeEdit
+                    ? editSaveBlocked || disabled
+                    : (!text.trim() && fileQueue.length === 0) ||
+                      isSending ||
+                      disabled}
                 class="flex-shrink-0 p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed {canSend
-                    ? 'text-discord-accent hover:text-discord-accentHover hover:bg-discord-messageHover'
-                    : 'text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover'}"
+                    ? 'text-zam-accent hover:text-zam-accentHover hover:bg-zam-messageHover'
+                    : 'text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover'}"
                 title={t("messageInput.sendMessage")}
             >
-                {#if isSending}
+                {#if isSending || isSavingEdit}
                     <div
                         class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
                     ></div>
@@ -2727,6 +3116,6 @@
 <style>
     .input-box:focus-within {
         outline: none;
-        border-color: rgb(var(--discord-accent-rgb) / 0.3);
+        border-color: rgb(var(--zam-accent-rgb) / 0.3);
     }
 </style>

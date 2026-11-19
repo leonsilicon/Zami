@@ -45,6 +45,10 @@ export type ModalId =
     | "report-message"
     | "redact-message"
     | "forward-message"
+    // The message "View source" dialog (ViewSourceDialog, MessageItem).
+    | "view-source"
+    // Who reacted to a message, by reaction (ReactionsViewer, MessageItem).
+    | "reactions-viewer"
     | "share-target"
     | "composer-picker"
     | "composer-actions"
@@ -59,6 +63,8 @@ export type ModalId =
     | "plugin-popover"
     | "create-poll"
     | "share-location"
+    // Pick a running game and send it as an invite (GameInviteDialog).
+    | "game-invite"
     // Fullscreen live-location map (LiveLocationMapView, mounted by
     // LiveLocationBanner). It is in the slot so Escape and mobile back
     // dismiss it through AppShell's central stack rather than a private
@@ -127,6 +133,10 @@ export const interfaceState = $state({
     /** Scrolls the open room to its oldest unread message (set by
      *  MessageArea). */
     jumpToUnread: null as null | (() => void),
+    /** Shows the open room as unread from a message right away, before the
+     *  account data echoes back (set by MessageArea). */
+    markUnreadFrom: null as
+        null | ((from: { eventId: string; ts: number }) => void),
 
     /** The single open popup/modal, or null. */
     modal: null as ModalId | null,

@@ -160,6 +160,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "自分のメッセージを右寄せ（吹き出し表示）",
     "appearanceSettings.displayYourOwnMessagesOnThe":
         "自分のメッセージを色付きの吹き出しで右側に表示します",
+    "appearanceSettings.bubbleAllMessages":
+        "すべてのメッセージを吹き出しで表示",
+    "appearanceSettings.bubbleAllMessagesDesc":
+        "自分だけでなく全員のメッセージを吹き出しで表示します",
     "appearanceSettings.showNameColours": "名前の色を表示",
     "appearanceSettings.drawPeopleSNamesInThe":
         "プロフィールで設定した色で名前を表示します。オフにすると全員が通常の文字色になります。",
@@ -233,6 +237,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callParticipantMenu.soundboardVolume": "サウンドボードの音量",
     "callParticipantMenu.shareVolume": "共有音量",
     "callParticipantMenu.hideVideo": "ビデオを非表示",
+    "callParticipantMenu.muteShare": "画面共有をミュート",
     "callParticipantMenu.kicking": "キック中…",
     "callParticipantMenu.confirmKick": "{name} をキックしますか？",
     "callParticipantMenu.kickFromRoom": "{name} をルームからキック",
@@ -272,6 +277,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.deafen": "スピーカーミュート",
     "callView.disconnect": "切断",
     "callView.joinCall": "通話に参加",
+    "callView.muteShareAudio": "共有の音声をミュート",
+    "callView.unmuteShareAudio": "共有の音声のミュートを解除",
     "callView.you": "あなた",
     "callView.sScreen": "{name} の画面",
     "callView.exitSpotlightFor": "{label} のスポットライトを解除",
@@ -397,6 +404,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "gpuDebug.hardwareAcceleration": "ハードウェアアクセラレーション",
     "gpuDebug.hardwareAccelerationHint":
         "動画が黒く表示されたり、ウィンドウの描画が崩れたりする場合はオフにしてください。再起動後に適用されます。",
+    "gpuDebug.gameAuto": "ゲーム中はGPUを一時停止",
+    "gpuDebug.gameAutoHint":
+        "ゲームの実行中にGPUがクラッシュし続ける場合（ゲームがGPUメモリを占有）、Zamはハードウェアアクセラレーションなしで再起動し、ゲーム終了後に再び有効にして再起動します。設定 > 一般のゲーム検出が必要です。通話の終了を待ちます。",
+    "gpuDebug.gameAutoActive": "ゲームが終了するまでGPUなしで動作中です。",
     "gpuDebug.nvidiaVideo": "NVIDIA ビデオデコード",
     "gpuDebug.nvidiaVideoHint":
         "Chromium の Vulkan レンダラー経由で NVIDIA GPU 上の動画をデコードします。「自動」は NVIDIA GPU が画面を駆動している場合に有効になります。Wayland では Vulkan が使われないため「自動」ではオフのままです。そこで Vulkan を選ぶと、代わりに OpenGL 経由でハードウェアデコードを試みます（実験的）。",
@@ -538,6 +549,56 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.orderHints": "メッセージ順序のヒント",
     "debugSettings.orderHintsHint":
         "送信するメッセージに、チャットログの一番下に何があったかを示すヒントを付けます。また、他の Zam ユーザーのメッセージは、ヒントが示すメッセージの下に表示します。オフにすると、Element と同じようにサーバーの順序で表示します。",
+    "debugSettings.disableGallerySend": "ギャラリーを送信しない",
+    "debugSettings.disableGallerySendHint":
+        "一緒に選んだ添付ファイルは通常、キャプション1つのギャラリーメッセージ1件として送信されます（MSC4274、dm.filament.gallery として送信）。オンにすると、それぞれ別のメッセージとして送信します。他の人のギャラリーは引き続き表示されます。",
+    "debugSettings.stickyCallMembership": "スティッキー通話メンバーシップ",
+    "debugSettings.stickyCallMembershipHint":
+        "通話に m.call.member ステートイベントの代わりに、スティッキーな m.rtc.member イベント (MSC4354) で参加します。ステートイベントしか読まないクライアント (1.51 より前の Zam を含む) には、通話中のあなたが見えません。次の通話から適用されます。",
+    "debugSettings.indexSync": "メッセージインデックスの同期",
+    "debugSettings.indexSyncHint":
+        "検索インデックスのエントリを、確認済みの他のセッションと交換します。両方のセッションがこのバージョンである必要があります。セッション：対象 / 確認済み / すべて。チャンク：送信 / 受信。",
+    "debugSettings.indexSyncOff":
+        "インデックス同期は動作していません。暗号化ルームのインデックス作成を有効にしてください。",
+    "debugSettings.indexSyncNow": "今すぐ同期",
+    "debugSettings.indexSyncNever": "なし",
+    "debugSettings.searchIndex": "検索インデックス",
+    "debugSettings.searchIndexHint":
+        "このデバイス上の暗号化ルームすべての履歴を、バックグラウンドでゆっくり進めるのではなく今すぐインデックス化します。実行中はネットワークとストレージを使います。",
+    "debugSettings.searchIndexBuild": "今すぐ完全なインデックスを作成",
+    "debugSettings.searchIndexCancel": "キャンセル",
+    "debugSettings.searchIndexBar": "完全なインデックスの進捗",
+    "debugSettings.searchIndexProgress":
+        "{done} / {total} ルーム、{messages} 件のメッセージ",
+    "debugSettings.searchIndexComplete":
+        "完了: すべての暗号化ルームがインデックス化されました。",
+    "debugSettings.searchIndexPartial":
+        "完了しましたが、{failed} 件のルームはまだ完了していません。バックグラウンドで再試行されます。",
+    "debugSettings.searchIndexStorage":
+        "停止: ストレージの空きがほとんどありません。",
+    "debugSettings.prefetchTitle": "バックグラウンドダウンロード (Android)",
+    "debugSettings.prefetchHint":
+        "アプリが前面にないとき、暗号化された履歴ページをバックグラウンドで取得します。インデックスが読むまで暗号化されたままです。",
+    "debugSettings.prefetchPages": "待機中のページ",
+    "debugSettings.prefetchSize": "サイズ",
+    "debugSettings.prefetchRooms": "ルーム",
+    "debugSettings.prefetchLastRun": "最終実行",
+    "debugSettings.prefetchLastResult": "前回の結果",
+    "debugSettings.prefetchLastError": "前回のエラー",
+    "debugSettings.prefetchRefresh": "更新",
+    "debugSettings.searchIndexAborted": "キャンセルしました。",
+    "debugSettings.searchIndexUnavailable":
+        "停止: このデバイスではインデックスが動作していません。",
+    "debugSettings.searchIndexDisabled":
+        "先にプライバシー設定で暗号化ルームのインデックスを有効にしてください。",
+    "debugSettings.searchIndexNotRunning":
+        "インデックスは現在動作していません。アプリの読み込みが終わると開始します。",
+    "debugSettings.indexSyncSessions": "セッション",
+    "debugSettings.indexSyncAsked": "問い合わせ",
+    "debugSettings.indexSyncRoomsMissing": "欠けがあるルーム",
+    "debugSettings.indexSyncRequestsReceived": "受信したリクエスト",
+    "debugSettings.indexSyncChunks": "チャンク",
+    "debugSettings.indexSyncMerged": "統合したエントリ",
     "debugSettings.displayEveryMatrixTimelineEventIn":
         "チャットログにすべての Matrix タイムラインイベントを表示します。",
     "debugSettings.ignoreCodecSupport": "報告されたコーデック対応を無視",
@@ -555,7 +616,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ノイズフィルタ（DeepFilterNet3 または DPDFNet）が信号の各部分から取り除ける最大量です（既定 {value}）。100 は無制限です。",
     "debugSettings.soundboardInterval": "サウンドボードの間隔: {value} ms",
     "debugSettings.soundboardIntervalHint":
-        "同じ人のサウンドボード音の最短間隔。これより速く届いた音は無視されます（既定 1500）。",
+        "同じ人のサウンドボード音の最短間隔。これより速く届いた音は無視されます（既定 250）。",
     "debugSettings.syncStatus": "同期状態",
     "debugSettings.clientLogs": "クライアントログ",
     "debugSettings.clientLogsHint":
@@ -699,6 +760,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "直接接続は行わず、通話サーバーに IP アドレスも見えません。通話はプロキシ経由で、通話サーバーの TURN リレーに TCP または TLS で送られます。サーバーが TURN リレーを提供しない場合、通話は接続できません。遅延が増える見込みです。",
     "proxySettings.callsDirectUnavailable":
         "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動または PAC）を設定してください。",
+    "proxySettings.callsDirectUnavailableManual":
+        "通話はシステムのプロキシ設定を迂回できません。これを機能させるには、ここでプロキシ（手動）を設定してください。",
+    "proxySettings.androidBackgroundHint":
+        "通知とクイック返信は WebView の外で取得され、socks5:// または http:// プロキシ経由でのみ動作します。",
+    "proxySettings.unsupported":
+        "このバージョンの Android System WebView ではプロキシを設定できません。Play ストアから更新してください。",
     "proxySettings.callsDirectAddresses": "直接送信:",
     "proxySettings.save": "保存",
     "proxySettings.saved": "保存しました",
@@ -844,12 +911,27 @@ const messages: Partial<Record<MessageKey, string>> = {
     "lightbox.zoomIn": "拡大",
     "lightbox.zoomOut": "縮小",
     "lightbox.zoomReset": "ズームをリセット",
+    "lightbox.fitToScreen": "画面に合わせる",
+    "lightbox.actualSize": "実際のサイズ",
+    "messagesMediaSettings.fitImagesToScreen": "画像を画面に合わせる",
+    "messagesMediaSettings.fitImagesToScreenDescription":
+        "画像ビューアで、画面より小さい画像を画面いっぱいに拡大します。ビューアの「画面に合わせる」ボタンで、表示中の画像だけ切り替えられます。",
     "linkPreview.youtubeVideo": "YouTube 動画",
     "linkPreview.xTwitter": "X / Twitter",
     "linkPreview.loadingItContactsTheSiteHosting":
         "読み込むと配信元のサイトに接続するため、あなたの IP アドレスが伝わります",
     "linkPreview.loadPreviewMedia": "プレビューを読み込む",
     "linkPreview.playVideo": "動画を再生",
+    "linkPreview.replyingTo": "返信先:",
+    "linkPreview.showMore": "もっと見る",
+    "linkPreview.showLess": "閉じる",
+    "linkPreview.pollVotes": "{count, plural, other {{votes}票}}",
+    "linkPreview.pollFinal": "最終結果",
+    "linkPreview.pollEnds": "{date}に終了",
+    "linkPreview.quoteUnavailable": "このポストは表示できません。",
+    "linkPreview.communityNote": "読者が背景情報を追加しました",
+    "linkPreview.repostCount": "{count, plural, other {リポスト#件}}",
+    "linkPreview.likeCount": "{count, plural, other {いいね#件}}",
     "liveLocationBanner.openMap": "地図を開く",
     "liveLocationBanner.sharingLiveLocation": "現在地を共有中",
     "liveLocationBanner.lastUpdatedAt":
@@ -1050,6 +1132,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "memberList.admins": "管理者: {length}",
     "memberList.admin": "管理者",
     "memberList.moderators": "モデレーター: {length}",
+    "memberList.defaultRoleMember": "メンバー",
+    "memberList.roleSection": "{name}: {length}",
     "messageActionsSheet.thisMessage": "このメッセージを{label}しますか？",
     "messageActionsSheet.messageActions": "メッセージ操作",
     "messageArea.dropToAttach": "ドロップして添付",
@@ -1076,7 +1160,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.thisIsTheBeginningOfThe": "ここが #",
     "messageArea.loadingHistory": "過去のメッセージを読み込み中",
     "messageArea.room": "ルームの始まりです。",
+    "messageArea.dmStart": "{name} とのダイレクトメッセージの始まりです。",
     "messageArea.newMessages": "新着メッセージ",
+    "messageArea.unreadSince":
+        "{count, plural, other {{since}以降の新着メッセージ#件}}",
+    "messageArea.markAsRead": "既読にする",
+    "messageArea.unreadSinceMany": "{since}以降の新着メッセージ{count}件以上",
+    "messageArea.unreadMany": "新着メッセージ{count}件以上",
     "messageArea.messageFromABlockedUser":
         "ブロックしたユーザーからのメッセージ",
     "messageArea.showBlockedMessage": "ブロックしたメッセージを表示",
@@ -1091,8 +1181,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageArea.closePanel": "パネルを閉じる",
     "messageArea.someone": "誰か",
     "messageArea.pinnedMessagesCount": "ピン留めしたメッセージ（{count}）",
+    "messagesMediaSettings.pingOnReply": "返信時に通知",
+    "messagesMediaSettings.pingOnReplyDescription":
+        "新しい返信は、返信先のメッセージの投稿者に@メンションのように通知されます。返信バーから返信ごとにオフにできます。",
+    "messageInput.pingOn": "@ オン",
+    "messageInput.pingOff": "@ オフ",
+    "messageInput.pingOnTitle": "投稿者に通知する",
+    "messageInput.pingOffTitle": "投稿者に通知しない",
     "messageInput.replyingTo": "{replyTargetName}に返信",
     "messageInput.cancelReplyEsc": "返信をキャンセル（Esc）",
+    "messageInput.editingMessage": "メッセージを編集中",
+    "messageInput.cancelEditEsc": "編集をキャンセル（Esc）",
+    "messageInput.editFailed": "編集を保存できませんでした",
     "messageInput.editAttachment": "添付ファイルを編集",
     "messageInput.editAttachment2": "添付ファイル{name}を編集",
     "messageInput.custom": "カスタム",
@@ -1138,6 +1238,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.originalMessageDeleted": "元のメッセージは削除されました",
     "messageItem.originalMessageUnavailable": "元のメッセージは利用できません",
     "messageItem.replyPreviewSticker": "ステッカー",
+    "messageItem.forwarded": "転送済み",
+    "messageItem.forwardedFrom": "{name} から転送",
+    "messageItem.forwardedEmoteActor": "送信者",
     "messageItem.requestKeys": "鍵をリクエスト",
     "messageItem.keysRequested": "鍵をリクエストしました",
     "messageItem.requestKeysHelp":
@@ -1147,10 +1250,17 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.replyPreviewVideo": "動画",
     "messageItem.replyPreviewAudio": "音声",
     "messageItem.replyPreviewFile": "ファイル",
+    "messageItem.replyPreviewGallery": "{n, plural, other {#件の添付ファイル}}",
+    "messageItem.galleryLabel": "ギャラリー、{n, plural, other {#件}}",
+    "messageItem.galleryOpenItem": "{name}を開く",
+    "messageItem.galleryDownload": "{name}をダウンロード",
+    "messageItem.galleryEmpty": "空のギャラリー",
     "messageItem.edited": "（編集済み）",
     "messageItem.decryptingImage": "画像を復号しています...",
     "messageItem.couldnTDecryptImage": "画像を復号できませんでした",
     "messageItem.imageUnavailable": "[画像は利用できません]",
+    "messageItem.spoiler": "ネタバレ",
+    "messageItem.revealSpoiler": "ネタバレを表示",
     "messageItem.decryptingVideo": "動画を復号しています...",
     "messageItem.couldnTDecryptVideo": "動画を復号できませんでした",
     "messageItem.video": "動画",
@@ -1165,8 +1275,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} / {total}",
     "messageItem.fileAttachment": "添付ファイル",
     "messageItem.download": "ダウンロード",
-    "messageItem.toSave": "で保存 ·",
-    "messageItem.toCancel": "でキャンセル",
     "messageItem.openThread": "スレッドを開く",
     "messageItem.failedToSend": "送信に失敗しました。",
     "messageItem.retrying": "再試行しています…",
@@ -1197,6 +1305,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.failedToUnpinMessage": "ピン留めの解除に失敗しました",
     "messageItem.failedToPinMessage": "ピン留めに失敗しました",
     "messageItem.couldNotOpenTheMatrixLink": "Matrixのリンクを開けませんでした",
+    "messageItem.viewSource": "ソースを表示",
+
+    // src/lib/components/messages/ViewSourceDialog.svelte
+    "viewSource.title": "メッセージのソース",
+    "viewSource.decrypted": "復号されたイベント",
+    "viewSource.encrypted": "元のイベント（暗号化済み）",
+    "viewSource.copied": "コピーしました",
+
     "messageRedactAction.removeMessage": "メッセージを削除",
     "messageRedactAction.removeThisMessage": "このメッセージを削除しますか？",
     "messageRedactAction.removing": "削除しています…",
@@ -1386,6 +1502,14 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このアカウントの通知はオフです",
     "notificationSettings.accountNotificationsOffDetail":
         "このアカウントの通知はサーバー側ですべてオフになっています（おそらく別のアプリから）。そのため下の設定に関わらず、どの端末でも通知されません。",
+    "notificationSettings.accountNotifications": "このアカウントの通知",
+    "notificationSettings.accountNotificationsDetail":
+        "このアカウントの通知をすべてのデバイスでオン／オフします。",
+    "notificationSettings.thisDeviceNotifications": "このデバイスの通知",
+    "notificationSettings.thisDeviceNotificationsDetail":
+        "このデバイスのポップアップ、音、プッシュだけをオフにします。他のデバイスは通知を続けます。",
+    "notificationSettings.couldNotUpdateNotifications":
+        "通知設定を更新できませんでした",
     "notificationSettings.turnOn": "オンにする",
     "notificationSettings.couldNotTurnOnNotifications":
         "通知をオンにできませんでした",
@@ -1524,6 +1648,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ルームの他の人に、入力中であることを表示します。オフにすると誰にも知られずに入力できます。",
     "privacySafetySettings.hideYourReadReceiptsFromOther":
         "他のユーザーに既読を表示しません。未読数は引き続き機能し、他の人にはどこまで読んだかが見えなくなります。",
+    "privacySafetySettings.streamerMode": "配信者モード",
+    "privacySafetySettings.streamerModeHint":
+        "アカウントID、メールアドレス、リカバリーキーにぼかしをかけ、通知のメッセージ本文を非表示にして、配信に個人情報が映らないようにします。このデバイスにのみ適用されます。",
     "privacySafetySettings.hideMessageTextInNotifications":
         "通知でメッセージ本文を隠す",
     "privacySafetySettings.notificationsOnThisDeviceSayWho":
@@ -1651,11 +1778,21 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ルームのアドレス（#room:server.com）またはルームID（!id:server.com）を入力してください",
     "quickActions.couldNotSendTheJoinRequest":
         "参加リクエストを送信できませんでした",
+    // src/lib/components/messages/ReactionsViewer.svelte
+    "reactionsViewer.title": "リアクション",
+    "reactionsViewer.count": "{count, plural, other {#件のリアクション}}",
+    "reactionsViewer.empty": "このメッセージにリアクションはありません。",
+    "reactionsViewer.removeYours": "自分のリアクションを削除",
+    "reactionsViewer.sending": "送信中…",
+    "reactionsViewer.couldNotRemove": "リアクションを削除できませんでした。",
     "reactorPopover.more": "他{overflow}件",
     "reactorPopover.reactedWith": "{label}でリアクション",
     "reactorPopover.userList": "ユーザー一覧",
     "renameAttachmentDialog.editAttachment": "添付ファイルを編集",
     "renameAttachmentDialog.filename": "ファイル名",
+    "renameAttachmentDialog.markSpoiler": "ネタバレとしてマーク",
+    "renameAttachmentDialog.markSpoilerHint":
+        "クリックされるまで画像をカバーで隠します。",
     "renameThreadDialog.nameThread": "スレッドに名前を付ける",
     "renameThreadDialog.renameThread": "スレッド名を変更",
     "renameThreadDialog.threadName": "スレッド名",
@@ -1691,6 +1828,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.doneReordering": "並べ替えを完了",
     "roomList.reorderRooms": "ルームを並べ替え",
     "roomList.spaceSettings": "スペース設定",
+    "roomList.sortDmsBy": "DMの並び順",
+    "roomList.dmSortRecent": "最新のメッセージ",
+    "roomList.dmSortUnread": "未読を先に",
+    "roomList.dmSortOnline": "オンラインを先に",
+    "roomList.dmSortName": "名前順（A–Z）",
     "roomList.pendingInvites": "保留中の招待",
     "roomList.inVoice": "{name} - 通話中",
     "roomList.orderValue": "並び順の値",
@@ -1713,6 +1855,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.emptyCategory": "ルームなし",
     "roomList.copyRoomLink": "ルームのリンクをコピー",
     "roomList.markAsRead": "既読にする",
+    "roomList.markAsUnread": "未読にする",
     "roomList.addToSpace": "スペースに追加",
     "roomList.clickAgainToLeave": "もう一度クリックすると退出",
     "roomList.leaveRoom": "ルームを退出",
@@ -1838,6 +1981,30 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomSettings.admin100": "管理者 (100)",
     "roomSettings.moderator50": "モデレーター (50)",
     "roomSettings.member0": "メンバー (0)",
+    "roomSettings.roleTags": "ロールタグ",
+    "roomSettings.roleTagsHint":
+        "各権限レベルに表示される名前、色、アイコン (MSC3949)。タグのないレベルは、それより低い直近のタグを使います。",
+    "roomSettings.roleTagLevel": "権限レベル",
+    "roomSettings.roleTagName": "名前",
+    "roomSettings.roleTagColor": "色",
+    "roomSettings.roleTagIcon": "アイコン (絵文字)",
+    "roomSettings.roleTagPickEmoji": "絵文字を選ぶ",
+    "roomSettings.roleTagUploadIcon": "画像をアップロード",
+    "roomSettings.roleTagRemoveIcon": "アイコンを削除",
+    "roomSettings.addRoleTag": "タグを追加",
+    "roomSettings.removeRoleTag": "タグを削除",
+    "roomSettings.saveRoleTags": "タグを保存",
+    "roomSettings.roleTagsSaved": "ロールタグを保存しました",
+    "roomSettings.roleTagsSaveFailed":
+        "ロールタグを保存できませんでした: {error}",
+    "roomSettings.roleTagDuplicateLevel":
+        "2つのタグが権限レベル {level} を使っています",
+    "roomSettings.roleTagNameRequired": "すべてのタグに名前が必要です",
+    "roomSettings.roleTagLevelInvalid": "権限レベルは整数で指定してください",
+    "roomSettings.roleTagClearColor": "色をクリア",
+    "roomSettings.customLevel": "カスタム ({level})",
+    "roomSettings.roleTagsUsingDefaults":
+        "このルームにはまだタグがないため、既定のタグを表示しています。",
     "roomSettings.muted1": "ミュート (-1)",
     "roomSettings.kick": "キック",
     "roomSettings.ban": "BAN",
@@ -1942,6 +2109,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "アップロードの実測値は {upload} なので、最大 {max} まで上がります。",
     "screenShareQualityChips.bitrateUnmeasured":
         "アップロードはまだ測定されていません。ビデオ送信中に測定されるため、当面は最大 {max} までです。",
+    "screenShareQualityChips.nativeCapture": "Windows キャプチャヘルパー",
+    "screenShareQualityChips.nativeCaptureHint":
+        "ブラウザの外で共有をキャプチャしてエンコードするため、負荷の高いゲーム中も映像がかくつきません。次の共有から適用されます。",
     "screenShareQualityChips.shareSystemAudio": "システム音声を共有",
     "screenShareQualityChips.appliesToNextShare": "次回の共有に適用",
     "screenShareQualityChips.shareSystemAudioAppliesToNext":
@@ -2175,6 +2345,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "spaceSidebar.setColor": "色を設定",
     "spaceSidebar.dissolveFolder": "フォルダを解散",
     "spaceSidebar.somethingWentWrong": "問題が発生しました",
+    "spaceSidebar.folder": "フォルダー",
+    "spaceSidebar.liveBadge": "ライブ",
+    "spaceSidebar.inVoiceCount": "通話中 {count} 人",
+    "spaceSidebar.moreParticipants": "+{count} 人",
     "splash.restoringSession": "セッションを復元中…",
     "stickerPicker.searchStickers": "ステッカーを検索…",
     "stickerPicker.searchStickers2": "ステッカーを検索",
@@ -2210,7 +2384,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "メッセージ表示",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "このデバイスにのみ保存されます。アカウント間では同期されません。",
-    "themeColorEditor.appTextSize": "アプリの文字サイズ: {round}%",
+    "themeColorEditor.interfaceScale": "インターフェースの倍率: {percent}%",
+    "themeColorEditor.messageTextScale": "メッセージの文字サイズ: {percent}%",
+    "themeColorEditor.messageTextScaleHint":
+        "チャットのメッセージと入力欄だけを拡大縮小します。",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "アプリ全体の文字と余白を拡大縮小します。",
     "themeColorEditor.font": "フォント",
@@ -2233,6 +2410,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "threadPanel.noRepliesYetStartTheThread":
         "まだ返信はありません。下からスレッドを始めてください。",
     "threadPanel.loadOlderReplies": "古い返信を読み込む",
+    "bridgedChannels.voice": "ボイスチャンネル",
+    "bridgedChannels.stage": "ステージチャンネル",
+    "bridgedChannels.announcement": "アナウンスチャンネル",
+    "bridgedChannels.forum": "フォーラム",
+    "bridgedChannels.media": "メディアチャンネル",
+    "bridgedChannels.privateThread": "プライベートスレッド",
+    "bridgedThreads.joinFailed": "スレッドに参加できませんでした。",
+    "bridgedThreads.joinThread": "スレッドに参加",
+    "bridgedThreads.threadRooms": "スレッドルーム",
+    "bridgedThreads.thread": "スレッド",
+    "bridgedThreads.goToParent": "{name} に移動",
+    "bridgedThreads.memberCount": "{count, plural, other {# 人のメンバー}}",
     "threadsListPanel.threads": "スレッド",
     "threadsListPanel.closeThreadsPanel": "スレッドパネルを閉じる",
     "threadsListPanel.noThreadsInThisRoomYet":
@@ -2354,10 +2543,17 @@ const messages: Partial<Record<MessageKey, string>> = {
     "verificationModal.couldNotReportTheMismatch":
         "不一致を報告できませんでした",
     "verificationModal.session": "セッション",
+    "videoTile.watchingCount": "{count}人が視聴中",
+    "videoTile.watchers": "視聴中",
+    "videoTile.noWatchers": "視聴者はいません",
+    "videoTile.muteShareAudio": "画面共有の音声をミュート",
+    "videoTile.unmuteShareAudio": "画面共有の音声のミュートを解除",
     "videoTile.fullscreen": "全画面",
     "videoTile.pictureInPicture": "ピクチャーインピクチャー",
     "videoTile.exitPictureInPicture": "ピクチャーインピクチャーを終了",
     "voiceAudioSettings.inputDevice": "入力デバイス",
+    "videoTile.stopWatching": "視聴をやめる",
+    "videoTile.watchStream": "配信を見る",
     "voiceAudioSettings.savedMicrophoneNotFoundUsingThe":
         "保存されたマイクが見つかりません - 再び利用できるまで既定のマイクを使用します。",
     "voiceAudioSettings.microphoneLevel": "マイクのレベル",
@@ -2445,9 +2641,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.videoCodecHint":
         "カメラと画面共有をどの形式で送信するかです。自動では、GPUがエンコードでき、通話の全員が再生できる最適なコーデックを選びます。再生できない人にはH.264のコピーが送られ、通話中にも切り替えられます。次にオンにしたときから適用されます。",
     "voiceAudioSettings.videoCodecAuto": "自動",
-    "voiceAudioSettings.adaptiveStream": "Adaptive video quality",
+    "voiceAudioSettings.adaptiveStream": "適応型ビデオ画質",
     "voiceAudioSettings.adaptiveStreamHint":
-        "Receive each video at the size it's shown, and pause video that isn't on screen or while Zam is minimised. Saves bandwidth and decoding. Applies the next time you join a call.",
+        "各ビデオを表示されているサイズで受信し、画面外のビデオや Zam を最小化している間のビデオを一時停止します。帯域幅とデコード負荷を節約します。次に通話に参加したときから適用されます。",
     "voiceAudioSettings.stopPreview": "プレビューを停止",
     "voiceAudioSettings.preview": "プレビュー",
     "voiceAudioSettings.callSounds": "通話サウンド",
@@ -2458,6 +2654,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "voiceAudioSettings.directMessagesRingRoomsNeverDo":
         "ダイレクトメッセージは鳴ります。ルームは鳴りません - ルームはルーム自体から参加します。",
     "voiceAudioSettings.ringtoneVolume": "着信音の音量",
+    "voiceAudioSettings.ringtone": "着信音",
+    "voiceAudioSettings.ringtoneDefault": "デフォルト",
+    "voiceAudioSettings.ringtonePluginOption": "{name} ({plugin})",
+    "voiceAudioSettings.ringtoneUnavailable":
+        "プラグインの着信音（プラグインが読み込まれていません）",
     "voiceAudioSettings.fullScreenCalls": "ロック画面に通話を表示",
     "voiceAudioSettings.fullScreenCallsHint":
         "着信DM通話で画面を点灯し、電話のように全画面で鳴らせるようにします。Androidでは別途許可が必要です。",
@@ -2637,6 +2838,27 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "ボイスメッセージを録音",
     "composerActionsMenu.shareLocation": "位置情報を共有",
     "composerActionsMenu.createThread": "スレッドを作成",
+    "composerActionsMenu.inviteToGame": "ゲームに招待",
+    "gameInvite.title": "ゲームに招待",
+    "gameInvite.game": "ゲーム",
+    "gameInvite.note": "メモ（任意）",
+    "gameInvite.notePlaceholder": "なにか書く…",
+    "gameInvite.send": "招待を送信",
+    "gameInvite.noGames": "今招待できる実行中の Steam ゲームはありません。",
+    "gameInvite.failedToSend": "招待を送信できませんでした。",
+    "gameInvite.cardTitle": "ゲームへの招待",
+    "gameInvite.sourceSteam": "Steam",
+    "gameInvite.partySize": "パーティー {current}/{max}人",
+    "gameInvite.confirmSteam": "{game} を引数 {connect} で起動します",
+    "gameInvite.confirmLobby": "{game} のロビーに参加します",
+    "gameInvite.joinGame": "ゲームに参加",
+    "gameInvite.joinSent": "ゲームに参加を送信しました。",
+    "gameInvite.openInDesktop":
+        "参加するには Zam デスクトップアプリで開いてください。",
+    "gameInvite.joinUnsupported":
+        "このコンピューターではこのゲームへの参加に対応していません。",
+    "gameInvite.joinInvalid": "この招待は無効です。",
+    "gameInvite.joinFailed": "ゲームに参加できませんでした。",
     "reactions.couldNotAddReaction": "リアクションを追加できませんでした",
     "qrScanner.startingTheCamera": "カメラを起動中…",
     "qrScanner.cameraAccessWasDenied": "カメラへのアクセスが拒否されました。",
@@ -2746,6 +2968,9 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このデバイスは {codec} 映像をデコードできません。代わりにH.264を要求します。",
     "client.couldNotSwitchVideoCodec":
         "映像コーデックを切り替えられませんでした",
+    "client.androidShareNeedsWebView":
+        "このルームで画面共有するには、新しいAndroid System WebViewが必要です。",
+    "client.screenShareStopped": "画面共有が停止しました。",
     "client.couldNotStartScreenShare": "画面共有を開始できませんでした",
     "client.couldNotShareScreenAudio": "画面共有を音声なしで開始しました",
     "client.couldnTChangeScreenShareQuality":
@@ -2854,6 +3079,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "previewRewriter.rules": "書き換えルール",
     "previewRewriter.rulesDescription":
         "プレビューの取得先アドレスに順番に適用されます。リンク自体は変更されません。",
+    // src/lib/plugins/builtins/message-link-pill/index.ts
+    "messageLinkPill.name": "メッセージリンクのピル",
+    "messageLinkPill.description":
+        "貼り付けたメッセージリンクを、リンク先のルームまたはDMの名前を示すコンパクトなピルとして表示します。ピルにカーソルを合わせると、対応するプレビューがハイライトされます。",
+    "messageLinkPill.viewMessage": "メッセージを表示",
+    "messageLinkPill.viewMessageIn": "{room} の引用メッセージを表示",
+    "messageLinkPill.viewQuotedMessage": "引用メッセージを表示",
+
     "pluginBoot.noPluginSyncDataOnYour":
         "アカウントにまだプラグインの同期データがありません。",
     "pluginBoot.theSyncDataOnYourAccount":
@@ -2886,6 +3119,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "それは公式リポジトリです(すでに含まれています)。",
     "repoList.thatRepoIsAlreadyAdded":
         "そのリポジトリはすでに追加されています。",
+    "gifSearch.couldNotLoadGifsTryAgain":
+        "GIFを読み込めませんでした。もう一度お試しください。",
     "gifSearch.couldnTReachKlipyTryAgain":
         "KLIPY に接続できませんでした - もう一度お試しください。",
     "liveLocation.youCanTShareLiveLocation":
@@ -3150,6 +3385,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageActionsMenu.unpin": "ピン留めを解除",
     "messageActionsMenu.pin": "ピン留め",
     "messageActionsMenu.copyLink": "リンクをコピー",
+    "messageActionsMenu.viewReactions": "リアクションを表示",
+    "messageActionsMenu.markUnread": "未読にする",
+    "messageActionsMenu.couldNotMarkUnread": "未読にできませんでした",
     "messageActionsMenu.report": "通報",
     "messageDisplay.systemDefault": "システム設定に従う",
     "micErrorMessage.microphoneAccessIsBlockedAllowIt":
@@ -3189,7 +3427,17 @@ const messages: Partial<Record<MessageKey, string>> = {
         "アプリが同期している間はオンラインとして表示されます",
     "presence.shownAsIdleToOtherUsers":
         "他のユーザーにはアイドルとして表示されます",
+    "presence.doNotDisturb": "応答不可",
+    "presence.doNotDisturbDescription":
+        "すべての端末で通知と着信を鳴らしません",
     "presence.invisible": "オフライン表示",
+    "presence.invisibleHidesActivity":
+        "オフライン表示にすると、既読通知と入力中の表示も他のユーザーに見えなくなります。",
+    "presence.unsupportedByServer":
+        "このホームサーバーはプレゼンスに対応していないため、設定できるステータスはありません。",
+    "presence.shareViaProfile": "プロフィール経由でステータスを共有",
+    "presence.shareViaProfileDescription":
+        "このホームサーバーではプレゼンスが無効です。代わりに Zam がプロフィールのフィールドにステータスを公開できます。他の Zam ユーザーのほか、プロフィールを閲覧できる人なら誰でも見られます。",
     "presence.appearOfflineToOtherUsers": "他のユーザーにオフラインとして表示",
     "pushRuleWrite.yourHomeserverHasNoNotificationRule":
         "ホームサーバーに「{label}」の通知ルールがないため、変更できませんでした。",
@@ -3359,7 +3607,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.mirrorMyCamera": "カメラをミラー表示",
     "settingsSearch.videoCodec": "映像コーデック",
     "settingsSearch.noiseSuppressionGpu": "GPUアクセラレーション",
-    "settingsSearch.adaptiveStream": "Adaptive video quality",
+    "settingsSearch.adaptiveStream": "適応型ビデオ画質",
     "settingsSearch.callVolume": "通話音量",
     "settingsSearch.playCallSounds": "通話音を再生",
     "settingsSearch.ringForIncomingDmCalls": "DMの着信通話で呼び出し音を鳴らす",
@@ -3372,6 +3620,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.clearCache": "キャッシュを消去",
     "settingsSearch.showAllEvents": "すべてのイベントを表示",
     "settingsSearch.orderHints": "メッセージ順序のヒント",
+    "settingsSearch.disableGallerySend": "ギャラリーを送信しない",
+    "settingsSearch.stickyCallMembership": "スティッキー通話メンバーシップ",
     "settingsSearch.pushDiagnostics": "プッシュの診断",
     "settingsSearch.pushService": "プッシュサービス(UnifiedPush / Firebase)",
     "settingsSearch.language": "言語",
@@ -3450,12 +3700,18 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.updateReadyRestartToApply":
         "アップデートの準備ができました{versionSuffix} - 再起動して適用",
     "updateStatus.restartToApply": "再起動して適用",
+    "updateStatus.reopenToApply":
+        "アップデートをインストールしました{versionSuffix}。完了するには Zam を終了してもう一度開いてください",
     "updateStatus.updateReadyReloadToApply":
         "アップデートの準備ができました{versionSuffix} - 再読み込みして適用",
     "updateStatus.reloadToApply": "再読み込みして適用",
     "updateStatus.aNewVersionIsAvailable":
         "新しいバージョンがあります{versionSuffix}",
     "updateStatus.openReleasePage": "リリースページを開く",
+    "updateStatus.flatpakManualUpdate":
+        "アップデートがあります{versionSuffix}。ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.packageManagerUpdate":
+        "アップデートがあります{versionSuffix}。{manager}で更新してください",
     "updateStatus.updateCheckFailed": "アップデートの確認に失敗しました",
     "updateStatus.checkForUpdatesToInstallThe":
         "最新バージョンをインストールするにはアップデートを確認してください。",
@@ -3494,6 +3750,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "rootLayout.linkCopied": "リンクをコピーしました",
     "rootPage.failedToReconnectPleaseLogIn":
         "再接続に失敗しました。もう一度ログインしてください。",
+    "rootPage.storageWipedSessionRecovered":
+        "ディスクがいっぱいになったため、ブラウザーが Zam のストレージをリセットした可能性があります。サインインは復元されましたが、一部の設定が既定値に戻っている場合があります。",
     "rootPage.sessionOpenInAnotherTab":
         "このセッションは別のタブで開かれています。そのタブを閉じると、このタブで続行します。",
     "rootPage.signedInButSyncingCouldNot":
@@ -3520,6 +3778,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancel": "キャンセル",
     "fileOffer.withdraw": "取り消す",
     "fileOffer.connecting": "送信者に接続中…",
+    "fileOffer.preparingReceive": "送信者がファイルを準備するのを待っています",
+    "fileOffer.preparingSend": "ファイルを準備しています",
+    "fileOffer.acceptedElsewhere": "別の端末で承認されました（{device}）",
+    "fileOffer.untrusted":
+        "この依頼は信頼できません。指定された端末から送られたものではありません。",
     "fileOffer.progress": "{done} / {total}、{rate}/秒",
     "fileOffer.verifying": "ファイルを検証中…",
     "fileOffer.savedDone": "ファイルを保存し、検証しました。",
@@ -3529,8 +3792,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.failedOffline":
         "送信者に接続できません。送信者が Zam を開いている必要があります。",
     "fileOffer.failedRefused": "送信者のセッションがこの転送を拒否しました。",
-    "fileOffer.failedNoSfu":
-        "送信者のサーバーには、ファイルを中継する通話サービスがありません。",
+    "fileOffer.failedNoRelay":
+        "ピアツーピア接続に中継サーバーが必須ですが、中継（TURN）サーバーがないため、IPアドレスを見せずにファイルを送ることはできません。",
     "fileOffer.failedConnection": "接続が切れました。",
     "fileOffer.failedStalled": "転送が進まなくなりました。",
     "fileOffer.failedCorrupt":
@@ -3645,6 +3908,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresence.viaScan": "プロセススキャン",
     "richPresence.viaRpc": "Discord リッチプレゼンス",
     "richPresence.viaMedia": "メディアプレーヤー",
+    "richPresence.viaPlugin": "プラグイン",
     "richPresence.media": "メディア再生を共有",
     "richPresence.mediaHint":
         "このコンピューターのメディアプレーヤーで再生中の曲や動画を、システムの再生情報から表示します。オンにすると各プレーヤーは既定で許可されます。不要なものは下でオフにできます。",
@@ -3664,6 +3928,202 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresence.autoRestart": "Discord を自動で再起動",
     "richPresence.autoRestartHint":
         "Zam の起動時に Discord がすでに先に起動している場合、Discord を閉じて開き直し、アプリが Zam に報告するようにします。通話や配信中の場合は終了します。Zam の起動ごとに 1 回だけ行います。",
+    "appearanceSettings.customCss": "カスタム CSS",
+    "appearanceSettings.customCssEnable": "カスタム CSS を使う",
+    "appearanceSettings.customCssHint":
+        "テーマの上にリアルタイムで適用される独自のスタイルです。テーマの色はページに設定された変数なので、!important で上書きしてください。",
+    "appearanceSettings.customCssRecovery":
+        "ルールのせいで Zam が使えなくなったら、アドレスに ?nocustomcss を付けて開く (またはスイッチをオフにする) と元に戻せます。",
+    "gpuDebug.memoryReport": "メモリレポート",
+    "gpuDebug.memoryReportHint":
+        "Zam のプロセスが使っているメモリ (GPU プロセスのビデオメモリを含む) を、何が保持しているかごとに内訳表示します。問題が表示されている状態で測定し、レポートをバグ報告にコピーしてください。",
+    "gpuDebug.repaint": "再描画",
+    "gpuDebug.repaintHint":
+        "GPU プロセスを再起動して、ウィンドウを最初から描き直します。ウィンドウの一部が黒や白の四角になったり、ずれた位置に表示されたりするときに使ってください。ビデオメモリが不足した後に起こることがあります。通話は続きます。トレイメニューにもあります。",
+    "gpuDebug.memoryMeasure": "測定",
+    "gpuDebug.memoryMeasuring": "測定中…",
+    "gpuDebug.memoryRecord": "メモリを継続的に記録",
+    "gpuDebug.memoryRecordHint":
+        "一定間隔でメモリレポートを取り、設定を閉じても記録を続けるので、Zam を普段どおり使ってから戻ってこられます。各項目の最初・最小・最大・最新のサイズを表示し、すべてのサンプルをグラフ用の CSV に保存します。",
+    "gpuDebug.memoryRecordInterval": "間隔",
+    "gpuDebug.memoryRecordEvery": "{seconds} 秒ごと",
+    "gpuDebug.memoryRecordStart": "記録",
+    "gpuDebug.memoryRecordStop": "停止",
+    "gpuDebug.memoryRecordStatus": "{elapsed} で {count} サンプル",
+    "gpuDebug.memoryRecordCsv": "CSV を保存",
+    "richPresence.heading": "リッチプレゼンス",
+    "richPresence.share": "今していることを共有",
+    "richPresence.shareHint":
+        "このコンピューターのアプリが、プレイ中や再生中のものをプロフィールに表示できるようにします。すべてのアプリが既定で許可されます。不要なものは下でオフにしてください。",
+    "richPresence.arrpc": "Discord リッチプレゼンスを使うアプリ",
+    "richPresence.arrpcHint":
+        "Discord に報告するアプリも受け付けます。Discord が起動していると、アプリは通常まず Discord に報告するため、Discord を閉じているときに最もよく動作します。",
+    "richPresence.scan": "ゲームを検出",
+    "richPresence.scanHint":
+        "このコンピューターで実行中のゲームを探し、何も報告しないゲームも表示されるようにします。数秒ごとに実行中のプログラムの一覧を読み取ります。",
+    "richPresence.scanNeedsPermission":
+        "Flatpak のサンドボックスからは他のプログラムが見えません。Zam がゲームを探せるようにするには、次のコマンドを実行してから Zam を再起動してください:",
+    "richPresence.scanGrantCommand":
+        "flatpak override --user --talk-name=org.freedesktop.Flatpak moe.crafty.matrix",
+    "richPresence.scanFailed": "ゲームを探せませんでした: {error}",
+    "richPresence.socket": "{path} でも待ち受けています。",
+    "richPresence.arrpcNeedsShare": "先に共有をオンにしてください。",
+    "richPresence.listening": "ポート {port} でアプリを待ち受けています。",
+    "richPresence.listenFailed": "待ち受けを開始できませんでした: {error}",
+    "richPresence.arrpcFailed": "arRPC を開始できませんでした: {error}",
+    "richPresence.publishFailed": "プロフィールを更新できませんでした。",
+    "richPresence.gameList": "ゲーム一覧: {count} 件 (更新: {when})",
+    "richPresence.gameListDownloading":
+        "Discord からゲーム一覧をダウンロード中…",
+    "richPresence.gameListFailed":
+        "ゲーム一覧をダウンロードできませんでした: {error}",
+    "richPresence.addedGames": "登録済みのゲーム",
+    "richPresence.addedGamesHint":
+        "実行中に見つかったゲーム、アプリ、メディアプレーヤーと、自分で追加したプログラムです。それぞれ既定でプロフィールへの表示が許可されます。不要なものはオフにしてください。ゲームは「ゲームを検出」がオンのときだけ、メディアプレーヤーは「メディア再生を共有」がオンのときだけ見つかります。",
+    "richPresence.addGame": "ゲームを追加",
+    "richPresence.pickProgram": "実行中のプログラムを選択",
+    "richPresence.searchPrograms": "実行中のプログラムを検索",
+    "richPresence.noPrograms": "実行中のプログラムが見つかりません。",
+    "richPresence.gameName": "プロフィールに表示する名前",
+    "richPresence.refreshPrograms": "更新",
+    "richPresence.lastPlayed": "最終プレイ: {when}",
+    "richPresence.neverPlayed": "まだプレイしていません",
+    "richPresence.apps": "アプリ",
+    "richPresence.noApps":
+        "まだ何も報告したアプリはありません。報告したアプリはここに表示され、オフにしない限り許可されます。",
+    "richPresence.allowApp": "{name} を許可",
+    "richPresence.forgetApp": "{name} を削除",
+    "richPresence.forget": "削除",
+    "richPresence.viaDiscord": "ゲームまたは Discord リッチプレゼンス",
+    "richPresence.viaMatrix": "Matrix アプリ",
+    "richPresence.blocked": "ブロック中",
+    "richPresence.allowed": "許可済み",
+    "richPresenceCard.playing": "{name} をプレイ中",
+    "richPresence.sharingTitle": "プロフィールに表示中",
+    "richPresenceCard.listening": "{name} を再生中",
+    "richPresenceCard.elapsed": "{time} 経過",
+    "richPresenceCard.remaining": "残り {time}",
+    "richPresenceCard.openLinkTitle": "このリンクを開きますか?",
+    "richPresenceCard.openLinkBody":
+        "{name} がこのアドレスをブラウザーで開こうとしています:",
+    "richPresenceCard.openidWarning":
+        "このリンクには Matrix アカウントの OpenID トークンも含まれています。サイトはこれを使ってあなたの Matrix ID とホームサーバーを知ることができ、IP アドレスも見えます。",
+    "richPresenceCard.open": "開く",
+    "richPresenceCard.openFailed": "OpenID トークンを取得できませんでした。",
+    "roomTopicSheet.description": "説明",
+    "roomTopicSheet.open": "ルームの説明をすべて表示",
+    "roomList.clickAgainToLeaveLastMember":
+        "メンバーはあなただけなので、退出すると誰も参加できなくなります。もう一度クリックすると退出します",
+    "spaceSidebar.clickAgainToLeaveLastMember":
+        "メンバーはあなただけなので、退出するとこのスペースには誰も参加できなくなります。もう一度クリックすると退出します",
+    "userProfileCard.editProfile": "プロフィールを編集",
+    "composerActionsMenu.camera": "カメラ",
+    "composerActionsMenu.photosAndVideos": "写真と動画",
+    "composerActionsMenu.files": "ファイル",
+    "settingsSearch.richPresence": "リッチプレゼンス",
+    "messageActionsMenu.copyText": "メッセージのテキストをコピー",
+    "messageActionsMenu.textCopied": "メッセージのテキストをコピーしました",
+    "messageActionsMenu.couldnTCopyText":
+        "メッセージのテキストをコピーできませんでした",
+    "messageActionsMenu.selectHint": "テキストを長押しして一部を選択",
+    "roomSettings.readReceipts": "既読情報",
+    "roomSettings.readReceiptsRoomHelp":
+        "このルームで既読にしたメッセージを他のメンバーが見られるかどうかを選択します。",
+    "roomSettings.readReceiptsSpaceHelp":
+        "このスペースとそのルームで既読にしたメッセージを他のメンバーが見られるかどうかを選択します。ルーム自身の設定が優先されます。",
+    "roomSettings.readReceiptsDefaultShare":
+        "プライバシー設定に従い、現在は他の人に共有されています",
+    "roomSettings.readReceiptsDefaultHide":
+        "プライバシー設定に従い、現在は他の人から非表示になっています",
+    "roomSettings.readReceiptsShare": "自分の既読情報を共有する",
+    "roomSettings.readReceiptsShareDesc":
+        "他の人があなたが既読にしたメッセージを確認できます。",
+    "roomSettings.readReceiptsHide": "自分の既読情報を非表示にする",
+    "roomSettings.readReceiptsHideDesc":
+        "未読の状態は引き続き同期されますが、他の人があなたの既読状況を見ることはできません。",
+    "privacySafetySettings.receiptsOverrideHint":
+        "ルームやスペースは通知設定でこの設定を上書きできます。",
+    "richPresence.steam": "Steam リッチプレゼンス",
+    "richPresence.steamHint":
+        "プレイ中の Steam ゲームを、マップやモードなどのリッチプレゼンス状態とともに表示します。これにより Steam のローカルデバッグポートが有効になり、このコンピューターからのみ接続を受け付けます。反映させるには Steam を一度再起動する必要があります。",
+    "richPresence.steamConnected": "Steam に接続しました。",
+    "richPresence.steamNeedsRestart":
+        "Steam のデバッグポートはまだ開いていません。Steam を再起動して開いてください。",
+    "richPresence.steamNotRunning":
+        "Steam が起動していません。起動すると Zam が自動的に接続します。",
+    "richPresence.restartSteam": "Steam を再起動",
+    "richPresence.restartSteamTitle": "Steam を再起動しますか?",
+    "richPresence.restartSteamBody":
+        "Steam が閉じてから再び起動します。Steam から起動したゲームも一緒に終了する場合があります。",
+    "richPresence.restartSteamFailed":
+        "Steam を再起動できませんでした: {error}",
+    "richPresence.steamEnableFailed":
+        "Steam のデバッグポートを有効にできませんでした: {error}",
+    "richPresence.steamDisableFailed":
+        "Steam のデバッグポートを無効にできませんでした: {error}",
+    "richPresence.steamUacCancelled":
+        "Windows が管理者権限を求めましたが許可されなかったため、何も変更されませんでした。",
+    "richPresence.steamFailed": "Steam リッチプレゼンスに失敗しました: {error}",
+    "richPresence.viaSteam": "Steam",
+    "meshConsent.titleJoining": "この通話は他の参加者と直接接続されます",
+    "meshConsent.titleNewcomer":
+        "この通話の参加者の一人は、直接接続でしか到達できません",
+    "meshConsent.noCallServer":
+        "お使いのホームサーバーには通話サーバーがないため、音声・ビデオ・画面共有は、お使いの端末から通話内の各参加者へ直接送られます。",
+    "meshConsent.someoneWithoutCallServer":
+        "この通話の参加者の一人は、通話サーバーのないホームサーバーを使用しています。その人の音声と映像を受信するため、お使いの端末はその人の端末に直接接続します。",
+    "meshConsent.ipVisible":
+        "ホームサーバーに中継（TURN）サーバーがないため、直接接続する相手全員にあなたのIPアドレスが見え、おおよその所在地が分かる場合があります。",
+    "meshConsent.relayed":
+        "この接続はホームサーバーの中継サーバーを経由します。相手にはあなたのIPアドレスではなく、中継サーバーのアドレスが見えます。中継で相手に届かない場合は直接接続するため、その相手にはIPアドレスが見えます。これを防ぐには、音声とビデオの設定で「ピアツーピア通話に中継サーバーを必須にする」をオンにしてください。",
+    "meshConsent.relayRequired":
+        "「ピアツーピア通話に中継サーバーを必須にする」がオンですが、ホームサーバーに中継（TURN）サーバーがないため接続できません。直接接続するには、音声とビデオの設定でオフにしてください。",
+    "meshConsent.titleFileTransfer": "このファイル転送は相手と直接接続します",
+    "meshConsent.fileTransferDirect":
+        "あなたまたは相手のホームサーバーに通話サーバーがないため、ファイルは端末から端末へ直接送られます。",
+    "meshConsent.join": "参加",
+    "meshConsent.connectDirectly": "直接接続",
+    "meshConsent.joinWithoutThem": "その人を除いて参加",
+    "meshConsent.notNow": "今はしない",
+    "meshConsent.titlePluginPublish": "{label} 経由でこの通話に参加しますか？",
+    "meshConsent.titlePluginReceive": "この通話の誰かが {label} を使っています",
+    "meshConsent.pluginPublish":
+        "あなたの音声、映像、画面共有は、プラグインが追加する通話の伝送方式 {label} を通ります。同じプラグインを入れた Zam の人だけがあなたの声や映像を受け取れます。",
+    "meshConsent.pluginReceive":
+        "この通話の誰かがプラグインの追加した {label} で音声と映像を送っています。その人の声や映像を受け取るため、Zam も {label} を使います。",
+    "meshConsent.pluginIpVisible":
+        "{label} でつながる相手にはあなたの IP アドレスが見え、おおよその居場所がわかる場合があります。",
+    "meshConsent.pluginIpHidden":
+        "{label} は相手にあなたの IP アドレスを見せません。",
+    "meshConsent.pluginThirdParty":
+        "通話のメディアは {thirdParty} も経由します。",
+    "meshConsent.pluginJoinWithout": "使わずに参加",
+    "meshConsent.usePlugin": "{label} を使う",
+    "voiceCall.pluginTransportGone":
+        "{label} が停止したため、再参加するまで通話の誰にもあなたの声や映像は届きません。",
+    "voiceCall.pluginTransportFailed":
+        "この通話で {label} を開始できませんでした。",
+    "voiceCall.meshNeedsTurn":
+        "「ピアツーピア通話に中継サーバーを必須にする」がオンですが、ホームサーバーに中継（TURN）サーバーがありません。参加するには、音声とビデオの設定でオフにしてください。",
+    "voiceAudioSettings.meshRelayOnly":
+        "ピアツーピア通話に中継サーバーを必須にする",
+    "voiceAudioSettings.meshRelayOnlyHint":
+        "ピアツーピア通話とファイル転送は、ホームサーバーに中継（TURN）サーバーがあればそれを経由するため、誰にもIPアドレスは見えません。ない場合や、中継で相手に届かない場合は直接接続し、アドレスが見えてしまいます。この設定をオンにすると、直接接続は一切行わず、中継が使えなければ接続しません。",
+    "voiceCall.meshPeerUnreachable":
+        "この通話には直接しか接続できない人がいますが、中継サーバーが必須で、ホームサーバーに中継（TURN）サーバーがないため、その人の声は聞こえません。",
+    "meshConsent.usePublicStun": "公開STUNサーバーを使用する。",
+    "meshConsent.usePublicStunHint":
+        "ホームサーバーには家庭用ルーターを越えて接続するのを助けるサーバーがないため、それがないと直接接続のほとんどは失敗します。CloudflareのSTUNサーバーはあなたのIPアドレスを知ることになりますが、通話の内容は知りません。",
+    "voiceAudioSettings.meshPublicStun": "公開STUNサーバーを使用する",
+    "voiceAudioSettings.meshPublicStunHint":
+        "ホームサーバーに中継サーバーもSTUNサーバーもない場合にのみ使われます。ピアツーピア通話は、多くの家庭用ルーターが必要とする公開アドレスをCloudflareのSTUNサーバーに問い合わせます。サーバーが知るのはIPアドレスだけで、通話の内容は知りません。",
+    "settingsSearch.meshPublicStun": "公開STUNサーバーを使用する",
+    "voiceCall.meshFailed":
+        "{name}への直接接続に失敗しました。相手のネットワークが接続をブロックしているか、相手のホームサーバーに家庭用ルーターを越える方法がない可能性があります。",
+    "voiceCall.meshFailedNoServers":
+        "{name}への直接接続に失敗しました。ホームサーバーには中継サーバーもSTUNサーバーもないため、家庭用ルーターを経由する接続は通常失敗します。「音声と映像」設定で「公開STUNサーバーを使用する」をオンにすると改善する場合があります。",
+    "settingsSearch.meshRelayOnly":
+        "ピアツーピア通話に中継サーバーを必須にする",
 };
 
 const catalogue: LocaleCatalogue = { messages, dateLocale: ja };

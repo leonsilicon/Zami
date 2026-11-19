@@ -559,11 +559,11 @@ export default function PluginsSettings({
                     onPress={closeSync}
                     className="self-start"
                 >
-                    <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                         {t("pluginsSettings.back")}
                     </Text>
                 </Pressable>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {t("pluginsSettings.syncYourEnabledPluginsSettingsTo")}
                 </Text>
                 <View className="flex-row gap-2">
@@ -572,7 +572,7 @@ export default function PluginsSettings({
                         accessibilityState={{ disabled: syncBusy }}
                         onPress={() => void doPush()}
                         disabled={syncBusy}
-                        className={`flex-1 items-center px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                        className={`flex-1 items-center px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                             syncBusy ? "opacity-50" : ""
                         }`}
                     >
@@ -585,39 +585,37 @@ export default function PluginsSettings({
                         accessibilityState={{ disabled: syncBusy }}
                         onPress={() => void doPullPreview()}
                         disabled={syncBusy}
-                        className={`flex-1 items-center px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors ${
+                        className={`flex-1 items-center px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors ${
                             syncBusy ? "opacity-50" : ""
                         }`}
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary text-center">
+                        <Text className="text-sm font-semibold text-zam-textPrimary text-center">
                             {t("pluginsSettings.pullFromAccount")}
                         </Text>
                     </Pressable>
                 </View>
                 {syncMessage ? (
-                    <Text className="text-sm text-discord-textSecondary">
+                    <Text className="text-sm text-zam-textSecondary">
                         {syncMessage}
                     </Text>
                 ) : null}
                 {syncError ? (
-                    <Text className="text-sm text-discord-danger">
-                        {syncError}
-                    </Text>
+                    <Text className="text-sm text-zam-danger">{syncError}</Text>
                 ) : null}
                 {pullSummary ? (
-                    <View className="p-3 rounded bg-discord-backgroundTertiary gap-2">
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                    <View className="p-3 rounded bg-zam-backgroundTertiary gap-2">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("pluginsSettings.thisPullWill")}
                         </Text>
                         {pullSummary.reposToAdd.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.addRepos", {
                                     join: pullSummary.reposToAdd.join(", "),
                                 })}
                             </Text>
                         ) : null}
                         {pullSummary.toInstall.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.installFromRepos", {
                                     join: pullSummary.toInstall
                                         .map((p) => `${p.id} (${p.repoRef})`)
@@ -626,21 +624,21 @@ export default function PluginsSettings({
                             </Text>
                         ) : null}
                         {pullSummary.toEnable.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.enable", {
                                     join: pullSummary.toEnable.join(", "),
                                 })}
                             </Text>
                         ) : null}
                         {pullSummary.toDisable.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.disable", {
                                     join: pullSummary.toDisable.join(", "),
                                 })}
                             </Text>
                         ) : null}
                         {pullSummary.settingsChanges.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.updateSettingsFor", {
                                     join: pullSummary.settingsChanges.join(
                                         ", ",
@@ -649,7 +647,7 @@ export default function PluginsSettings({
                             </Text>
                         ) : null}
                         {pullSummary.autoUpdateChange !== null ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.setAutoUpdate", {
                                     value: pullSummary.autoUpdateChange
                                         ? "on"
@@ -658,7 +656,7 @@ export default function PluginsSettings({
                             </Text>
                         ) : null}
                         {pullSummary.autoUpdateOverrides.length ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t("pluginsSettings.setPerPluginAutoUpdate", {
                                     join: pullSummary.autoUpdateOverrides
                                         .map(
@@ -670,7 +668,7 @@ export default function PluginsSettings({
                             </Text>
                         ) : null}
                         {pullSummary.notInstalledHere.length ? (
-                            <Text className="text-discord-textMuted text-xs">
+                            <Text className="text-zam-textMuted text-xs">
                                 {t(
                                     "pluginsSettings.notInstalledOnThisDeviceInstall",
                                     {
@@ -688,7 +686,7 @@ export default function PluginsSettings({
                         pullSummary.settingsChanges.length === 0 &&
                         pullSummary.autoUpdateChange === null &&
                         pullSummary.autoUpdateOverrides.length === 0 ? (
-                            <Text className="text-sm text-discord-textSecondary">
+                            <Text className="text-sm text-zam-textSecondary">
                                 {t(
                                     "pluginsSettings.nothingToChangeAlreadyInSync",
                                 )}
@@ -700,7 +698,7 @@ export default function PluginsSettings({
                                 accessibilityState={{ disabled: syncBusy }}
                                 onPress={() => void doApplyPull()}
                                 disabled={syncBusy}
-                                className={`px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                                className={`px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                                     syncBusy ? "opacity-50" : ""
                                 }`}
                             >
@@ -714,9 +712,9 @@ export default function PluginsSettings({
                                     setPullSummary(null);
                                     setPullPayload(null);
                                 }}
-                                className="px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                             >
-                                <Text className="text-sm font-semibold text-discord-textPrimary">
+                                <Text className="text-sm font-semibold text-zam-textPrimary">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>
@@ -731,11 +729,11 @@ export default function PluginsSettings({
         <View className="gap-6">
             {/* Installed */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("pluginsSettings.installed")}
                 </Text>
                 {installedList.length === 0 ? (
-                    <Text className="text-sm text-discord-textMuted text-center py-8">
+                    <Text className="text-sm text-zam-textMuted text-center py-8">
                         {t("pluginsSettings.noPluginsInstalled")}
                     </Text>
                 ) : (
@@ -772,30 +770,30 @@ export default function PluginsSettings({
 
             {/* Browse */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("pluginsSettings.browse")}
                 </Text>
                 {installError ? (
-                    <Text className="text-sm text-discord-danger mb-2">
+                    <Text className="text-sm text-zam-danger mb-2">
                         {installError}
                     </Text>
                 ) : null}
                 <View className="gap-4">
                     {repoList.map((repo) => (
                         <View key={repo.ref}>
-                            <Text className="text-sm font-semibold text-discord-textPrimary mb-2">
+                            <Text className="text-sm font-semibold text-zam-textPrimary mb-2">
                                 {repo.ref}
                             </Text>
                             {browse[repo.ref]?.loading ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("pluginsSettings.loading")}
                                 </Text>
                             ) : browse[repo.ref]?.error ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {browse[repo.ref].error}
                                 </Text>
                             ) : !browse[repo.ref]?.entries.length ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "pluginsSettings.noPluginsInThisRepoYet",
                                     )}
@@ -825,14 +823,14 @@ export default function PluginsSettings({
 
             {/* Local folder (plugin development) */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("pluginsSettings.localFolder")}
                 </Text>
-                <View className="p-3 rounded bg-discord-backgroundTertiary gap-3">
-                    <Text className="text-xs text-discord-textPrimary font-medium">
+                <View className="p-3 rounded bg-zam-backgroundTertiary gap-3">
+                    <Text className="text-xs text-zam-textPrimary font-medium">
                         {t("pluginsSettings.loadFromFolder")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("pluginsSettings.loadFromFolderHint")}
                     </Text>
                     {/* Zami: the hidden `<input type="file" webkitdirectory>` is
@@ -842,7 +840,7 @@ export default function PluginsSettings({
                         accessibilityState={{ disabled: localBusy !== null }}
                         onPress={() => void chooseFolder()}
                         disabled={localBusy !== null}
-                        className={`self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                        className={`self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                             localBusy !== null ? "opacity-50" : ""
                         }`}
                     >
@@ -852,7 +850,7 @@ export default function PluginsSettings({
                     </Pressable>
                     {localError ? (
                         <Text
-                            className="text-xs text-discord-danger"
+                            className="text-xs text-zam-danger"
                             accessibilityRole="alert"
                         >
                             {localError}
@@ -863,24 +861,24 @@ export default function PluginsSettings({
 
             {/* Repos */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("pluginsSettings.repos")}
                 </Text>
                 <View className="gap-2 mb-4">
                     {repoList.map((repo) => (
                         <View
                             key={repo.ref}
-                            className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
+                            className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary"
                         >
                             <View className="flex-1 min-w-0">
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm text-discord-textPrimary"
+                                    className="text-sm text-zam-textPrimary"
                                 >
                                     {repo.ref}
                                 </Text>
                                 {repo.official ? (
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t("pluginsSettings.official")}
                                     </Text>
                                 ) : null}
@@ -892,11 +890,11 @@ export default function PluginsSettings({
                                         "pluginsSettings.removeRepo",
                                     )}
                                     onPress={() => removeRepo(repo.ref)}
-                                    className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                                    className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                                 >
                                     <Trash2
                                         size={16}
-                                        className="text-discord-textMuted hover:text-discord-danger"
+                                        className="text-zam-textMuted hover:text-zam-danger"
                                     />
                                 </Pressable>
                             ) : null}
@@ -904,11 +902,11 @@ export default function PluginsSettings({
                     ))}
                 </View>
 
-                <View className="p-3 rounded bg-discord-backgroundTertiary gap-3">
-                    <Text className="text-xs text-discord-textPrimary font-medium">
+                <View className="p-3 rounded bg-zam-backgroundTertiary gap-3">
+                    <Text className="text-xs text-zam-textPrimary font-medium">
                         {t("pluginsSettings.addARepo")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("pluginsSettings.thirdPartyReposRunFullTrust")}
                     </Text>
                     <View className="flex-row gap-2">
@@ -918,7 +916,7 @@ export default function PluginsSettings({
                             placeholder={t(
                                 "pluginsSettings.ownerRepoOrGithubUrl",
                             )}
-                            placeholderTextColorClassName="accent-discord-textMuted"
+                            placeholderTextColorClassName="accent-zam-textMuted"
                             accessibilityLabel={t(
                                 "pluginsSettings.ownerRepoOrGithubUrl",
                             )}
@@ -926,13 +924,13 @@ export default function PluginsSettings({
                             autoCorrect={false}
                             keyboardType="url"
                             returnKeyType="done"
-                            className="flex-1 px-2.5 py-1.5 rounded bg-discord-backgroundSecondary text-sm text-discord-textPrimary border border-discord-divider focus:border-discord-accent outline-none"
+                            className="flex-1 px-2.5 py-1.5 rounded bg-zam-backgroundSecondary text-sm text-zam-textPrimary border border-zam-divider focus:border-zam-accent outline-none"
                             onSubmitEditing={submitAddRepo}
                         />
                         <Pressable
                             accessibilityRole="button"
                             onPress={submitAddRepo}
-                            className="justify-center px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                            className="justify-center px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                         >
                             <Text className="text-sm font-semibold text-white">
                                 {t("pluginsSettings.addRepo")}
@@ -940,7 +938,7 @@ export default function PluginsSettings({
                         </Pressable>
                     </View>
                     {repoError ? (
-                        <Text className="text-xs text-discord-danger">
+                        <Text className="text-xs text-zam-danger">
                             {repoError}
                         </Text>
                     ) : null}
@@ -949,20 +947,17 @@ export default function PluginsSettings({
 
             {/* Actions */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("common.actions")}
                 </Text>
                 <View className="gap-3">
                     <Pressable
                         accessibilityRole="button"
                         onPress={openSync}
-                        className="w-full flex-row items-center justify-center gap-2 px-4 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                        className="w-full flex-row items-center justify-center gap-2 px-4 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                     >
-                        <RefreshCw
-                            size={16}
-                            className="text-discord-textPrimary"
-                        />
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <RefreshCw size={16} className="text-zam-textPrimary" />
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("pluginsSettings.syncPlugins")}
                         </Text>
                     </Pressable>
@@ -970,20 +965,20 @@ export default function PluginsSettings({
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void disableAll()}
-                        className="w-full flex-row items-center justify-center gap-2 px-4 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                        className="w-full flex-row items-center justify-center gap-2 px-4 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                     >
-                        <Power size={16} className="text-discord-textPrimary" />
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Power size={16} className="text-zam-textPrimary" />
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("pluginsSettings.disableAllPlugins")}
                         </Text>
                     </Pressable>
 
-                    <View className="flex-row items-center gap-3 py-2 border-t border-discord-divider pt-3">
+                    <View className="flex-row items-center gap-3 py-2 border-t border-zam-divider pt-3">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("pluginsSettings.autoUpdatePlugins")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t(
                                     "pluginsSettings.automaticallyPullNewerVersionsOfRepo",
                                 )}
@@ -1067,12 +1062,12 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
         remove,
     } = actions;
     return (
-        <View className="flex-row items-start gap-3 p-3 rounded bg-discord-backgroundTertiary">
+        <View className="flex-row items-start gap-3 p-3 rounded bg-zam-backgroundTertiary">
             <View className="flex-1 min-w-0">
-                <Text className="text-sm font-medium text-discord-textPrimary">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {p.name}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     v{p.version} · {p.author}
                     {p.source === "repo" && p.repoRef
                         ? ` · ${repoName}${
@@ -1086,9 +1081,9 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                     <View className="flex-row items-center gap-1.5 mt-1">
                         <TriangleAlert
                             size={14}
-                            className="text-discord-danger flex-shrink-0"
+                            className="text-zam-danger flex-shrink-0"
                         />
-                        <Text className="flex-shrink text-xs text-discord-danger">
+                        <Text className="flex-shrink text-xs text-zam-danger">
                             {p.error}
                         </Text>
                     </View>
@@ -1096,14 +1091,14 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                 {updateAvailable || needsUpdate ? (
                     <View className="flex-row items-center gap-2 mt-1">
                         {needsUpdate ? (
-                            <View className="px-1.5 py-0.5 rounded bg-discord-danger/20">
-                                <Text className="text-[10px] font-semibold text-discord-danger">
+                            <View className="px-1.5 py-0.5 rounded bg-zam-danger/20">
+                                <Text className="text-[10px] font-semibold text-zam-danger">
                                     {t("pluginsSettings.needsUpdate")}
                                 </Text>
                             </View>
                         ) : updateAvailable ? (
-                            <View className="px-1.5 py-0.5 rounded bg-discord-accent/20">
-                                <Text className="text-[10px] font-semibold text-discord-accent">
+                            <View className="px-1.5 py-0.5 rounded bg-zam-accent/20">
+                                <Text className="text-[10px] font-semibold text-zam-accent">
                                     {t("pluginsSettings.updateToV", {
                                         value: updateAvailable,
                                     })}
@@ -1119,7 +1114,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                             disabled={updating}
                             className={updating ? "opacity-50" : ""}
                         >
-                            <Text className="text-xs text-discord-accent hover:underline">
+                            <Text className="text-xs text-zam-accent hover:underline">
                                 {updating
                                     ? t("pluginsSettings.updating")
                                     : t("pluginsSettings.update")}
@@ -1129,7 +1124,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                 ) : null}
                 {updateError ? (
                     <Text
-                        className="text-xs text-discord-danger mt-1"
+                        className="text-xs text-zam-danger mt-1"
                         accessibilityRole="alert"
                     >
                         {updateError}
@@ -1137,7 +1132,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                 ) : null}
                 {removeError ? (
                     <Text
-                        className="text-xs text-discord-danger mt-1"
+                        className="text-xs text-zam-danger mt-1"
                         accessibilityRole="alert"
                     >
                         {removeError}
@@ -1150,11 +1145,11 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                         accessibilityRole="button"
                         accessibilityLabel={t("pluginsSettings.pluginSettings")}
                         onPress={() => openSettings(p.id)}
-                        className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                        className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                     >
                         <Settings
                             size={16}
-                            className="text-discord-textMuted hover:text-discord-textPrimary"
+                            className="text-zam-textMuted hover:text-zam-textPrimary"
                         />
                     </Pressable>
                 ) : null}
@@ -1177,11 +1172,11 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                         }}
                         onPress={() => void reloadLocal(p.id)}
                         disabled={localBusyAny}
-                        className={`px-2 py-1 rounded hover:bg-discord-messageHover transition-colors ${
+                        className={`px-2 py-1 rounded hover:bg-zam-messageHover transition-colors ${
                             localBusyAny ? "opacity-50" : ""
                         }`}
                     >
-                        <Text className="text-xs font-semibold text-discord-accent">
+                        <Text className="text-xs font-semibold text-zam-accent">
                             {localBusyThis
                                 ? t("pluginsSettings.reloading")
                                 : t("pluginsSettings.reload")}
@@ -1198,7 +1193,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                         // Zami: `w-32`: in this row of fixed-size
                         // controls Select would grow to the row's
                         // width (a <select> fits its options).
-                        className="w-32 rounded bg-discord-backgroundSecondary border border-discord-divider px-1 py-0.5"
+                        className="w-32 rounded bg-zam-backgroundSecondary border border-zam-divider px-1 py-0.5"
                         options={[
                             {
                                 value: "default",
@@ -1221,9 +1216,9 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => setRemovePending(null)}
-                                className="px-2 py-1 rounded hover:bg-discord-messageHover transition-colors"
+                                className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors"
                             >
-                                <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>
@@ -1234,7 +1229,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                                     { name: p.name },
                                 )}
                                 onPress={() => void remove(p.id)}
-                                className="px-2 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors"
+                                className="px-2 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors"
                             >
                                 <Text className="text-xs text-white">
                                     {t("common.remove")}
@@ -1252,13 +1247,13 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                             }}
                             onPress={() => setRemovePending(p.id)}
                             disabled={busy}
-                            className={`p-1.5 rounded hover:bg-discord-messageHover transition-colors ${
+                            className={`p-1.5 rounded hover:bg-zam-messageHover transition-colors ${
                                 busy ? "opacity-50" : ""
                             }`}
                         >
                             <Trash2
                                 size={16}
-                                className="text-discord-textMuted hover:text-discord-danger"
+                                className="text-zam-textMuted hover:text-zam-danger"
                             />
                         </Pressable>
                     )
@@ -1281,21 +1276,21 @@ const BrowseEntryRow = memo(function BrowseEntryRow({
     install: (ref: string, entry: PluginIndexEntry) => Promise<void>;
 }) {
     return (
-        <View className="flex-row items-start gap-3 p-2 rounded bg-discord-backgroundSecondary">
+        <View className="flex-row items-start gap-3 p-2 rounded bg-zam-backgroundSecondary">
             <View className="flex-1 min-w-0">
-                <Text className="text-sm font-medium text-discord-textPrimary">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {entry.name}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     v{entry.version} · {entry.author}
                 </Text>
-                <Text className="text-xs text-discord-textSecondary mt-0.5">
+                <Text className="text-xs text-zam-textSecondary mt-0.5">
                     {entry.description}
                 </Text>
             </View>
             {alreadyInstalled ? (
-                <View className="px-2.5 py-1 rounded bg-discord-backgroundTertiary">
-                    <Text className="text-xs font-semibold text-discord-textMuted">
+                <View className="px-2.5 py-1 rounded bg-zam-backgroundTertiary">
+                    <Text className="text-xs font-semibold text-zam-textMuted">
                         {t("pluginsSettings.installed")}
                     </Text>
                 </View>
@@ -1303,7 +1298,7 @@ const BrowseEntryRow = memo(function BrowseEntryRow({
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => void install(repoRef, entry)}
-                    className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                    className="px-2.5 py-1 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                 >
                     <Text className="text-xs font-semibold text-white">
                         {t("pluginsSettings.install")}

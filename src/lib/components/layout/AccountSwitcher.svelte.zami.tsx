@@ -39,7 +39,10 @@ import {
 } from "$lib/matrix/client";
 import { deleteCryptoStore } from "$lib/matrix/crypto";
 import { deleteEventIndex } from "$lib/matrix/eventIndex";
-import { changeOwnPresence } from "$lib/stores/presence.svelte";
+import {
+    changeOwnPresence,
+    changeDoNotDisturb,
+} from "$lib/stores/presence.svelte";
 import {
     getCachedProfile,
     nameColourFor,
@@ -47,6 +50,7 @@ import {
 } from "$lib/stores/profileFields.svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
+import { aliasUserLocalpart, shownHomeserver } from "$lib/utils/streamerAlias";
 import {
     PROFILE_FIELDS,
     formatStatusMessage,
@@ -57,6 +61,7 @@ import {
     readFieldWithLegacy,
 } from "$lib/utils/extendedProfile";
 import { switchToAccount } from "$lib/stores/accountSwitch";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import {
     OWN_PRESENCE_OPTIONS,
     presenceDot,
@@ -115,6 +120,14 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
     );
     // Zami: the registry is replaced on every change, so reading it is enough.
     const accounts = useRune(() => accountsState.registry.accounts);
+    const doNotDisturb = useRune(() => settingsState.doNotDisturb);
+    const presenceUnsupported = useRune(
+        () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
+    );
+    const streamerMode = useRune(() => settingsState.streamerMode);
     const activeUserId = useRune(() => auth.userId);
 
     function serverHost(url: string): string {
@@ -142,6 +155,19 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
         setPresenceError("");
         try {
             await changeOwnPresence(value);
+            setView("main");
+        } catch (e) {
+            setPresenceError(
+                (e as Error)?.message ??
+                    t("accountSwitcher.couldNotSetPresence"),
+            );
+        }
+    }
+
+    async function toggleDoNotDisturb(): Promise<void> {
+        setPresenceError("");
+        try {
+            await changeDoNotDisturb(!settingsState.doNotDisturb);
             setView("main");
         } catch (e) {
             setPresenceError(
@@ -196,20 +222,23 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
     // no `rounded-[inherit]`: each row gets its own rounding, and the rows after
     // the first a top border. The text classes move to each row's `Text`.
     const rowClass =
-        "w-full flex-row items-center gap-3 px-3 py-2.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors";
-    const rowTextClass = "flex-1 text-sm text-discord-textPrimary";
-    const groupClass = "mx-2 mt-2 rounded-lg bg-discord-backgroundTertiary/60";
+        "w-full flex-row items-center gap-3 px-3 py-2.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors";
+    const rowTextClass = "flex-1 text-sm text-zam-textPrimary";
+    const groupClass = "mx-2 mt-2 rounded-lg bg-zam-backgroundTertiary/60";
     const flyoutClass =
-        "absolute left-full bottom-0 ml-2 w-64 rounded-lg bg-discord-backgroundSecondary border border-discord-divider shadow-xl p-1.5 z-10";
+        "absolute left-full bottom-0 ml-2 w-64 rounded-lg bg-zam-backgroundSecondary border border-zam-divider shadow-xl p-1.5 z-10";
 
     const presenceMenu = () => (
         <>
-            {OWN_PRESENCE_OPTIONS.map((option) => (
+            {(presenceControlsShown(presenceUnsupported, shareProfilePresence)
+                ? OWN_PRESENCE_OPTIONS
+                : []
+            ).map((option) => (
                 <Pressable
                     key={option.value}
                     accessibilityRole="button"
                     onPress={() => void setPresence(option.value)}
-                    className="w-full flex-row items-center gap-3 p-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                    className="w-full flex-row items-center gap-3 p-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                 >
                     <View
                         className={`w-3 h-3 rounded-full flex-shrink-0 ${presenceDotClass(
@@ -217,23 +246,44 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                         )}`}
                     />
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {option.label}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {option.description}
                         </Text>
                     </View>
                     {presenceValue === option.value && (
                         <Check
                             size={16}
-                            className="text-discord-accent flex-shrink-0"
+                            className="text-zam-accent flex-shrink-0"
                         />
                     )}
                 </Pressable>
             ))}
+            <Pressable
+                accessibilityRole="button"
+                onPress={() => void toggleDoNotDisturb()}
+                className="w-full flex-row items-center gap-3 p-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
+            >
+                <View className="w-3 h-3 rounded-full flex-shrink-0 bg-zam-dnd" />
+                <View className="flex-1 min-w-0">
+                    <Text className="text-sm text-zam-textPrimary">
+                        {t("presence.doNotDisturb")}
+                    </Text>
+                    <Text className="text-xs text-zam-textMuted">
+                        {t("presence.doNotDisturbDescription")}
+                    </Text>
+                </View>
+                {doNotDisturb && (
+                    <Check
+                        size={16}
+                        className="text-zam-accent flex-shrink-0"
+                    />
+                )}
+            </Pressable>
             {presenceError ? (
-                <Text className="px-2 py-1 text-xs text-discord-danger">
+                <Text className="px-2 py-1 text-xs text-zam-danger">
                     {presenceError}
                 </Text>
             ) : null}
@@ -248,7 +298,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                 return (
                     <View
                         key={account.userId}
-                        className="flex-row items-center gap-2 rounded hover:bg-discord-messageHover transition-colors"
+                        className="flex-row items-center gap-2 rounded hover:bg-zam-messageHover transition-colors"
                     >
                         <Pressable
                             accessibilityRole="button"
@@ -257,23 +307,30 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                         >
                             <AccountAvatar account={account} size={32} />
                             <View className="flex-1 min-w-0">
+                                {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm text-discord-textPrimary"
+                                    className="text-sm text-zam-textPrimary"
                                 >
-                                    {account.displayName ?? account.userId}
+                                    {streamerMode
+                                        ? aliasUserLocalpart(account.userId)
+                                        : (account.displayName ??
+                                          account.userId)}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
-                                    {serverHost(account.homeserverUrl)}
+                                    {shownHomeserver(
+                                        serverHost(account.homeserverUrl),
+                                        streamerMode,
+                                    )}
                                 </Text>
                             </View>
                             {isActive && (
                                 <Check
                                     size={16}
-                                    className="text-discord-accent flex-shrink-0"
+                                    className="text-zam-accent flex-shrink-0"
                                 />
                             )}
                         </Pressable>
@@ -291,14 +348,14 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                             })}
                             onPress={() => void signOut(account.userId)}
                             className={`flex-shrink-0 px-2 py-1 me-1 rounded transition-colors ${
-                                confirming ? "bg-discord-danger" : ""
+                                confirming ? "bg-zam-danger" : ""
                             }`}
                         >
                             <Text
                                 className={`text-xs font-medium ${
                                     confirming
                                         ? "text-white"
-                                        : "text-discord-textMuted hover:text-discord-danger"
+                                        : "text-zam-textMuted hover:text-zam-danger"
                                 }`}
                             >
                                 {confirming
@@ -310,19 +367,17 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                 );
             })}
 
-            <View className="my-1 border-t border-discord-divider" />
+            <View className="my-1 border-t border-zam-divider" />
 
             <Pressable
                 accessibilityRole="button"
                 onPress={addAccount}
-                className="w-full flex-row items-center gap-2.5 p-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                className="w-full flex-row items-center gap-2.5 p-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
             >
-                <View className="w-8 h-8 rounded-full bg-discord-backgroundTertiary flex-row items-center justify-center flex-shrink-0">
-                    <Text className="text-discord-accent text-lg font-bold">
-                        +
-                    </Text>
+                <View className="w-8 h-8 rounded-full bg-zam-backgroundTertiary flex-row items-center justify-center flex-shrink-0">
+                    <Text className="text-zam-accent text-lg font-bold">+</Text>
                 </View>
-                <Text className="text-sm text-discord-textPrimary">
+                <Text className="text-sm text-zam-textPrimary">
                     {t("accountSwitcher.addAccount")}
                 </Text>
             </Pressable>
@@ -337,10 +392,10 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
         >
             {/* Zami: `mirror:` (`:dir(rtl)`) → Uniwind's `rtl:`. */}
             <ChevronLeft
-                className="rtl:-scale-x-100 text-discord-textMuted"
+                className="rtl:-scale-x-100 text-zam-textMuted"
                 size={16}
             />
-            <Text className="text-sm text-discord-textMuted hover:text-discord-textPrimary">
+            <Text className="text-sm text-zam-textMuted hover:text-zam-textPrimary">
                 {t("accountSwitcher.back")}
             </Text>
         </Pressable>
@@ -371,14 +426,14 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                         className="h-24 w-full rounded-t-lg"
                     />
                 ) : (
-                    <View className="h-24 rounded-t-lg bg-discord-accent" />
+                    <View className="h-24 rounded-t-lg bg-zam-accent" />
                 )}
 
                 <View className="px-4">
                     <View className="flex-row items-start gap-2">
                         {/* Zami: the dot's `title` (a tooltip) → its
                             accessibility label. */}
-                        <View className="relative -mt-10 flex-shrink-0 rounded-full border-[5px] border-discord-backgroundSecondary">
+                        <View className="relative -mt-10 flex-shrink-0 rounded-full border-[5px] border-zam-backgroundSecondary">
                             <Avatar
                                 src={avatarSrc}
                                 name={displayName}
@@ -390,7 +445,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                                 accessibilityLabel={presenceLabel(
                                     presenceValue,
                                 )}
-                                className={`absolute bottom-0.5 end-0.5 w-5 h-5 rounded-full border-4 border-discord-backgroundSecondary ${presenceDotClass(
+                                className={`absolute bottom-0.5 end-0.5 w-5 h-5 rounded-full border-4 border-zam-backgroundSecondary ${presenceDotClass(
                                     presenceDot(presenceValue),
                                 )}`}
                             />
@@ -403,12 +458,12 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                             onPress={() =>
                                 open(view === "status" ? "main" : "status")
                             }
-                            className="mt-1 flex-shrink max-w-[11rem] flex-row items-center gap-2 rounded-2xl bg-discord-backgroundTertiary/80 hover:bg-discord-messageHover active:bg-discord-messageHover px-3 py-2 transition-colors"
+                            className="mt-1 flex-shrink max-w-[11rem] flex-row items-center gap-2 rounded-2xl bg-zam-backgroundTertiary/80 hover:bg-zam-messageHover active:bg-zam-messageHover px-3 py-2 transition-colors"
                         >
                             {status ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-sm text-discord-textSecondary"
+                                    className="flex-shrink text-sm text-zam-textSecondary"
                                 >
                                     {formatStatusMessage(status)}
                                 </Text>
@@ -416,11 +471,11 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                                 <>
                                     <SmilePlus
                                         size={16}
-                                        className="flex-shrink-0 text-discord-textSecondary"
+                                        className="flex-shrink-0 text-zam-textSecondary"
                                     />
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink italic text-sm text-discord-textSecondary"
+                                        className="flex-shrink italic text-sm text-zam-textSecondary"
                                     >
                                         {t("accountSwitcher.setAStatus")}
                                     </Text>
@@ -431,14 +486,14 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
 
                     <Text
                         numberOfLines={1}
-                        className="mt-2 text-xl font-bold text-discord-textPrimary"
+                        className="mt-2 text-xl font-bold text-zam-textPrimary"
                         style={nameColour ? { color: nameColour } : undefined}
                     >
                         {displayName}
                     </Text>
                     <Text
                         numberOfLines={1}
-                        className="text-sm text-discord-textSecondary"
+                        className="text-sm text-zam-textSecondary"
                     >
                         {me}
                         {pronouns ? ` • ${pronouns}` : ""}
@@ -461,7 +516,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                             >
                                 <Pencil
                                     size={18}
-                                    className="text-discord-textMuted"
+                                    className="text-zam-textMuted"
                                 />
                                 <Text className={rowTextClass}>
                                     {t("accountSwitcher.editProfile")}
@@ -469,7 +524,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                             </Pressable>
                             {/* Zami: the wrapper's `onmouseenter` → the row's
                                 `onHoverIn` (a pointer, on iPad). */}
-                            <View className="relative border-t border-discord-divider">
+                            <View className="relative border-t border-zam-divider">
                                 <Pressable
                                     accessibilityRole="button"
                                     accessibilityState={{
@@ -495,7 +550,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                                     </Text>
                                     <ChevronRight
                                         size={16}
-                                        className="rtl:-scale-x-100 text-discord-textMuted"
+                                        className="rtl:-scale-x-100 text-zam-textMuted"
                                     />
                                 </Pressable>
                                 {view === "presence" && !isTouch && (
@@ -525,14 +580,14 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                                 >
                                     <Users
                                         size={18}
-                                        className="text-discord-textMuted"
+                                        className="text-zam-textMuted"
                                     />
                                     <Text className={rowTextClass}>
                                         {t("accountSwitcher.switchAccounts")}
                                     </Text>
                                     <ChevronRight
                                         size={16}
-                                        className="rtl:-scale-x-100 text-discord-textMuted"
+                                        className="rtl:-scale-x-100 text-zam-textMuted"
                                     />
                                 </Pressable>
                                 {view === "accounts" && !isTouch && (
@@ -569,7 +624,7 @@ export default function AccountSwitcher({ onClose, onLogout }: Props) {
                 label={t("accountSwitcher.accountMenu")}
                 layerClass="z-50"
                 backdropClass={isTouch ? "bg-black/40" : "cursor-default"}
-                panelClass={`absolute bg-discord-backgroundSecondary border border-discord-divider shadow-xl ${
+                panelClass={`absolute bg-zam-backgroundSecondary border border-zam-divider shadow-xl ${
                     isTouch
                         ? "inset-x-0 bottom-0 rounded-t-lg"
                         : "bottom-16 left-2 w-80 rounded-lg pb-2"

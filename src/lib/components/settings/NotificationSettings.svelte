@@ -4,7 +4,7 @@
     import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
     import {
         DEFAULT_PUSH_RULES,
-        enableAccountNotifications,
+        setAccountNotificationsDisabled,
         getClient,
         isAccountNotificationsDisabled,
         getDefaultPushRuleLevel,
@@ -32,18 +32,25 @@
     import {
         setActiveSessionGraceMs,
         setDesktopAlertMode,
+        setDeviceNotifications,
         settingsState,
     } from "$lib/stores/settings.svelte";
     import {
         canFlashTaskbar,
         type DesktopAlertMode,
     } from "$lib/utils/desktopAlert";
-    import { initWebPush, requestWebPushPermission } from "$lib/webPush";
+    import {
+        initWebPush,
+        requestWebPushPermission,
+        teardownWebPush,
+    } from "$lib/webPush";
     import {
         checkNativeNotificationPermission,
         pushDebug,
         requestNativeNotificationPermission,
         switchPushProvider,
+        unregisterPush,
+        initPush,
     } from "$lib/push";
     import {
         getPushProviderPref,
@@ -65,17 +72,39 @@
     const accountNotificationsOff = $derived(
         isAccountNotificationsDisabled() === true,
     );
-    let enablingAccountNotifications = $state(false);
-    async function turnOnAccountNotifications() {
-        enablingAccountNotifications = true;
+    let accountNotificationsPending = $state(false);
+    async function setAccountNotifications(enabled: boolean) {
+        if (accountNotificationsPending) return;
+        accountNotificationsPending = true;
         try {
-            await enableAccountNotifications();
+            await setAccountNotificationsDisabled(!enabled);
         } catch {
             showErrorToast(
-                t("notificationSettings.couldNotTurnOnNotifications"),
+                t("notificationSettings.couldNotUpdateNotifications"),
             );
         } finally {
-            enablingAccountNotifications = false;
+            accountNotificationsPending = false;
+        }
+    }
+
+    // This device only: stop its popups and sound, and drop its pusher so the
+    // server stops pushing here. Other devices are untouched.
+    async function setDeviceNotificationsEnabled(enabled: boolean) {
+        setDeviceNotifications(enabled);
+        const client = getClient();
+        if (!client) return;
+        try {
+            if (enabled) {
+                await initPush(client);
+                await initWebPush(client);
+            } else {
+                await unregisterPush(client);
+                await teardownWebPush(client);
+            }
+        } catch {
+            showErrorToast(
+                t("notificationSettings.couldNotUpdateNotifications"),
+            );
         }
     }
     const taskbarFlash = canFlashTaskbar();
@@ -298,7 +327,7 @@
     }
 
     const selectClass =
-        "flex-shrink-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50";
+        "flex-shrink-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
 
     const ruleLevels = $derived.by(() => {
         void defaultRulesTick;
@@ -436,31 +465,52 @@
 </script>
 
 <div class="space-y-6">
-    {#if accountNotificationsOff}
-        <section
-            data-setting-anchor="notif-account-off"
-            class="flex items-center gap-3 rounded-md p-3 bg-discord-warning/20"
+    <section data-setting-anchor="notif-account-off">
+        <div
+            class="flex items-center gap-3 py-2 border-b border-zam-divider {accountNotificationsOff
+                ? 'rounded-md p-3 bg-zam-warning/20'
+                : ''}"
         >
             <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-discord-warning">
-                    {t("notificationSettings.accountNotificationsOff")}
+                <p class="text-sm text-zam-textPrimary">
+                    {t("notificationSettings.accountNotifications")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
-                    {t("notificationSettings.accountNotificationsOffDetail")}
+                <p class="text-xs text-zam-textMuted">
+                    {accountNotificationsOff
+                        ? t(
+                              "notificationSettings.accountNotificationsOffDetail",
+                          )
+                        : t("notificationSettings.accountNotificationsDetail")}
                 </p>
             </div>
-            <button
-                onclick={turnOnAccountNotifications}
-                disabled={enablingAccountNotifications}
-                class="px-3 py-1.5 rounded text-sm font-semibold bg-discord-accent hover:bg-discord-accentHover text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-            >
-                {t("notificationSettings.turnOn")}
-            </button>
-        </section>
-    {/if}
+            <ToggleSwitch
+                checked={!accountNotificationsOff}
+                onChange={setAccountNotifications}
+                label={t("notificationSettings.accountNotifications")}
+            />
+        </div>
+    </section>
+
+    <section data-setting-anchor="notif-device-enabled">
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("notificationSettings.thisDeviceNotifications")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("notificationSettings.thisDeviceNotificationsDetail")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.deviceNotifications}
+                onChange={setDeviceNotificationsEnabled}
+                label={t("notificationSettings.thisDeviceNotifications")}
+            />
+        </div>
+    </section>
 
     <h3
-        class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+        class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
     >
         {t("notificationSettings.thisDevice")}
     </h3>
@@ -468,18 +518,18 @@
     {#if permission !== "granted"}
         <section data-setting-anchor="notif-system">
             <p
-                class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
             >
                 {t("notificationSettings.systemPermission")}
             </p>
             <div
-                class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
             >
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm text-discord-textPrimary">
+                    <p class="text-sm text-zam-textPrimary">
                         {t("notificationSettings.pushNotifications")}
                     </p>
-                    <p class="text-xs text-discord-textMuted">
+                    <p class="text-xs text-zam-textMuted">
                         {#if permission === "denied"}
                             {t(
                                 "notificationSettings.permissionIsBlockedInSystemSettings",
@@ -500,7 +550,7 @@
                     disabled={permissionLoading ||
                         permission === "denied" ||
                         permission === "unsupported"}
-                    class="px-3 py-1.5 rounded text-sm font-semibold bg-discord-accent hover:bg-discord-accentHover text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-discord-accent flex items-center gap-2 flex-shrink-0"
+                    class="px-3 py-1.5 rounded text-sm font-semibold bg-zam-accent hover:bg-zam-accentHover text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zam-accent flex items-center gap-2 flex-shrink-0"
                 >
                     {permissionLoading
                         ? t("notificationSettings.requesting")
@@ -517,18 +567,18 @@
     {#if pushServiceSupported && upStatus}
         <section data-setting-anchor="notif-push-service">
             <p
-                class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
             >
                 {t("notificationSettings.pushService")}
             </p>
             <div
-                class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
             >
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm text-discord-textPrimary">
+                    <p class="text-sm text-zam-textPrimary">
                         {t("notificationSettings.pushServiceLabel")}
                     </p>
-                    <p class="text-xs text-discord-textMuted">
+                    <p class="text-xs text-zam-textMuted">
                         {t("notificationSettings.pushServiceDescription")}
                     </p>
                 </div>
@@ -560,7 +610,7 @@
                     {/each}
                 </select>
             </div>
-            <p class="text-xs text-discord-textMuted mt-2" aria-live="polite">
+            <p class="text-xs text-zam-textMuted mt-2" aria-live="polite">
                 {#if activeProvider === "unifiedpush"}
                     {t("notificationSettings.pushServiceActiveUnifiedPush", {
                         label: distributorLabel(activeDistributor),
@@ -572,7 +622,7 @@
                 {/if}
             </p>
             {#if upStatus.distributors.length === 0}
-                <p class="text-xs text-discord-textMuted mt-1">
+                <p class="text-xs text-zam-textMuted mt-1">
                     {t("notificationSettings.pushServiceNoDistributor")}
                 </p>
             {/if}
@@ -581,18 +631,16 @@
 
     <section data-setting-anchor="notif-sound">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
         >
             {t("notificationSettings.sound")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("notificationSettings.notificationSound")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("notificationSettings.playASoundForLoudNotifications")}
                 </p>
             </div>
@@ -607,22 +655,22 @@
     {#if !nativeApp}
         <section data-setting-anchor="notif-desktop">
             <p
-                class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+                class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
             >
                 {taskbarFlash
                     ? t("notificationSettings.desktopAlerts")
                     : t("notificationSettings.popUps")}
             </p>
             <div
-                class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
             >
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm text-discord-textPrimary">
+                    <p class="text-sm text-zam-textPrimary">
                         {taskbarFlash
                             ? t("notificationSettings.popUpAndTaskbarFlash")
                             : t("notificationSettings.popUpNotifications")}
                     </p>
-                    <p class="text-xs text-discord-textMuted">
+                    <p class="text-xs text-zam-textMuted">
                         {taskbarFlash
                             ? t(
                                   "notificationSettings.whichNotificationsShowASystemPop",
@@ -646,18 +694,16 @@
 
     <section data-setting-anchor="notif-devices">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
         >
             {t("notificationSettings.multipleDevices")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("notificationSettings.quietOnMyOtherDevices")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("notificationSettings.whileYouReActivelyUsingOne")}
                 </p>
             </div>
@@ -685,7 +731,7 @@
                     max={MAX_CUSTOM_GRACE_MINUTES}
                     step="1"
                     inputmode="decimal"
-                    class="w-24 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-discord-accent/50"
+                    class="w-24 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
                     value={customMinutes}
                     oninput={(e) => (customMinutes = e.currentTarget.value)}
                     onkeydown={(e) => {
@@ -699,7 +745,7 @@
                     )}
                     aria-invalid={customError ? "true" : undefined}
                 />
-                <span class="text-xs text-discord-textMuted"
+                <span class="text-xs text-zam-textMuted"
                     >{t("notificationSettings.minutesMax", {
                         MAX_CUSTOM_GRACE_MINUTES,
                     })}</span
@@ -707,7 +753,7 @@
                 <button
                     onclick={saveCustomGrace}
                     disabled={graceSavePending}
-                    class="px-2.5 py-1 rounded text-xs font-semibold bg-discord-backgroundSecondary hover:bg-discord-messageHover text-discord-textPrimary transition-colors disabled:opacity-50 flex-shrink-0"
+                    class="px-2.5 py-1 rounded text-xs font-semibold bg-zam-backgroundSecondary hover:bg-zam-messageHover text-zam-textPrimary transition-colors disabled:opacity-50 flex-shrink-0"
                     >{graceSavePending
                         ? t("common.saving")
                         : t("common.save")}</button
@@ -715,7 +761,7 @@
             </div>
             {#if customError}
                 <p
-                    class="text-xs text-discord-danger mt-1 text-end"
+                    class="text-xs text-zam-danger mt-1 text-end"
                     aria-live="polite"
                 >
                     {customError}
@@ -725,7 +771,7 @@
         {#if graceSaveError}
             <div class="flex items-start gap-2 mt-2">
                 <p
-                    class="flex-1 min-w-0 text-sm text-discord-danger"
+                    class="flex-1 min-w-0 text-sm text-zam-danger"
                     aria-live="polite"
                 >
                     {t("notificationSettings.couldnTSaveToYourAccount")}
@@ -737,7 +783,7 @@
                     aria-label={t(
                         "notificationSettings.retrySavingTheOtherDeviceQuiet",
                     )}
-                    class="px-2.5 py-1 rounded text-xs font-semibold bg-discord-backgroundSecondary hover:bg-discord-messageHover text-discord-textPrimary transition-colors disabled:opacity-50 flex-shrink-0"
+                    class="px-2.5 py-1 rounded text-xs font-semibold bg-zam-backgroundSecondary hover:bg-zam-messageHover text-zam-textPrimary transition-colors disabled:opacity-50 flex-shrink-0"
                     >{graceSavePending
                         ? t("notificationSettings.retrying")
                         : t("common.retry")}</button
@@ -747,30 +793,30 @@
     </section>
 
     <h3
-        class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2"
+        class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
     >
         {t("notificationSettings.rules")}
     </h3>
 
     <section data-setting-anchor="notif-rules">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1"
         >
             {t("notificationSettings.notificationRules")}
         </p>
-        <p class="text-xs text-discord-textMuted mb-3">
+        <p class="text-xs text-zam-textMuted mb-3">
             {t("notificationSettings.loudNotifyWithSoundSilentNotify")}
         </p>
         <div class="space-y-1">
             {#each DEFAULT_PUSH_RULES as rule}
                 <div
-                    class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                    class="flex items-center gap-3 py-2 border-b border-zam-divider"
                 >
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-discord-textPrimary">
+                        <p class="text-sm text-zam-textPrimary">
                             {rule.label}
                         </p>
-                        <p class="text-xs text-discord-textMuted">
+                        <p class="text-xs text-zam-textMuted">
                             {rule.description}
                         </p>
                     </div>
@@ -791,11 +837,11 @@
 
     <section data-setting-anchor="notif-keywords">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1"
         >
             {t("notificationSettings.keywordHighlights")}
         </p>
-        <p class="text-xs text-discord-textMuted mb-3">
+        <p class="text-xs text-zam-textMuted mb-3">
             {t("notificationSettings.getNotifiedWhenAMessageContains")}
             <span class="font-mono">*</span>
             {t("notificationSettings.and")}
@@ -814,30 +860,30 @@
                 type="text"
                 placeholder={t("notificationSettings.addAKeyword")}
                 aria-label={t("notificationSettings.newKeyword")}
-                class="flex-1 min-w-0 px-3 py-1.5 rounded text-sm bg-discord-backgroundTertiary text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-1 focus:ring-discord-accent"
+                class="flex-1 min-w-0 px-3 py-1.5 rounded text-sm bg-zam-backgroundTertiary text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-1 focus:ring-zam-accent"
             />
             <button
                 type="submit"
                 disabled={addPending}
-                class="px-3 py-1.5 rounded text-sm font-semibold bg-discord-accent hover:bg-discord-accentHover text-white transition-colors disabled:opacity-50"
+                class="px-3 py-1.5 rounded text-sm font-semibold bg-zam-accent hover:bg-zam-accentHover text-white transition-colors disabled:opacity-50"
                 >{t("common.add")}</button
             >
         </form>
         {#if keywordError}
-            <p class="text-sm text-discord-danger mb-2">{keywordError}</p>
+            <p class="text-sm text-zam-danger mb-2">{keywordError}</p>
         {/if}
         {#if keywordRules.length === 0}
-            <p class="text-sm text-discord-textMuted italic">
+            <p class="text-sm text-zam-textMuted italic">
                 {t("notificationSettings.noKeywordRulesYet")}
             </p>
         {:else}
             <div class="space-y-1">
                 {#each keywordRules as rule (rule.ruleId)}
                     <div
-                        class="flex items-center gap-3 py-2 border-b border-discord-divider"
+                        class="flex items-center gap-3 py-2 border-b border-zam-divider"
                     >
                         <span
-                            class="flex-1 min-w-0 text-sm text-discord-textPrimary font-mono truncate"
+                            class="flex-1 min-w-0 text-sm text-zam-textPrimary font-mono truncate"
                             >{rule.pattern}</span
                         >
                         <OptionSelector
@@ -858,7 +904,7 @@
                         <button
                             onclick={() => removeKeyword(rule.ruleId)}
                             disabled={rowPending === rule.ruleId}
-                            class="px-2.5 py-1 rounded text-xs font-semibold bg-discord-backgroundSecondary hover:bg-discord-messageHover text-discord-textPrimary transition-colors disabled:opacity-50"
+                            class="px-2.5 py-1 rounded text-xs font-semibold bg-zam-backgroundSecondary hover:bg-zam-messageHover text-zam-textPrimary transition-colors disabled:opacity-50"
                             >{t("common.delete")}</button
                         >
                     </div>

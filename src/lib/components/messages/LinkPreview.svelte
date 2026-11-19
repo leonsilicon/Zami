@@ -17,6 +17,18 @@
         }
         resolvedPreviews.set(key, r);
     }
+
+    // YouTube oEmbed titles per video id, null for a failed lookup so a broken
+    // link is not asked for again on every mount.
+    const YOUTUBE_OEMBED_MAX = 1000;
+    const youtubeOembeds = new Map<string, YoutubeOembedMeta | null>();
+    function rememberYoutubeOembed(id: string, meta: YoutubeOembedMeta | null) {
+        youtubeOembeds.delete(id);
+        if (youtubeOembeds.size >= YOUTUBE_OEMBED_MAX) {
+            youtubeOembeds.delete(youtubeOembeds.keys().next().value!);
+        }
+        youtubeOembeds.set(id, meta);
+    }
 </script>
 
 <script lang="ts">
@@ -58,13 +70,26 @@
     import {
         learnImageSize,
         learnedMediaSize,
+        learnMediaSize,
     } from "$lib/utils/learnedMediaSize";
-    import { galleryNav, galleryPositionLabel } from "$lib/utils/mediaGallery";
+    import {
+        fxStatusApiUrl,
+        parseFxStatusResponse,
+        type TweetEmbed,
+    } from "$lib/utils/tweetEmbed";
+    import TweetCard from "./TweetCard.svelte";
     import { isInstagramUrl } from "$lib/utils/instagramUrl";
     import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
     import { pluginRegistry } from "$lib/stores/plugins.svelte";
     import { resolveEmbed, mountEmbed } from "$lib/plugins/embeds";
     import { applyPreviewUrlTransforms } from "$lib/plugins/outgoingTransforms";
+    import {
+        parseYoutubeUrl,
+        youtubeWatchUrl,
+        youtubeOembedUrl,
+        parseOembedTitle,
+        type YoutubeOembedMeta,
+    } from "$lib/utils/youtube";
 
     interface Props {
         url: string;
@@ -119,10 +144,19 @@
     let videoThumbError = $state(false);
 
     type DirectEmbed =
-        | { type: "youtube"; embedUrl: string }
+        | {
+              type: "youtube";
+              embedUrl: string;
+              watchUrl: string;
+              short: boolean;
+              start: number;
+          }
         | { type: "video"; videoUrl: string };
 
     let directEmbed = $state<DirectEmbed | null>(null);
+    // Title and channel of the YouTube video, from oEmbed. Null until known
+    // (and for good when the lookup fails): the preview works without it.
+    let youtubeTitle = $state<YoutubeOembedMeta | null>(null);
 
     // A YouTube embed shows its thumbnail until played: each player is a
     // whole YouTube page in its own frame (tens of MB before it plays, plus a
@@ -146,29 +180,7 @@
         return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
     }
 
-    interface TweetMedia {
-        url: string;
-        width?: number;
-        height?: number;
-        thumbnail?: string;
-    }
-
-    // Tweet videos, by URL, that the user has played. The rest show their
-    // thumbnail: a mounted <video>, even unplayed, holds a decoder. A played
-    // one that is paused and scrolled well away is unmounted again and
-    // resumes from `tweetResumeAt` (actions/parkOffscreen).
-    let tweetPlaying = $state<Set<string>>(new Set());
-    const tweetResumeAt = new Map<string, number>();
-    interface TweetEmbed {
-        authorName: string;
-        authorHandle: string;
-        text: string;
-        photos: TweetMedia[];
-        videos: TweetMedia[];
-    }
-
     let tweetEmbed = $state<TweetEmbed | null>(null);
-    let lightboxTweetIndex = $state<number | null>(null);
 
     // Reactively track favourite state — isFavouriteGif reads favouritesState.gifs ($state) so this auto-tracks
     const favourited = $derived(isFavouriteGif(url));
@@ -186,36 +198,8 @@
     }
 
     function getYoutubeEmbedUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h === "youtube.com" || h === "m.youtube.com") {
-                const id = u.searchParams.get("v");
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-            if (h === "youtu.be") {
-                const id = u.pathname.slice(1).split("?")[0];
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-        } catch {
-            /* */
-        }
-        return null;
-    }
-
-    function getTwitterApiUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h !== "x.com" && h !== "twitter.com") return null;
-            // Path: /{user}/status/{id}
-            const m = u.pathname.match(/^\/([^/]+)\/status\/(\d+)/);
-            if (!m) return null;
-            return `https://api.fxtwitter.com/${m[1]}/status/${m[2]}`;
-        } catch {
-            /* */
-        }
-        return null;
+        const yt = parseYoutubeUrl(rawUrl);
+        return yt ? `https://www.youtube.com/embed/${yt.id}` : null;
     }
 
     $effect(() => {
@@ -227,31 +211,59 @@
         imageError = false;
         directEmbed = null;
         tweetEmbed = null;
-        lightboxTweetIndex = null;
         videoPlaying = false;
         videoParked = false;
         videoThumbError = false;
         youtubePlaying = false;
         youtubeResumeAt = 0;
-        tweetPlaying = new Set();
-        tweetResumeAt.clear();
+        youtubeTitle = null;
 
         // A response that lands after the URL or the policy moved on must not
         // write itself back into state — otherwise flipping the setting to a
         // stricter value could be undone by the request it just cancelled.
         let cancelled = false;
 
-        const ytUrl = allowEmbeds ? getYoutubeEmbedUrl(currentUrl) : null;
-        if (ytUrl) {
-            directEmbed = { type: "youtube", embedUrl: ytUrl };
+        const yt = allowEmbeds ? parseYoutubeUrl(currentUrl) : null;
+        if (yt) {
+            const watchUrl = youtubeWatchUrl(yt.id);
+            // The first play starts at the link's own offset (?t= / ?start=).
+            youtubeResumeAt = yt.start;
+            directEmbed = {
+                type: "youtube",
+                embedUrl: `https://www.youtube.com/embed/${yt.id}`,
+                watchUrl,
+                short: yt.short,
+                start: yt.start,
+            };
             pending = false;
-            return;
+
+            // Title via oEmbed, behind the same consent as the embed above.
+            // Cached per id, failures included.
+            if (youtubeOembeds.has(yt.id)) {
+                youtubeTitle = youtubeOembeds.get(yt.id) ?? null;
+            } else {
+                const id = yt.id;
+                fetch(youtubeOembedUrl(watchUrl), {
+                    referrerPolicy: "no-referrer",
+                })
+                    .then(async (r) =>
+                        r.ok ? parseOembedTitle(await r.json()) : null,
+                    )
+                    .catch(() => null)
+                    .then((meta) => {
+                        rememberYoutubeOembed(id, meta);
+                        if (!cancelled) youtubeTitle = meta;
+                    });
+            }
+            return () => {
+                cancelled = true;
+            };
         }
 
-        // Twitter/X: use fxtwitter JSON API (has CORS headers). This is a
-        // request straight to a third party, so it needs the same consent as
-        // the media itself.
-        const twitterApiUrl = allowEmbeds ? getTwitterApiUrl(currentUrl) : null;
+        // Twitter/X: built from FxTwitter's status API (it sends CORS
+        // headers; see utils/tweetEmbed). This is a request straight to a
+        // third party, so it needs the same consent as the media itself.
+        const twitterApiUrl = allowEmbeds ? fxStatusApiUrl(currentUrl) : null;
         if (twitterApiUrl) {
             const known = resolvedPreviews.get(twitterApiUrl);
             if (known) {
@@ -264,29 +276,10 @@
                 referrerPolicy: "no-referrer",
             })
                 .then((r) => r.json())
-                .then((data: any) => {
+                .then((data: unknown) => {
                     if (cancelled) return;
-                    const tweet = data?.tweet;
-                    if (!tweet) return;
-                    const embed: TweetEmbed = {
-                        authorName: tweet.author?.name ?? "",
-                        authorHandle: tweet.author?.screen_name ?? "",
-                        text: tweet.text ?? "",
-                        // fxtwitter media objects carry width/height — keep them
-                        // so the grid can reserve layout space before the image
-                        // loads (otherwise it pops in and shoves the timeline).
-                        photos: (tweet.media?.photos ?? []).map((p: any) => ({
-                            url: p.url as string,
-                            width: p.width as number | undefined,
-                            height: p.height as number | undefined,
-                        })),
-                        videos: (tweet.media?.videos ?? []).map((v: any) => ({
-                            url: v.url as string,
-                            width: v.width as number | undefined,
-                            height: v.height as number | undefined,
-                            thumbnail: v.thumbnail_url as string | undefined,
-                        })),
-                    };
+                    const embed = parseFxStatusResponse(data);
+                    if (!embed) return;
                     tweetEmbed = embed;
                     rememberPreview(twitterApiUrl, {
                         preview: null,
@@ -422,6 +415,14 @@
 
     let videoFrame = $state<string | null>(null);
     let videoFrameDone = $state(false);
+    // Size of the grabbed frame, for a video whose preview gave no dimensions
+    // (the poster would otherwise be cropped into a guessed 16/9 box).
+    let frameSize = $state<{ width: number; height: number } | null>(null);
+    const videoAspect = $derived.by(() => {
+        const w = preview?.videoWidth ?? frameSize?.width;
+        const h = preview?.videoHeight ?? frameSize?.height;
+        return w && h ? `${w}/${h}` : "16/9";
+    });
     $effect(() => {
         const src = preview?.videoUrl;
         const needsFrame =
@@ -430,6 +431,7 @@
             !canLoad(preview?.videoThumbnailUrl) &&
             canLoad(src);
         videoFrame = null;
+        frameSize = learnedMediaSize(src) ?? null;
         videoFrameDone = !needsFrame;
         if (!needsFrame || !src) return;
         let live = true;
@@ -492,8 +494,7 @@
     // anything, so the button can appear immediately.
     const blockedEmbed = $derived(
         !embedsAllowed &&
-            (getYoutubeEmbedUrl(url) !== null ||
-                getTwitterApiUrl(url) !== null),
+            (getYoutubeEmbedUrl(url) !== null || fxStatusApiUrl(url) !== null),
     );
     // Preview media the policy suppressed. `preview` is homeserver-sourced, so
     // reading it here costs nothing.
@@ -507,50 +508,81 @@
     );
 </script>
 
-{#if directEmbed?.type === "youtube" && youtubePlaying}
-    <iframe
-        src={youtubePlayerUrl(directEmbed.embedUrl)}
-        class="mt-1 w-full max-w-lg aspect-video rounded-lg block"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen
-        title={t("linkPreview.youtubeVideo")}
-        use:parkYoutubeOffscreen={{
-            pause: settingsState.pauseVideoOnScrollOff,
-            onPark: (at) => {
-                youtubeResumeAt = at;
-                youtubePlaying = false;
-            },
-        }}
-    ></iframe>
-{:else if directEmbed?.type === "youtube"}
-    <button
-        type="button"
-        aria-label={t("linkPreview.playVideo")}
-        title={t("linkPreview.youtubeVideo")}
-        class="group/media mt-1 relative w-full max-w-lg aspect-video rounded-lg overflow-hidden cursor-pointer bg-black block p-0 border-0"
-        onclick={() => (youtubePlaying = true)}
+{#if directEmbed?.type === "youtube"}
+    <!-- Shorts are vertical, so they get a narrow 9:16 column. The title sits
+         under the player or thumbnail and stays put while it plays. -->
+    <div
+        class="mt-1 w-full {directEmbed.short
+            ? 'max-w-[min(100%,18rem)]'
+            : 'max-w-lg'}"
     >
-        <img
-            src={youtubeThumbnail(directEmbed.embedUrl)}
-            alt=""
-            class="w-full h-full object-cover"
-            loading="lazy"
-            referrerpolicy="no-referrer"
-        />
-        <div
-            class="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors"
-        >
-            <div
-                class="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center"
+        {#if youtubePlaying}
+            <iframe
+                src={youtubePlayerUrl(directEmbed.embedUrl)}
+                class="w-full {directEmbed.short
+                    ? 'max-w-[min(100%,18rem)] aspect-[9/16]'
+                    : 'max-w-lg aspect-video'} rounded-lg block"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                title={youtubeTitle?.title ?? t("linkPreview.youtubeVideo")}
+                use:parkYoutubeOffscreen={{
+                    pause: settingsState.pauseVideoOnScrollOff,
+                    onPark: (at) => {
+                        youtubeResumeAt = at;
+                        youtubePlaying = false;
+                    },
+                }}
+            ></iframe>
+        {:else}
+            <button
+                type="button"
+                aria-label={t("linkPreview.playVideo")}
+                title={youtubeTitle?.title ?? t("linkPreview.youtubeVideo")}
+                class="group/media relative w-full {directEmbed.short
+                    ? 'max-w-[min(100%,18rem)] aspect-[9/16]'
+                    : 'max-w-lg aspect-video'} rounded-lg overflow-hidden cursor-pointer bg-black block p-0 border-0"
+                onclick={() => (youtubePlaying = true)}
             >
-                <svg
-                    class="w-7 h-7 text-white ms-1"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg
+                <img
+                    src={youtubeThumbnail(directEmbed.embedUrl)}
+                    alt=""
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                />
+                <div
+                    class="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors"
                 >
+                    <div
+                        class="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center"
+                    >
+                        <svg
+                            class="w-7 h-7 text-white ms-1"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg
+                        >
+                    </div>
+                </div>
+            </button>
+        {/if}
+        {#if youtubeTitle}
+            <div class="mt-1.5 min-w-0">
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="block text-sm font-semibold text-zam-accent leading-snug line-clamp-2 no-underline hover:underline"
+                >
+                    {youtubeTitle.title}
+                </a>
+                {#if youtubeTitle.author}
+                    <p class="text-xs text-zam-textMuted mt-0.5 truncate">
+                        {youtubeTitle.author}
+                    </p>
+                {/if}
             </div>
-        </div>
-    </button>
+        {/if}
+    </div>
 {:else if directEmbed?.type === "video"}
     <!-- svelte-ignore a11y_media_has_caption -->
     <video
@@ -561,202 +593,7 @@
         preload="metadata"
     ></video>
 {:else if tweetEmbed}
-    <!-- Twitter/X card built from fxtwitter API -->
-    <div class="mt-2">
-        <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors no-underline"
-        >
-            <!-- Left accent bar -->
-            <div class="w-1 flex-shrink-0 bg-discord-accent"></div>
-
-            <div class="flex flex-1 min-w-0 flex-col p-3 gap-2">
-                <!-- Author -->
-                <div class="flex flex-col min-w-0">
-                    <p class="text-xs text-discord-textMuted mb-0.5">
-                        {t("linkPreview.xTwitter")}
-                    </p>
-                    <p
-                        class="text-sm font-semibold text-discord-accent leading-snug"
-                    >
-                        {tweetEmbed.authorName}
-                        <span class="font-normal text-discord-textMuted"
-                            >@{tweetEmbed.authorHandle}</span
-                        >
-                    </p>
-                    {#if tweetEmbed.text}
-                        <p
-                            class="text-xs text-discord-textSecondary mt-1 leading-relaxed line-clamp-4 whitespace-pre-wrap"
-                        >
-                            {tweetEmbed.text}
-                        </p>
-                    {/if}
-                </div>
-
-                <!-- Media grid -->
-                {#if tweetEmbed.videos.length > 0 || tweetEmbed.photos.length > 0}
-                    {@const allMedia = [
-                        ...tweetEmbed.videos.map((v) => ({
-                            type: "video" as const,
-                            photoIndex: -1,
-                            ...v,
-                        })),
-                        ...tweetEmbed.photos.map((p, pi) => ({
-                            type: "photo" as const,
-                            photoIndex: pi,
-                            ...p,
-                        })),
-                    ]}
-                    <div
-                        class="grid gap-1 rounded overflow-hidden"
-                        style="grid-template-columns: repeat({Math.min(
-                            allMedia.length,
-                            2,
-                        )}, minmax(0, 1fr))"
-                    >
-                        {#each allMedia as item}
-                            <!-- width/height reserve the box before load (from the
-                                 fxtwitter media dims); w-full/h-auto keep it
-                                 responsive within the grid cell. -->
-                            {@const box = reservedMediaBox(
-                                item.width,
-                                item.height,
-                                512,
-                                512,
-                            )}
-                            {#if item.type === "video" && !tweetPlaying.has(item.url)}
-                                <button
-                                    type="button"
-                                    aria-label={t("linkPreview.playVideo")}
-                                    class="group/media relative w-full max-h-72 min-w-0 rounded overflow-hidden cursor-pointer bg-black block p-0 border-0"
-                                    style={`aspect-ratio: ${box ? `${box.width}/${box.height}` : "16/9"}`}
-                                    onclick={(e) => {
-                                        // Don't follow the enclosing link.
-                                        e.preventDefault();
-                                        tweetPlaying = new Set(
-                                            tweetPlaying,
-                                        ).add(item.url);
-                                    }}
-                                >
-                                    {#if item.thumbnail}
-                                        <img
-                                            src={item.thumbnail}
-                                            alt=""
-                                            class="w-full h-full object-contain"
-                                            loading="lazy"
-                                            referrerpolicy="no-referrer"
-                                        />
-                                    {/if}
-                                    <div
-                                        class="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors"
-                                    >
-                                        <div
-                                            class="w-14 h-14 rounded-full bg-black/60 flex items-center justify-center"
-                                        >
-                                            <svg
-                                                class="w-7 h-7 text-white ms-1"
-                                                fill="currentColor"
-                                                viewBox="0 0 24 24"
-                                                ><path d="M8 5v14l11-7z" /></svg
-                                            >
-                                        </div>
-                                    </div>
-                                </button>
-                            {:else if item.type === "video"}
-                                <!-- svelte-ignore a11y_media_has_caption -->
-                                <video
-                                    src={item.url}
-                                    width={box?.width}
-                                    height={box?.height}
-                                    class="w-full h-auto max-h-72 min-w-0 max-w-full object-contain rounded"
-                                    use:rememberVolume
-                                    controls
-                                    autoplay
-                                    preload="auto"
-                                    use:pauseOffscreen={{
-                                        enabled:
-                                            settingsState.pauseVideoOnScrollOff,
-                                    }}
-                                    use:parkOffscreen={(at) => {
-                                        tweetResumeAt.set(item.url, at);
-                                        const next = new Set(tweetPlaying);
-                                        next.delete(item.url);
-                                        tweetPlaying = next;
-                                    }}
-                                    onloadedmetadata={(e) => {
-                                        const at = tweetResumeAt.get(item.url);
-                                        if (at) {
-                                            e.currentTarget.currentTime = at;
-                                            tweetResumeAt.delete(item.url);
-                                        }
-                                    }}
-                                    onclick={(e) => {
-                                        // Stop an enclosing link from navigating, but
-                                        // keep click-to-pause: preventDefault alone
-                                        // would also suppress the video's own toggle.
-                                        e.preventDefault();
-                                        const v = e.currentTarget;
-                                        // Clicks on the control bar are handled by the
-                                        // controls themselves; toggling here too would
-                                        // undo them.
-                                        const r = v.getBoundingClientRect();
-                                        if (e.clientY > r.bottom - 48) return;
-                                        if (v.paused)
-                                            void v.play().catch(() => {});
-                                        else v.pause();
-                                    }}
-                                ></video>
-                            {:else}
-                                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-                                <img
-                                    src={item.url}
-                                    alt=""
-                                    width={box?.width}
-                                    height={box?.height}
-                                    class="w-full h-auto max-h-72 min-w-0 max-w-full object-contain rounded cursor-pointer bg-black/10"
-                                    loading="lazy"
-                                    referrerpolicy="no-referrer"
-                                    onclick={(e) => {
-                                        e.preventDefault();
-                                        lightboxTweetIndex = item.photoIndex;
-                                    }}
-                                />
-                            {/if}
-                        {/each}
-                    </div>
-                {/if}
-            </div>
-        </a>
-        {#if lightboxTweetIndex !== null}
-            {@const photo = tweetEmbed.photos[lightboxTweetIndex]}
-            {@const nav = galleryNav(
-                tweetEmbed.photos.length,
-                lightboxTweetIndex,
-            )}
-            {@const prev = nav.prevIndex}
-            {@const next = nav.nextIndex}
-            {#if photo}
-                <Lightbox
-                    src={photo.url}
-                    alt=""
-                    onClose={() => (lightboxTweetIndex = null)}
-                    onPrev={prev !== null
-                        ? () => (lightboxTweetIndex = prev)
-                        : undefined}
-                    onNext={next !== null
-                        ? () => (lightboxTweetIndex = next)
-                        : undefined}
-                    position={galleryPositionLabel(
-                        tweetEmbed.photos.length,
-                        lightboxTweetIndex,
-                    )}
-                />
-            {/if}
-        {/if}
-    </div>
+    <TweetCard tweet={tweetEmbed} />
 {:else if matchedEmbed}
     <!-- Plugin custom embed: renders a nicer card for a matching URL. ADDITIVE
          and host-sanitized — see src/lib/plugins/embeds.ts. Keyed so a change
@@ -770,34 +607,34 @@
 {:else if pending && !preview}
     {#if likelyMedia}
         <div
-            class="mt-1 w-full max-w-[min(100%,32rem)] aspect-video rounded-lg bg-discord-backgroundSecondary"
+            class="skeleton-delay mt-1 w-full max-w-[min(100%,32rem)] aspect-video rounded-lg bg-zam-backgroundSecondary"
             aria-hidden="true"
         ></div>
     {:else}
         <!-- The card below with one line of title, two of description and
              the fixed image box. -->
-        <div class="mt-2" aria-hidden="true">
+        <div class="skeleton-delay mt-2" aria-hidden="true">
             <div
-                class="flex max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary"
+                class="flex max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary"
             >
-                <div class="w-1 flex-shrink-0 bg-discord-divider"></div>
+                <div class="w-1 flex-shrink-0 bg-zam-divider"></div>
                 <div class="flex flex-1 min-w-0 flex-col p-3 gap-3">
                     <div class="flex-1 min-w-0 animate-pulse">
                         <p class="text-xs mb-0.5">
                             <span
-                                class="inline-block w-24 h-2.5 rounded bg-discord-divider"
+                                class="inline-block w-24 h-2.5 rounded bg-zam-divider"
                             ></span>
                         </p>
                         <p class="text-sm leading-snug">
                             <span
-                                class="inline-block w-3/5 h-3 rounded bg-discord-divider"
+                                class="inline-block w-3/5 h-3 rounded bg-zam-divider"
                             ></span>
                         </p>
                         <p class="text-xs mt-1 leading-relaxed">
                             <span
-                                class="inline-block w-full h-2.5 rounded bg-discord-divider"
+                                class="inline-block w-full h-2.5 rounded bg-zam-divider"
                             ></span><br /><span
-                                class="inline-block w-4/5 h-2.5 rounded bg-discord-divider"
+                                class="inline-block w-4/5 h-2.5 rounded bg-zam-divider"
                             ></span>
                         </p>
                     </div>
@@ -817,13 +654,13 @@
              (e.g. an fxtwitter/fixvx preview that carries og:video + og:title). -->
         <div class="mt-2">
             <div
-                class="flex max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary"
+                class="flex max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary"
             >
                 <!-- Left accent bar -->
-                <div class="w-1 flex-shrink-0 bg-discord-accent"></div>
+                <div class="w-1 flex-shrink-0 bg-zam-accent"></div>
                 <div class="flex flex-1 min-w-0 flex-col p-3 gap-2">
                     {#if preview.siteName}
-                        <p class="text-xs text-discord-textMuted truncate">
+                        <p class="text-xs text-zam-textMuted truncate">
                             {preview.siteName}
                         </p>
                     {/if}
@@ -832,14 +669,14 @@
                             href={preview.canonicalUrl || url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="text-sm font-semibold text-discord-accent leading-snug line-clamp-2 no-underline hover:underline"
+                            class="text-sm font-semibold text-zam-accent leading-snug line-clamp-2 no-underline hover:underline"
                         >
                             {preview.title}
                         </a>
                     {/if}
                     {#if preview.description}
                         <p
-                            class="text-xs text-discord-textSecondary leading-relaxed line-clamp-4 whitespace-pre-wrap"
+                            class="text-xs text-zam-textSecondary leading-relaxed line-clamp-4 whitespace-pre-wrap"
                         >
                             {preview.description}
                         </p>
@@ -896,7 +733,7 @@
             >
                 {#if favourited}
                     <svg
-                        class="w-4 h-4 text-discord-warning"
+                        class="w-4 h-4 text-zam-warning"
                         fill="currentColor"
                         viewBox="0 0 24 24"
                     >
@@ -936,31 +773,31 @@
                 href={preview.canonicalUrl || url}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="flex max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors no-underline"
+                class="flex max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors no-underline"
             >
                 <!-- Left accent bar -->
-                <div class="w-1 flex-shrink-0 bg-discord-accent"></div>
+                <div class="w-1 flex-shrink-0 bg-zam-accent"></div>
 
                 <div class="flex flex-1 min-w-0 flex-col p-3 gap-3">
                     <!-- Text content -->
                     <div class="flex-1 min-w-0">
                         {#if preview.siteName}
                             <p
-                                class="text-xs text-discord-textMuted mb-0.5 truncate"
+                                class="text-xs text-zam-textMuted mb-0.5 truncate"
                             >
                                 {preview.siteName}
                             </p>
                         {/if}
                         {#if preview.title}
                             <p
-                                class="text-sm font-semibold text-discord-accent leading-snug line-clamp-2"
+                                class="text-sm font-semibold text-zam-accent leading-snug line-clamp-2"
                             >
                                 {preview.title}
                             </p>
                         {/if}
                         {#if preview.description}
                             <p
-                                class="text-xs text-discord-textSecondary mt-1 leading-relaxed line-clamp-3"
+                                class="text-xs text-zam-textSecondary mt-1 leading-relaxed line-clamp-3"
                             >
                                 {preview.description}
                             </p>
@@ -1043,7 +880,7 @@
     <button
         type="button"
         onclick={() => (revealedFor = url)}
-        class="mt-1 inline-flex items-center gap-1.5 rounded border border-discord-divider bg-discord-backgroundSecondary px-2 py-1 text-xs text-discord-textSecondary transition-colors hover:text-discord-textPrimary hover:border-discord-accent/50"
+        class="mt-1 inline-flex items-center gap-1.5 rounded border border-zam-divider bg-zam-backgroundSecondary px-2 py-1 text-xs text-zam-textSecondary transition-colors hover:text-zam-textPrimary hover:border-zam-accent/50"
         title={t("linkPreview.loadingItContactsTheSiteHosting")}
     >
         <svg
@@ -1106,7 +943,7 @@
                     src={preview.videoUrl}
                     poster={posterUrl}
                     class="max-w-lg w-full max-h-96 rounded-lg block"
-                    style={`aspect-ratio: ${preview.videoWidth && preview.videoHeight ? `${preview.videoWidth}/${preview.videoHeight}` : "16/9"}; max-height: 24rem;`}
+                    style={`aspect-ratio: ${videoAspect}; max-height: 24rem;`}
                     use:rememberVolume
                     controls
                     autoplay={videoPlaying}
@@ -1132,7 +969,7 @@
                     type="button"
                     aria-label={t("linkPreview.playVideo")}
                     class="relative max-w-lg w-full max-h-96 rounded-lg overflow-hidden cursor-pointer bg-black block p-0 border-0"
-                    style={`aspect-ratio: ${preview.videoWidth && preview.videoHeight ? `${preview.videoWidth}/${preview.videoHeight}` : "16/9"}; max-height: 24rem;`}
+                    style={`aspect-ratio: ${videoAspect}; max-height: 24rem;`}
                     onclick={() => (videoPlaying = true)}
                 >
                     <img
@@ -1141,6 +978,21 @@
                         class="w-full h-full object-cover"
                         loading="lazy"
                         referrerpolicy="no-referrer"
+                        onload={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            if (!img.naturalWidth || !img.naturalHeight) return;
+                            if (preview?.videoThumbnailUrl === posterUrl)
+                                return;
+                            frameSize = {
+                                width: img.naturalWidth,
+                                height: img.naturalHeight,
+                            };
+                            learnMediaSize(
+                                preview?.videoUrl,
+                                img.naturalWidth,
+                                img.naturalHeight,
+                            );
+                        }}
                         onerror={() => (videoThumbError = true)}
                     />
                     <div
@@ -1168,7 +1020,7 @@
             >
                 {#if favourited}
                     <svg
-                        class="w-4 h-4 text-discord-warning"
+                        class="w-4 h-4 text-zam-warning"
                         fill="currentColor"
                         viewBox="0 0 24 24"
                     >
@@ -1195,3 +1047,16 @@
         </div>
     {/if}
 {/snippet}
+
+<style>
+    /* Space is reserved at once, but the placeholder stays invisible for the
+       first 500ms so a preview that resolves quickly never flashes it. */
+    .skeleton-delay {
+        animation: skeleton-delay-in 150ms ease-out 500ms backwards;
+    }
+    @keyframes skeleton-delay-in {
+        from {
+            opacity: 0;
+        }
+    }
+</style>

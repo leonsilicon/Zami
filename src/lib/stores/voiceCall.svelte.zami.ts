@@ -19,6 +19,11 @@ import {
     setParticipantShareVolume,
     setParticipantSoundVolume,
     setParticipantLocalMute,
+    setParticipantShareMute,
+    setShareWatched,
+    setShareAudioMuted,
+    hasOwnShareAudio,
+    onShareWatchersChanged,
     setParticipantVideoHidden,
     primeParticipantAudio,
     getRoom,
@@ -34,6 +39,8 @@ import {
     fetchOwnExtendedProfile,
     selfHasActiveCall,
     setOwnProfileField,
+    clearStaleOwnCallMemberships,
+    getOwnUserId,
 } from "$lib/matrix/client";
 import {
     PROFILE_FIELDS,
@@ -47,6 +54,7 @@ import {
     newRemoteShares,
     type VideoTileDescriptor,
 } from "$lib/utils/videoTiles";
+import type { WatchingMap } from "$lib/utils/shareWatchers";
 import type { CallCodecState, CallEncryptionState } from "$lib/matrix/client";
 import {
     DEFAULT_PARTICIPANT_AUDIO,
@@ -54,6 +62,7 @@ import {
     withShareVolume,
     withSoundVolume,
     withLocalMute,
+    withShareMute,
     withVideoHidden,
     type ParticipantAudio,
 } from "$lib/utils/participantAudio";
@@ -61,6 +70,7 @@ import {
     toggleMute,
     toggleDeafen,
     usersFromIdentities,
+    audibleSpeakerIds,
     RECENTLY_LEFT_WINDOW_MS,
     type MuteState,
     type VoiceConnState,
@@ -84,7 +94,7 @@ import { auth } from "$lib/stores/auth.svelte";
 import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
 import { interfaceState, showCallView } from "$lib/stores/interface.svelte";
 import { navigateToRoom, roomsState } from "$lib/stores/rooms.svelte";
-import { callPipState } from "$lib/stores/callPip.svelte";
+import { callPipState, closePipWindow } from "$lib/stores/callPip.svelte";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import { micErrorMessage } from "$lib/utils/micErrorMessage";
 import { isChunkLoadError } from "$lib/utils/chunkLoadError";
@@ -133,7 +143,22 @@ class VoiceCallState {
     /** Speaking users, aggregated across all their devices — the roster is
      *  per-user (earliest device) but LiveKit speaking/mute is per user:device,
      *  so a second-device speak/mute must still light the single row. */
-    speakingUserIds = $derived(usersFromIdentities(this.speakingMemberIds));
+    // Our own mic closed (muted or deafened) never lights our own tile.
+    speakingUserIds = $derived(
+        usersFromIdentities(
+            audibleSpeakerIds(
+                this.speakingMemberIds,
+                getOwnUserId(),
+                this.micMuted || this.deafened,
+            ),
+        ),
+    );
+    /** Who watches which screen share (see utils/shareWatchers). */
+    shareWatchers = $state<WatchingMap>({});
+    /** Our own screen share has system audio published. */
+    ownShareAudio = $state(false);
+    /** Our own share's sound is muted (reset when a share starts or ends). */
+    shareAudioMuted = $state(false);
     mutedUserIds = $derived(usersFromIdentities(this.mutedIdentities));
     /** When the current call first connected — held across reconnects so a
      *  blip doesn't reset the timer. Null when not in a call. */
@@ -345,6 +370,9 @@ export function initVoiceCall(): () => void {
             voiceCallState.deafened = false;
             voiceCallState.mutedByDeafen = false;
             voiceCallState.speakingMemberIds = [];
+            voiceCallState.shareWatchers = {};
+            voiceCallState.ownShareAudio = false;
+            voiceCallState.shareAudioMuted = false;
             voiceCallState.mutedIdentities = [];
             voiceCallState.connectedAt = null;
             voiceCallState.playbackBlocked = false;
@@ -376,6 +404,9 @@ export function initVoiceCall(): () => void {
     });
     const unsubSpeakers = onActiveSpeakersChanged((ids) => {
         voiceCallState.speakingMemberIds = ids;
+    });
+    const unsubWatchers = onShareWatchersChanged((watching) => {
+        voiceCallState.shareWatchers = watching;
     });
     const unsubMutes = onParticipantMuteChanged((ids) => {
         const prev = new Set(voiceCallState.mutedIdentities);
@@ -428,9 +459,14 @@ export function initVoiceCall(): () => void {
     });
     const unsubVideo = onVideoTracksChanged((tiles) => {
         voiceCallState.videoTiles = tiles;
-        voiceCallState.screenSharing = tiles.some(
+        const sharingNow = tiles.some(
             (t) => t.isLocal && t.source === "screenshare",
         );
+        // A new share (or the end of one) starts with its sound unmuted.
+        if (sharingNow !== voiceCallState.screenSharing)
+            voiceCallState.shareAudioMuted = false;
+        voiceCallState.screenSharing = sharingNow;
+        voiceCallState.ownShareAudio = hasOwnShareAudio();
         voiceCallState.cameraOn = tiles.some(
             (t) => t.isLocal && t.source === "camera",
         );
@@ -453,7 +489,12 @@ export function initVoiceCall(): () => void {
                 auth.syncState === "SYNCING" || auth.syncState === "PREPARED";
             if (!synced || swept) return;
             swept = true;
-            untrack(() => void clearStaleCallStatus());
+            untrack(() => {
+                // A membership a reload left behind, then the call field.
+                void clearStaleOwnCallMemberships()
+                    .catch(() => {})
+                    .then(() => clearStaleCallStatus());
+            });
         });
     });
     return () => {
@@ -463,6 +504,7 @@ export function initVoiceCall(): () => void {
         unsubSessions();
         unsubConn();
         unsubSpeakers();
+        unsubWatchers();
         unsubMutes();
         unsubError();
         unsubNotice();
@@ -623,6 +665,33 @@ export function setUserLocalMute(userId: string, muted: boolean): void {
     const next = withLocalMute(participantAudioFor(userId), muted);
     setParticipantAudioSetting(userId, next);
     setParticipantLocalMute(userId, next.muted);
+}
+
+/** Mute just the sound of their screen or application share. */
+export function setUserShareMute(userId: string, muted: boolean): void {
+    const next = withShareMute(participantAudioFor(userId), muted);
+    setParticipantAudioSetting(userId, next);
+    setParticipantShareMute(userId, next.shareMuted);
+}
+
+/** Stop watching someone's screen share for the rest of this call. Leaves
+ *  the spotlight and the system picture-in-picture window if it was there. */
+export function stopWatchingShare(tile: VideoTileDescriptor): void {
+    if (voiceCallState.focusedTileKey === tile.key)
+        voiceCallState.focusedTileKey = null;
+    if (callPipState.pinnedKey === tile.key) closePipWindow();
+    setShareWatched(tile.identity, false);
+}
+
+export function watchShare(tile: VideoTileDescriptor): void {
+    setShareWatched(tile.identity, true);
+}
+
+/** Mute or unmute the sound of our own screen share while it keeps going. */
+export function toggleShareAudioMute(): void {
+    const next = !voiceCallState.shareAudioMuted;
+    voiceCallState.shareAudioMuted = next;
+    setShareAudioMuted(next);
 }
 
 export function setUserVideoHidden(userId: string, hidden: boolean): void {

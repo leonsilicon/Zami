@@ -14,6 +14,8 @@
         setStripMetadata,
         setRandomizeFileNames,
         setGifsAsWebp,
+        setLightboxFitToScreen,
+        setReplyPingDefault,
         setGifDefaultTab,
         setMidiSoundBank,
         settingsState,
@@ -162,18 +164,16 @@
 <div class="space-y-6">
     <section data-setting-anchor="cust-messages">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("messagesMediaSettings.messages")}
         </p>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.showMatrixIds")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.showFullMatrixIdsLikeUser")}
                 </p>
             </div>
@@ -183,14 +183,12 @@
                 label={t("messagesMediaSettings.showMatrixIds")}
             />
         </div>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.readReceiptAvatars")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.showWhoHasReadEachMessage")}
                 </p>
             </div>
@@ -200,14 +198,27 @@
                 label={t("messagesMediaSettings.readReceiptAvatars")}
             />
         </div>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("messagesMediaSettings.pingOnReply")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("messagesMediaSettings.pingOnReplyDescription")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.replyPingDefault}
+                onChange={setReplyPingDefault}
+                label={t("messagesMediaSettings.pingOnReply")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.holdToOpenMessageMenu")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.onTouchDevicesOpenAMessage")}
                 </p>
             </div>
@@ -217,14 +228,12 @@
                 label={t("messagesMediaSettings.holdToOpenMessageMenu")}
             />
         </div>
-        <div
-            class="flex items-center gap-3 py-2 border-b border-discord-divider"
-        >
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.checkSpelling")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.underlineMisspelledWordsAnd")}
                 </p>
             </div>
@@ -238,10 +247,10 @@
             class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
         >
             <div class="flex-1 min-w-0">
-                <span class="text-sm text-discord-textPrimary"
+                <span class="text-sm text-zam-textPrimary"
                     >{t("messagesMediaSettings.linkPreviews")}</span
                 >
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.whenOffNoLinkPreviewIs")}
                 </p>
             </div>
@@ -253,10 +262,10 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.pauseVideosOffScreen")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.pauseAPlayingVideoWhenIt")}
                 </p>
             </div>
@@ -268,10 +277,25 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("messagesMediaSettings.fitImagesToScreen")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("messagesMediaSettings.fitImagesToScreenDescription")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.lightboxFitToScreen}
+                onChange={setLightboxFitToScreen}
+                label={t("messagesMediaSettings.fitImagesToScreen")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.sendVideosThatStreamFaster")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.rearrangeMp4VideosYouSend")}
                 </p>
             </div>
@@ -283,10 +307,10 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.sendPhotosThatAppearSooner")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.rewriteJpegPhotosYouSend")}
                 </p>
             </div>
@@ -298,13 +322,13 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.removeLocationAndMetadata")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.stripMetadataDescription")}
                 </p>
-                <p class="mt-1 text-xs font-semibold text-discord-danger">
+                <p class="mt-1 text-xs font-semibold text-zam-danger">
                     {t("messagesMediaSettings.stripMetadataWarning")}
                 </p>
             </div>
@@ -316,10 +340,10 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.randomizeFileNames")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.randomizeFileNamesDescription")}
                 </p>
             </div>
@@ -331,10 +355,10 @@
         </div>
         <div class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
-                <p class="text-sm text-discord-textPrimary">
+                <p class="text-sm text-zam-textPrimary">
                     {t("messagesMediaSettings.sendGifsAsAnimatedWebp")}
                 </p>
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.reencodeGifsYouSend")}
                 </p>
             </div>
@@ -348,7 +372,7 @@
 
     <section data-setting-anchor="cust-gifs">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("common.gifs")}
         </p>
@@ -356,10 +380,10 @@
             class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
         >
             <div class="flex-1 min-w-0">
-                <span class="text-sm text-discord-textPrimary"
+                <span class="text-sm text-zam-textPrimary"
                     >{t("messagesMediaSettings.defaultTab")}</span
                 >
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("messagesMediaSettings.whichTabTheGifPickerOpens")}
                 </p>
             </div>
@@ -374,7 +398,7 @@
 
     <section data-setting-anchor="cust-midi">
         <p
-            class="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3"
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
         >
             {t("midiSoundBank.midi")}
         </p>
@@ -382,10 +406,10 @@
             class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between"
         >
             <div class="flex-1 min-w-0">
-                <span class="text-sm text-discord-textPrimary"
+                <span class="text-sm text-zam-textPrimary"
                     >{t("midiSoundBank.soundBank")}</span
                 >
-                <p class="text-xs text-discord-textMuted">
+                <p class="text-xs text-zam-textMuted">
                     {t("midiSoundBank.theInstrumentSoundsUsedTo")}
                 </p>
             </div>
@@ -397,7 +421,7 @@
             />
         </div>
         {#if systemBankSupported && systemBankAvailable === false}
-            <p class="text-xs text-discord-textMuted">
+            <p class="text-xs text-zam-textMuted">
                 {t("midiSoundBank.noSystemSoundBankFound")}
             </p>
         {/if}
@@ -412,18 +436,18 @@
             <div class="mt-2 flex flex-wrap items-center gap-2">
                 {#if customBank}
                     <span
-                        class="min-w-0 truncate text-sm text-discord-textPrimary"
+                        class="min-w-0 truncate text-sm text-zam-textPrimary"
                         title={customBank.name}
                     >
                         {customBank.name}
-                        <span class="text-xs text-discord-textMuted"
+                        <span class="text-xs text-zam-textMuted"
                             >({formatMediaSize(customBank.size)})</span
                         >
                     </span>
                 {/if}
                 <button
                     type="button"
-                    class="px-3 py-1.5 rounded bg-discord-backgroundSecondary text-sm text-discord-textPrimary hover:bg-discord-messageHover disabled:opacity-50 transition-colors"
+                    class="px-3 py-1.5 rounded bg-zam-backgroundSecondary text-sm text-zam-textPrimary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
                     onclick={() => bankFileInput?.click()}
                     disabled={bankUploadBusy}
                 >
@@ -434,7 +458,7 @@
                 {#if customBank}
                     <button
                         type="button"
-                        class="px-2 py-1 rounded text-xs text-discord-danger hover:bg-discord-danger hover:text-white disabled:opacity-50 transition-colors"
+                        class="px-2 py-1 rounded text-xs text-zam-danger hover:bg-zam-danger hover:text-white disabled:opacity-50 transition-colors"
                         onclick={removeCustomBank}
                         disabled={bankUploadBusy}
                     >
@@ -444,14 +468,14 @@
             </div>
         {/if}
         {#if bankUploadBusy}
-            <p class="mt-1 text-xs text-discord-textMuted">
+            <p class="mt-1 text-xs text-zam-textMuted">
                 {t("midiSoundBank.saving")}
             </p>
         {/if}
         {#if bankUploadError}
-            <p class="mt-1 text-xs text-discord-danger">{bankUploadError}</p>
+            <p class="mt-1 text-xs text-zam-danger">{bankUploadError}</p>
         {/if}
-        <p class="mt-1 text-xs text-discord-textMuted">
+        <p class="mt-1 text-xs text-zam-textMuted">
             {t("midiSoundBank.sf2Sf3OrDlsUpTo")}
         </p>
     </section>

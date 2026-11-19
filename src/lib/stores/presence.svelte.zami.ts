@@ -1,11 +1,28 @@
+import { createSubscriber } from "svelte/reactivity";
+import { auth } from "$lib/stores/auth.svelte";
 import {
     fetchOwnExtendedProfile,
+    getPresence,
     getUserPresence,
     isUsingSlidingSync,
     onPresenceEvent,
     onSlidingSyncActiveChange,
+    refreshUserPresence,
+    setAccountNotificationsDisabled,
     setOwnPresence,
+    setOwnProfileField,
+    supportsBusyPresence,
 } from "$lib/matrix/client";
+import {
+    getCachedProfile,
+    requestProfile,
+} from "$lib/stores/profileFields.svelte";
+import {
+    PROFILE_PRESENCE_HEARTBEAT_MS,
+    PROFILE_PRESENCE_KEY,
+    buildProfilePresence,
+    parseProfilePresence,
+} from "$lib/utils/profilePresence";
 import {
     PROFILE_FIELDS,
     formatStatusMessage,
@@ -15,34 +32,99 @@ import {
 import {
     advertisedPresence,
     normalizePresence,
+    presenceProbeVerdict,
     type PresenceState,
+    type SeenPresence,
 } from "$lib/utils/presence";
 import {
     settingsState,
+    setDoNotDisturbSetting,
     setOwnPresenceSetting,
     setOwnStatusMessageSetting,
+    setShareProfilePresenceSetting,
 } from "$lib/stores/settings.svelte";
 
 export interface UserPresenceView {
-    state: PresenceState;
+    state: SeenPresence;
     currentlyActive: boolean;
     statusMsg?: string;
 }
 
-// Presence data itself lives in the SDK's user model; this store only holds
-// the tick that tells $derived consumers to re-read it (house pattern — live
-// SDK objects mutate in place, so deriveds must depend on a counter).
-export const presenceState = $state({
-    presenceTick: 0,
-});
+// Presence is watched per user. Presence data itself lives in the SDK's user
+// model (live objects that mutate in place), so each user gets a
+// createSubscriber: a reactive read via presenceFor() subscribes to that user
+// alone, and a presence event for anyone else re-renders nothing. The
+// subscription ends when the last reader unmounts. Users no rendered reader
+// is watching cause no work. Watching also drives the sliding-sync poll in
+// initPresence (see watchedPresenceUsers).
+interface PresenceWatcher {
+    subscribe: () => void;
+    update: (() => void) | null;
+}
+const watchers = new Map<string, PresenceWatcher>();
+const watched = new Set<string>();
+
+/** Users whose presence a rendered reader currently watches. */
+export function watchedPresenceUsers(): string[] {
+    return [...watched];
+}
+
+const PRESENCE_SETTLE_MS = 300;
+
+function watcherFor(userId: string): PresenceWatcher {
+    let entry = watchers.get(userId);
+    if (entry) return entry;
+    const created: PresenceWatcher = {
+        update: null,
+        subscribe: createSubscriber((update) => {
+            created.update = update;
+            watched.add(userId);
+            // Only fetch for someone who stays on screen: scrolling a big
+            // member list flashes hundreds of rows past, and each would
+            // otherwise cost a request.
+            const settle = setTimeout(() => {
+                refreshUserPresence(userId);
+                requestProfilePresence(userId);
+            }, PRESENCE_SETTLE_MS);
+            return () => {
+                clearTimeout(settle);
+                created.update = null;
+                watched.delete(userId);
+                if (watchers.get(userId) === created) watchers.delete(userId);
+            };
+        }),
+    };
+    entry = created;
+    watchers.set(userId, entry);
+    return entry;
+}
 
 /**
  * Presence for a user, normalized for rendering. Null when nothing is known —
  * the server may have presence disabled entirely; callers typically render
- * that the same as offline.
+ * that the same as offline. Inside a reactive context it makes the caller
+ * re-render when this user's presence changes; outside one it is a plain read.
  */
 export function presenceFor(userId: string): UserPresenceView | null {
+    // Outside a reactive context there is nothing to subscribe, and making a
+    // watcher entry would leave one behind per user read.
+    if ($effect.tracking()) watcherFor(userId).subscribe();
     const raw = getUserPresence(userId);
+    // A server with presence off sends nothing or offline for everyone; a
+    // client that publishes its presence in the profile fills that gap.
+    if (!raw || normalizePresence(raw.presence) === "offline") {
+        const published = parseProfilePresence(
+            getCachedProfile(userId),
+            Date.now(),
+        );
+        if (published) {
+            return {
+                state: published.state,
+                currentlyActive: published.state === "online",
+                statusMsg: raw?.statusMsg,
+            };
+        }
+    }
     if (!raw) return null;
     return {
         state: normalizePresence(raw.presence),
@@ -51,12 +133,97 @@ export function presenceFor(userId: string): UserPresenceView | null {
     };
 }
 
+/** Load a user's profile to look for published presence, only where the
+ *  server's own presence cannot be relied on: ours has none, or it has never
+ *  told us about this user. */
+function requestProfilePresence(userId: string): void {
+    if (settingsState.presenceUnsupported || getUserPresence(userId) === null)
+        requestProfile(userId, PROFILE_PRESENCE_HEARTBEAT_MS / 2);
+}
+
+// Our own presence in the profile field. Writes are chained so a slow one
+// never lands after a newer one; `profileFieldLive` says whether the field
+// currently holds something we wrote.
+let profileWrites: Promise<void> = Promise.resolve();
+let profileFieldLive = false;
+let profileFieldSent: SeenPresence | null = null;
+let profileFieldSentAt = 0;
+let profilePresenceBroken = false;
+
+/** Bring the profile field in line with what we advertise: publish it while
+ *  sharing is on and the server has no presence, delete it otherwise. Called
+ *  on every change and on a heartbeat, so a repeat of what was last written
+ *  is skipped until it is due for a refresh. */
+function syncProfilePresence(): void {
+    if (profilePresenceBroken) return;
+    const active =
+        settingsState.presenceUnsupported && settingsState.shareProfilePresence;
+    const now = Date.now();
+    const value = buildProfilePresence(active ? advertised : "offline", now);
+    if (value === null && !profileFieldLive) return;
+    if (
+        value !== null &&
+        profileFieldSent === value.presence &&
+        now - profileFieldSentAt < PROFILE_PRESENCE_HEARTBEAT_MS - 5_000
+    )
+        return;
+    profileFieldLive = value !== null;
+    profileFieldSent = value?.presence ?? null;
+    profileFieldSentAt = now;
+    profileWrites = profileWrites
+        .then(() => setOwnProfileField(PROFILE_PRESENCE_KEY, value))
+        .catch((err) => {
+            // No extended profiles here (or the write was refused): stop
+            // trying until the next sign-in rather than fail every heartbeat.
+            profilePresenceBroken = true;
+            console.warn("[presence] could not publish profile presence", err);
+        });
+}
+
+/** Turn publishing presence through the profile on or off (servers without
+ *  presence only; the setting waits quietly elsewhere). */
+export function changeShareProfilePresence(on: boolean): void {
+    setShareProfilePresenceSetting(on);
+    profilePresenceBroken = false;
+    syncProfilePresence();
+}
+
+/** The state the user picked, as the server should see it: Do Not Disturb
+ *  is MSC3026 busy (red for others), or idle on a server without busy.
+ *  Invisible stays invisible. */
+function chosenPresence(): SeenPresence {
+    if (!settingsState.doNotDisturb || settingsState.ownPresence !== "online")
+        return settingsState.ownPresence;
+    return busySupported ? "busy" : "unavailable";
+}
+
+// Whether the homeserver takes busy; read from /versions in initPresence.
+// Until then Do Not Disturb advertises away, as it did before busy.
+let busySupported = false;
+
+/** Turn Do Not Disturb on or off: the account's master push rule (so the
+ *  server stops pushing to every device), local alerts (see
+ *  emitNotificationNow) and idle presence. Rethrows a server failure and
+ *  leaves the setting as it was. */
+export async function changeDoNotDisturb(on: boolean): Promise<void> {
+    await setAccountNotificationsDisabled(on);
+    setDoNotDisturbSetting(on);
+    if (on) busySupported = await supportsBusyPresence();
+    advertised = advertisedPresence(chosenPresence(), 0);
+    syncProfilePresence();
+    await setOwnPresence(
+        advertised,
+        settingsState.ownStatusMessage || undefined,
+    );
+}
+
 /** Change own advertised presence: persist the choice locally and push it to
  *  the homeserver. Rethrows so settings UI can surface the server error. */
 export async function changeOwnPresence(value: PresenceState): Promise<void> {
     setOwnPresenceSetting(value);
     // Picking a presence is itself input, so the device is in use.
-    advertised = advertisedPresence(value, 0);
+    advertised = advertisedPresence(chosenPresence(), 0);
+    syncProfilePresence();
     await setOwnPresence(
         advertised,
         settingsState.ownStatusMessage || undefined,
@@ -74,7 +241,7 @@ export async function changeOwnStatusMessage(message: string): Promise<void> {
 // Without that, every sync long-poll re-marks the account online, and tuwunel
 // shows the highest state across devices, so a desktop left open kept the
 // user online forever. Plain module state: it only feeds SDK calls.
-let advertised: PresenceState = settingsState.ownPresence;
+let advertised: SeenPresence = settingsState.ownPresence;
 let lastInputTs = Date.now();
 
 const IDLE_CHECK_MS = 15_000;
@@ -91,9 +258,10 @@ export async function readIdleMs(): Promise<number> {
 
 async function updateAdvertisedPresence(): Promise<void> {
     const idleMs = await readIdleMs();
-    const next = advertisedPresence(settingsState.ownPresence, idleMs);
+    const next = advertisedPresence(chosenPresence(), idleMs);
     if (next === advertised) return;
     advertised = next;
+    syncProfilePresence();
     await setOwnPresence(next, settingsState.ownStatusMessage || undefined);
 }
 
@@ -115,13 +283,19 @@ async function reconcileStatusMessage(): Promise<void> {
 }
 
 const SLIDING_PRESENCE_HEARTBEAT_MS = 25_000;
+const PRESENCE_PROBE_MS = 4_000;
 
 /** Call once on app mount (after login). Returns a cleanup function. */
 export function initPresence(): () => void {
     // Re-apply the persisted choice — the sync loop advertises "online" by
     // default, so away/invisible must be pushed again each session.
-    advertised = settingsState.ownPresence;
+    busySupported = false;
+    advertised = chosenPresence();
     lastInputTs = Date.now();
+    profilePresenceBroken = false;
+    profileFieldLive = false;
+    profileFieldSent = null;
+    profileFieldSentAt = 0;
     if (advertised !== "online") {
         setOwnPresence(
             advertised,
@@ -130,10 +304,50 @@ export function initPresence(): () => void {
             console.warn("[presence] could not apply own presence", err);
         });
     }
+    // Do Not Disturb went out as away above; upgrade it to busy once the
+    // server says it has busy.
+    let disposed = false;
+    supportsBusyPresence().then((ok) => {
+        if (disposed || !ok) return;
+        busySupported = true;
+        const next = chosenPresence();
+        if (next === advertised) return;
+        advertised = next;
+        syncProfilePresence();
+        setOwnPresence(next, settingsState.ownStatusMessage || undefined).catch(
+            (err) => {
+                console.warn("[presence] could not apply busy presence", err);
+            },
+        );
+    });
 
     reconcileStatusMessage().catch((err) => {
         console.warn("[presence] could not reconcile status message", err);
     });
+
+    // Find out whether the server has presence at all (matrix.org turns it
+    // off), so the options that would do nothing can hide. Re-assert our state
+    // first: over sliding sync nothing has marked us online yet, and a plain
+    // offline answer would then read as "unsupported".
+    const probeTimer = setTimeout(() => {
+        const ownId = auth.userId;
+        if (disposed || !ownId || advertised === "offline") return;
+        const sent = advertised;
+        setOwnPresence(sent, settingsState.ownStatusMessage || undefined)
+            .then(() => getPresence(ownId))
+            .then((seen) => {
+                if (disposed) return;
+                const supported = presenceProbeVerdict(
+                    sent,
+                    seen?.presence ?? null,
+                );
+                if (supported !== null) {
+                    settingsState.presenceUnsupported = !supported;
+                    syncProfilePresence();
+                }
+            })
+            .catch(() => {});
+    }, PRESENCE_PROBE_MS);
 
     // Sliding sync never marks us as syncing, so the server times an online or
     // away presence out to offline about 30s after the last PUT (Synapse's
@@ -159,38 +373,51 @@ export function initPresence(): () => void {
     const idleCheck = setInterval(() => {
         updateAdvertisedPresence().catch(() => {});
     }, IDLE_CHECK_MS);
+    // The profile field goes stale for readers unless it is rewritten.
+    const profileHeartbeat = setInterval(
+        syncProfilePresence,
+        PROFILE_PRESENCE_HEARTBEAT_MS,
+    );
     // Passive: they only stamp a number. Coming back from away should not
     // wait for the next check, so input while away re-checks at once.
     const onUserInput = () => {
         lastInputTs = Date.now();
-        if (
-            advertised === "unavailable" &&
-            settingsState.ownPresence === "online"
-        )
+        if (advertised === "unavailable" && chosenPresence() === "online")
             updateAdvertisedPresence().catch(() => {});
     };
     const inputEvents = ["pointerdown", "keydown", "wheel", "touchstart"];
     for (const type of inputEvents)
         window.addEventListener(type, onUserInput, { passive: true });
 
-    // Zami: one bump per turn of the event loop. Each presence update fires
-    // three SDK events, and a sync can carry hundreds of users' presence: a
-    // bump per event re-ran every presence reader (each DM row, the member
-    // list) hundreds of times in one go.
-    let presenceBump: ReturnType<typeof setTimeout> | undefined;
-    const unsubPresence = onPresenceEvent(() => {
-        presenceBump ??= setTimeout(() => {
-            presenceBump = undefined;
-            presenceState.presenceTick++;
-        }, 0);
+    const unsubPresence = onPresenceEvent((userId) => {
+        watchers.get(userId)?.update?.();
     });
+
+    // Sliding sync never pushes presence, so the watched users are re-fetched
+    // here, once a poll (refreshUserPresence's TTL keeps it to one fetch per
+    // user per minute). Hidden tabs skip it; becoming visible catches up at
+    // once. On classic sync this is a no-op: the server pushes presence.
+    const refreshWatched = () => {
+        if (document.visibilityState !== "visible") return;
+        for (const id of watched) {
+            refreshUserPresence(id);
+            requestProfilePresence(id);
+        }
+    };
+    const presencePoll = setInterval(refreshWatched, 30_000);
+    document.addEventListener("visibilitychange", refreshWatched);
+
     return () => {
+        disposed = true;
+        clearTimeout(probeTimer);
         unsubSliding();
         clearInterval(heartbeat);
         clearInterval(idleCheck);
+        clearInterval(profileHeartbeat);
+        clearInterval(presencePoll);
+        document.removeEventListener("visibilitychange", refreshWatched);
         for (const type of inputEvents)
             window.removeEventListener(type, onUserInput);
         unsubPresence();
-        clearTimeout(presenceBump);
     };
 }

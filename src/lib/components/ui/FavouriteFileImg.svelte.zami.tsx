@@ -1,6 +1,6 @@
-import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, Video, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { useEffect, useState } from "react";
-import type { ImageStyle } from "react-native";
+import type { ImageStyle, ViewStyle } from "react-native";
 import {
     eventFavouriteKey,
     resolveEventFavouriteUrl,
@@ -11,6 +11,8 @@ interface Props {
     source: EventFavouriteSource;
     class?: string;
     style?: string;
+    /** The favourite is a video: shown as a muted looping clip. */
+    video?: boolean;
 }
 
 // Zami: `style` is a CSS declaration string, as upstream's callers pass it
@@ -42,6 +44,7 @@ export default function FavouriteFileImg({
     source,
     class: className = "",
     style,
+    video = false,
 }: Props) {
     // The url resolved for the source it was resolved for, so a new source
     // shows nothing until its own url lands.
@@ -66,6 +69,20 @@ export default function FavouriteFileImg({
         };
     }, [roomId, eventId]);
 
+    // Zami: `playsinline` and `disablepictureinpicture` are the player's
+    // defaults here. `aria-hidden`: the Video takes no touches without
+    // controls, and is decorative.
+    if (video)
+        return (
+            <Video
+                src={src ?? undefined}
+                className={className}
+                style={cssStyle(style) as ViewStyle | undefined}
+                autoplay
+                muted
+                loop
+            />
+        );
     // `alt=""`: decorative, so hidden from screen readers.
     return (
         <Image

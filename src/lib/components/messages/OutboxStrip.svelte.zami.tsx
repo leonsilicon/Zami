@@ -24,30 +24,30 @@ export default function OutboxStrip({ roomId }: Props) {
     );
 
     if (items.length === 0) return null;
-    // Zami: the row's `text-xs text-discord-textMuted` is on each text and icon
-    // in it, which don't inherit it. `text-discord-text` isn't one of Zam's
+    // Zami: the row's `text-xs text-zam-textMuted` is on each text and icon
+    // in it, which don't inherit it. `text-zam-text` isn't one of Zam's
     // colors, so on the web the Retry label inherits the row's muted text.
     return (
         <View className="flex-col gap-1 mb-2">
             {items.map((item) => (
                 <View
                     key={item.id}
-                    className="flex-row items-center gap-2 px-2 py-1.5 rounded bg-discord-backgroundSecondary"
+                    className="flex-row items-center gap-2 px-2 py-1.5 rounded bg-zam-backgroundSecondary"
                 >
                     {/* Status icon/label */}
                     {item.status === "queued" ? (
                         <>
-                            <Clock className="w-3.5 h-3.5 flex-shrink-0 text-discord-textMuted" />
-                            <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                            <Clock className="w-3.5 h-3.5 flex-shrink-0 text-zam-textMuted" />
+                            <Text className="flex-shrink-0 text-xs text-zam-textMuted">
                                 {t("outboxStrip.queued")}
                             </Text>
                         </>
                     ) : item.status === "sending" ? (
                         <>
                             <Spin>
-                                <Loader2 className="w-3.5 h-3.5 flex-shrink-0 text-discord-textMuted" />
+                                <Loader2 className="w-3.5 h-3.5 flex-shrink-0 text-zam-textMuted" />
                             </Spin>
-                            <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                            <Text className="flex-shrink-0 text-xs text-zam-textMuted">
                                 {t("outboxStrip.sending")}
                             </Text>
                         </>
@@ -63,7 +63,7 @@ export default function OutboxStrip({ roomId }: Props) {
                     {/* Body preview */}
                     <Text
                         numberOfLines={1}
-                        className="truncate flex-1 opacity-75 text-xs text-discord-textMuted"
+                        className="truncate flex-1 opacity-75 text-xs text-zam-textMuted"
                     >
                         {String(item.content.body ?? "")}
                     </Text>
@@ -74,9 +74,9 @@ export default function OutboxStrip({ roomId }: Props) {
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={() => retryOutboxItem(roomId, item.id)}
-                                className="px-2 py-0.5 rounded bg-discord-backgroundTertiary hover:bg-discord-backgroundModifierHover transition-colors flex-shrink-0"
+                                className="px-2 py-0.5 rounded bg-zam-backgroundTertiary hover:bg-zam-backgroundModifierHover transition-colors flex-shrink-0"
                             >
-                                <Text className="text-discord-text text-xs font-medium text-discord-textMuted">
+                                <Text className="text-zam-text text-xs font-medium text-zam-textMuted">
                                     {t("common.retry")}
                                 </Text>
                             </Pressable>
@@ -85,9 +85,9 @@ export default function OutboxStrip({ roomId }: Props) {
                                 onPress={() =>
                                     removeOutboxItem(roomId, item.id)
                                 }
-                                className="px-2 py-0.5 rounded bg-discord-backgroundTertiary hover:bg-discord-backgroundModifierHover transition-colors flex-shrink-0"
+                                className="px-2 py-0.5 rounded bg-zam-backgroundTertiary hover:bg-zam-backgroundModifierHover transition-colors flex-shrink-0"
                             >
-                                <Text className="text-discord-textMuted text-xs font-medium">
+                                <Text className="text-zam-textMuted text-xs font-medium">
                                     {t("common.cancel")}
                                 </Text>
                             </Pressable>

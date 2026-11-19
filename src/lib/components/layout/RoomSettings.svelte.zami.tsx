@@ -1,6 +1,7 @@
 import {
     Checkbox,
     Details,
+    DomMount,
     Image,
     mediaSource,
     pickedFile,
@@ -17,10 +18,16 @@ import {
     useDebouncedValue,
     useThrottledRune,
 } from "@-/com.leonsilicon.zami.incremental/react";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { shallowEqual, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
-import { ArrowLeft, ChevronRight, Circle, TriangleAlert } from "lucide-svelte";
+import {
+    ArrowLeft,
+    ChevronRight,
+    Circle,
+    TriangleAlert,
+    Smile,
+} from "lucide-svelte";
 import type { Room, RoomMember } from "matrix-js-sdk";
 import {
     useCallback,
@@ -46,6 +53,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { withUniwind } from "uniwind";
 import { t } from "$lib/i18n";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import InvitePanel from "./InvitePanel.svelte";
 import ImagePackEditor from "./ImagePackEditor.svelte";
@@ -75,6 +84,8 @@ import {
     setRoomTopic,
     setRoomAvatar,
     uploadContent,
+    canEditPowerLevelTags,
+    setRoomPowerLevelTags,
     getJoinRule,
     setJoinRule,
     getDirectParentSpaceIds,
@@ -111,9 +122,11 @@ import {
     isRoomStateHealed,
     getRoomNotificationSetting,
     setRoomNotificationSetting,
+    getParentSpaceIds,
     getRoomsInSpace,
     getSpaceChildIds,
     type RoomNotificationSetting,
+    type CustomEmoji,
 } from "$lib/matrix/client";
 import {
     getRestrictedJoinState,
@@ -168,7 +181,11 @@ import {
     closeSubPage,
 } from "$lib/stores/interface.svelte";
 import { roomsState, setActiveRoom } from "$lib/stores/rooms.svelte";
-import { settingsState } from "$lib/stores/settings.svelte";
+import { settingsState, setReceiptOverride } from "$lib/stores/settings.svelte";
+import {
+    isRoomReceiptPrivate,
+    type ReceiptOverride,
+} from "$lib/utils/receiptPrivacy";
 import {
     blockUser,
     unblockUser,
@@ -177,7 +194,20 @@ import {
 } from "$lib/stores/ignoredUsers.svelte";
 import { mapWithConcurrency } from "$lib/utils/async";
 import { collectSpaceAndDescendantRoomIds } from "$lib/utils/spaceNotifications";
-import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { showErrorToast, showToast } from "$lib/stores/toasts.svelte";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import {
+    safeTagColor,
+    sortedTagLevels,
+    tagForPowerLevel,
+    type PowerLevelTag,
+    type PowerLevelTags,
+} from "$lib/utils/powerLevelTags";
 
 interface Props {
     room: Room;
@@ -214,11 +244,39 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
     const isSpace = room.isSpaceRoom();
 
+    // Plugin tabs (zam.room.addSettingsTab) this room gets, after Zam's own.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const pluginTabEntries = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.roomSettingsTabs.filter((e) => {
+                try {
+                    return (
+                        e.value.when?.({ roomId: room.roomId, isSpace }) ?? true
+                    );
+                } catch (err) {
+                    console.error("[zam] room settings tab when() threw", err);
+                    return false;
+                }
+            })
+        ),
+        [pluginTick, room.roomId, isSpace],
+    );
+    const pluginTabs = useMemo(
+        () =>
+            pluginTabEntries.map((e) => ({
+                id: `plugin:${e.entryId}` as RoomSettingsTab,
+                label: String(e.value.label),
+            })),
+        [pluginTabEntries],
+    );
+
     const isMobile = useRune(() => interfaceState.isMobile);
     const view = roomSettingsNavView({
         isMobile,
         isSpace,
         selectedTab,
+        pluginTabs,
     });
 
     // The tab whose panel is on screen, or null on the mobile category list
@@ -226,6 +284,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // sitting on the list must not kick off a fetch.
     const activeTab: RoomSettingsTab | null =
         view.mode === "list" ? null : view.tab;
+
+    // Zami: declared after activeTab, which it reads.
+    const activePluginTab =
+        pluginTabEntries.find((e) => activeTab === `plugin:${e.entryId}`) ??
+        null;
 
     // Stable identity: it is the ownership token for the sub-page slot, so it
     // must NOT be recreated on every render. It resets local state ONLY — it
@@ -243,6 +306,45 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         [room.roomId],
     );
     const [notifSaving, setNotifSaving] = useState(false);
+
+    // Read receipts: this room's (or space's) override of the account default.
+    const receiptChoice = useRune<ReceiptOverride | null>(
+        () => settingsState.receiptOverrides[room.roomId] ?? null,
+        [room.roomId],
+    );
+    // What "Default" resolves to here: the account setting, or a parent
+    // space's override. Ignores this room's own choice, so the label stays put
+    // while the user flips between options.
+    const inheritedReceiptsPrivate = useRune(() => {
+        const { [room.roomId]: _own, ...others } =
+            settingsState.receiptOverrides;
+        return isRoomReceiptPrivate(
+            room.roomId,
+            getParentSpaceIds(room.roomId),
+            others,
+            settingsState.privateReadReceipts,
+        );
+    }, [room.roomId]);
+    const RECEIPT_CHOICES: readonly [ReceiptOverride | null, string, string][] =
+        [
+            [
+                null,
+                t("common.default"),
+                inheritedReceiptsPrivate
+                    ? t("roomSettings.readReceiptsDefaultHide")
+                    : t("roomSettings.readReceiptsDefaultShare"),
+            ],
+            [
+                "public",
+                t("roomSettings.readReceiptsShare"),
+                t("roomSettings.readReceiptsShareDesc"),
+            ],
+            [
+                "private",
+                t("roomSettings.readReceiptsHide"),
+                t("roomSettings.readReceiptsHideDesc"),
+            ],
+        ];
 
     const NOTIF_LEVELS: readonly [RoomNotificationSetting, string, string][] = [
         [
@@ -369,6 +471,15 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     // rather than per sync. A quiet spell's first tick (a save echoing back)
     // re-renders at once.
     const roomsTick = useThrottledRune(() => roomsState.roomsTick, 500);
+    // Zami: the room's effective tags (upstream reads effectiveRoomTags in
+    // plLabel, roleSelectOptions and the reseed effect), read once here.
+    const roomTags = useRune(
+        () => effectiveRoomTags(room.roomId),
+        [room.roomId],
+        {
+            isEqual: shallowEqual,
+        },
+    );
     const myPowerLevel = getMyPowerLevel(room);
     // Rank decides who may act on whom (creators outrank admins); the level is
     // still the ceiling for hand-typed levels.
@@ -1276,11 +1387,232 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         }
     }
 
+    // The name of the room's tag covering `level` (its own tags, or the
+    // defaults).
     function plLabel(level: number): string {
+        const resolved = tagForPowerLevel(roomTags.tags, level);
+        if (resolved) return resolved.tag.name;
         if (level < 0) return t("roomSettings.muted");
-        if (level >= 100) return t("roomSettings.admin");
-        if (level >= 50) return t("roomSettings.moderator");
         return t("roomSettings.member");
+    }
+
+    // ── Role tags editor (MSC3949) ─────────────────────────────────────────────
+    interface RoleTagRow {
+        key: number;
+        level: string;
+        name: string;
+        color: string;
+        icon: string;
+        iconInfo?: Record<string, unknown>;
+    }
+    const roleTagSeq = useRef(0);
+    const [roleTagRows, setRoleTagRows] = useState<RoleTagRow[]>([]);
+    const [roleTagsDirty, setRoleTagsDirty] = useState(false);
+    const [roleTagsSaving, setRoleTagsSaving] = useState(false);
+    const [roleTagsUsingDefaults, setRoleTagsUsingDefaults] = useState(false);
+    const [roleTagIconBusy, setRoleTagIconBusy] = useState<number | null>(null);
+    const canEditTags = (void roomsTick, canEditPowerLevelTags(room.roomId));
+
+    function roleTagRowFromTag(level: number, tag: PowerLevelTag): RoleTagRow {
+        return {
+            key: ++roleTagSeq.current,
+            level: String(level),
+            name: tag.name,
+            color: tag.color ?? "",
+            icon: tag.icon?.key ?? "",
+            iconInfo: tag.icon?.info,
+        };
+    }
+
+    // Replace the editor rows with the room's current tags (or the defaults).
+    // Zami: an effect event, so it reads the latest tags without being a
+    // dependency of the effects that call it.
+    const seedRoleTagRows = useEffectEvent((): void => {
+        const info = effectiveRoomTags(room.roomId);
+        setRoleTagRows(
+            sortedTagLevels(info.tags).map((level) =>
+                roleTagRowFromTag(level, info.tags[level]),
+            ),
+        );
+        setRoleTagsUsingDefaults(!info.custom);
+        setRoleTagsDirty(false);
+    });
+
+    // Reseed on room switch; reseed on tag changes only while the editor has
+    // no unsaved edits, so an incoming change never discards typing.
+    useEffect(() => {
+        void room.roomId;
+        seedRoleTagRows();
+    }, [room.roomId]);
+    useEffect(() => {
+        const release = acquirePowerLevelTags(room.roomId);
+        return release;
+    }, [room.roomId]);
+    const reseedRoleTagsIfClean = useEffectEvent(() => {
+        if (!roleTagsDirty) seedRoleTagRows();
+    });
+    useEffect(() => {
+        void roomTags;
+        reseedRoleTagsIfClean();
+    }, [roomTags]);
+
+    // Options for a member's role select: the room's tag levels the actor may
+    // grant (at or below their own level), plus Muted (-1). A current level
+    // no tag covers is still listed, so the select never shows a wrong value.
+    function roleSelectOptions(
+        myLevel: number,
+        currentLevel: number,
+    ): { level: number; label: string }[] {
+        const tags = roomTags.tags;
+        const levels = new Set<number>();
+        for (const level of sortedTagLevels(tags)) {
+            if (level <= myLevel) levels.add(level);
+        }
+        levels.add(-1);
+        levels.add(currentLevel);
+        return [...levels]
+            .sort((a, b) => b - a)
+            .map((level) => {
+                const tag = tags[level];
+                if (tag) {
+                    return { level, label: `${tag.name} (${level})` };
+                }
+                if (level === -1) {
+                    return { level, label: t("roomSettings.muted1") };
+                }
+                return {
+                    level,
+                    label: t("roomSettings.customLevel", { level }),
+                };
+            });
+    }
+
+    function updateRoleTag(key: number, patch: Partial<RoleTagRow>): void {
+        setRoleTagRows((rows) =>
+            rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+        );
+        setRoleTagsDirty(true);
+    }
+
+    function addRoleTag(): void {
+        const used = new Set(roleTagRows.map((r) => Number(r.level)));
+        let level = 0;
+        while (used.has(level)) level++;
+        setRoleTagRows([
+            ...roleTagRows,
+            {
+                key: ++roleTagSeq.current,
+                level: String(level),
+                name: "",
+                color: "",
+                icon: "",
+            },
+        ]);
+        setRoleTagsDirty(true);
+    }
+
+    function removeRoleTag(key: number): void {
+        setRoleTagRows((rows) => rows.filter((r) => r.key !== key));
+        setRoleTagsDirty(true);
+    }
+
+    // Emoji picker for a row's icon. One open at a time: `roleTagPickerKey` is
+    // the row it is showing for, or null. It is a local popover rather than
+    // an interfaceState modal, because the settings dialog already holds the
+    // modal slot and opening another modal would close it.
+    // Zami: it opens over the app as a sheet through Portal (as
+    // ProfileFieldsEditor's status emoji picker does) rather than as a popover
+    // placed under the button, and a press outside it closes it; so there is no
+    // placement to compute and nothing to close on scroll or resize.
+    const [roleTagPickerKey, setRoleTagPickerKey] = useState<number | null>(
+        null,
+    );
+
+    function toggleRoleTagPicker(row: RoleTagRow): void {
+        setRoleTagPickerKey(roleTagPickerKey === row.key ? null : row.key);
+    }
+
+    function pickRoleTagEmoji(key: number, emoji: string): void {
+        updateRoleTag(key, { icon: emoji, iconInfo: undefined });
+        setRoleTagPickerKey(null);
+    }
+
+    function pickRoleTagCustomEmoji(key: number, emoji: CustomEmoji): void {
+        updateRoleTag(key, { icon: emoji.mxcUrl, iconInfo: emoji.info });
+        setRoleTagPickerKey(null);
+    }
+
+    // Zami: <input type="file" accept="image/*"> → expo-image-picker's photo
+    // library, and the picked image as the input's `File`.
+    async function handleRoleTagIconUpload(row: RoleTagRow): Promise<void> {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            quality: 1,
+        });
+        const asset = result.canceled ? undefined : result.assets[0];
+        if (!asset) return;
+        setRoleTagIconBusy(row.key);
+        try {
+            const file = await pickedFile(asset);
+            const mxcUrl = await uploadContent(file);
+            updateRoleTag(row.key, {
+                icon: mxcUrl,
+                iconInfo: file.type
+                    ? { mimetype: file.type, size: file.size }
+                    : { size: file.size },
+            });
+        } catch (err: any) {
+            showErrorToast(err?.message ?? t("roomSettings.uploadFailed"));
+        } finally {
+            setRoleTagIconBusy(null);
+        }
+    }
+
+    async function saveRoleTags(): Promise<void> {
+        const tags: PowerLevelTags = {};
+        for (const row of roleTagRows) {
+            const levelText = row.level.trim();
+            const level = Number(levelText);
+            if (levelText === "" || !Number.isSafeInteger(level)) {
+                showErrorToast(t("roomSettings.roleTagLevelInvalid"));
+                return;
+            }
+            const name = row.name.trim();
+            if (name === "") {
+                showErrorToast(t("roomSettings.roleTagNameRequired"));
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(tags, level)) {
+                showErrorToast(
+                    t("roomSettings.roleTagDuplicateLevel", { level }),
+                );
+                return;
+            }
+            const tag: PowerLevelTag = { name };
+            const color = safeTagColor(row.color);
+            if (color !== undefined) tag.color = color;
+            const iconKey = row.icon.trim();
+            if (iconKey !== "") {
+                tag.icon = row.iconInfo
+                    ? { key: iconKey, info: row.iconInfo }
+                    : { key: iconKey };
+            }
+            tags[level] = tag;
+        }
+        setRoleTagsSaving(true);
+        try {
+            await setRoomPowerLevelTags(room.roomId, tags);
+            setRoleTagsDirty(false);
+            showToast(t("roomSettings.roleTagsSaved"));
+        } catch (err: any) {
+            showErrorToast(
+                t("roomSettings.roleTagsSaveFailed", {
+                    error: err?.message ?? String(err),
+                }),
+            );
+        } finally {
+            setRoleTagsSaving(false);
+        }
     }
 
     // ── Rooms tab (spaces only) ────────────────────────────────────────────────
@@ -1398,7 +1730,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         }
     }
 
-    const tabs = roomSettingsTabs({ isSpace });
+    const tabs = roomSettingsTabs({ isSpace, pluginTabs });
 
     // Zami: Zam's panel fills the viewport on mobile (`h-[100dvh]`); here it
     // keeps clear of the status bar, notch and home indicator.
@@ -1407,13 +1739,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     function stateLoading(): ReactNode {
         return stateLoadError ? (
             <>
-                <Text className="text-sm text-discord-danger">
+                <Text className="text-sm text-zam-danger">
                     {stateLoadError}
                 </Text>
                 <Pressable
                     accessibilityRole="button"
                     onPress={loadFullState}
-                    className="mt-2 self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors"
+                    className="mt-2 self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors"
                 >
                     <Text className="text-white font-medium text-sm">
                         {t("common.retry")}
@@ -1421,7 +1753,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                 </Pressable>
             </>
         ) : (
-            <Text className="text-sm text-discord-textMuted">
+            <Text className="text-sm text-zam-textMuted">
                 {t("common.loading")}
             </Text>
         );
@@ -1432,7 +1764,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
             <Text className="text-sm font-semibold text-amber-400">
                 {stateTrust.label}
             </Text>
-            <Text className="mt-1 text-sm text-discord-textMuted">
+            <Text className="mt-1 text-sm text-zam-textMuted">
                 {stateTrust.tooltip}
             </Text>
         </View>
@@ -1465,7 +1797,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm font-medium text-discord-textPrimary truncate"
+                    className="text-sm font-medium text-zam-textPrimary truncate"
                 >
                     {memberDisplayName(member)}
                     {suffix}
@@ -1473,7 +1805,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                 {showMatrixIds && (
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted truncate"
+                        className="text-xs text-zam-textMuted truncate"
                     >
                         {member.userId}
                     </Text>
@@ -1487,7 +1819,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         return (
             <View
                 key={member.userId}
-                className="rounded bg-discord-backgroundTertiary overflow-hidden"
+                className="rounded bg-zam-backgroundTertiary overflow-hidden"
             >
                 <View className="flex-row items-center gap-3 p-2">
                     <Avatar
@@ -1503,9 +1835,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 accessibilityRole="button"
                                 onPress={() => void doDenyKnock(member.userId)}
                                 disabled={memberActionPending === member.userId}
-                                className="px-2.5 py-1 rounded border border-discord-divider hover:bg-discord-danger hover:border-discord-danger transition-colors disabled:opacity-50"
+                                className="px-2.5 py-1 rounded border border-zam-divider hover:bg-zam-danger hover:border-zam-danger transition-colors disabled:opacity-50"
                             >
-                                <Text className="text-xs font-semibold text-discord-textMuted hover:text-white">
+                                <Text className="text-xs font-semibold text-zam-textMuted hover:text-white">
                                     {t("roomSettings.deny")}
                                 </Text>
                             </Pressable>
@@ -1517,7 +1849,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     void doApproveKnock(member.userId)
                                 }
                                 disabled={memberActionPending === member.userId}
-                                className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                className="px-2.5 py-1 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                             >
                                 <Text className="text-xs font-semibold text-white">
                                     {t("roomSettings.approve")}
@@ -1527,7 +1859,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                     </View>
                 </View>
                 {reason ? (
-                    <Text className="px-3 pb-2 -mt-1 text-xs text-discord-textMuted">
+                    <Text className="px-3 pb-2 -mt-1 text-xs text-zam-textMuted">
                         "{reason}"
                     </Text>
                 ) : null}
@@ -1537,7 +1869,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
     function bannedRow(member: RoomMember) {
         return (
-            <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary">
+            <View className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary">
                 <Avatar
                     src={mxcToHttp(member.getMxcAvatarUrl())}
                     name={member.name}
@@ -1550,9 +1882,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                         accessibilityRole="button"
                         onPress={() => void doUnban(member.userId)}
                         disabled={memberActionPending === member.userId}
-                        className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                        className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                     >
-                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
                             {t("roomSettings.unban")}
                         </Text>
                     </Pressable>
@@ -1575,7 +1907,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
         );
         const pending = memberActionPending === member.userId;
         return (
-            <View className="rounded bg-discord-backgroundTertiary overflow-hidden">
+            <View className="rounded bg-zam-backgroundTertiary overflow-hidden">
                 <View className="flex-row items-center gap-3 p-2">
                     <Avatar
                         src={mxcToHttp(member.getMxcAvatarUrl())}
@@ -1587,7 +1919,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                         member,
                         isSelf ? t("roomSettings.you") : "",
                     )}
-                    <Text className="text-xs text-discord-textMuted flex-shrink-0">
+                    <Text className="text-xs text-zam-textMuted flex-shrink-0">
                         {isCreatorMember
                             ? t("roomSettings.creatorLabel")
                             : `${plLabel(memberPl)} (${memberPl})`}
@@ -1606,17 +1938,17 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         : member.userId,
                                 )
                             }
-                            className="p-1 rounded hover:bg-discord-messageHover transition-colors"
+                            className="p-1 rounded hover:bg-zam-messageHover transition-colors"
                         >
                             <SvgIcon
                                 d={MORE_ICON}
-                                className="w-4 h-4 text-discord-textMuted"
+                                className="w-4 h-4 text-zam-textMuted"
                             />
                         </Pressable>
                     )}
                 </View>
                 {showReasonFor === member.userId && !isSelf && (
-                    <View className="px-3 pb-3 pt-1 border-t border-discord-divider gap-2">
+                    <View className="px-3 pb-3 pt-1 border-t border-zam-divider gap-2">
                         {canActOnMember && (canKick || canBan) && (
                             <TextInput
                                 value={reasonInputs[member.userId] ?? ""}
@@ -1627,8 +1959,8 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     }))
                                 }
                                 placeholder={t("common.reasonOptional")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
-                                className="w-full bg-discord-backgroundSecondary text-discord-textPrimary text-xs rounded px-2 py-1.5 border border-transparent focus:border-discord-accent/50"
+                                placeholderTextColorClassName="accent-zam-textMuted"
+                                className="w-full bg-zam-backgroundSecondary text-zam-textPrimary text-xs rounded px-2 py-1.5 border border-transparent focus:border-zam-accent/50"
                             />
                         )}
                         <View className="flex-row flex-wrap items-center gap-2">
@@ -1636,64 +1968,27 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 (myPowerLevel >= 100 ||
                                     myPowerRank > memberRank) && (
                                     <>
-                                        {/* Zami: the `<select>` keeps showing
-                                            "Set role", as the DOM's does until a
-                                            pick; picking that placeholder is no
-                                            change, so it fires nothing. */}
                                         <Select
-                                            value=""
-                                            onChange={(value) => {
-                                                if (value === "") return;
-                                                void doSetPowerLevel(
-                                                    member,
-                                                    Number(value),
-                                                );
-                                            }}
-                                            disabled={pending}
                                             accessibilityLabel={t(
                                                 "roomSettings.setRole",
                                             )}
-                                            options={[
-                                                {
-                                                    value: "",
-                                                    label: t(
-                                                        "roomSettings.setRole",
-                                                    ),
-                                                },
-                                                ...(myPowerLevel >= 100
-                                                    ? [
-                                                          {
-                                                              value: "100",
-                                                              label: t(
-                                                                  "roomSettings.admin100",
-                                                              ),
-                                                          },
-                                                      ]
-                                                    : []),
-                                                ...(myPowerLevel >= 50
-                                                    ? [
-                                                          {
-                                                              value: "50",
-                                                              label: t(
-                                                                  "roomSettings.moderator50",
-                                                              ),
-                                                          },
-                                                      ]
-                                                    : []),
-                                                {
-                                                    value: "0",
-                                                    label: t(
-                                                        "roomSettings.member0",
-                                                    ),
-                                                },
-                                                {
-                                                    value: "-1",
-                                                    label: t(
-                                                        "roomSettings.muted1",
-                                                    ),
-                                                },
-                                            ]}
-                                            className="w-36 px-2 py-1 rounded bg-discord-backgroundSecondary border border-discord-divider disabled:opacity-50"
+                                            value={String(memberPl)}
+                                            onChange={(value) =>
+                                                void doSetPowerLevel(
+                                                    member,
+                                                    Number(value),
+                                                )
+                                            }
+                                            disabled={pending}
+                                            options={roleSelectOptions(
+                                                myPowerLevel,
+                                                memberPl,
+                                            ).map((opt) => ({
+                                                value: String(opt.level),
+                                                label: opt.label,
+                                                key: String(opt.level),
+                                            }))}
+                                            className="w-36 px-2 py-1 rounded bg-zam-backgroundSecondary border border-zam-divider disabled:opacity-50"
                                         />
                                         <TextInput
                                             keyboardType="numbers-and-punctuation"
@@ -1711,7 +2006,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                             accessibilityLabel={t(
                                                 "roomSettings.setRole",
                                             )}
-                                            className="w-16 px-2 py-1 rounded text-xs bg-discord-backgroundSecondary text-discord-textPrimary border border-discord-divider disabled:opacity-50"
+                                            className="w-16 px-2 py-1 rounded text-xs bg-zam-backgroundSecondary text-zam-textPrimary border border-zam-divider disabled:opacity-50"
                                         />
                                         <Pressable
                                             accessibilityRole="button"
@@ -1722,14 +2017,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 )
                                             }
                                             disabled={!plResult.ok || pending}
-                                            className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                            className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                         >
-                                            <Text className="text-xs font-semibold text-discord-textPrimary">
+                                            <Text className="text-xs font-semibold text-zam-textPrimary">
                                                 {t("roomSettings.set")}
                                             </Text>
                                         </Pressable>
                                         {!plResult.ok && (
-                                            <Text className="text-xs text-discord-danger w-full">
+                                            <Text className="text-xs text-zam-danger w-full">
                                                 {plResult.error}
                                             </Text>
                                         )}
@@ -1740,9 +2035,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     accessibilityRole="button"
                                     onPress={() => void doKick(member.userId)}
                                     disabled={pending}
-                                    className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-warning/20 transition-colors disabled:opacity-50"
+                                    className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-warning/20 transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-warning">
+                                    <Text className="text-xs font-semibold text-zam-warning">
                                         {t("roomSettings.kick")}
                                     </Text>
                                 </Pressable>
@@ -1752,9 +2047,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     accessibilityRole="button"
                                     onPress={() => void doBan(member.userId)}
                                     disabled={pending}
-                                    className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-danger/20 transition-colors disabled:opacity-50"
+                                    className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-danger/20 transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-danger">
+                                    <Text className="text-xs font-semibold text-zam-danger">
                                         {t("roomSettings.ban")}
                                     </Text>
                                 </Pressable>
@@ -1766,9 +2061,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         void doToggleBlock(member.userId)
                                     }
                                     disabled={pending}
-                                    className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                    className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-textPrimary">
+                                    <Text className="text-xs font-semibold text-zam-textPrimary">
                                         {t("common.unblock")}
                                     </Text>
                                 </Pressable>
@@ -1782,9 +2077,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         void doToggleBlock(member.userId)
                                     }
                                     disabled={pending}
-                                    className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-danger/20 transition-colors disabled:opacity-50"
+                                    className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-danger/20 transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-xs font-semibold text-discord-danger">
+                                    <Text className="text-xs font-semibold text-zam-danger">
                                         {t("common.block")}
                                     </Text>
                                 </Pressable>
@@ -1846,7 +2141,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => setShowInvite(true)}
-                        className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors"
+                        className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors"
                     >
                         <Text className="text-sm font-medium text-white">
                             {t("roomSettings.invite")}
@@ -1857,11 +2152,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                     value={memberSearch}
                     onChangeText={setMemberSearch}
                     placeholder={t("roomSettings.searchMembers")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("roomSettings.searchMembers")}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    className="flex-1 min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-1.5 border border-transparent focus:border-discord-accent/50"
+                    className="flex-1 min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-1.5 border border-transparent focus:border-zam-accent/50"
                 />
                 {canBan && (
                     <Pressable
@@ -1870,15 +2165,15 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                         onPress={() => setShowBanned(!showBanned)}
                         className={`px-3 py-1.5 rounded transition-colors ${
                             showBanned
-                                ? "bg-discord-danger"
-                                : "bg-discord-backgroundTertiary"
+                                ? "bg-zam-danger"
+                                : "bg-zam-backgroundTertiary"
                         }`}
                     >
                         <Text
                             className={`text-sm font-medium ${
                                 showBanned
                                     ? "text-white"
-                                    : "text-discord-textMuted hover:text-discord-textPrimary"
+                                    : "text-zam-textMuted hover:text-zam-textPrimary"
                             }`}
                         >
                             {t("roomSettings.banned", {
@@ -1890,14 +2185,12 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
             </View>
 
             {memberError ? (
-                <Text className="text-sm text-discord-danger">
-                    {memberError}
-                </Text>
+                <Text className="text-sm text-zam-danger">{memberError}</Text>
             ) : null}
 
             {canModerateKnocks && knockingMembers.length > 0 && (
                 <View className="gap-1">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("roomSettings.pendingJoinRequests", {
                             length: knockingMembers.length,
                         })}
@@ -1909,7 +2202,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
     );
 
     const textInputClass =
-        "w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50";
+        "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50 disabled:opacity-50";
 
     return (
         <Portal>
@@ -1933,7 +2226,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                     accessibilityViewIsModal
                     aria-labelledby="room-settings-title"
                     onAccessibilityEscape={dismissTopmost}
-                    className="relative z-10 shrink bg-discord-backgroundSecondary rounded-none md:rounded-xl shadow-2xl w-full max-w-2xl flex-col overflow-hidden h-full md:h-[85%]"
+                    className="relative z-10 shrink bg-zam-backgroundSecondary rounded-none md:rounded-xl shadow-2xl w-full max-w-2xl flex-col overflow-hidden h-full md:h-[85%]"
                     style={
                         isMobile
                             ? {
@@ -1947,7 +2240,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                 >
                     {/* Header. On a mobile sub-page the close button is replaced
                         by a back arrow and the title names the category. */}
-                    <View className="flex-row items-center gap-2 px-6 py-4 border-b border-discord-divider flex-shrink-0">
+                    <View className="flex-row items-center gap-2 px-6 py-4 border-b border-zam-divider flex-shrink-0">
                         {view.mode === "detail" && (
                             <Pressable
                                 ref={backButtonEl}
@@ -1956,12 +2249,12 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     "roomSettings.backToSettings",
                                 )}
                                 onPress={goBackToList}
-                                className="-ms-2 p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                                className="-ms-2 p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             >
                                 {/* Zami: `mirror:` (`:dir(rtl)`) → Uniwind's `rtl:`. */}
                                 <ArrowLeft
                                     size={20}
-                                    className="rtl:-scale-x-100 text-discord-textMuted"
+                                    className="rtl:-scale-x-100 text-zam-textMuted"
                                 />
                             </Pressable>
                         )}
@@ -1974,14 +2267,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                             role="heading"
                             accessibilityLabel={
                                 view.mode === "detail"
-                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab)}`
+                                    ? `${room.name} - ${roomSettingsTabLabel(view.tab, pluginTabs)}`
                                     : undefined
                             }
                             numberOfLines={1}
-                            className="text-lg font-bold text-discord-textPrimary min-w-0 truncate flex-1"
+                            className="text-lg font-bold text-zam-textPrimary min-w-0 truncate flex-1"
                         >
                             {view.mode === "detail"
-                                ? roomSettingsTabLabel(view.tab)
+                                ? roomSettingsTabLabel(view.tab, pluginTabs)
                                 : t("roomSettings.settings", {
                                       name: room.name,
                                   })}
@@ -1990,11 +2283,11 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                             accessibilityRole="button"
                             accessibilityLabel={t("roomSettings.closeSettings")}
                             onPress={onClose}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                         >
                             <SvgIcon
                                 d={CLOSE_ICON}
-                                className="w-5 h-5 text-discord-textMuted"
+                                className="w-5 h-5 text-zam-textMuted"
                             />
                         </Pressable>
                     </View>
@@ -2016,17 +2309,17 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         setSelectedTab(tab.id);
                                         setShowInvite(false);
                                     }}
-                                    className="w-full flex-row items-center justify-between gap-3 px-6 py-3.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                    className="w-full flex-row items-center justify-between gap-3 px-6 py-3.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                                 >
                                     <Text
                                         numberOfLines={1}
-                                        className="min-w-0 shrink truncate text-base font-medium text-discord-textPrimary"
+                                        className="min-w-0 shrink truncate text-base font-medium text-zam-textPrimary"
                                     >
                                         {tab.label}
                                     </Text>
                                     <ChevronRight
                                         size={20}
-                                        className="rtl:-scale-x-100 flex-shrink-0 text-discord-textMuted"
+                                        className="rtl:-scale-x-100 flex-shrink-0 text-zam-textMuted"
                                     />
                                 </Pressable>
                             ))}
@@ -2036,7 +2329,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                             {view.mode === "desktop" && (
                                 // Desktop: category sidebar beside the active panel.
                                 <ScrollView
-                                    className="flex-shrink-0 grow-0 w-40 border-e border-discord-divider min-h-0"
+                                    className="flex-shrink-0 grow-0 w-40 border-e border-zam-divider min-h-0"
                                     contentContainerClassName="gap-0.5 px-2 py-3"
                                 >
                                     {tabs.map((tab) => (
@@ -2055,7 +2348,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                             }}
                                             className={`flex-shrink-0 w-full px-3 py-2 rounded transition-colors ${
                                                 activeTab === tab.id
-                                                    ? "bg-discord-messageHover"
+                                                    ? "bg-zam-messageHover"
                                                     : ""
                                             }`}
                                         >
@@ -2063,8 +2356,8 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 numberOfLines={1}
                                                 className={`text-sm font-medium ${
                                                     activeTab === tab.id
-                                                        ? "text-discord-textPrimary"
-                                                        : "text-discord-textMuted"
+                                                        ? "text-zam-textPrimary"
+                                                        : "text-zam-textMuted"
                                                 }`}
                                             >
                                                 {tab.label}
@@ -2104,7 +2397,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     renderItem={renderMember}
                                     ListEmptyComponent={
                                         showBanned ? (
-                                            <Text className="text-sm text-discord-textMuted text-center py-4">
+                                            <Text className="text-sm text-zam-textMuted text-center py-4">
                                                 {t(
                                                     "roomSettings.noBannedMembers",
                                                 )}
@@ -2127,7 +2420,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         <View className="mt-8 gap-3">
                                             <Text
                                                 role="heading"
-                                                className="text-lg font-semibold text-discord-textPrimary"
+                                                className="text-lg font-semibold text-zam-textPrimary"
                                             >
                                                 {t("soundboard.title")}
                                             </Text>
@@ -2143,18 +2436,40 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                 >
                                     {trustBanner}
 
-                                    {/* ── General ─────────────────────────────────────────── */}
-                                    {activeTab === "general" ? (
+                                    {/* ── Plugin tab ────────────────────────────────────── */}
+                                    {activePluginTab ? (
+                                        // Zami: the plugin builds DOM into the
+                                        // element (pluginMount), which DomView
+                                        // shows.
+                                        <DomMount
+                                            key={`${activePluginTab.entryId}:${room.roomId}`}
+                                            document={document}
+                                            mount={(el) => {
+                                                const tab = activePluginTab;
+                                                el.setAttribute(
+                                                    "data-zam-plugin",
+                                                    tab.pluginId,
+                                                );
+                                                return pluginMount(el, (el) =>
+                                                    tab.value.render(el, {
+                                                        roomId: room.roomId,
+                                                        isSpace,
+                                                    }),
+                                                ).destroy;
+                                            }}
+                                        />
+                                    ) : /* ── General ─────────────────────────────────────────── */
+                                    activeTab === "general" ? (
                                         <View className="gap-5">
                                             {/* Avatar */}
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                     {t(
                                                         "roomSettings.roomAvatar",
                                                     )}
                                                 </Text>
                                                 <View className="flex-row items-center gap-4">
-                                                    <View className="w-16 h-16 rounded-full bg-discord-backgroundTertiary overflow-hidden flex-shrink-0 items-center justify-center">
+                                                    <View className="w-16 h-16 rounded-full bg-zam-backgroundTertiary overflow-hidden flex-shrink-0 items-center justify-center">
                                                         {currentAvatarUrl ? (
                                                             <Image
                                                                 source={mediaSource(
@@ -2164,7 +2479,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 className="w-full h-full"
                                                             />
                                                         ) : (
-                                                            <Text className="text-2xl font-bold text-discord-textMuted">
+                                                            <Text className="text-2xl font-bold text-zam-textMuted">
                                                                 {room.name?.[0]?.toUpperCase() ??
                                                                     "#"}
                                                             </Text>
@@ -2179,13 +2494,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             disabled={
                                                                 avatarUploading
                                                             }
-                                                            className={`px-3 py-1.5 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors ${
+                                                            className={`px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors ${
                                                                 avatarUploading
                                                                     ? "opacity-50"
                                                                     : ""
                                                             }`}
                                                         >
-                                                            <Text className="text-discord-textPrimary text-sm font-medium">
+                                                            <Text className="text-zam-textPrimary text-sm font-medium">
                                                                 {avatarUploading
                                                                     ? t(
                                                                           "common.uploading",
@@ -2201,7 +2516,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
                                             {/* Name */}
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                     {t("roomSettings.roomName")}
                                                 </Text>
                                                 <TextInput
@@ -2218,7 +2533,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
                                             {/* Topic */}
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                     {t("common.topic")}
                                                 </Text>
                                                 {/* Zami: rows="3" → numberOfLines
@@ -2240,7 +2555,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                             </View>
 
                                             {generalError ? (
-                                                <Text className="text-sm text-discord-danger">
+                                                <Text className="text-sm text-zam-danger">
                                                     {generalError}
                                                 </Text>
                                             ) : null}
@@ -2251,7 +2566,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         void saveGeneral()
                                                     }
                                                     disabled={generalSaving}
-                                                    className="self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                    className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                 >
                                                     <Text className="text-white font-medium text-sm">
                                                         {generalSaving
@@ -2267,14 +2582,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 </Pressable>
                                             )}
 
-                                            <View className="pt-4 mt-2 border-t border-discord-backgroundTertiary gap-3">
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                                            <View className="pt-4 mt-2 border-t border-zam-backgroundTertiary gap-3">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                                                     {t("roomSettings.advanced")}
                                                 </Text>
 
                                                 {/* Room / Space ID (read-only, copyable) */}
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                                         {isSpace
                                                             ? t(
                                                                   "roomSettings.spaceId",
@@ -2287,13 +2602,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         {/* Zami: `<code>`'s box as
                                                             a View, which clips its
                                                             rounded background. */}
-                                                        <View className="flex-1 min-w-0 bg-discord-backgroundTertiary rounded px-3 py-2">
+                                                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
+                                                        <View className="flex-1 min-w-0 bg-zam-backgroundTertiary rounded px-3 py-2">
                                                             <Text
                                                                 selectable
                                                                 numberOfLines={
                                                                     1
                                                                 }
-                                                                className="truncate text-discord-textPrimary text-xs font-mono"
+                                                                className="truncate text-zam-textPrimary text-xs font-mono"
                                                             >
                                                                 {room.roomId}
                                                             </Text>
@@ -2303,9 +2619,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             onPress={() =>
                                                                 void copyRoomId()
                                                             }
-                                                            className="flex-shrink-0 px-3 py-2 rounded bg-discord-backgroundTertiary hover:bg-discord-messageHover transition-colors"
+                                                            className="flex-shrink-0 px-3 py-2 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors"
                                                         >
-                                                            <Text className="text-discord-textPrimary text-sm font-medium">
+                                                            <Text className="text-zam-textPrimary text-sm font-medium">
                                                                 {idCopied
                                                                     ? t(
                                                                           "roomSettings.copied",
@@ -2320,7 +2636,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
                                                 {!isSpace && roomVersionCap && (
                                                     <View className="gap-2">
-                                                        <Text className="text-xs text-discord-textMuted">
+                                                        <Text className="text-xs text-zam-textMuted">
                                                             {t(
                                                                 "roomSettings.roomVersionV",
                                                                 {
@@ -2331,7 +2647,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         </Text>
                                                         {upgradeState.isCurrentLatest ||
                                                         !upgradeState.available ? (
-                                                            <Text className="text-sm text-discord-textMuted">
+                                                            <Text className="text-sm text-zam-textMuted">
                                                                 {
                                                                     upgradeState.reason
                                                                 }
@@ -2347,7 +2663,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         "",
                                                                     );
                                                                 }}
-                                                                className="self-start px-4 py-2 bg-discord-danger hover:opacity-90 rounded transition-colors"
+                                                                className="self-start px-4 py-2 bg-zam-danger hover:opacity-90 rounded transition-colors"
                                                             >
                                                                 <Text className="text-white font-medium text-sm">
                                                                     {t(
@@ -2357,7 +2673,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             </Pressable>
                                                         ) : (
                                                             <View className="gap-2">
-                                                                <Text className="text-sm text-discord-textPrimary">
+                                                                <Text className="text-sm text-zam-textPrimary">
                                                                     {t(
                                                                         "roomSettings.thisCreatesANewRoomOn",
                                                                         {
@@ -2370,13 +2686,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     upgradeState.recommendedVersion,
                                                                 ) && (
                                                                     <Details
-                                                                        className="rounded border border-discord-divider px-3 py-2"
+                                                                        className="rounded border border-zam-divider px-3 py-2"
                                                                         summary={
-                                                                            <Text className="shrink text-sm text-discord-textPrimary">
+                                                                            <Text className="shrink text-sm text-zam-textPrimary">
                                                                                 {t(
                                                                                     "roomSettings.additionalCreators",
                                                                                 )}{" "}
-                                                                                <Text className="text-xs text-discord-textMuted">
+                                                                                <Text className="text-xs text-zam-textMuted">
                                                                                     {t(
                                                                                         "quickActions.optional",
                                                                                     )}
@@ -2385,7 +2701,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         }
                                                                     >
                                                                         <View className="mt-2 flex-col gap-2">
-                                                                            <Text className="text-xs text-discord-textMuted">
+                                                                            <Text className="text-xs text-zam-textMuted">
                                                                                 {t(
                                                                                     "roomSettings.additionalCreatorsHint",
                                                                                 )}
@@ -2409,7 +2725,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     </Details>
                                                                 )}
                                                                 {upgradeError ? (
-                                                                    <Text className="text-sm text-discord-danger">
+                                                                    <Text className="text-sm text-zam-danger">
                                                                         {
                                                                             upgradeError
                                                                         }
@@ -2424,7 +2740,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         disabled={
                                                                             upgrading
                                                                         }
-                                                                        className="px-4 py-2 bg-discord-danger hover:opacity-90 rounded transition-colors disabled:opacity-50"
+                                                                        className="px-4 py-2 bg-zam-danger hover:opacity-90 rounded transition-colors disabled:opacity-50"
                                                                     >
                                                                         <Text className="text-white font-medium text-sm">
                                                                             {upgrading
@@ -2452,9 +2768,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         disabled={
                                                                             upgrading
                                                                         }
-                                                                        className="px-4 py-2 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                                        className="px-4 py-2 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                                                     >
-                                                                        <Text className="text-sm font-medium text-discord-textMuted hover:text-discord-textPrimary">
+                                                                        <Text className="text-sm font-medium text-zam-textMuted hover:text-zam-textPrimary">
                                                                             {t(
                                                                                 "common.cancel",
                                                                             )}
@@ -2474,7 +2790,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         ) : (
                                             <View className="gap-5">
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.whoCanJoin",
                                                         )}
@@ -2559,7 +2875,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             }`}
                                                         />
                                                         {restrictedJoin.reason ? (
-                                                            <Text className="text-xs text-discord-textMuted ms-6">
+                                                            <Text className="text-xs text-zam-textMuted ms-6">
                                                                 {
                                                                     restrictedJoin.reason
                                                                 }
@@ -2569,7 +2885,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 </View>
 
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.messageHistory",
                                                         )}
@@ -2632,7 +2948,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 </View>
 
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.guestAccess",
                                                         )}
@@ -2654,7 +2970,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 : ""
                                                         }`}
                                                     />
-                                                    <Text className="text-xs text-discord-textMuted mt-1">
+                                                    <Text className="text-xs text-zam-textMuted mt-1">
                                                         {t(
                                                             "roomSettings.guestsAreAnonymousAccountsTheHomeserver",
                                                         )}
@@ -2662,7 +2978,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 </View>
 
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.discoverability",
                                                         )}
@@ -2700,7 +3016,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 : ""
                                                         }`}
                                                     />
-                                                    <Text className="text-xs text-discord-textMuted mt-1">
+                                                    <Text className="text-xs text-zam-textMuted mt-1">
                                                         {isSpace
                                                             ? t(
                                                                   "roomSettings.listsTheSpaceByIdBeingFound",
@@ -2710,19 +3026,19 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                               )}
                                                     </Text>
                                                     {dirError ? (
-                                                        <Text className="text-sm text-discord-danger mt-1">
+                                                        <Text className="text-sm text-zam-danger mt-1">
                                                             {dirError}
                                                         </Text>
                                                     ) : null}
                                                 </View>
 
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.addresses",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted mb-2">
+                                                    <Text className="text-xs text-zam-textMuted mb-2">
                                                         {isSpace
                                                             ? t(
                                                                   "roomSettings.aPublishedAddressLetsPeopleFindSpace",
@@ -2732,7 +3048,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                               )}
                                                     </Text>
                                                     {!aliasesLoaded ? (
-                                                        <Text className="text-xs text-discord-textMuted">
+                                                        <Text className="text-xs text-zam-textMuted">
                                                             {t(
                                                                 "roomSettings.loadingAddresses",
                                                             )}
@@ -2742,7 +3058,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             {sortedAliases.length ===
                                                             0 ? (
                                                                 !aliasError ? (
-                                                                    <Text className="text-xs text-discord-textMuted">
+                                                                    <Text className="text-xs text-zam-textMuted">
                                                                         {t(
                                                                             "roomSettings.noAddressesYet",
                                                                         )}
@@ -2767,7 +3083,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                     numberOfLines={
                                                                                         1
                                                                                     }
-                                                                                    className="shrink text-sm text-discord-textPrimary font-mono truncate"
+                                                                                    className="shrink text-sm text-zam-textPrimary font-mono truncate"
                                                                                 >
                                                                                     {
                                                                                         alias
@@ -2775,7 +3091,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                 </Text>
                                                                                 {alias ===
                                                                                     canonicalAlias && (
-                                                                                    <View className="shrink-0 bg-discord-accent rounded px-1.5 py-0.5">
+                                                                                    <View className="shrink-0 bg-zam-accent rounded px-1.5 py-0.5">
                                                                                         <Text className="text-[10px] uppercase tracking-wide text-white">
                                                                                             {t(
                                                                                                 "roomSettings.main",
@@ -2801,7 +3117,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                     }
                                                                                     className="ms-auto shrink-0 disabled:opacity-50"
                                                                                 >
-                                                                                    <Text className="text-xs text-discord-danger hover:underline">
+                                                                                    <Text className="text-xs text-zam-danger hover:underline">
                                                                                         {t(
                                                                                             "common.remove",
                                                                                         )}
@@ -2818,7 +3134,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     0 && (
                                                                     <View className="flex-row items-end gap-1.5 mt-3 min-w-0">
                                                                         <View className="flex-1 min-w-0">
-                                                                            <Text className="text-xs text-discord-textMuted mb-1">
+                                                                            <Text className="text-xs text-zam-textMuted mb-1">
                                                                                 {t(
                                                                                     "roomSettings.mainAddress",
                                                                                 )}
@@ -2852,7 +3168,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                         }),
                                                                                     ),
                                                                                 ]}
-                                                                                className="w-full px-2 py-1.5 bg-discord-backgroundTertiary rounded border border-discord-divider disabled:opacity-50"
+                                                                                className="w-full px-2 py-1.5 bg-zam-backgroundTertiary rounded border border-zam-divider disabled:opacity-50"
                                                                             />
                                                                         </View>
                                                                         <Pressable
@@ -2864,7 +3180,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                 aliasBusy ||
                                                                                 !mainAliasDirty
                                                                             }
-                                                                            className="shrink-0 px-3 py-1.5 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                                            className="shrink-0 px-3 py-1.5 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                                         >
                                                                             <Text className="text-white text-sm font-medium">
                                                                                 {t(
@@ -2876,7 +3192,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 )}
 
                                                             <View className="flex-row items-center gap-1.5 mt-3">
-                                                                <Text className="text-sm text-discord-textMuted shrink-0">
+                                                                <Text className="text-sm text-zam-textMuted shrink-0">
                                                                     #
                                                                 </Text>
                                                                 <TextInput
@@ -2889,7 +3205,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     placeholder={t(
                                                                         "roomSettings.myRoom",
                                                                     )}
-                                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                                     accessibilityLabel={t(
                                                                         "roomSettings.addresses",
                                                                     )}
@@ -2904,13 +3220,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     onSubmitEditing={() =>
                                                                         void addAlias()
                                                                     }
-                                                                    className="flex-1 min-w-0 px-2 py-1.5 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded border border-discord-divider disabled:opacity-50"
+                                                                    className="flex-1 min-w-0 px-2 py-1.5 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded border border-zam-divider disabled:opacity-50"
                                                                 />
                                                                 <Text
                                                                     numberOfLines={
                                                                         1
                                                                     }
-                                                                    className="text-sm text-discord-textMuted shrink-0 max-w-[40%] truncate"
+                                                                    className="text-sm text-zam-textMuted shrink-0 max-w-[40%] truncate"
                                                                 >
                                                                     :{ownServer}
                                                                 </Text>
@@ -2924,7 +3240,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         !ownServer ||
                                                                         !newAliasCheck.valid
                                                                     }
-                                                                    className="shrink-0 px-3 py-1.5 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                                    className="shrink-0 px-3 py-1.5 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                                 >
                                                                     <Text className="text-white text-sm font-medium">
                                                                         {t(
@@ -2935,7 +3251,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             </View>
                                                             {newAliasLocalpart.trim() &&
                                                             newAliasCheck.reason ? (
-                                                                <Text className="text-xs text-discord-danger mt-1">
+                                                                <Text className="text-xs text-zam-danger mt-1">
                                                                     {
                                                                         newAliasCheck.reason
                                                                     }
@@ -2944,14 +3260,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         </>
                                                     )}
                                                     {aliasError ? (
-                                                        <Text className="text-sm text-discord-danger mt-1">
+                                                        <Text className="text-sm text-zam-danger mt-1">
                                                             {aliasError}
                                                         </Text>
                                                     ) : null}
                                                 </View>
 
                                                 {accessError ? (
-                                                    <Text className="text-sm text-discord-danger">
+                                                    <Text className="text-sm text-zam-danger">
                                                         {accessError}
                                                     </Text>
                                                 ) : null}
@@ -2962,7 +3278,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             void saveAccess()
                                                         }
                                                         disabled={accessSaving}
-                                                        className="self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                        className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                     >
                                                         <Text className="text-white font-medium text-sm">
                                                             {accessSaving
@@ -2981,22 +3297,22 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 )}
 
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.serverAccessControl",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted mb-3">
+                                                    <Text className="text-xs text-zam-textMuted mb-3">
                                                         {t(
                                                             "roomSettings.controlWhichHomeserversMayParticipateIn",
                                                         )}{" "}
-                                                        <Text className="text-xs text-discord-textMuted font-mono">
+                                                        <Text className="text-xs text-zam-textMuted font-mono">
                                                             *
                                                         </Text>{" "}
                                                         {t(
                                                             "roomSettings.matchesAnyCharacters",
                                                         )}{" "}
-                                                        <Text className="text-xs text-discord-textMuted font-mono">
+                                                        <Text className="text-xs text-zam-textMuted font-mono">
                                                             ?
                                                         </Text>{" "}
                                                         {t(
@@ -3005,14 +3321,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                     </Text>
 
                                                     {!aclPresent && (
-                                                        <Text className="text-xs text-discord-textMuted mb-3">
+                                                        <Text className="text-xs text-zam-textMuted mb-3">
                                                             {t(
                                                                 "roomSettings.noServerAclIsSetAll",
                                                             )}
                                                         </Text>
                                                     )}
 
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1">
                                                         {t(
                                                             "roomSettings.allowedServersOnePerLine",
                                                         )}
@@ -3033,14 +3349,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             canEditServerAcl
                                                         }
                                                         placeholder="*"
-                                                        placeholderTextColorClassName="accent-discord-textMuted"
+                                                        placeholderTextColorClassName="accent-zam-textMuted"
                                                         autoCapitalize="none"
                                                         autoCorrect={false}
                                                         spellCheck={false}
                                                         className={`min-h-[76px] font-mono ${textInputClass}`}
                                                     />
 
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1 mt-3">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1 mt-3">
                                                         {t(
                                                             "roomSettings.deniedServersOnePerLine",
                                                         )}
@@ -3090,9 +3406,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                             size={
                                                                                 14
                                                                             }
-                                                                            className="text-discord-danger"
+                                                                            className="text-zam-danger"
                                                                         />
-                                                                        <Text className="text-sm text-discord-danger">
+                                                                        <Text className="text-sm text-zam-danger">
                                                                             {w}
                                                                         </Text>
                                                                     </View>
@@ -3101,7 +3417,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         </View>
                                                     )}
                                                     {aclError ? (
-                                                        <Text className="text-sm text-discord-danger mt-2">
+                                                        <Text className="text-sm text-zam-danger mt-2">
                                                             {aclError}
                                                         </Text>
                                                     ) : null}
@@ -3113,7 +3429,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 void saveServerAcl()
                                                             }
                                                             disabled={aclSaving}
-                                                            className="mt-3 self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                            className="mt-3 self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                         >
                                                             <Text className="text-white font-medium text-sm">
                                                                 {aclSaving
@@ -3130,7 +3446,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             </Text>
                                                         </Pressable>
                                                     ) : (
-                                                        <Text className="text-xs text-discord-textMuted mt-2">
+                                                        <Text className="text-xs text-zam-textMuted mt-2">
                                                             {t(
                                                                 "roomSettings.youDoNotHavePermissionTo",
                                                             )}
@@ -3143,10 +3459,10 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     activeTab === "notifications" ? (
                                         <View className="gap-5">
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                     {t("common.notifications")}
                                                 </Text>
-                                                <Text className="text-xs text-discord-textMuted mb-3">
+                                                <Text className="text-xs text-zam-textMuted mb-3">
                                                     {isSpace
                                                         ? t(
                                                               "roomSettings.chooseHowThisSpaceNotifiesYou",
@@ -3191,10 +3507,10 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         val,
                                                                     )
                                                                 }
-                                                                className={`w-full px-3 py-2 rounded flex-row items-start gap-3 transition-colors hover:bg-discord-messageHover disabled:opacity-60 ${
+                                                                className={`w-full px-3 py-2 rounded flex-row items-start gap-3 transition-colors hover:bg-zam-messageHover disabled:opacity-60 ${
                                                                     notifSetting ===
                                                                     val
-                                                                        ? "bg-discord-messageHover"
+                                                                        ? "bg-zam-messageHover"
                                                                         : ""
                                                                 }`}
                                                             >
@@ -3206,15 +3522,92 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                                 8
                                                                             }
                                                                             fill="currentColor"
-                                                                            className="text-discord-accent"
+                                                                            className="text-zam-accent"
                                                                         />
                                                                     )}
                                                                 </View>
                                                                 <View className="min-w-0 flex-1">
-                                                                    <Text className="text-sm font-medium text-discord-textPrimary">
+                                                                    <Text className="text-sm font-medium text-zam-textPrimary">
                                                                         {label}
                                                                     </Text>
-                                                                    <Text className="text-xs text-discord-textMuted">
+                                                                    <Text className="text-xs text-zam-textMuted">
+                                                                        {desc}
+                                                                    </Text>
+                                                                </View>
+                                                            </Pressable>
+                                                        ),
+                                                    )}
+                                                </View>
+                                            </View>
+                                            <View>
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
+                                                    {t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                </Text>
+                                                <Text className="text-xs text-zam-textMuted mb-3">
+                                                    {isSpace
+                                                        ? t(
+                                                              "roomSettings.readReceiptsSpaceHelp",
+                                                          )
+                                                        : t(
+                                                              "roomSettings.readReceiptsRoomHelp",
+                                                          )}
+                                                </Text>
+                                                <View
+                                                    className="flex-col gap-1"
+                                                    accessibilityRole="radiogroup"
+                                                    accessibilityLabel={t(
+                                                        "roomSettings.readReceipts",
+                                                    )}
+                                                >
+                                                    {RECEIPT_CHOICES.map(
+                                                        ([
+                                                            val,
+                                                            label,
+                                                            desc,
+                                                        ]) => (
+                                                            <Pressable
+                                                                key={
+                                                                    val ??
+                                                                    "default"
+                                                                }
+                                                                accessibilityRole="radio"
+                                                                accessibilityState={{
+                                                                    checked:
+                                                                        receiptChoice ===
+                                                                        val,
+                                                                }}
+                                                                onPress={() =>
+                                                                    setReceiptOverride(
+                                                                        room.roomId,
+                                                                        val,
+                                                                    )
+                                                                }
+                                                                className={`w-full px-3 py-2 rounded flex-row items-start gap-3 transition-colors hover:bg-zam-messageHover ${
+                                                                    receiptChoice ===
+                                                                    val
+                                                                        ? "bg-zam-messageHover"
+                                                                        : ""
+                                                                }`}
+                                                            >
+                                                                <View className="mt-0.5 w-3 flex-row items-center justify-center flex-shrink-0">
+                                                                    {receiptChoice ===
+                                                                        val && (
+                                                                        <Circle
+                                                                            size={
+                                                                                8
+                                                                            }
+                                                                            fill="currentColor"
+                                                                            className="text-zam-accent"
+                                                                        />
+                                                                    )}
+                                                                </View>
+                                                                <View className="min-w-0 flex-1">
+                                                                    <Text className="text-sm font-medium text-zam-textPrimary">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <Text className="text-xs text-zam-textMuted">
                                                                         {desc}
                                                                     </Text>
                                                                 </View>
@@ -3228,7 +3621,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     activeTab === "security" ? (
                                         <View className="gap-5">
                                             <View>
-                                                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                     {t(
                                                         "roomSettings.encryption",
                                                     )}
@@ -3236,15 +3629,15 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 <View
                                                     className={`self-start px-1.5 py-0.5 rounded ${
                                                         encrypted
-                                                            ? "bg-discord-accent/20"
-                                                            : "bg-discord-messageHover"
+                                                            ? "bg-zam-accent/20"
+                                                            : "bg-zam-messageHover"
                                                     }`}
                                                 >
                                                     <Text
                                                         className={`text-[10px] font-semibold uppercase ${
                                                             encrypted
-                                                                ? "text-discord-accent"
-                                                                : "text-discord-textMuted"
+                                                                ? "text-zam-accent"
+                                                                : "text-zam-textMuted"
                                                         }`}
                                                     >
                                                         {encrypted
@@ -3256,7 +3649,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                               )}
                                                     </Text>
                                                 </View>
-                                                <Text className="text-xs text-discord-textMuted mt-2">
+                                                <Text className="text-xs text-zam-textMuted mt-2">
                                                     {encrypted
                                                         ? t(
                                                               "roomSettings.messagesInThisRoomAreEnd",
@@ -3267,12 +3660,12 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
                                             {encrypted && (
                                                 <View>
-                                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                                                         {t(
                                                             "roomSettings.roomKey",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted mb-2">
+                                                    <Text className="text-xs text-zam-textMuted mb-2">
                                                         {t(
                                                             "roomSettings.resetRoomKeyHint",
                                                         )}
@@ -3285,23 +3678,23 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                         disabled={
                                                             roomKeyResetting
                                                         }
-                                                        className="self-start px-4 py-2 bg-discord-backgroundTertiary hover:bg-discord-messageHover rounded transition-colors disabled:opacity-50"
+                                                        className="self-start px-4 py-2 bg-zam-backgroundTertiary hover:bg-zam-messageHover rounded transition-colors disabled:opacity-50"
                                                     >
-                                                        <Text className="text-discord-textPrimary font-medium text-sm">
+                                                        <Text className="text-zam-textPrimary font-medium text-sm">
                                                             {t(
                                                                 "roomSettings.resetRoomKey",
                                                             )}
                                                         </Text>
                                                     </Pressable>
                                                     {roomKeyResetDone && (
-                                                        <Text className="text-sm text-discord-online mt-2">
+                                                        <Text className="text-sm text-zam-online mt-2">
                                                             {t(
                                                                 "crypto.roomKeyDiscarded",
                                                             )}
                                                         </Text>
                                                     )}
                                                     {roomKeyResetError ? (
-                                                        <Text className="text-sm text-discord-danger mt-2">
+                                                        <Text className="text-sm text-zam-danger mt-2">
                                                             {roomKeyResetError}
                                                         </Text>
                                                     ) : null}
@@ -3310,7 +3703,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
 
                                             {!encrypted &&
                                                 (!encState.canEnable ? (
-                                                    <Text className="text-sm text-discord-textMuted">
+                                                    <Text className="text-sm text-zam-textMuted">
                                                         {encState.reason}
                                                     </Text>
                                                 ) : !encShowConfirm ? (
@@ -3325,7 +3718,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             );
                                                             setEncError("");
                                                         }}
-                                                        className="self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors"
+                                                        className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors"
                                                     >
                                                         <Text className="text-white font-medium text-sm">
                                                             {t(
@@ -3335,7 +3728,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                     </Pressable>
                                                 ) : (
                                                     <View className="gap-2">
-                                                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                                                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                                                             {t(
                                                                 "roomSettings.typeToConfirm",
                                                                 {
@@ -3360,13 +3753,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                             placeholder={
                                                                 ENABLE_ENCRYPTION_CONFIRM_PHRASE
                                                             }
-                                                            placeholderTextColorClassName="accent-discord-textMuted"
+                                                            placeholderTextColorClassName="accent-zam-textMuted"
                                                             autoCapitalize="characters"
                                                             autoCorrect={false}
-                                                            className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                                            className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                                                         />
                                                         {encError ? (
-                                                            <Text className="text-sm text-discord-danger">
+                                                            <Text className="text-sm text-zam-danger">
                                                                 {encError}
                                                             </Text>
                                                         ) : null}
@@ -3382,7 +3775,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         encConfirmInput,
                                                                     )
                                                                 }
-                                                                className="px-4 py-2 bg-discord-danger hover:opacity-90 rounded transition-colors disabled:opacity-50"
+                                                                className="px-4 py-2 bg-zam-danger hover:opacity-90 rounded transition-colors disabled:opacity-50"
                                                             >
                                                                 <Text className="text-white font-medium text-sm">
                                                                     {encEnabling
@@ -3410,9 +3803,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 disabled={
                                                                     encEnabling
                                                                 }
-                                                                className="px-4 py-2 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                                className="px-4 py-2 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                                             >
-                                                                <Text className="text-sm font-medium text-discord-textMuted hover:text-discord-textPrimary">
+                                                                <Text className="text-sm font-medium text-zam-textMuted hover:text-zam-textPrimary">
                                                                     {t(
                                                                         "common.cancel",
                                                                     )}
@@ -3424,80 +3817,126 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                         </View>
                                     ) : /* ── Permissions ─────────────────────────────────────── */
                                     activeTab === "permissions" ? (
-                                        <View className="gap-4">
-                                            <Text className="text-xs text-discord-textMuted">
-                                                {t(
-                                                    "roomSettings.powerLevelRequiredForEachAction",
-                                                )}
-                                            </Text>
-                                            {!stateLoaded ? (
-                                                stateLoading()
-                                            ) : (
-                                                <>
-                                                    {[
-                                                        [
-                                                            "Send messages",
-                                                            "plEventsDefault",
-                                                        ],
-                                                        [
-                                                            "Change room settings",
-                                                            "plStateDefault",
-                                                        ],
-                                                        [
-                                                            "Default member level",
-                                                            "plUsersDefault",
-                                                        ],
-                                                        [
-                                                            "Invite members",
-                                                            "plInvite",
-                                                        ],
-                                                        [
-                                                            "Kick members",
-                                                            "plKick",
-                                                        ],
-                                                        [
-                                                            "Ban members",
-                                                            "plBan",
-                                                        ],
-                                                        [
-                                                            "Redact messages",
-                                                            "plRedact",
-                                                        ],
-                                                        ...(isSpace
-                                                            ? []
-                                                            : [
-                                                                  [
-                                                                      t(
-                                                                          "roomSettings.nameAnyThread",
-                                                                      ),
-                                                                      "plThreadName",
-                                                                  ],
-                                                              ]),
-                                                    ].map(([label, key]) => (
-                                                        <View
-                                                            key={key}
-                                                            className="flex-row items-center justify-between gap-4"
-                                                        >
-                                                            <Text className="shrink text-sm text-discord-textPrimary">
-                                                                {label}
+                                        <>
+                                            <View className="gap-4">
+                                                <Text className="text-xs text-zam-textMuted">
+                                                    {t(
+                                                        "roomSettings.powerLevelRequiredForEachAction",
+                                                    )}
+                                                </Text>
+                                                {!stateLoaded ? (
+                                                    stateLoading()
+                                                ) : (
+                                                    <>
+                                                        {[
+                                                            [
+                                                                "Send messages",
+                                                                "plEventsDefault",
+                                                            ],
+                                                            [
+                                                                "Change room settings",
+                                                                "plStateDefault",
+                                                            ],
+                                                            [
+                                                                "Default member level",
+                                                                "plUsersDefault",
+                                                            ],
+                                                            [
+                                                                "Invite members",
+                                                                "plInvite",
+                                                            ],
+                                                            [
+                                                                "Kick members",
+                                                                "plKick",
+                                                            ],
+                                                            [
+                                                                "Ban members",
+                                                                "plBan",
+                                                            ],
+                                                            [
+                                                                "Redact messages",
+                                                                "plRedact",
+                                                            ],
+                                                            ...(isSpace
+                                                                ? []
+                                                                : [
+                                                                      [
+                                                                          t(
+                                                                              "roomSettings.nameAnyThread",
+                                                                          ),
+                                                                          "plThreadName",
+                                                                      ],
+                                                                  ]),
+                                                        ].map(
+                                                            ([label, key]) => (
+                                                                <View
+                                                                    key={key}
+                                                                    className="flex-row items-center justify-between gap-4"
+                                                                >
+                                                                    <Text className="shrink text-sm text-zam-textPrimary">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <View className="flex-row items-center gap-2">
+                                                                        <TextInput
+                                                                            keyboardType="number-pad"
+                                                                            accessibilityLabel={
+                                                                                label
+                                                                            }
+                                                                            value={String(
+                                                                                bindings[
+                                                                                    key
+                                                                                ],
+                                                                            )}
+                                                                            onChangeText={(
+                                                                                value,
+                                                                            ) =>
+                                                                                setters[
+                                                                                    key
+                                                                                ](
+                                                                                    Number(
+                                                                                        value,
+                                                                                    ),
+                                                                                )
+                                                                            }
+                                                                            editable={
+                                                                                canEditState
+                                                                            }
+                                                                            className="w-16 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
+                                                                        />
+                                                                        <Text className="text-xs text-zam-textMuted w-16">
+                                                                            {plLabel(
+                                                                                bindings[
+                                                                                    key
+                                                                                ],
+                                                                            )}
+                                                                        </Text>
+                                                                    </View>
+                                                                </View>
+                                                            ),
+                                                        )}
+
+                                                        {/* Call-join lives in the events map (3 call-member
+                                                        types), not a top-level PL field, so it sits outside
+                                                        the scalar loop above and binds to plCallJoin. */}
+                                                        <View className="flex-row items-center justify-between gap-4">
+                                                            <Text className="shrink text-sm text-zam-textPrimary">
+                                                                {t(
+                                                                    "roomSettings.joinCallsVoiceVideo",
+                                                                )}
                                                             </Text>
                                                             <View className="flex-row items-center gap-2">
                                                                 <TextInput
                                                                     keyboardType="number-pad"
-                                                                    accessibilityLabel={
-                                                                        label
-                                                                    }
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.joinCallsVoiceVideo",
+                                                                    )}
                                                                     value={String(
-                                                                        bindings[
-                                                                            key
-                                                                        ],
+                                                                        plCallJoin,
                                                                     )}
                                                                     onChangeText={(
                                                                         value,
                                                                     ) =>
-                                                                        setters[
-                                                                            key
-                                                                        ](
+                                                                        setPlCallJoin(
                                                                             Number(
                                                                                 value,
                                                                             ),
@@ -3506,93 +3945,468 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     editable={
                                                                         canEditState
                                                                     }
-                                                                    className="w-16 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-discord-accent/50 text-center disabled:opacity-50"
+                                                                    className="w-16 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
                                                                 />
-                                                                <Text className="text-xs text-discord-textMuted w-16">
+                                                                <Text className="text-xs text-zam-textMuted w-16">
                                                                     {plLabel(
-                                                                        bindings[
-                                                                            key
-                                                                        ],
+                                                                        plCallJoin,
                                                                     )}
                                                                 </Text>
                                                             </View>
                                                         </View>
-                                                    ))}
 
-                                                    {/* Call-join lives in the events map (3 call-member
-                                                        types), not a top-level PL field, so it sits outside
-                                                        the scalar loop above and binds to plCallJoin. */}
-                                                    <View className="flex-row items-center justify-between gap-4">
-                                                        <Text className="shrink text-sm text-discord-textPrimary">
+                                                        {permError ? (
+                                                            <Text className="text-sm text-zam-danger">
+                                                                {permError}
+                                                            </Text>
+                                                        ) : null}
+                                                        {canEditState && (
+                                                            <Pressable
+                                                                accessibilityRole="button"
+                                                                onPress={() =>
+                                                                    void savePermissions()
+                                                                }
+                                                                disabled={
+                                                                    permSaving
+                                                                }
+                                                                className="self-start px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Text className="text-white font-medium text-sm">
+                                                                    {permSaving
+                                                                        ? t(
+                                                                              "common.saving",
+                                                                          )
+                                                                        : permSuccess
+                                                                          ? t(
+                                                                                "roomSettings.saved",
+                                                                            )
+                                                                          : t(
+                                                                                "roomSettings.saveChanges",
+                                                                            )}
+                                                                </Text>
+                                                            </Pressable>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </View>
+
+                                            {/* ── Role tags (MSC3949) ─────────────────────────────── */}
+                                            <View className="gap-3 mt-6 pt-6 border-t border-zam-divider">
+                                                <View className="gap-1">
+                                                    <Text
+                                                        role="heading"
+                                                        className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
+                                                    >
+                                                        {t(
+                                                            "roomSettings.roleTags",
+                                                        )}
+                                                    </Text>
+                                                    <Text className="text-xs text-zam-textMuted">
+                                                        {t(
+                                                            "roomSettings.roleTagsHint",
+                                                        )}
+                                                    </Text>
+                                                    {roleTagsUsingDefaults && (
+                                                        <Text className="text-xs text-zam-textMuted italic">
                                                             {t(
-                                                                "roomSettings.joinCallsVoiceVideo",
+                                                                "roomSettings.roleTagsUsingDefaults",
                                                             )}
                                                         </Text>
-                                                        <View className="flex-row items-center gap-2">
+                                                    )}
+                                                </View>
+
+                                                {roleTagRows.map((row) => {
+                                                    const imageIcon =
+                                                        row.icon.startsWith(
+                                                            "mxc://",
+                                                        );
+                                                    const swatch = safeTagColor(
+                                                        row.color,
+                                                    );
+                                                    return (
+                                                        <View
+                                                            key={row.key}
+                                                            className="flex-row flex-wrap items-center gap-2 p-2 rounded bg-zam-backgroundTertiary"
+                                                        >
                                                             <TextInput
-                                                                keyboardType="number-pad"
+                                                                keyboardType="numbers-and-punctuation"
                                                                 accessibilityLabel={t(
-                                                                    "roomSettings.joinCallsVoiceVideo",
+                                                                    "roomSettings.roleTagLevel",
                                                                 )}
-                                                                value={String(
-                                                                    plCallJoin,
-                                                                )}
+                                                                value={
+                                                                    row.level
+                                                                }
                                                                 onChangeText={(
                                                                     value,
                                                                 ) =>
-                                                                    setPlCallJoin(
-                                                                        Number(
-                                                                            value,
-                                                                        ),
+                                                                    updateRoleTag(
+                                                                        row.key,
+                                                                        {
+                                                                            level: value,
+                                                                        },
                                                                     )
                                                                 }
                                                                 editable={
-                                                                    canEditState
+                                                                    canEditTags &&
+                                                                    !roleTagsSaving
                                                                 }
-                                                                className="w-16 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-discord-accent/50 text-center disabled:opacity-50"
+                                                                className="w-16 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 text-center disabled:opacity-50"
                                                             />
-                                                            <Text className="text-xs text-discord-textMuted w-16">
-                                                                {plLabel(
-                                                                    plCallJoin,
+                                                            <TextInput
+                                                                maxLength={64}
+                                                                placeholder={t(
+                                                                    "roomSettings.roleTagName",
+                                                                )}
+                                                                placeholderTextColorClassName="accent-zam-textMuted"
+                                                                accessibilityLabel={t(
+                                                                    "roomSettings.roleTagName",
+                                                                )}
+                                                                value={row.name}
+                                                                onChangeText={(
+                                                                    value,
+                                                                ) =>
+                                                                    updateRoleTag(
+                                                                        row.key,
+                                                                        {
+                                                                            name: value,
+                                                                        },
+                                                                    )
+                                                                }
+                                                                editable={
+                                                                    canEditTags &&
+                                                                    !roleTagsSaving
+                                                                }
+                                                                className="flex-1 min-w-[8rem] bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                            />
+                                                            {/* Zami: React Native has no
+                                                            <input type="color">: a swatch
+                                                            shows the colour and its hex
+                                                            code is typed (an invalid one
+                                                            is dropped on save, as
+                                                            safeTagColor drops it). */}
+                                                            {/* Zami: not ported: a visual colour picker. */}
+                                                            <View className="flex-row items-center gap-1">
+                                                                <View
+                                                                    className="w-9 h-8 rounded border border-zam-divider"
+                                                                    style={{
+                                                                        backgroundColor:
+                                                                            swatch ??
+                                                                            "#808080",
+                                                                    }}
+                                                                />
+                                                                <TextInput
+                                                                    maxLength={
+                                                                        7
+                                                                    }
+                                                                    autoCapitalize="none"
+                                                                    autoCorrect={
+                                                                        false
+                                                                    }
+                                                                    placeholder="#808080"
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagColor",
+                                                                    )}
+                                                                    value={
+                                                                        row.color
+                                                                    }
+                                                                    onChangeText={(
+                                                                        value,
+                                                                    ) =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                color: value,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    editable={
+                                                                        canEditTags &&
+                                                                        !roleTagsSaving
+                                                                    }
+                                                                    className="w-20 bg-zam-backgroundSecondary text-zam-textPrimary text-xs font-mono rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                                />
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                color: "",
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        !row.color ||
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <Text className="text-xs text-zam-textMuted">
+                                                                        {t(
+                                                                            "roomSettings.roleTagClearColor",
+                                                                        )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                            </View>
+                                                            <View className="flex-row items-center gap-1">
+                                                                {row.icon ? (
+                                                                    <PowerLevelTagBadge
+                                                                        tag={{
+                                                                            name:
+                                                                                row.name ||
+                                                                                "?",
+                                                                            icon: {
+                                                                                key: row.icon,
+                                                                                info: row.iconInfo,
+                                                                            },
+                                                                        }}
+                                                                        showName={
+                                                                            false
+                                                                        }
+                                                                        size="md"
+                                                                    />
+                                                                ) : null}
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        toggleRoleTagPicker(
+                                                                            row,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagPickEmoji",
+                                                                    )}
+                                                                    accessibilityState={{
+                                                                        expanded:
+                                                                            roleTagPickerKey ===
+                                                                            row.key,
+                                                                    }}
+                                                                    className="px-2 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <Smile
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                        className="text-zam-textPrimary"
+                                                                    />
+                                                                </Pressable>
+                                                                <TextInput
+                                                                    maxLength={
+                                                                        256
+                                                                    }
+                                                                    placeholder={t(
+                                                                        "roomSettings.roleTagIcon",
+                                                                    )}
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
+                                                                    accessibilityLabel={t(
+                                                                        "roomSettings.roleTagIcon",
+                                                                    )}
+                                                                    value={
+                                                                        imageIcon
+                                                                            ? ""
+                                                                            : row.icon
+                                                                    }
+                                                                    onChangeText={(
+                                                                        value,
+                                                                    ) =>
+                                                                        updateRoleTag(
+                                                                            row.key,
+                                                                            {
+                                                                                icon: value,
+                                                                                iconInfo:
+                                                                                    undefined,
+                                                                            },
+                                                                        )
+                                                                    }
+                                                                    editable={
+                                                                        canEditTags &&
+                                                                        !roleTagsSaving &&
+                                                                        !imageIcon
+                                                                    }
+                                                                    className="w-28 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
+                                                                />
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        void handleRoleTagIconUpload(
+                                                                            row,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        !canEditTags ||
+                                                                        roleTagsSaving ||
+                                                                        roleTagIconBusy !==
+                                                                            null
+                                                                    }
+                                                                    className="px-2 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                                >
+                                                                    <Text className="text-xs text-zam-textPrimary">
+                                                                        {roleTagIconBusy ===
+                                                                        row.key
+                                                                            ? t(
+                                                                                  "common.uploading",
+                                                                              )
+                                                                            : t(
+                                                                                  "roomSettings.roleTagUploadIcon",
+                                                                              )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                                {row.icon ? (
+                                                                    <Pressable
+                                                                        accessibilityRole="button"
+                                                                        onPress={() =>
+                                                                            updateRoleTag(
+                                                                                row.key,
+                                                                                {
+                                                                                    icon: "",
+                                                                                    iconInfo:
+                                                                                        undefined,
+                                                                                },
+                                                                            )
+                                                                        }
+                                                                        disabled={
+                                                                            !canEditTags ||
+                                                                            roleTagsSaving
+                                                                        }
+                                                                        className="px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                    >
+                                                                        <Text className="text-xs text-zam-textMuted">
+                                                                            {t(
+                                                                                "roomSettings.roleTagRemoveIcon",
+                                                                            )}
+                                                                        </Text>
+                                                                    </Pressable>
+                                                                ) : null}
+                                                            </View>
+                                                            {canEditTags && (
+                                                                <Pressable
+                                                                    accessibilityRole="button"
+                                                                    onPress={() =>
+                                                                        removeRoleTag(
+                                                                            row.key,
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        roleTagsSaving
+                                                                    }
+                                                                    className="ms-auto px-2 py-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
+                                                                >
+                                                                    <Text className="text-xs text-zam-danger">
+                                                                        {t(
+                                                                            "roomSettings.removeRoleTag",
+                                                                        )}
+                                                                    </Text>
+                                                                </Pressable>
+                                                            )}
+                                                        </View>
+                                                    );
+                                                })}
+
+                                                {canEditTags && (
+                                                    <View className="flex-row flex-wrap items-center gap-2">
+                                                        <Pressable
+                                                            accessibilityRole="button"
+                                                            onPress={addRoleTag}
+                                                            disabled={
+                                                                roleTagsSaving
+                                                            }
+                                                            className="px-3 py-1.5 rounded bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                                                        >
+                                                            <Text className="text-sm font-medium text-zam-textPrimary">
+                                                                {t(
+                                                                    "roomSettings.addRoleTag",
                                                                 )}
                                                             </Text>
-                                                        </View>
-                                                    </View>
-
-                                                    {permError ? (
-                                                        <Text className="text-sm text-discord-danger">
-                                                            {permError}
-                                                        </Text>
-                                                    ) : null}
-                                                    {canEditState && (
+                                                        </Pressable>
                                                         <Pressable
                                                             accessibilityRole="button"
                                                             onPress={() =>
-                                                                void savePermissions()
+                                                                void saveRoleTags()
                                                             }
                                                             disabled={
-                                                                permSaving
+                                                                roleTagsSaving
                                                             }
-                                                            className="self-start px-4 py-2 bg-discord-accent hover:bg-discord-accentHover rounded transition-colors disabled:opacity-50"
+                                                            className="px-4 py-2 bg-zam-accent hover:bg-zam-accentHover rounded transition-colors disabled:opacity-50"
                                                         >
                                                             <Text className="text-white font-medium text-sm">
-                                                                {permSaving
+                                                                {roleTagsSaving
                                                                     ? t(
                                                                           "common.saving",
                                                                       )
-                                                                    : permSuccess
-                                                                      ? t(
-                                                                            "roomSettings.saved",
-                                                                        )
-                                                                      : t(
-                                                                            "roomSettings.saveChanges",
-                                                                        )}
+                                                                    : t(
+                                                                          "roomSettings.saveRoleTags",
+                                                                      )}
                                                             </Text>
                                                         </Pressable>
-                                                    )}
-                                                </>
-                                            )}
-                                        </View>
+                                                    </View>
+                                                )}
+
+                                                {/* Zami: the picker is a list, which
+                                                can't sit inline in the settings'
+                                                scroll view: it opens over the app
+                                                as a sheet, and a press outside it
+                                                closes it (upstream's outside
+                                                click). */}
+                                                {roleTagPickerKey !== null && (
+                                                    <Portal>
+                                                        <View
+                                                            className="absolute inset-0"
+                                                            pointerEvents="box-none"
+                                                        >
+                                                            <Pressable
+                                                                accessibilityRole="button"
+                                                                accessibilityLabel={t(
+                                                                    "common.close",
+                                                                )}
+                                                                className="absolute inset-0 z-40"
+                                                                onPress={() =>
+                                                                    setRoleTagPickerKey(
+                                                                        null,
+                                                                    )
+                                                                }
+                                                            />
+                                                            <View
+                                                                className="absolute start-0 end-0 z-50"
+                                                                style={{
+                                                                    bottom: insets.bottom,
+                                                                }}
+                                                            >
+                                                                <EmojiPicker
+                                                                    room={room}
+                                                                    onSelect={(
+                                                                        emoji,
+                                                                    ) =>
+                                                                        pickRoleTagEmoji(
+                                                                            roleTagPickerKey,
+                                                                            emoji,
+                                                                        )
+                                                                    }
+                                                                    onSelectCustom={(
+                                                                        emoji,
+                                                                    ) =>
+                                                                        pickRoleTagCustomEmoji(
+                                                                            roleTagPickerKey,
+                                                                            emoji,
+                                                                        )
+                                                                    }
+                                                                    onClose={() =>
+                                                                        setRoleTagPickerKey(
+                                                                            null,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </View>
+                                                        </View>
+                                                    </Portal>
+                                                )}
+                                            </View>
+                                        </>
                                     ) : /* ── Members ─────────────────────────────────────────── */
                                     activeTab === "members" ? (
                                         // The list itself is the FlatList above.
@@ -3607,9 +4421,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                     ) : /* ── Rooms (space only) ──────────────────────────────── */
                                     activeTab === "rooms" ? (
                                         <View className="gap-3">
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {t("roomSettings.setThe")}{" "}
-                                                <Text className="text-xs text-discord-textMuted font-mono bg-discord-backgroundTertiary">
+                                                <Text className="text-xs text-zam-textMuted font-mono bg-zam-backgroundTertiary">
                                                     order
                                                 </Text>{" "}
                                                 {t(
@@ -3617,7 +4431,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 )}
                                             </Text>
                                             {roomsError ? (
-                                                <Text className="text-sm text-discord-danger">
+                                                <Text className="text-sm text-zam-danger">
                                                     {roomsError}
                                                 </Text>
                                             ) : null}
@@ -3625,9 +4439,9 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                 {spaceChildren.map((child) => (
                                                     <View
                                                         key={child.roomId}
-                                                        className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
+                                                        className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary"
                                                     >
-                                                        <View className="w-7 h-7 rounded-full bg-discord-backgroundSecondary flex-shrink-0 overflow-hidden items-center justify-center">
+                                                        <View className="w-7 h-7 rounded-full bg-zam-backgroundSecondary flex-shrink-0 overflow-hidden items-center justify-center">
                                                             {child.avatarUrl ? (
                                                                 <Image
                                                                     source={mediaSource(
@@ -3637,7 +4451,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     className="w-full h-full"
                                                                 />
                                                             ) : (
-                                                                <Text className="text-xs font-bold text-discord-textMuted">
+                                                                <Text className="text-xs font-bold text-zam-textMuted">
                                                                     {child.name[0]?.toUpperCase() ??
                                                                         "#"}
                                                                 </Text>
@@ -3648,7 +4462,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 numberOfLines={
                                                                     1
                                                                 }
-                                                                className="text-sm font-medium text-discord-textPrimary truncate"
+                                                                className="text-sm font-medium text-zam-textPrimary truncate"
                                                             >
                                                                 {child.name}
                                                             </Text>
@@ -3656,14 +4470,14 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 numberOfLines={
                                                                     1
                                                                 }
-                                                                className="text-xs text-discord-textMuted truncate"
+                                                                className="text-xs text-zam-textMuted truncate"
                                                             >
                                                                 {child.roomId}
                                                             </Text>
                                                         </View>
                                                         {child.suggested && (
-                                                            <View className="bg-discord-accent/10 rounded px-2 py-0.5 flex-shrink-0">
-                                                                <Text className="text-xs font-semibold text-discord-accent">
+                                                            <View className="bg-zam-accent/10 rounded px-2 py-0.5 flex-shrink-0">
+                                                                <Text className="text-xs font-semibold text-zam-accent">
                                                                     {t(
                                                                         "roomSettings.suggested",
                                                                     )}
@@ -3696,8 +4510,8 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                 <Text
                                                                     className={`text-xs font-semibold ${
                                                                         child.suggested
-                                                                            ? "text-discord-textMuted hover:text-discord-textPrimary"
-                                                                            : "text-discord-accent hover:underline"
+                                                                            ? "text-zam-textMuted hover:text-zam-textPrimary"
+                                                                            : "text-zam-accent hover:underline"
                                                                     }`}
                                                                 >
                                                                     {child.suggested
@@ -3735,7 +4549,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     placeholder={t(
                                                                         "roomSettings.order",
                                                                     )}
-                                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                                     accessibilityLabel={t(
                                                                         "roomSettings.order",
                                                                     )}
@@ -3743,7 +4557,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                     autoCorrect={
                                                                         false
                                                                     }
-                                                                    className="w-24 bg-discord-backgroundSecondary text-discord-textPrimary text-xs rounded px-2 py-1 border border-transparent focus:border-discord-accent/50 font-mono"
+                                                                    className="w-24 bg-zam-backgroundSecondary text-zam-textPrimary text-xs rounded px-2 py-1 border border-transparent focus:border-zam-accent/50 font-mono"
                                                                 />
                                                                 <Pressable
                                                                     accessibilityRole="button"
@@ -3762,7 +4576,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                             "") ===
                                                                             child.order
                                                                     }
-                                                                    className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                                                    className="px-2.5 py-1 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                                                                 >
                                                                     <Text className="text-xs font-semibold text-white">
                                                                         {roomActionPending ===
@@ -3787,13 +4601,13 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                                         roomActionPending ===
                                                                         child.roomId
                                                                     }
-                                                                    className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                                    className="p-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                                                 >
                                                                     <SvgIcon
                                                                         d={
                                                                             CLOSE_ICON
                                                                         }
-                                                                        className="w-4 h-4 text-discord-textMuted"
+                                                                        className="w-4 h-4 text-zam-textMuted"
                                                                     />
                                                                 </Pressable>
                                                             </>
@@ -3801,7 +4615,7 @@ export default function RoomSettings({ room, onClose, onUpdate }: Props) {
                                                     </View>
                                                 ))}
                                                 {spaceChildren.length === 0 ? (
-                                                    <Text className="text-sm text-discord-textMuted text-center py-4">
+                                                    <Text className="text-sm text-zam-textMuted text-center py-4">
                                                         {t(
                                                             "roomSettings.noChildRooms",
                                                         )}

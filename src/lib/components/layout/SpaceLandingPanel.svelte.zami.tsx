@@ -45,12 +45,12 @@ const JoinedRoomRow = memo(function JoinedRoomRow({
             <Pressable
                 accessibilityRole="button"
                 onPress={() => setActiveRoom(room.roomId)}
-                className="w-full flex-row items-center gap-3 p-3 rounded-lg bg-discord-backgroundSecondary hover:bg-discord-messageHover text-left transition-colors"
+                className="w-full flex-row items-center gap-3 p-3 rounded-lg bg-zam-backgroundSecondary hover:bg-zam-messageHover text-left transition-colors"
             >
-                <Hash size={20} className="text-discord-textMuted shrink-0" />
+                <Hash size={20} className="text-zam-textMuted shrink-0" />
                 <Text
                     numberOfLines={1}
-                    className="flex-shrink font-semibold text-discord-textPrimary truncate"
+                    className="flex-shrink font-semibold text-zam-textPrimary truncate"
                 >
                     {room.name || room.roomId}
                 </Text>
@@ -72,28 +72,28 @@ const JoinableRow = memo(function JoinableRow({
 }) {
     return (
         <View
-            className={`w-full max-w-2xl mx-auto flex-row items-center gap-3 p-3 rounded-lg bg-discord-backgroundSecondary ${
+            className={`w-full max-w-2xl mx-auto flex-row items-center gap-3 p-3 rounded-lg bg-zam-backgroundSecondary ${
                 last ? "" : "mb-2"
             }`}
         >
-            <Hash size={20} className="text-discord-textMuted shrink-0" />
+            <Hash size={20} className="text-zam-textMuted shrink-0" />
             <View className="min-w-0 flex-1">
                 <Text
                     numberOfLines={1}
-                    className="font-semibold text-discord-textPrimary truncate"
+                    className="font-semibold text-zam-textPrimary truncate"
                 >
                     {child.name || child.roomId}
                 </Text>
                 {!!child.topic && (
                     <Text
                         numberOfLines={1}
-                        className="text-sm text-discord-textMuted truncate"
+                        className="text-sm text-zam-textMuted truncate"
                     >
                         {child.topic}
                     </Text>
                 )}
             </View>
-            <Text className="text-xs text-discord-textMuted shrink-0 hidden sm:flex">
+            <Text className="text-xs text-zam-textMuted shrink-0 hidden sm:flex">
                 {t("common.memberCount", {
                     count: child.numMembers,
                 })}
@@ -103,7 +103,7 @@ const JoinableRow = memo(function JoinableRow({
                 accessibilityState={{ disabled: joining }}
                 onPress={() => onJoin(child)}
                 disabled={joining}
-                className="px-4 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50 transition-colors shrink-0"
+                className="px-4 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover disabled:opacity-50 transition-colors shrink-0"
             >
                 <Text className="text-white text-sm font-semibold">
                     {joining ? t("common.joining") : t("common.join")}
@@ -244,16 +244,16 @@ export default function SpaceLandingPanel({
                 joinedRooms.length > 0 ? "" : "mb-8"
             }`}
         >
-            <Text className="text-3xl font-bold text-discord-textPrimary">
+            <Text className="text-3xl font-bold text-zam-textPrimary">
                 {spaceName}
             </Text>
             {!!spaceTopic && (
-                <Text className="mt-2 text-discord-textMuted whitespace-pre-wrap break-words">
+                <Text className="mt-2 text-zam-textMuted whitespace-pre-wrap break-words">
                     {spaceTopic}
                 </Text>
             )}
             {joinedRooms.length > 0 && (
-                <Text className="mt-6 mb-2 text-sm font-semibold uppercase tracking-wide text-discord-textMuted">
+                <Text className="mt-6 mb-2 text-sm font-semibold uppercase tracking-wide text-zam-textMuted">
                     {t("spaceLandingPanel.yourRooms")}
                 </Text>
             )}
@@ -264,8 +264,8 @@ export default function SpaceLandingPanel({
     if (stillLoading)
         footer = (
             <View className="flex-1 flex-row items-center justify-center gap-3">
-                <Spin className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
-                <Text className="text-discord-textMuted">
+                <Spin className="w-5 h-5 border-2 border-zam-textMuted border-t-transparent rounded-full" />
+                <Text className="text-zam-textMuted">
                     {t("spaceLandingPanel.loadingRooms")}
                 </Text>
             </View>
@@ -276,10 +276,10 @@ export default function SpaceLandingPanel({
     else if (hasChildSpaces)
         footer = (
             <View className="flex-1 flex flex-col items-center justify-center">
-                <Text className="text-center text-xl font-bold text-discord-textPrimary mb-2">
+                <Text className="text-center text-xl font-bold text-zam-textPrimary mb-2">
                     {t("spaceLandingPanel.nothingJoinedHereYet")}
                 </Text>
-                <Text className="text-center text-discord-textMuted max-w-sm">
+                <Text className="text-center text-zam-textMuted max-w-sm">
                     {t("spaceLandingPanel.onlyOtherSpacesLiveInsideOpen", {
                         spaceName,
                     })}
@@ -289,7 +289,7 @@ export default function SpaceLandingPanel({
     else
         footer = (
             <View className="flex-1 flex flex-col items-center justify-center">
-                <Text className="text-center text-discord-textMuted max-w-sm">
+                <Text className="text-center text-zam-textMuted max-w-sm">
                     {t("spaceLandingPanel.thereAreNoRoomsInYet", {
                         spaceName,
                     })}
@@ -311,10 +311,10 @@ export default function SpaceLandingPanel({
             );
         return (
             <View className="w-full max-w-2xl mx-auto">
-                <Text className="text-2xl font-bold text-discord-textPrimary mb-1">
+                <Text className="text-2xl font-bold text-zam-textPrimary mb-1">
                     {t("spaceLandingPanel.browseRooms")}
                 </Text>
-                <Text className="text-discord-textMuted mb-6">
+                <Text className="text-zam-textMuted mb-6">
                     {t("spaceLandingPanel.youHavenTJoinedARoom", {
                         spaceName,
                     })}
@@ -326,18 +326,18 @@ export default function SpaceLandingPanel({
     return (
         <View className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {isMobile && (
-                <View className="h-12 flex-row items-center gap-2 px-3 border-b border-discord-backgroundTertiary shrink-0">
+                <View className="h-12 flex-row items-center gap-2 px-3 border-b border-zam-backgroundTertiary shrink-0">
                     <Pressable
                         accessibilityRole="button"
                         onPress={onMenuOpen}
-                        className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                        className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                         accessibilityLabel={t("common.openRoomList")}
                     >
-                        <Menu size={20} className="text-discord-textMuted" />
+                        <Menu size={20} className="text-zam-textMuted" />
                     </Pressable>
                     <Text
                         numberOfLines={1}
-                        className="flex-shrink font-semibold text-discord-textPrimary truncate"
+                        className="flex-shrink font-semibold text-zam-textPrimary truncate"
                     >
                         {spaceName}
                     </Text>

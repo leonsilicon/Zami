@@ -62,3 +62,96 @@ export function createVariableBatch(
     flush,
   };
 }
+
+/** A variable a stylesheet sets on the root, for one theme or (null) for all of them. */
+export interface VariableOverride {
+  theme: string | null;
+  name: string;
+  value: string;
+}
+
+export interface RootVariablesHost {
+  /** The theme in force, whose variables are the ones written. */
+  theme: () => string;
+  /** A variable's value in that theme as the app holds it now ("" if it has none). */
+  read: (name: string) => string;
+  write: (theme: string, name: string, value: string) => void;
+}
+
+/**
+ * The root element's custom properties, from the three places a page gets them, the later
+ * over the earlier: the theme's own (which the app holds), the root's inline style (Zam's
+ * theme code: `style.setProperty`), and stylesheets' rules for the root (`setOverrides`:
+ * plugins' and the user's CSS, which a page needs `!important` for and here win as they
+ * are). Taking a layer's value away brings back the one under it, which the app has no
+ * call for: a theme's own value is read before the first write over it and kept.
+ */
+export function createRootVariables(host: RootVariablesHost) {
+  const inline: Record<string, string> = {};
+  /** `theme name` → the theme's own value. */
+  const own = new Map<string, string>();
+  let overrides: readonly VariableOverride[] = [];
+  /** What `overrides` has written, per theme: a theme keeps its variables while another
+   *  is in force, so what was written there is undone when it's back. */
+  const applied = new Map<string, Map<string, string>>();
+
+  const keep = (theme: string, name: string) => {
+    const key = `${theme} ${name}`;
+    if (!own.has(key)) own.set(key, host.read(name));
+  };
+
+  /** Brings the theme in force in line with `overrides`. */
+  const sync = () => {
+    const theme = host.theme();
+    const want = new Map<string, string>();
+    for (const override of overrides)
+      if (override.theme === null || override.theme === theme)
+        want.set(override.name, override.value);
+    let have = applied.get(theme);
+    if (have === undefined) applied.set(theme, (have = new Map()));
+    for (const name of Array.from(have.keys())) {
+      if (want.has(name)) continue;
+      have.delete(name);
+      const under = inline[name] ?? own.get(`${theme} ${name}`);
+      // A variable the theme never had can't be unset; it keeps the override's value.
+      if (under !== undefined && under !== "") host.write(theme, name, under);
+    }
+    for (const [name, value] of want) {
+      if (have.get(name) === value) continue;
+      keep(theme, name);
+      have.set(name, value);
+      host.write(theme, name, value);
+    }
+  };
+
+  return {
+    setProperty(name: string, value: string): void {
+      const theme = host.theme();
+      keep(theme, name);
+      inline[name] = value;
+      if (!applied.get(theme)?.has(name)) host.write(theme, name, value);
+    },
+    removeProperty(name: string): string {
+      const value = inline[name] ?? "";
+      delete inline[name];
+      const theme = host.theme();
+      const original = own.get(`${theme} ${name}`);
+      if (
+        value !== "" &&
+        original !== undefined &&
+        original !== "" &&
+        !applied.get(theme)?.has(name)
+      )
+        host.write(theme, name, original);
+      return value;
+    },
+    getPropertyValue: (name: string): string => inline[name] ?? "",
+    /** The stylesheets' variables, in the order they apply (a later one wins). */
+    setOverrides(next: readonly VariableOverride[]): void {
+      overrides = next;
+      sync();
+    },
+    /** The theme in force changed: its variables get the overrides for it. */
+    themeChanged: sync,
+  };
+}

@@ -5,6 +5,7 @@ import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { mergeComposerActions } from "$lib/utils/pluginComposer";
+import { invitableGames } from "$lib/stores/richPresence.svelte";
 
 interface Props {
     roomId: string;
@@ -17,6 +18,7 @@ interface Props {
     onRecordVoice?: () => void;
     onShareLocation?: () => void;
     onCreateThread?: () => void;
+    onInviteToGame?: () => void;
 }
 
 const FALLBACK_ICON =
@@ -33,8 +35,10 @@ export default function ComposerActionsMenu({
     onRecordVoice,
     onShareLocation,
     onCreateThread,
+    onInviteToGame,
 }: Props) {
     const pluginTick = useRune(() => pluginRegistry.tick);
+    const hasInvitableGames = useRune(() => invitableGames().length > 0);
     const items = useMemo(() => {
         void pluginTick;
         const core = [
@@ -82,6 +86,17 @@ export default function ComposerActionsMenu({
                 run: () => onCreatePoll(),
                 icon: "M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z",
             },
+            // Only with a running game someone could be invited to.
+            ...(onInviteToGame && hasInvitableGames
+                ? [
+                      {
+                          key: "invite-game",
+                          label: t("composerActionsMenu.inviteToGame"),
+                          run: () => onInviteToGame?.(),
+                          icon: "M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z",
+                      },
+                  ]
+                : []),
             ...(onRecordVoice
                 ? [
                       {
@@ -129,6 +144,8 @@ export default function ComposerActionsMenu({
         onRecordVoice,
         onShareLocation,
         onCreateThread,
+        onInviteToGame,
+        hasInvitableGames,
     ]);
     function choose(run: () => void | Promise<void>) {
         // Close this menu FIRST — it shares the single modal slot, so if `run`
@@ -148,7 +165,7 @@ export default function ComposerActionsMenu({
 
     return (
         <View
-            className="w-52 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg py-1"
+            className="w-52 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg py-1"
             accessibilityRole="menu"
         >
             {items.map((item) => (
@@ -156,13 +173,13 @@ export default function ComposerActionsMenu({
                     key={"entryId" in item ? item.entryId : item.key}
                     accessibilityRole="menuitem"
                     onPress={() => choose(item.run)}
-                    className="w-full flex-row items-center gap-2.5 px-3 py-2 hover:bg-discord-messageHover transition-colors"
+                    className="w-full flex-row items-center gap-2.5 px-3 py-2 hover:bg-zam-messageHover transition-colors"
                 >
                     <SvgIcon
                         d={item.icon}
-                        className="w-5 h-5 text-discord-textMuted flex-shrink-0"
+                        className="w-5 h-5 text-zam-textMuted flex-shrink-0"
                     />
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {item.label}
                     </Text>
                 </Pressable>

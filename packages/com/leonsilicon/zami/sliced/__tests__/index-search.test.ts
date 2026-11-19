@@ -1,7 +1,8 @@
 // createIndexSearch must give what the event index's upstream search does
 // (src/lib/utils/eventIndex: resolveEntries, then searchEntries over entryMatches), which
 // is copied below as the reference, on messy histories: edits in other blocks than their
-// originals, orphan edits, duplicates, redactions and equal timestamps.
+// originals, orphan edits, duplicates, redactions, galleries edited to text and back, and
+// equal timestamps.
 import { describe, expect, test } from "vite-plus/test";
 import { createIndexSearch, prepareEntry, searchBody, type IndexedMessage } from "#index-search";
 import { createSlicer } from "#slicer";
@@ -30,7 +31,20 @@ function resolveEntries(
   const out: IndexedMessage[] = [];
   for (const [id, original] of originals) {
     const edit = latestEdit.get(id);
-    out.push(edit ? { ...original, b: edit.b, m: edit.m || original.m } : original);
+    if (!edit) {
+      out.push(original);
+    } else {
+      const useEdit = !!edit.m;
+      const merged: IndexedMessage = {
+        ...original,
+        b: edit.b,
+        m: useEdit ? edit.m : original.m,
+      };
+      const g = useEdit ? edit.g : original.g;
+      if (g) merged.g = g;
+      else delete merged.g;
+      out.push(merged);
+    }
     latestEdit.delete(id);
   }
   for (const [target, edit] of latestEdit) out.push({ ...edit, e: target, o: undefined });
@@ -92,13 +106,15 @@ function history(seed: number, messages: number) {
     if (roll < 0.15 && ids.length > 0) {
       // An edit of an earlier message, or of one that isn't indexed.
       const target = next() < 0.8 ? pick(ids) : `$missing${Math.floor(next() * 20)}`;
+      const m = pick(["m.text", "", "dm.filament.gallery"]);
       entries.push({
         e: `$edit${i}`,
         s: pick(SENDERS),
         t,
-        m: pick(["m.text", ""]),
+        m,
         b: body(),
         o: target,
+        ...(m === "dm.filament.gallery" ? { g: ["m.image", "m.video"] } : {}),
       });
     } else if (roll < 0.2 && ids.length > 0) {
       // A second copy of a message (a crawled page overlapping the live feed).
@@ -107,7 +123,15 @@ function history(seed: number, messages: number) {
     } else {
       const e = `$${i}`;
       ids.push(e);
-      entries.push({ e, s: pick(SENDERS), t, m: pick(["m.text", "m.notice"]), b: body() });
+      const m = pick(["m.text", "m.notice", "dm.filament.gallery"]);
+      entries.push({
+        e,
+        s: pick(SENDERS),
+        t,
+        m,
+        b: body(),
+        ...(m === "dm.filament.gallery" ? { g: ["m.image"] } : {}),
+      });
     }
   }
   const redacted = new Set(ids.filter(() => next() < 0.05));

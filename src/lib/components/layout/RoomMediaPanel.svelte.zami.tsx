@@ -28,6 +28,7 @@ import {
     mediaThumbnailMxc,
     mediaTileSource,
     mediaViewerItem,
+    mediaItemKey,
     type RoomMediaItem,
 } from "$lib/utils/roomMedia";
 import { galleryPositionLabel } from "$lib/utils/mediaGallery";
@@ -82,13 +83,19 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     // video, so this is the ORDINARY path for them, not an error case: the tile
     // swaps to a placeholder instead of showing a broken-image glyph.
     const [thumbFailed, setThumbFailed] = useState<Record<string, boolean>>({});
-    // Decrypted encrypted thumbnails, keyed by eventId.
+    // Decrypted encrypted thumbnails, keyed by mediaItemKey.
     const [decryptedThumbs, decryptedThumbsRef, setDecryptedThumbs] =
         useLatestState<Record<string, string>>({});
-    // Decrypted full media for the lightbox viewer, keyed by eventId.
+    // Decrypted full media for the lightbox viewer, keyed by mediaItemKey.
     const [decryptedFull, decryptedFullRef, setDecryptedFull] = useLatestState<
         Record<string, string>
     >({});
+    // Encrypted images either side of the viewed one, decrypted ahead so a
+    // swipe lands on a loaded image. Handed over to decryptedFull when the
+    // viewer steps onto one; revoked once they are no longer neighbours.
+    const [prefetchedFull, prefetchedFullRef, setPrefetchedFull] =
+        useLatestState<Record<string, string>>({});
+    const [prefetchPending] = useState(() => new Set<string>());
     const [viewerDecrypting, setViewerDecrypting] = useState(false);
     const [viewerProgress, setViewerProgress] =
         useState<DownloadProgress | null>(null);
@@ -243,7 +250,8 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     }, [room.roomId]);
 
     function openViewer(item: RoomMediaItem): void {
-        const index = gallery.findIndex((i) => i.eventId === item.eventId);
+        const key = mediaItemKey(item);
+        const index = gallery.findIndex((i) => mediaItemKey(i) === key);
         if (index === -1) return;
         setViewerIndex(index);
     }
@@ -284,12 +292,16 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     function releaseDecryptedBlobs(): void {
         blobGen.current++;
         thumbPending.clear();
+        prefetchPending.clear();
         for (const url of Object.values(decryptedThumbsRef.current))
             URL.revokeObjectURL(url);
         for (const url of Object.values(decryptedFullRef.current))
             URL.revokeObjectURL(url);
+        for (const url of Object.values(prefetchedFullRef.current))
+            URL.revokeObjectURL(url);
         setDecryptedThumbs({});
         setDecryptedFull({});
+        setPrefetchedFull({});
         setViewerDecrypting(false);
     }
     useEffect(
@@ -303,7 +315,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     // every "Load more", so it skips anything already decrypted or in flight.
     useEffect(() => {
         const wanted = split.visual
-            .map((m) => ({ id: m.eventId, source: mediaTileSource(m) }))
+            .map((m) => ({ id: mediaItemKey(m), source: mediaTileSource(m) }))
             .filter((x) => x.source?.kind === "encrypted");
         const gen = blobGen.current;
         for (const { id, source } of wanted) {
@@ -348,8 +360,17 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         // An encrypted video is decrypted by the viewer itself, which can
         // start playing while it is still downloading.
         if (item.kind === "video") return;
-        const id = item.eventId;
+        const id = mediaItemKey(item);
         if (decryptedFullRef.current[id]) return; // Already decrypted
+        // Already decrypted ahead as a neighbour: take that copy over.
+        const ahead = prefetchedFullRef.current[id];
+        if (ahead) {
+            setDecryptedFull({ ...decryptedFullRef.current, [id]: ahead });
+            const rest = { ...prefetchedFullRef.current };
+            delete rest[id];
+            setPrefetchedFull(rest);
+            return;
+        }
         const gen = blobGen.current;
         let cancelled = false;
         setViewerDecrypting(true);
@@ -385,6 +406,105 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream untracks decryptedFull.
     }, [viewerIndex, viewerItem]);
 
+    // Decrypt the encrypted images either side of the viewed one, through the
+    // same helper the viewer uses, and release any blob that no longer belongs
+    // to a neighbour. Closing the viewer empties `wanted`, which releases all.
+    useEffect(() => {
+        const idx = viewerIndex;
+        const wanted =
+            idx === null
+                ? []
+                : [gallery[idx - 1], gallery[idx + 1]].filter(
+                      (m): m is RoomMediaItem =>
+                          !!m &&
+                          m.kind === "image" &&
+                          !!m.encrypted &&
+                          !!m.encryptedFile,
+                  );
+        const keep = new Set(wanted.map((m) => mediaItemKey(m)));
+        const kept: Record<string, string> = {};
+        let released = false;
+        for (const [key, url] of Object.entries(prefetchedFullRef.current)) {
+            if (keep.has(key)) {
+                kept[key] = url;
+                continue;
+            }
+            URL.revokeObjectURL(url);
+            released = true;
+        }
+        if (released) setPrefetchedFull(kept);
+        const gen = blobGen.current;
+        for (const media of wanted) {
+            const id = mediaItemKey(media);
+            if (
+                decryptedFullRef.current[id] ||
+                prefetchedFullRef.current[id] ||
+                prefetchPending.has(id)
+            )
+                continue;
+            prefetchPending.add(id);
+            fetchDecryptedAttachmentBlob(
+                media.encryptedFile!,
+                media.mimetype ?? undefined,
+                { expectedSize: media.size },
+            )
+                .then((url) => {
+                    // Stale (torn down, or the viewer has since decrypted
+                    // it itself): nothing will own this URL, so release it.
+                    if (
+                        gen !== blobGen.current ||
+                        decryptedFullRef.current[id]
+                    ) {
+                        URL.revokeObjectURL(url);
+                        return;
+                    }
+                    setPrefetchedFull({
+                        ...prefetchedFullRef.current,
+                        [id]: url,
+                    });
+                })
+                .catch(() => {
+                    /* a failed prefetch just means no warm copy */
+                })
+                .finally(() => {
+                    if (gen === blobGen.current) prefetchPending.delete(id);
+                });
+        }
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream tracks the viewer index and the gallery (from items).
+    }, [viewerIndex, items]);
+
+    /** The tile thumbnail the grid shows for an item: the same URL, so the
+     *  viewer's stand-in comes from the image cache. */
+    function tileThumb(item: RoomMediaItem): string | null {
+        const id = mediaItemKey(item);
+        if (thumbFailed[id]) return null;
+        return item.encrypted
+            ? (decryptedThumbs[id] ?? null)
+            : mxcToHttp(mediaThumbnailMxc(item), 160, 160);
+    }
+
+    /** A swipe neighbour: its full src ("" while not ready, or for a video,
+     *  which the viewer does not preload), plus its tile thumbnail. */
+    function neighbourOf(item: RoomMediaItem | undefined) {
+        if (!item) return null;
+        const id = mediaItemKey(item);
+        const src =
+            item.kind !== "image"
+                ? ""
+                : item.encrypted
+                  ? (decryptedFull[id] ?? prefetchedFull[id] ?? "")
+                  : (mxcToHttp(item.url) ?? "");
+        return { src, placeholders: [tileThumb(item)] };
+    }
+
+    const viewerNeighbours =
+        viewerIndex === null
+            ? undefined
+            : {
+                  prev: neighbourOf(gallery[viewerIndex - 1]),
+                  next: neighbourOf(gallery[viewerIndex + 1]),
+              };
+
     // Zami: the grid cell's width, from the list's (`grid-cols-3 gap-1 p-2`).
     const [listWidth, setListWidth] = useState(0);
     const cell =
@@ -394,10 +514,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
 
     function mediaTile(media: RoomMediaItem) {
         const thumbMxc = mediaThumbnailMxc(media);
-        const thumb = thumbFailed[media.eventId]
+        const thumb = thumbFailed[mediaItemKey(media)]
             ? null
             : media.encrypted
-              ? (decryptedThumbs[media.eventId] ?? null)
+              ? (decryptedThumbs[mediaItemKey(media)] ?? null)
               : mxcToHttp(thumbMxc, 160, 160);
         const duration = formatMediaDuration(media.durationMs);
         return (
@@ -409,7 +529,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         : media.name
                 }
                 onPress={() => openViewer(media)}
-                className="relative aspect-square rounded overflow-hidden bg-discord-background active:opacity-80 transition-opacity"
+                className="relative aspect-square rounded overflow-hidden bg-zam-background active:opacity-80 transition-opacity"
                 style={{ width: cell }}
             >
                 {thumb ? (
@@ -422,14 +542,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         onError={() =>
                             setThumbFailed((f) => ({
                                 ...f,
-                                [media.eventId]: true,
+                                [mediaItemKey(media)]: true,
                             }))
                         }
                     />
                 ) : media.kind === "video" ? (
                     // Nothing to show: a flat tile that lets the play
                     // badge below carry the meaning on its own.
-                    <View className="w-full h-full bg-discord-backgroundTertiary" />
+                    <View className="w-full h-full bg-zam-backgroundTertiary" />
                 ) : null}
                 {media.kind === "video" ? (
                     <>
@@ -460,15 +580,15 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                 accessibilityRole="button"
                 // Zami: no shift+click quiet save.
                 onPress={() => void download(file)}
-                className="w-full p-2 rounded-lg hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                className="w-full p-2 rounded-lg hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
             >
                 <Text
                     numberOfLines={1}
-                    className="text-xs font-semibold text-discord-textPrimary"
+                    className="text-xs font-semibold text-zam-textPrimary"
                 >
                     {file.name}
                 </Text>
-                <Text className="text-xs text-discord-textMuted">
+                <Text className="text-xs text-zam-textMuted">
                     {formatMediaSize(file.size) ||
                         (file.kind === "audio"
                             ? t("roomMediaPanel.audio")
@@ -488,13 +608,13 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
             // ciphertext, which the viewer would download and fail to show.
             full: (mxc) =>
                 item.encrypted && item.kind !== "video"
-                    ? (decryptedFull[item.eventId] ?? null)
+                    ? (decryptedFull[mediaItemKey(item)] ?? null)
                     : mxcToHttp(mxc),
             // "scale" rather than the default crop: a poster must match the video's
             // own aspect ratio or the player letterboxes a distorted still.
             poster: (mxc) =>
-                item.encrypted && decryptedThumbs[item.eventId]
-                    ? decryptedThumbs[item.eventId]
+                item.encrypted && decryptedThumbs[mediaItemKey(item)]
+                    ? decryptedThumbs[mediaItemKey(item)]
                     : mxcToHttp(mxc, 800, 600, "scale"),
         });
         if (viewerDecrypting)
@@ -526,7 +646,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                             ? // An encrypted video has no thumbnail_url, so mediaViewerItem
                               // never asks for one: use the decrypted thumbnail_file tile.
                               view.kind === "video"
-                                ? (decryptedThumbs[item.eventId] ?? null)
+                                ? (decryptedThumbs[mediaItemKey(item)] ?? null)
                                 : null
                             : view.poster
                     }
@@ -550,6 +670,8 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         viewerIndex,
                         hasMore,
                     )}
+                    placeholders={[tileThumb(item)]}
+                    neighbours={viewerNeighbours}
                 />
             );
         // mediaViewerItem resolved to nothing (bad mxc / signed-out media
@@ -566,14 +688,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         "roomMediaPanel.mediaCouldNotBeLoaded",
                     )}
                 >
-                    <View className="bg-discord-backgroundSecondary rounded-lg p-6 max-w-sm shadow-lg">
-                        <Text className="text-sm text-discord-textPrimary text-center mb-4">
+                    <View className="bg-zam-backgroundSecondary rounded-lg p-6 max-w-sm shadow-lg">
+                        <Text className="text-sm text-zam-textPrimary text-center mb-4">
                             {t("roomMediaPanel.couldNotLoadThisMedia")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => setViewerIndex(null)}
-                            className="self-center px-4 py-1.5 rounded bg-discord-accent active:opacity-90 transition-opacity"
+                            className="self-center px-4 py-1.5 rounded bg-zam-accent active:opacity-90 transition-opacity"
                         >
                             <Text className="text-sm text-white">
                                 {t("common.close")}
@@ -590,12 +712,12 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
             <View
                 className={`${
                     isMobile ? "" : "w-72"
-                } h-full flex flex-col bg-discord-backgroundSecondary border-l border-discord-divider`}
+                } h-full flex flex-col bg-zam-backgroundSecondary border-l border-zam-divider`}
             >
-                <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-discord-divider flex-shrink-0">
+                <View className="h-12 flex-row items-center gap-2 px-4 py-3 border-b border-zam-divider flex-shrink-0">
                     <Text
                         accessibilityRole="header"
-                        className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide flex-1"
+                        className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide flex-1"
                     >
                         {t("roomMediaPanel.media")}
                     </Text>
@@ -608,13 +730,13 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     >
                         <SvgIcon
                             d="M18.3 5.71 12 12.01l-6.3-6.3-1.42 1.42 6.3 6.3-6.3 6.3 1.42 1.42 6.3-6.3 6.3 6.3 1.42-1.42-6.3-6.3 6.3-6.3z"
-                            className="w-4 h-4 text-discord-textMuted"
+                            className="w-4 h-4 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
 
                 <View
-                    className="flex-row items-center gap-1 px-2 py-2 border-b border-discord-divider flex-shrink-0"
+                    className="flex-row items-center gap-1 px-2 py-2 border-b border-zam-divider flex-shrink-0"
                     accessibilityRole="tablist"
                 >
                     <Pressable
@@ -623,14 +745,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         accessibilityState={{ selected: tab === "media" }}
                         onPress={() => setTab("media")}
                         className={`flex-1 py-1 rounded transition-colors ${
-                            tab === "media" ? "bg-discord-messageHover" : ""
+                            tab === "media" ? "bg-zam-messageHover" : ""
                         }`}
                     >
                         <Text
                             className={`text-xs text-center ${
                                 tab === "media"
-                                    ? "text-discord-textPrimary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textPrimary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {t("roomMediaPanel.media2", {
@@ -645,14 +767,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                         accessibilityState={{ selected: tab === "files" }}
                         onPress={() => setTab("files")}
                         className={`flex-1 py-1 rounded transition-colors ${
-                            tab === "files" ? "bg-discord-messageHover" : ""
+                            tab === "files" ? "bg-zam-messageHover" : ""
                         }`}
                     >
                         <Text
                             className={`text-xs text-center ${
                                 tab === "files"
-                                    ? "text-discord-textPrimary"
-                                    : "text-discord-textMuted"
+                                    ? "text-zam-textPrimary"
+                                    : "text-zam-textMuted"
                             }`}
                         >
                             {t("roomMediaPanel.files", {
@@ -673,7 +795,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     className="flex-1"
                     onLayout={(e) => setListWidth(e.nativeEvent.layout.width)}
                     data={listed ? visible : []}
-                    keyExtractor={(media) => media.eventId}
+                    keyExtractor={(media) => mediaItemKey(media)}
                     numColumns={tab === "media" ? COLUMNS : 1}
                     // `p-2` around the grid (and the files), `gap-1` (and
                     // `space-y-1`) between them.
@@ -697,11 +819,11 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     ListEmptyComponent={
                         loading ? (
                             <View className="flex-row justify-center mt-8">
-                                <Spin className="w-5 h-5 border-2 border-discord-accent border-t-transparent rounded-full" />
+                                <Spin className="w-5 h-5 border-2 border-zam-accent border-t-transparent rounded-full" />
                             </View>
                         ) : error ? (
                             <>
-                                <Text className="text-sm text-discord-danger text-center mt-8 px-4">
+                                <Text className="text-sm text-zam-danger text-center mt-8 px-4">
                                     {error}
                                 </Text>
                                 <View className="px-2 pt-2">
@@ -710,14 +832,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                                         onPress={() => void pull(true)}
                                         className="w-full py-1.5"
                                     >
-                                        <Text className="text-xs text-discord-accent text-center">
+                                        <Text className="text-xs text-zam-accent text-center">
                                             {t("roomMediaPanel.tryAgain")}
                                         </Text>
                                     </Pressable>
                                 </View>
                             </>
                         ) : (
-                            <Text className="text-sm text-discord-textMuted text-center mt-8 px-4">
+                            <Text className="text-sm text-zam-textMuted text-center mt-8 px-4">
                                 {emptyMessage}
                             </Text>
                         )
@@ -728,7 +850,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                             {loadMoreError ? (
                                 // Inline, not the full-panel error branch: whatever already
                                 // loaded stays on screen and "Load more" can simply be retried.
-                                <Text className="text-xs text-discord-danger text-center px-2 pb-1">
+                                <Text className="text-xs text-zam-danger text-center px-2 pb-1">
                                     {loadMoreError}
                                 </Text>
                             ) : null}
@@ -746,7 +868,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                                             loadingMore ? "opacity-50" : ""
                                         }`}
                                     >
-                                        <Text className="text-xs text-discord-accent text-center">
+                                        <Text className="text-xs text-zam-accent text-center">
                                             {loadingMore
                                                 ? t("common.loading")
                                                 : t("common.loadMore")}

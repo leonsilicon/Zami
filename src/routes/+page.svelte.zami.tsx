@@ -40,7 +40,12 @@ import {
     expireActiveSession,
     applyRefreshedTokens,
 } from "$lib/stores/auth.svelte";
-import { accountsState, switchActive } from "$lib/stores/accounts.svelte";
+import {
+    accountsState,
+    recoverRegistryFromBackup,
+    switchActive,
+} from "$lib/stores/accounts.svelte";
+import { getLastOpenedRoomId } from "$lib/stores/rooms.svelte";
 import { rootView, shouldRestoreSession } from "$lib/utils/sessionView";
 import {
     IDLE_SESSION_STARTUP,
@@ -86,8 +91,13 @@ export default function Page() {
         // the URL. Restoring the stored account over it would swallow that result
         // (add-account sign-ins come back here too), so it is treated like add mode.
         const oauthReturnAtInit = isPendingOAuthCallback(window.location.href);
+        // An empty registry may mean the browser wiped localStorage (it does on a
+        // full disk) while the IndexedDB copy still holds the accounts. Checking
+        // that is async, so show the splash instead of the login card until it
+        // answers; on a fresh install that costs one IndexedDB read.
+        const mayRecoverAtInit = accountsState.registry.accounts.length === 0;
         return shouldRestoreSession({
-            hasStoredSession: !!loadStoredSession(),
+            hasStoredSession: !!loadStoredSession() || mayRecoverAtInit,
             isAddAccountMode: addModeAtInit || oauthReturnAtInit,
         });
     });
@@ -157,7 +167,10 @@ export default function Page() {
      * it just created instead of publishing them, so a dead session can never
      * own `disposeSync`.
      */
-    async function beginSync(attempt: number): Promise<void> {
+    async function beginSync(
+        attempt: number,
+        preferredRoomId: string | null = null,
+    ): Promise<void> {
         disposeSync.current?.();
         disposeSync.current = null;
         const dispose = await startSync(
@@ -166,6 +179,7 @@ export default function Page() {
             },
             handleSessionExpired,
             (reason) => showToast(reason, { tone: "accent" }),
+            preferredRoomId,
         );
         if (!isLiveAttempt(startup.current, attempt)) {
             dispose();
@@ -192,6 +206,7 @@ export default function Page() {
             },
             handleSessionExpired,
             (reason) => showToast(reason, { tone: "accent" }),
+            getLastOpenedRoomId(auth.userId),
         );
         if (
             startup.current.phase !== "active" ||
@@ -305,28 +320,43 @@ export default function Page() {
     }
 
     useEffect(() => {
-        // Finish any crypto-store wipe a previous logout could not complete
-        // (another tab held the IndexedDB open, so the delete was blocked and
-        // the reload won). Fire-and-forget: boot must never wait on it. Every
-        // account still on this device is passed through so the sweep can
-        // never delete a store that is still in use.
-        retryPendingCryptoWipes(
-            accountsState.registry.accounts.map((a) => ({
-                userId: a.userId,
-                deviceId: a.deviceId,
-            })),
-        ).catch(() => {});
-        // The synchronous `restoring` flag already decided splash-vs-login for
-        // the first paint; here we run the actual async restore when it applies.
-        const stored = loadStoredSession();
-        // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
-        if (!restoring || !stored) {
-            finishStartup("Sign-in screen");
-            return;
-        }
-        markStartup("Restoring session");
-        const attempt = beginStartup();
         (async () => {
+            // Put back accounts a localStorage wipe took (registryBackup.ts)
+            // BEFORE anything reads the registry, the wipe sweep below included.
+            const recovered = await recoverRegistryFromBackup();
+            if (recovered) {
+                showToast(t("rootPage.storageWipedSessionRecovered"), {
+                    tone: "accent",
+                    sticky: true,
+                });
+            }
+            // Finish any crypto-store wipe a previous logout could not complete
+            // (another tab held the IndexedDB open, so the delete was blocked
+            // and the reload won). Fire-and-forget: boot must never wait on it.
+            // Every account still on this device is passed through so the sweep
+            // can never delete a store that is still in use.
+            retryPendingCryptoWipes(
+                accountsState.registry.accounts.map((a) => ({
+                    userId: a.userId,
+                    deviceId: a.deviceId,
+                })),
+            ).catch(() => {});
+            // The synchronous `restoring` flag already decided splash-vs-login
+            // for the first paint; here we run the actual async restore when it
+            // applies.
+            // Zami: the launch timeline (@-/com.leonsilicon.zami.startup).
+            if (!restoring) {
+                finishStartup("Sign-in screen");
+                return;
+            }
+            const stored = loadStoredSession();
+            if (!stored) {
+                finishStartup("Sign-in screen");
+                setRestoring(false);
+                return;
+            }
+            markStartup("Restoring session");
+            const attempt = beginStartup();
             try {
                 await reconnect(
                     stored.homeserverUrl,
@@ -341,7 +371,7 @@ export default function Page() {
                           }
                         : undefined,
                 );
-                await beginSync(attempt);
+                await beginSync(attempt, getLastOpenedRoomId(stored.userId));
             } catch (err) {
                 finishStartup(
                     "Restore failed",

@@ -46,6 +46,7 @@
         "@-/com.leonsilicon.zami.metro": "workspace:*",
         "@-/com.leonsilicon.zami.parity": "workspace:*",
         "@-/com.leonsilicon.zami.persist": "workspace:*",
+        "@-/com.leonsilicon.zami.plugins": "workspace:*",
         "@-/com.leonsilicon.zami.rn": "workspace:*",
         "@-/com.leonsilicon.zami.room-index": "workspace:*",
         "@-/com.leonsilicon.zami.scheduler": "workspace:*",
@@ -392,6 +393,67 @@
         "matrix-js-sdk": "*",
       },
     },
+    "packages/com/leonsilicon/zami/plugins": {
+      "name": "@-/com.leonsilicon.zami.plugins",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.blob": "workspace:*",
+        "@-/com.leonsilicon.zami.browser": "workspace:*",
+        "@-/com.leonsilicon.zami.icons": "workspace:*",
+        "@-/com.leonsilicon.zami.rn": "workspace:*",
+        "@-/com.leonsilicon.zami.svelte-react": "workspace:*",
+        "date-fns": "catalog:",
+        "expo": "catalog:",
+        "expo-application": "catalog:",
+        "expo-asset": "catalog:",
+        "expo-audio": "catalog:",
+        "expo-camera": "catalog:",
+        "expo-clipboard": "catalog:",
+        "expo-constants": "catalog:",
+        "expo-crypto": "catalog:",
+        "expo-device": "catalog:",
+        "expo-document-picker": "catalog:",
+        "expo-file-system": "catalog:",
+        "expo-font": "catalog:",
+        "expo-haptics": "catalog:",
+        "expo-image": "catalog:",
+        "expo-image-picker": "catalog:",
+        "expo-linking": "catalog:",
+        "expo-localization": "catalog:",
+        "expo-location": "catalog:",
+        "expo-modules-core": "catalog:",
+        "expo-notifications": "catalog:",
+        "expo-sharing": "catalog:",
+        "expo-sqlite": "catalog:",
+        "expo-status-bar": "catalog:",
+        "expo-video": "catalog:",
+        "expo-web-browser": "catalog:",
+        "lucide-react-native": "catalog:",
+        "matrix-js-sdk": "catalog:",
+        "react-native-audio-api": "catalog:",
+        "react-native-gesture-handler": "catalog:",
+        "react-native-keyboard-controller": "catalog:",
+        "react-native-maps": "catalog:",
+        "react-native-reanimated": "catalog:",
+        "react-native-safe-area-context": "catalog:",
+        "react-native-svg": "catalog:",
+        "react-native-webview": "catalog:",
+        "svelte": "catalog:",
+        "uniwind": "catalog:",
+      },
+      "devDependencies": {
+        "@-/com.leonsilicon.zami.metro": "workspace:*",
+        "@babel/core": "catalog:",
+        "@babel/plugin-transform-modules-commonjs": "catalog:",
+        "@babel/preset-typescript": "catalog:",
+        "linkedom": "catalog:",
+        "vite-plus": "catalog:",
+      },
+      "peerDependencies": {
+        "react": "*",
+        "react-native": "*",
+      },
+    },
     "packages/com/leonsilicon/zami/ports": {
       "name": "@-/com.leonsilicon.zami.ports",
       "version": "0.0.0",
@@ -537,12 +599,14 @@
     },
   },
   "patchedDependencies": {
+    "matrix-js-sdk@45.1.0": "patches/matrix-js-sdk@45.1.0.patch",
     "fake-indexeddb@6.2.7": "patches/fake-indexeddb@6.2.7.patch",
     "uniwind@1.13.0": "patches/uniwind@1.13.0.patch",
-    "matrix-js-sdk@45.0.0": "patches/matrix-js-sdk@45.0.0.patch",
-    "react-native-indexeddb-sqlite@0.1.1": "patches/react-native-indexeddb-sqlite@0.1.1.patch",
   },
   "catalog": {
+    "@babel/core": "7.29.13",
+    "@babel/plugin-transform-modules-commonjs": "7.29.7",
+    "@babel/preset-typescript": "7.29.7",
     "@capacitor/app": "8.1.1",
     "@capacitor/browser": "8.0.5",
     "@capacitor/core": "8.5.2",
@@ -608,7 +672,7 @@
     "linkedom": "0.18.15",
     "livekit-client": "2.22.3",
     "lucide-react-native": "0.509.0",
-    "matrix-js-sdk": "45.0.0",
+    "matrix-js-sdk": "45.1.0",
     "mp4box": "2.4.1",
     "pixelmatch": "8.0.0",
     "pngjs": "7.0.0",
@@ -618,7 +682,7 @@
     "react-native-audio-api": "1.0.0",
     "react-native-gesture-handler": "3.3.0",
     "react-native-get-random-values": "2.1.0",
-    "react-native-indexeddb-sqlite": "0.1.1",
+    "react-native-indexeddb-sqlite": "0.2.0",
     "react-native-keyboard-controller": "1.22.7",
     "react-native-maps": "1.29.11",
     "react-native-matrix-sdk-crypto-wasm": "0.1.0",
@@ -676,6 +740,8 @@
     "@-/com.leonsilicon.zami.parity": ["@-/com.leonsilicon.zami.parity@workspace:packages/com/leonsilicon/zami/parity"],
 
     "@-/com.leonsilicon.zami.persist": ["@-/com.leonsilicon.zami.persist@workspace:packages/com/leonsilicon/zami/persist"],
+
+    "@-/com.leonsilicon.zami.plugins": ["@-/com.leonsilicon.zami.plugins@workspace:packages/com/leonsilicon/zami/plugins"],
 
     "@-/com.leonsilicon.zami.ports": ["@-/com.leonsilicon.zami.ports@workspace:packages/com/leonsilicon/zami/ports"],
 
@@ -1071,7 +1137,7 @@
 
     "@lofcz/deepfilternet-web": ["@lofcz/deepfilternet-web@0.1.0", "", {}, "sha512-uKf9IsCd5HUkwLRqZTDmA8gPCsDZTAKUa+9u9GWrtJWRGxVIVj43neNcpGzPkK3DEle1L1tZ+df8GXNJJxEfGA=="],
 
-    "@matrix-org/matrix-sdk-crypto-wasm": ["@matrix-org/matrix-sdk-crypto-wasm@18.9.0", "", {}, "sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ=="],
+    "@matrix-org/matrix-sdk-crypto-wasm": ["@matrix-org/matrix-sdk-crypto-wasm@18.9.2", "", {}, "sha512-GHeuSeb5Fj6Wg2+NE/WoLJJs9U3nOzttO+2sj7lOaS5gNBpGIksc48N/Q/kK/Z+Lxh7YMhopB7M8b6HyASXnGQ=="],
 
     "@noble/ciphers": ["@noble/ciphers@2.4.0", "", {}, "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw=="],
 
@@ -2051,7 +2117,7 @@
 
     "matrix-events-sdk": ["matrix-events-sdk@0.0.1", "", {}, "sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA=="],
 
-    "matrix-js-sdk": ["matrix-js-sdk@45.0.0", "", { "dependencies": { "@babel/runtime": "^8.0.0", "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0", "another-json": "^0.2.0", "bs58": "^6.0.0", "content-type": "^3.0.0", "loglevel": "^1.9.2", "matrix-events-sdk": "0.0.1", "matrix-widget-api": "^1.20.0", "p-retry": "8", "sdp-transform": "^3.0.0", "unhomoglyph": "^1.0.6" } }, "sha512-vpc3o48R/OYZ+WxIx/nHvw5Ho7K1zD4XWepzUFbo/MLXXLkCTcOVzKvkRyRz+KPkzshci2RuwYkJgynNsXg8ug=="],
+    "matrix-js-sdk": ["matrix-js-sdk@45.1.0", "", { "dependencies": { "@babel/runtime": "^8.0.7", "@matrix-org/matrix-sdk-crypto-wasm": "18.9.2", "another-json": "^0.2.0", "bs58": "^6.0.0", "content-type": "^3.1.1", "loglevel": "^1.9.2", "matrix-events-sdk": "0.0.1", "matrix-widget-api": "^1.20.0", "p-retry": "^8.0.1", "re2js": "^2.8.6", "sdp-transform": "^3.0.0", "unhomoglyph": "^1.0.6" } }, "sha512-uv/vwk/cutrhVSnYZ9pNCxwfcME/+eDfDmWE5VqrzGLMAdw4j7aeBXBXBzRA9pzHheU8DSTUrNTFqvL1OmkktA=="],
 
     "matrix-widget-api": ["matrix-widget-api@1.20.0", "", { "dependencies": { "@types/events": "^3.0.0", "events": "^3.2.0" } }, "sha512-qwFP37rgns7mPesM5/vvZgknzb+kvyRB5BISv5sCuBxsGMceMr+Kogf7OkjRxBXdMCPBFuf6gIuYRe5S+lpzQw=="],
 
@@ -2213,6 +2279,8 @@
 
     "range-parser": ["range-parser@1.2.1", "", {}, "sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg=="],
 
+    "re2js": ["re2js@2.10.0", "", {}, "sha512-/P6FNnLbHjXJMRF1dPoZoVTyHvFcuVhbDpzml9DPMlbeErYlZ18GueAaG9GhYhAm/9AN7i7Y6crmDrLX0DeJ4Q=="],
+
     "react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
 
     "react-devtools-core": ["react-devtools-core@6.1.5", "", { "dependencies": { "shell-quote": "^1.6.1", "ws": "^7" } }, "sha512-ePrwPfxAnB+7hgnEr8vpKxL9cmnp7F322t8oqcPshbIQQhDKgFDW4tjhF2wjVbdXF9O/nyuy3sQWd9JGpiLPvA=="],
@@ -2229,7 +2297,7 @@
 
     "react-native-get-random-values": ["react-native-get-random-values@2.1.0", "", { "dependencies": { "fast-base64-decode": "^1.0.0" }, "peerDependencies": { "react-native": ">=0.81" } }, "sha512-ooSUj9zTICGZ/eDFzNCnC+Pyb0SxE6y2QtC8S8z/BBJY+9dUjjNWD0DgRCSfXuC/c2k9V03xLMF6y/yUYEk4ew=="],
 
-    "react-native-indexeddb-sqlite": ["react-native-indexeddb-sqlite@0.1.1", "", { "dependencies": { "fake-indexeddb": "6.2.7" } }, "sha512-bokXFCsA+HPiti43lZlLLFYN3hSs7sT4AErEIBC5lF5lmx3ffey8eZU7hnXomJZi+4qeOrNbeFqM56PIMMDbpw=="],
+    "react-native-indexeddb-sqlite": ["react-native-indexeddb-sqlite@0.2.0", "", { "dependencies": { "fake-indexeddb": "6.2.7" } }, "sha512-O7T/1PB/6GgKQcWoiVL/LFdDEn/K/INT5AWDRgpZlYwzfsCXoU+2oRXrTWbG5aR3sfu2O0SmJSGq+gSvwSk0cw=="],
 
     "react-native-is-edge-to-edge": ["react-native-is-edge-to-edge@1.3.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-NIXU/iT5+ORyCc7p0z2nnlkouYKX425vuU1OEm6bMMtWWR9yvb+Xg5AZmImTKoF9abxCPqrKC3rOZsKzUYgYZA=="],
 

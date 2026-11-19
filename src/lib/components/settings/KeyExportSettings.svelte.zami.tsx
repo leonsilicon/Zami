@@ -21,10 +21,10 @@ import {
 } from "$lib/utils/keyBackup";
 
 const inputClass =
-    "w-full rounded bg-discord-backgroundSecondary px-3 py-2 text-sm text-discord-textPrimary outline-none focus:ring-2 focus:ring-discord-accent";
+    "w-full rounded bg-zam-backgroundSecondary px-3 py-2 text-sm text-zam-textPrimary outline-none focus:ring-2 focus:ring-zam-accent";
 // Zami: the button's text classes are on its Text (`buttonTextClass`).
 const buttonClass =
-    "self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50";
+    "self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50";
 const buttonTextClass = "text-sm font-medium text-white";
 // Zami: how much of an export file one write takes (it's ASCII, so as many
 // bytes).
@@ -145,18 +145,18 @@ export default function KeyExportSettings() {
     }
 
     return (
-        <View className="rounded bg-discord-backgroundTertiary px-4 py-4 gap-4">
+        <View className="rounded bg-zam-backgroundTertiary px-4 py-4 gap-4">
             <View>
-                <Text className="text-sm font-medium text-discord-textPrimary">
+                <Text className="text-sm font-medium text-zam-textPrimary">
                     {t("keyExportSettings.exportOrImportRoomKeys")}
                 </Text>
-                <Text className="text-xs text-discord-textMuted mt-1">
+                <Text className="text-xs text-zam-textMuted mt-1">
                     {t("keyExportSettings.aKeyFileLetsAnotherApp")}
                 </Text>
             </View>
 
             <View className="gap-2">
-                <Text className="text-xs font-bold uppercase text-discord-textSecondary tracking-wide">
+                <Text className="text-xs font-bold uppercase text-zam-textSecondary tracking-wide">
                     {t("keyExportSettings.export")}
                 </Text>
                 <TextInput
@@ -168,7 +168,7 @@ export default function KeyExportSettings() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder={t("keyExportSettings.passphrase")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("keyExportSettings.passphrase")}
                     returnKeyType="next"
                     className={inputClass}
@@ -182,7 +182,7 @@ export default function KeyExportSettings() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder={t("keyExportSettings.confirmPassphrase")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t(
                         "keyExportSettings.confirmPassphrase",
                     )}
@@ -193,7 +193,7 @@ export default function KeyExportSettings() {
                     className={inputClass}
                 />
                 {mismatch && (
-                    <Text className="text-xs text-discord-danger">
+                    <Text className="text-xs text-zam-danger">
                         {t("keyExportSettings.passphrasesDontMatch")}
                     </Text>
                 )}
@@ -214,19 +214,19 @@ export default function KeyExportSettings() {
                     </Text>
                 </Pressable>
                 {exportDone ? (
-                    <Text className="text-sm text-discord-online" role="status">
+                    <Text className="text-sm text-zam-online" role="status">
                         {exportDone}
                     </Text>
                 ) : null}
                 {exportError ? (
-                    <Text className="text-sm text-discord-danger" role="alert">
+                    <Text className="text-sm text-zam-danger" role="alert">
                         {exportError}
                     </Text>
                 ) : null}
             </View>
 
             <View className="gap-2">
-                <Text className="text-xs font-bold uppercase text-discord-textSecondary tracking-wide">
+                <Text className="text-xs font-bold uppercase text-zam-textSecondary tracking-wide">
                     {t("keyExportSettings.import")}
                 </Text>
                 {/* Zami: the file input's own button (`file:` classes) and the
@@ -239,14 +239,14 @@ export default function KeyExportSettings() {
                     }}
                     className="flex-row items-center w-full"
                 >
-                    <View className="me-3 rounded bg-discord-messageHover px-3 py-1.5">
-                        <Text className="text-sm text-discord-textPrimary">
+                    <View className="me-3 rounded bg-zam-messageHover px-3 py-1.5">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("midiSoundBank.chooseFile")}
                         </Text>
                     </View>
                     <Text
                         numberOfLines={1}
-                        className="flex-1 text-sm text-discord-textMuted"
+                        className="flex-1 text-sm text-zam-textMuted"
                     >
                         {importFile?.name ?? t("keyExportSettings.keyFile")}
                     </Text>
@@ -259,7 +259,7 @@ export default function KeyExportSettings() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder={t("keyExportSettings.passphrase")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("keyExportSettings.passphrase")}
                     returnKeyType="done"
                     onSubmitEditing={() => {
@@ -282,20 +282,20 @@ export default function KeyExportSettings() {
                     </Text>
                 </Pressable>
                 {importing && progressView.percent !== null && (
-                    <View className="h-1.5 w-full rounded bg-discord-backgroundSecondary overflow-hidden">
+                    <View className="h-1.5 w-full rounded bg-zam-backgroundSecondary overflow-hidden">
                         <View
-                            className="h-full bg-discord-accent transition-[width]"
+                            className="h-full bg-zam-accent transition-[width]"
                             style={{ width: `${progressView.percent}%` }}
                         />
                     </View>
                 )}
                 {importDone ? (
-                    <Text className="text-sm text-discord-online" role="status">
+                    <Text className="text-sm text-zam-online" role="status">
                         {importDone}
                     </Text>
                 ) : null}
                 {importError ? (
-                    <Text className="text-sm text-discord-danger" role="alert">
+                    <Text className="text-sm text-zam-danger" role="alert">
                         {importError}
                     </Text>
                 ) : null}

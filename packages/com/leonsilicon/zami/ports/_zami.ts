@@ -10,6 +10,8 @@
 //                                              --since for review
 //   _zami done <zami file>...                  mark files as migrated to the merged upstream commit
 //   _zami diff <zami file>                     what upstream changed since the file was last synced
+//   _zami remap [--dry-run]                    after upstream rewrites its history, point the
+//                                              manifest's commits at upstream's rewritten copies
 //   _zami check [--strict]                     CI invariants; exits 1 on failure
 //   _zami editor [--check]                     editor settings that hide Zam's files (VS Code, Zed)
 //   _zami backlog [--count <n>]                Svelte components ready to port (all their child
@@ -25,6 +27,7 @@ import { parseArgs } from "node:util";
 import { check } from "#check";
 import { writeEditorSettings } from "#editor";
 import { Project, type PortStatus } from "#project";
+import { remap } from "#remap";
 import { markDone, summarize, sync } from "#sync";
 
 const { positionals, values } = parseArgs({
@@ -136,6 +139,22 @@ switch (command) {
     );
     break;
   }
+  case "remap": {
+    const { remapped, unmapped } = remap(project, { dryRun: values["dry-run"] ?? false });
+    const pairs = new Set(
+      [...remapped.values()].map(([from, to]) => `${from.slice(0, 10)} -> ${to.slice(0, 10)}`),
+    );
+    const commits = new Set([...remapped.values()].map(([from]) => from));
+    for (const pair of pairs) console.log(pair);
+    for (const [zamiPath, reason] of unmapped) console.error(`unmapped: ${zamiPath}: ${reason}`);
+    console.log(
+      remapped.size === 0
+        ? "Every manifest commit is part of the merged upstream history."
+        : `${values["dry-run"] ? "Would remap" : "Remapped"} ${remapped.size} file(s) from ${commits.size} rewritten commit(s).`,
+    );
+    if (unmapped.size > 0) process.exit(1);
+    break;
+  }
   case "check": {
     const { failures, warnings } = check(project, { strict: values.strict ?? false });
     for (const warning of warnings) console.warn(`warning: ${warning}`);
@@ -190,7 +209,7 @@ switch (command) {
   }
   default:
     console.error(
-      "Usage: _zami <status|sync|done|diff|check|backlog|editor> (see the comment at the top of _zami.ts)",
+      "Usage: _zami <status|sync|done|diff|remap|check|backlog|editor> (see the comment at the top of _zami.ts)",
     );
     process.exit(command === undefined ? 0 : 1);
 }

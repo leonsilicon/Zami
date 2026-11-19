@@ -156,7 +156,7 @@ export default function ShareTargetSheet() {
         <>
             {previews.length > 0 && (
                 <ScrollView
-                    className="max-h-40 flex-grow-0 border-b border-discord-divider"
+                    className="max-h-40 flex-grow-0 border-b border-zam-divider"
                     contentContainerClassName="flex-col gap-2 px-4 py-3"
                 >
                     {previews.map((row, i) => (
@@ -168,16 +168,16 @@ export default function ShareTargetSheet() {
                                     className="h-10 w-10 flex-shrink-0 rounded"
                                 />
                             ) : (
-                                <View className="flex-row h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-discord-backgroundTertiary">
+                                <View className="flex-row h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-zam-backgroundTertiary">
                                     {row.isImage ? (
                                         <ImageIcon
                                             size={18}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     ) : (
                                         <FileText
                                             size={18}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     )}
                                 </View>
@@ -185,12 +185,12 @@ export default function ShareTargetSheet() {
                             <View className="min-w-0 flex-1">
                                 <Text
                                     numberOfLines={1}
-                                    className="text-sm text-discord-textPrimary"
+                                    className="text-sm text-zam-textPrimary"
                                 >
                                     {row.name}
                                 </Text>
                                 {row.sizeLabel ? (
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {row.sizeLabel}
                                     </Text>
                                 ) : null}
@@ -202,9 +202,9 @@ export default function ShareTargetSheet() {
             {payload?.droppedFiles && payload.droppedFiles > 0 ? (
                 <View
                     role="status"
-                    className="border-b border-discord-divider px-4 py-3"
+                    className="border-b border-zam-divider px-4 py-3"
                 >
-                    <Text className="text-sm text-discord-textMuted">
+                    <Text className="text-sm text-zam-textMuted">
                         {t("shareTargetSheet.fileSWerenTAddedShares", {
                             droppedFiles: payload.droppedFiles,
                             SHARE_MAX_FILES,
@@ -218,17 +218,17 @@ export default function ShareTargetSheet() {
     );
 
     const captionField = () => (
-        <View className="border-b border-discord-divider px-4 py-3">
+        <View className="border-b border-zam-divider px-4 py-3">
             {/* Zami: `rows="2"`: two 20px lines and the padding. */}
             <TextInput
                 multiline
                 value={caption}
                 onChangeText={setCaption}
                 placeholder={t("shareTargetSheet.addAMessage")}
-                placeholderTextColorClassName="accent-discord-textMuted"
+                placeholderTextColorClassName="accent-zam-textMuted"
                 accessibilityLabel={t("shareTargetSheet.addAMessage")}
                 textAlignVertical="top"
-                className="w-full min-h-[56px] rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary focus:ring-1 focus:ring-discord-accent"
+                className="w-full min-h-[56px] rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary focus:ring-1 focus:ring-zam-accent"
             />
         </View>
     );
@@ -237,18 +237,18 @@ export default function ShareTargetSheet() {
         <View className="px-3 pb-2 pt-3">
             <View className="relative justify-center">
                 <View pointerEvents="none" className="absolute start-3 z-10">
-                    <Search size={16} className="text-discord-textMuted" />
+                    <Search size={16} className="text-zam-textMuted" />
                 </View>
                 <TextInput
                     autoFocus
                     value={query}
                     onChangeText={setQuery}
                     placeholder={t("shareTargetSheet.searchRooms")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("shareTargetSheet.searchRooms")}
                     autoCorrect={false}
                     returnKeyType="search"
-                    className="w-full rounded bg-discord-backgroundTertiary py-2 ps-9 pe-3 text-sm text-discord-textPrimary focus:ring-1 focus:ring-discord-accent"
+                    className="w-full rounded bg-zam-backgroundTertiary py-2 ps-9 pe-3 text-sm text-zam-textPrimary focus:ring-1 focus:ring-zam-accent"
                 />
             </View>
         </View>
@@ -273,9 +273,9 @@ export default function ShareTargetSheet() {
                     }}
                     // Zami: the selected room's `ring-1` → a 1px border (in
                     // every row, so selecting one doesn't shift it).
-                    className={`flex-row w-full items-center gap-3 rounded px-2 py-2 transition-colors hover:bg-discord-messageHover active:bg-discord-messageHover ${
+                    className={`flex-row w-full items-center gap-3 rounded px-2 py-2 transition-colors hover:bg-zam-messageHover active:bg-zam-messageHover ${
                         selectedRoomId === room.roomId
-                            ? "bg-discord-messageHover border border-discord-accent"
+                            ? "bg-zam-messageHover border border-zam-accent"
                             : "border border-transparent"
                     }`}
                 >
@@ -287,14 +287,14 @@ export default function ShareTargetSheet() {
                     />
                     <Text
                         numberOfLines={1}
-                        className="min-w-0 flex-shrink text-sm font-medium text-discord-textPrimary"
+                        className="min-w-0 flex-shrink text-sm font-medium text-zam-textPrimary"
                     >
                         {getRoomDisplayName(room)}
                     </Text>
                 </Pressable>
             )}
             ListEmptyComponent={
-                <Text className="px-3 py-8 text-center text-sm text-discord-textMuted">
+                <Text className="px-3 py-8 text-center text-sm text-zam-textMuted">
                     {t("shareTargetSheet.noJoinedRoomsFound")}
                 </Text>
             }
@@ -302,13 +302,13 @@ export default function ShareTargetSheet() {
     );
 
     const footer = () => (
-        <View className="flex-row justify-end gap-2 border-t border-discord-divider p-3">
+        <View className="flex-row justify-end gap-2 border-t border-zam-divider p-3">
             <Pressable
                 accessibilityRole="button"
                 onPress={clearShare}
                 className="px-3 py-2"
             >
-                <Text className="text-sm font-semibold text-discord-textMuted hover:text-discord-textPrimary">
+                <Text className="text-sm font-semibold text-zam-textMuted hover:text-zam-textPrimary">
                     {t("common.cancel")}
                 </Text>
             </Pressable>
@@ -317,7 +317,7 @@ export default function ShareTargetSheet() {
                 onPress={submit}
                 disabled={!selectedRoomId || empty}
                 accessibilityState={{ disabled: !selectedRoomId || empty }}
-                className={`rounded bg-discord-accent px-4 py-2 transition-colors hover:bg-discord-accentHover ${
+                className={`rounded bg-zam-accent px-4 py-2 transition-colors hover:bg-zam-accentHover ${
                     !selectedRoomId || empty ? "opacity-50" : ""
                 }`}
             >
@@ -340,7 +340,7 @@ export default function ShareTargetSheet() {
                     style={[StyleSheet.absoluteFill, { zIndex: 90 }]}
                 >
                     <View
-                        className="flex-1 flex-col bg-discord-background"
+                        className="flex-1 flex-col bg-zam-background"
                         style={{
                             paddingTop: insets.top,
                             paddingBottom: insets.bottom,
@@ -350,17 +350,17 @@ export default function ShareTargetSheet() {
                         aria-labelledby="share-target-title"
                         onAccessibilityEscape={clearShare}
                     >
-                        <View className="flex-row items-center gap-2 border-b border-discord-divider px-2 py-3">
+                        <View className="flex-row items-center gap-2 border-b border-zam-divider px-2 py-3">
                             <Pressable
                                 accessibilityRole="button"
                                 onPress={clearShare}
-                                className="rounded p-1.5 hover:bg-discord-messageHover"
+                                className="rounded p-1.5 hover:bg-zam-messageHover"
                                 accessibilityLabel={t("common.close")}
                             >
                                 {/* Zami: `mirror:-scale-x-100`, from I18nManager. */}
                                 <ArrowLeft
                                     size={20}
-                                    className="text-discord-textMuted hover:text-discord-textPrimary"
+                                    className="text-zam-textMuted hover:text-zam-textPrimary"
                                     style={
                                         I18nManager.isRTL
                                             ? { transform: [{ scaleX: -1 }] }
@@ -371,7 +371,7 @@ export default function ShareTargetSheet() {
                             <Text
                                 nativeID="share-target-title"
                                 role="heading"
-                                className="text-base font-semibold text-discord-textPrimary"
+                                className="text-base font-semibold text-zam-textPrimary"
                             >
                                 {t("shareTargetSheet.shareToARoom")}
                             </Text>
@@ -395,26 +395,26 @@ export default function ShareTargetSheet() {
                 onClose={clearShare}
                 labelledBy="share-target-title"
                 layerClass="z-[90] flex items-center justify-center p-3"
-                panelClass="relative flex max-h-[90%] w-full max-w-md flex-col overflow-hidden rounded-lg border border-discord-divider bg-discord-backgroundSecondary shadow-2xl"
+                panelClass="relative flex max-h-[90%] w-full max-w-md flex-col overflow-hidden rounded-lg border border-zam-divider bg-zam-backgroundSecondary shadow-2xl"
             >
                 <View className="max-h-[680px] shrink flex-col">
-                    <View className="flex-row items-center justify-between border-b border-discord-divider px-4 py-3">
+                    <View className="flex-row items-center justify-between border-b border-zam-divider px-4 py-3">
                         <Text
                             nativeID="share-target-title"
                             role="heading"
-                            className="text-base font-semibold text-discord-textPrimary"
+                            className="text-base font-semibold text-zam-textPrimary"
                         >
                             {t("shareTargetSheet.shareToARoom")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={clearShare}
-                            className="ms-2 rounded p-1.5 hover:bg-discord-messageHover"
+                            className="ms-2 rounded p-1.5 hover:bg-zam-messageHover"
                             accessibilityLabel={t("common.close")}
                         >
                             <X
                                 size={20}
-                                className="text-discord-textMuted hover:text-discord-textPrimary"
+                                className="text-zam-textMuted hover:text-zam-textPrimary"
                             />
                         </Pressable>
                     </View>

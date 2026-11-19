@@ -148,6 +148,18 @@ describe("updateStatusView — fold updater phase + toggle into a view model", (
         });
     });
 
+    it("downloaded + reopenToApply asks for a manual reopen, no button", () => {
+        const v = updateStatusView({
+            phase: "downloaded",
+            autoEnabled: true,
+            version: "1.67.0",
+            reopenToApply: true,
+        });
+        expect(v.action).toBe("none");
+        expect(v.label).toContain("Quit Zam and open it again");
+        expect(v.label).toContain("v1.67.0");
+    });
+
     it("downloaded surfaces the target version in the label", () => {
         expect(
             updateStatusView({
@@ -189,6 +201,23 @@ describe("updateStatusView — fold updater phase + toggle into a view model", (
                 version: "1.2.0",
             }).label,
         ).toBe("A new version is available (v1.2.0)");
+    });
+
+    it("a Flatpak update only the system can install says how, with no button", () => {
+        expect(
+            updateStatusView({
+                phase: "unsupported",
+                autoEnabled: true,
+                version: "1.2.0",
+                manual: "flatpak",
+            }),
+        ).toEqual({
+            label: "Update available (v1.2.0). Install it from your software center or with flatpak update",
+            action: "none",
+            actionLabel: "",
+            busy: false,
+            percent: null,
+        });
     });
 
     it("error surfaces the message verbatim", () => {

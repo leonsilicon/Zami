@@ -250,7 +250,7 @@ export default function BottomSheet({ onClose, children }: Props) {
                             { maxHeight: windowSize.height * 0.7 },
                             sheetStyle,
                         ]}
-                        className="bg-discord-backgroundTertiary border-t border-discord-divider rounded-t-2xl shadow-2xl"
+                        className="bg-zam-backgroundTertiary border-t border-zam-divider rounded-t-2xl shadow-2xl"
                     >
                         {/*
                           `bounces={false}` stands in for `overscroll-contain`: at the
@@ -271,7 +271,7 @@ export default function BottomSheet({ onClose, children }: Props) {
                                 paddingBottom: insets.bottom,
                             }}
                         >
-                            <View className="relative z-10 w-10 h-1 bg-discord-divider rounded-full mx-auto mb-2" />
+                            <View className="relative z-10 w-10 h-1 bg-zam-divider rounded-full mx-auto mb-2" />
                             {children}
                         </ScrollView>
                     </Animated.View>

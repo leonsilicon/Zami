@@ -1,4 +1,5 @@
 import {
+    DomMount,
     Portal,
     revealSettingAnchor,
     SvgIcon,
@@ -10,6 +11,7 @@ import {
     useCallback,
     useEffect,
     useEffectEvent,
+    useMemo,
     useRef,
     useState,
     type ReactNode,
@@ -49,6 +51,8 @@ import VoiceAudioSettings from "$lib/components/settings/VoiceAudioSettings.svel
 import KeybindSettings from "$lib/components/settings/KeybindSettings.svelte";
 import PluginsSettings from "$lib/components/settings/PluginsSettings.svelte";
 import { motionOK } from "$lib/utils/motionPreference";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import {
     interfaceState,
     openSubPage,
@@ -70,7 +74,10 @@ import {
     type SettingsSearchEntry,
 } from "$lib/utils/settingsSearch";
 import { isDesktopTray } from "$lib/desktopTray";
-import { richPresenceAvailable } from "$lib/stores/richPresence.svelte";
+import {
+    pluginPresenceKnown,
+    richPresenceAvailable,
+} from "$lib/stores/richPresence.svelte";
 import RichPresenceSettings from "$lib/components/settings/RichPresenceSettings.svelte";
 import { Capacitor } from "@capacitor/core";
 import { ChevronRight, ArrowLeft } from "lucide-svelte";
@@ -113,9 +120,34 @@ export default function AppSettings({ onClose, onLogout }: Props) {
     const platform = {
         desktopTray: isDesktopTray(),
         nativeApp: Capacitor.isNativePlatform(),
-        richPresence: richPresenceAvailable(),
+        richPresence: richPresenceAvailable() || pluginPresenceKnown(),
     };
-    const settingsGroups = visibleSettingsGroups(platform);
+    const coreGroups = visibleSettingsGroups(platform);
+    // Plugin pages (zam.ui.addSettingsPage) get a group of their own.
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const pluginPages = useMemo(
+        () => (
+            void pluginTick,
+            pluginRegistry.settingsPages.map((e) => ({
+                id: `plugin:${e.entryId}` as SettingsTab,
+                label: String(e.value.label),
+                entry: e,
+            }))
+        ),
+        [pluginTick],
+    );
+    const settingsGroups =
+        pluginPages.length > 0
+            ? [
+                  ...coreGroups,
+                  { title: t("settingsNav.plugins"), tabs: pluginPages },
+              ]
+            : coreGroups;
+    function tabLabel(id: SettingsTab): string {
+        return (
+            pluginPages.find((p) => p.id === id)?.label ?? settingsTabLabel(id)
+        );
+    }
     const searchIndex = SETTINGS_SEARCH_INDEX.filter(
         (e) =>
             isSettingsTabAvailable(e.tab, platform) &&
@@ -292,7 +324,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                     <View className="mt-8 gap-3">
                         <Text
                             accessibilityRole="header"
-                            className="text-lg font-semibold text-discord-textPrimary"
+                            className="text-lg font-semibold text-zam-textPrimary"
                         >
                             {t("soundboard.title")}
                         </Text>
@@ -311,6 +343,22 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                     <DebugSettings />
                     <PushDiagnostics />
                 </View>
+            );
+        const page = pluginPages.find((p) => p.id === tab);
+        if (page)
+            return (
+                // Zami: the plugin builds DOM into the element (pluginMount),
+                // which DomView shows.
+                <DomMount
+                    key={page.id}
+                    document={document}
+                    mount={(el) => {
+                        el.setAttribute("data-zam-plugin", page.entry.pluginId);
+                        return pluginMount(el, (el) =>
+                            page.entry.value.render(el),
+                        ).destroy;
+                    }}
+                />
             );
         return null;
     }
@@ -337,7 +385,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                     accessibilityViewIsModal
                     aria-labelledby="app-settings-title"
                     onAccessibilityEscape={dismissTopmost}
-                    className="relative z-10 bg-discord-backgroundSecondary rounded-none md:rounded-xl shadow-2xl w-full max-w-2xl flex-col overflow-hidden h-full md:h-[85%]"
+                    className="relative z-10 bg-zam-backgroundSecondary rounded-none md:rounded-xl shadow-2xl w-full max-w-2xl flex-col overflow-hidden h-full md:h-[85%]"
                     style={
                         isMobile
                             ? {
@@ -349,7 +397,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                 >
                     {/* Header. On a mobile sub-page the close button is replaced by a back
                         arrow and the title names the category. */}
-                    <View className="flex-row items-center gap-2 px-6 py-4 border-b border-discord-divider flex-shrink-0">
+                    <View className="flex-row items-center gap-2 px-6 py-4 border-b border-zam-divider flex-shrink-0">
                         {view.mode === "detail" && (
                             <Pressable
                                 ref={backButtonEl}
@@ -358,10 +406,10 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                 accessibilityLabel={t(
                                     "appSettings.backToSettings",
                                 )}
-                                className="-ms-2 p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                                className="-ms-2 p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                             >
                                 <ArrowLeft
-                                    className="rtl:-scale-x-100 text-discord-textMuted"
+                                    className="rtl:-scale-x-100 text-zam-textMuted"
                                     size={20}
                                 />
                             </Pressable>
@@ -370,27 +418,27 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                             nativeID="app-settings-title"
                             accessibilityRole="header"
                             numberOfLines={1}
-                            className="text-lg font-bold text-discord-textPrimary min-w-0 truncate flex-1"
+                            className="text-lg font-bold text-zam-textPrimary min-w-0 truncate flex-1"
                         >
                             {view.mode === "detail"
-                                ? settingsTabLabel(view.tab)
+                                ? tabLabel(view.tab)
                                 : t("common.settings")}
                         </Text>
                         <Pressable
                             accessibilityRole="button"
                             onPress={onClose}
                             accessibilityLabel={t("appSettings.closeSettings")}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                         >
                             <SvgIcon
-                                className="w-5 h-5 text-discord-textMuted"
+                                className="w-5 h-5 text-zam-textMuted"
                                 d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                             />
                         </Pressable>
                     </View>
 
                     {view.mode !== "detail" && (
-                        <View className="px-6 py-3 border-b border-discord-divider flex-shrink-0">
+                        <View className="px-6 py-3 border-b border-zam-divider flex-shrink-0">
                             <TextInput
                                 ref={searchEl}
                                 value={searchQuery}
@@ -402,11 +450,11 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                 clearButtonMode="while-editing"
                                 autoCorrect={false}
                                 placeholder={t("appSettings.searchSettings")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
+                                placeholderTextColorClassName="accent-zam-textMuted"
                                 accessibilityLabel={t(
                                     "appSettings.searchSettings2",
                                 )}
-                                className="w-full px-3 py-2 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                                className="w-full px-3 py-2 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary focus:outline-none focus:ring-2 focus:ring-zam-accent"
                             />
                         </View>
                     )}
@@ -421,7 +469,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                             automaticallyAdjustKeyboardInsets
                         >
                             {searchResults.length === 0 ? (
-                                <Text className="px-6 py-8 text-sm text-discord-textMuted text-center">
+                                <Text className="px-6 py-8 text-sm text-zam-textMuted text-center">
                                     {t("appSettings.noSettingsMatch2", {
                                         searchQuery,
                                     })}
@@ -436,15 +484,15 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                             Keyboard.dismiss();
                                             selectResult(result);
                                         }}
-                                        className="w-full flex-row items-center justify-between gap-3 px-6 py-3 hover:bg-discord-messageHover transition-colors"
+                                        className="w-full flex-row items-center justify-between gap-3 px-6 py-3 hover:bg-zam-messageHover transition-colors"
                                     >
                                         <Text
                                             numberOfLines={1}
-                                            className="min-w-0 flex-shrink truncate text-sm text-discord-textPrimary"
+                                            className="min-w-0 flex-shrink truncate text-sm text-zam-textPrimary"
                                         >
                                             {result.label}
                                         </Text>
-                                        <Text className="flex-shrink-0 text-xs text-discord-textMuted">
+                                        <Text className="flex-shrink-0 text-xs text-zam-textMuted">
                                             {settingsTabLabel(result.tab)}
                                         </Text>
                                     </Pressable>
@@ -460,7 +508,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                         >
                             {settingsGroups.map((group) => (
                                 <Fragment key={group.title}>
-                                    <Text className="px-6 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <Text className="px-6 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                         {group.title}
                                     </Text>
                                     {group.tabs.map((tab) => (
@@ -472,17 +520,17 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                             }}
                                             accessibilityRole="button"
                                             onPress={() => selectTab(tab.id)}
-                                            className="w-full flex-row items-center justify-between gap-3 px-6 py-3.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                            className="w-full flex-row items-center justify-between gap-3 px-6 py-3.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                                         >
                                             <Text
                                                 numberOfLines={1}
-                                                className="min-w-0 flex-shrink truncate text-base font-medium text-discord-textPrimary"
+                                                className="min-w-0 flex-shrink truncate text-base font-medium text-zam-textPrimary"
                                             >
                                                 {tab.label}
                                             </Text>
                                             <ChevronRight
                                                 size={20}
-                                                className="rtl:-scale-x-100 flex-shrink-0 text-discord-textMuted"
+                                                className="rtl:-scale-x-100 flex-shrink-0 text-zam-textMuted"
                                             />
                                         </Pressable>
                                     ))}
@@ -512,12 +560,12 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                         // Desktop: category sidebar beside the active panel.
                         <View className="flex-row flex-1 min-h-0">
                             <ScrollView
-                                className="flex-shrink-0 w-40 border-e border-discord-divider min-h-0 grow-0"
+                                className="flex-shrink-0 w-40 border-e border-zam-divider min-h-0 grow-0"
                                 contentContainerClassName="gap-0.5 px-2 py-3"
                             >
                                 {settingsGroups.map((group) => (
                                     <Fragment key={group.title}>
-                                        <Text className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                        <Text className="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                             {group.title}
                                         </Text>
                                         {group.tabs.map((tab) => (
@@ -533,7 +581,7 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                                 }
                                                 className={`flex-shrink-0 w-full px-3 py-2 rounded transition-colors ${
                                                     view.tab === tab.id
-                                                        ? "bg-discord-messageHover"
+                                                        ? "bg-zam-messageHover"
                                                         : ""
                                                 }`}
                                             >
@@ -541,8 +589,8 @@ export default function AppSettings({ onClose, onLogout }: Props) {
                                                     numberOfLines={1}
                                                     className={`text-sm font-medium ${
                                                         view.tab === tab.id
-                                                            ? "text-discord-textPrimary"
-                                                            : "text-discord-textMuted"
+                                                            ? "text-zam-textPrimary"
+                                                            : "text-zam-textMuted"
                                                     }`}
                                                 >
                                                     {tab.label}

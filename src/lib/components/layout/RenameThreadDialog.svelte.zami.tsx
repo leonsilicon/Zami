@@ -75,19 +75,19 @@ export default function RenameThreadDialog({ name, onSave, onClose }: Props) {
                     >
                         <View
                             accessibilityViewIsModal
-                            className="relative z-10 bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-md"
+                            className="relative z-10 bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-md"
                         >
                             <View className="flex flex-col gap-4 p-6">
                                 <Text
                                     accessibilityRole="header"
-                                    className="text-lg font-bold text-discord-textPrimary"
+                                    className="text-lg font-bold text-zam-textPrimary"
                                 >
                                     {name
                                         ? t("renameThreadDialog.renameThread")
                                         : t("renameThreadDialog.nameThread")}
                                 </Text>
                                 <View className="flex flex-col gap-1.5">
-                                    <Text className="text-xs font-bold uppercase text-discord-textSecondary">
+                                    <Text className="text-xs font-bold uppercase text-zam-textSecondary">
                                         {t("renameThreadDialog.threadName")}
                                     </Text>
                                     <TextInput
@@ -104,17 +104,17 @@ export default function RenameThreadDialog({ name, onSave, onClose }: Props) {
                                         onSubmitEditing={() =>
                                             void save(cleaned)
                                         }
-                                        className="rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary outline-none focus:ring-2 focus:ring-discord-accent"
+                                        className="rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary outline-none focus:ring-2 focus:ring-zam-accent"
                                     />
                                 </View>
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t(
                                         "renameThreadDialog.everyoneInTheRoomSeesIt",
                                     )}
                                 </Text>
                                 {!!error && (
                                     <Text
-                                        className="text-sm text-discord-danger"
+                                        className="text-sm text-zam-danger"
                                         accessibilityRole="alert"
                                     >
                                         {error}
@@ -131,7 +131,7 @@ export default function RenameThreadDialog({ name, onSave, onClose }: Props) {
                                             onPress={() => void save("")}
                                             className="rounded px-3 py-2 disabled:opacity-50"
                                         >
-                                            <Text className="text-sm font-medium text-discord-danger">
+                                            <Text className="text-sm font-medium text-zam-danger">
                                                 {t(
                                                     "renameThreadDialog.removeName",
                                                 )}
@@ -144,7 +144,7 @@ export default function RenameThreadDialog({ name, onSave, onClose }: Props) {
                                         onPress={onClose}
                                         className="rounded px-4 py-2"
                                     >
-                                        <Text className="text-sm font-medium text-discord-textPrimary">
+                                        <Text className="text-sm font-medium text-zam-textPrimary">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
@@ -155,7 +155,7 @@ export default function RenameThreadDialog({ name, onSave, onClose }: Props) {
                                         }}
                                         disabled={!cleaned || saving}
                                         onPress={() => void save(cleaned)}
-                                        className="rounded bg-discord-accent px-4 py-2 hover:bg-discord-accentHover disabled:opacity-50"
+                                        className="rounded bg-zam-accent px-4 py-2 hover:bg-zam-accentHover disabled:opacity-50"
                                     >
                                         <Text className="text-sm font-medium text-white">
                                             {saving

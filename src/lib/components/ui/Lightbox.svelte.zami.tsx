@@ -2,6 +2,7 @@ import { Minus, Plus } from "lucide-svelte";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
     AccessibilityInfo,
+    I18nManager,
     Pressable,
     StyleSheet,
     Text,
@@ -30,6 +31,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
+import { Image as ExpoImage } from "expo-image";
 import {
     Image,
     Portal,
@@ -45,15 +47,20 @@ import {
     openModal,
     clearModalIfOwner,
 } from "$lib/stores/interface.svelte";
+import { settingsState } from "$lib/stores/settings.svelte";
 import {
     isFavouriteGif,
     addFavouriteGif,
     removeFavouriteGif,
+    favouriteSize,
+    favouriteUrlForMxc,
 } from "$lib/stores/favourites.svelte";
 import {
     fetchAttachmentBlob,
     fetchDecryptedAttachmentBlob,
+    getHomeserverBaseUrl,
 } from "$lib/matrix/client";
+import { isSameOrigin } from "$lib/utils/mxcUri";
 import { rememberVolume } from "$lib/actions/rememberVolume";
 import { isSvg, safeMediaBlob } from "$lib/utils/attachmentMime";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
@@ -64,6 +71,8 @@ import { safeDimension, vectorMediaBox } from "$lib/utils/mediaDimensions";
 import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
 import type { DownloadProgress } from "$lib/utils/downloadProgress";
 import { motionOK } from "$lib/utils/motionPreference";
+import { PAN_SLACK_FRACTION } from "$lib/utils/lightboxPan";
+import { swipeCommits, swipeSettleMs } from "$lib/utils/lightboxSwipe";
 import { DISMISS_VELOCITY, ENGAGE_PX } from "$lib/actions/sheetDrag";
 
 interface Props {
@@ -75,6 +84,9 @@ interface Props {
     /** Still shown behind a video until its data arrives. Ignored for
      *  images, which are their own poster. */
     poster?: string | null;
+    /** Loop the video: for GIF-style media (a tweet's GIF mp4), never for
+     *  a real video. */
+    loop?: boolean;
     /** Name to save as. Falls back to the last path segment of `src`, which
      *  is a bare media id (no extension) on Matrix download URLs. */
     filename?: string;
@@ -86,6 +98,13 @@ interface Props {
         previewUrl: string;
         /** Pointer to the message, for an encrypted gif (see favouriteFile.ts). */
         source?: { roomId: string; eventId: string };
+        /** The image's media mxc: a favourite holding that media counts as
+         *  this one, and an encrypted gif is saved with it. */
+        mxc?: string;
+        /** The file name, saved with an unencrypted gif so the picker sends
+         *  it under that name. Not stored for an encrypted one: its name is
+         *  read from its message. */
+        name?: string;
     };
     /** Gallery navigation. When supplied, a chevron and the matching arrow
      *  key step to the neighbouring item; omit at the ends of the list. */
@@ -113,6 +132,22 @@ interface Props {
      *  original painting in while it decrypts), shown over the stand-ins
      *  until `src` loads. */
     preview?: FrameRelay | null;
+    /** Images only: the items either side of this one in the gallery. A
+     *  swipe slides the neighbour in alongside the finger, and each
+     *  neighbour's `src` is fetched ahead so the step lands on a loaded
+     *  image. Omit a side at the ends of the list. */
+    neighbours?: {
+        prev?: LightboxNeighbour | null;
+        next?: LightboxNeighbour | null;
+    };
+}
+
+/** A neighbouring image: its full `src` ("" while still decrypting), and
+ *  the same stand-ins and size the viewer would show for it. */
+interface LightboxNeighbour {
+    src: string;
+    placeholders?: readonly (string | null | undefined)[];
+    dims?: { w: unknown; h: unknown } | null;
 }
 
 /** Zami: an object URL. The Blob polyfill makes `URL.createObjectURL` return
@@ -121,7 +156,8 @@ function isObjectUrl(url: string): boolean {
     return url.startsWith("blob:") || url.startsWith("file:");
 }
 
-const MIN_SCALE = 1;
+// Below 1 the image shrinks inside its fitted size.
+const MIN_SCALE = 0.1;
 const MAX_SCALE = 16;
 const ZOOM_STEP = 1.25;
 
@@ -135,6 +171,10 @@ const DOUBLE_TAP_DIST = 40;
 // video) follows a downward drag, the backdrop fading with it, and closes past
 // this fraction of the screen or on a flick (sheetDrag's flick speed, px/ms).
 const DISMISS_FRACTION = 0.15;
+
+// Swipe between gallery items (see the pan gesture below).
+const SWIPE_LOCK = 10; // px before the drag picks an axis
+const SWIPE_EASE = Easing.bezier(0.22, 1, 0.36, 1); // ease-out
 
 // `transition: transform 0.2s ease`
 const ZOOM_TIMING = { duration: 200, easing: Easing.ease };
@@ -161,11 +201,27 @@ function fitBox(
     return { width, height: (width * h) / w };
 }
 
+/** Zami: `panLimit` from lightboxPan, as a worklet for the UI-thread
+ *  gestures (an imported function can't run there). Keep the two in step. */
+function panLimitOnUI(
+    scaledSize: number,
+    viewportSize: number,
+    scale: number,
+    onlyWhenOverflowing = false,
+): number {
+    "worklet";
+    const overhang = Math.max(0, (scaledSize - viewportSize) / 2);
+    const zoomed =
+        scale > 1 && (!onlyWhenOverflowing || scaledSize > viewportSize);
+    return overhang + (zoomed ? viewportSize * PAN_SLACK_FRACTION : 0);
+}
+
 export default function Lightbox({
     src,
     alt = "",
     kind = "image",
     poster = null,
+    loop = false,
     filename,
     onClose,
     favourite,
@@ -180,6 +236,7 @@ export default function Lightbox({
     // Zami: not ported: `preview`, the frames of an image painting in as it
     // decrypts, which frameSink draws on a <canvas>. The stand-ins show until
     // `src` loads instead.
+    neighbours,
 }: Props) {
     const isMobile = useRune(() => interfaceState.isMobile);
     const viewport = useWindowDimensions();
@@ -195,22 +252,52 @@ export default function Lightbox({
         ? t("lightbox.videoNoun")
         : t("lightbox.imageNoun");
 
+    /** The favourite this image is saved as, by its URL or else by its media,
+     *  or undefined. Reads favouritesState, so callers stay reactive. */
+    function savedFavouriteUrl(f: NonNullable<typeof favourite>) {
+        if (isFavouriteGif(f.url)) return f.url;
+        return f.mxc ? favouriteUrlForMxc(f.mxc) : undefined;
+    }
+
     // Reactively tracks favourite state (reads favouritesState.gifs $state).
     const favouriteUrl = favourite?.url;
+    const favouriteMxc = favourite?.mxc;
     const favourited = useRune(
-        () => (favouriteUrl ? isFavouriteGif(favouriteUrl) : false),
-        [favouriteUrl],
+        () =>
+            favouriteUrl
+                ? savedFavouriteUrl({
+                      url: favouriteUrl,
+                      previewUrl: "",
+                      mxc: favouriteMxc,
+                  }) !== undefined
+                : false,
+        [favouriteUrl, favouriteMxc],
     );
 
     function toggleFavourite() {
         if (!favourite) return;
-        if (isFavouriteGif(favourite.url)) {
-            void removeFavouriteGif(favourite.url);
+        const saved = savedFavouriteUrl(favourite);
+        if (saved !== undefined) {
+            void removeFavouriteGif(saved);
         } else {
+            // The loaded file's own size, else the size it was sent with.
+            const natural =
+                imgLoaded && loaded
+                    ? favouriteSize(loaded.width, loaded.height)
+                    : {};
             void addFavouriteGif({
                 url: favourite.url,
                 previewUrl: favourite.previewUrl,
                 source: favourite.source,
+                // Only an encrypted gif is stored with its mxc: a plain one
+                // already matches through the media its URL names.
+                ...(favourite.source && favourite.mxc
+                    ? { mxc: favourite.mxc }
+                    : {}),
+                ...(!favourite.source && favourite.name
+                    ? { name: favourite.name }
+                    : {}),
+                ...(natural.width ? natural : favouriteSize(dims?.w, dims?.h)),
             });
         }
     }
@@ -301,18 +388,24 @@ export default function Lightbox({
     const viewH = useSharedValue(viewport.height);
     const imgW = useSharedValue(0);
     const imgH = useSharedValue(0);
+    // How far the item follows the finger in a swipe between gallery items.
+    const swipeDx = useSharedValue(0);
 
     // Gallery stepping swaps `src` on the SAME instance, so without this the
     // next image opens at the previous one's zoom, panned to coordinates
     // clamped against the previous one's dimensions.
     useEffect(() => {
         void src;
-        for (const v of [scale, tx, ty, dismiss]) cancelAnimation(v);
+        for (const v of [scale, tx, ty, dismiss, swipeDx]) cancelAnimation(v);
         scale.value = 1;
         tx.value = 0;
         ty.value = 0;
         dismiss.value = 0;
-    }, [src, scale, tx, ty, dismiss]);
+        // The new item lands at the centre without animating. After a
+        // swipe it is already sitting there under the neighbour overlay
+        // (see finishSettle), so nothing moves.
+        swipeDx.value = 0;
+    }, [src, scale, tx, ty, dismiss, swipeDx]);
 
     // ── Progressive stand-ins ──────────────────────────────────────────────
     // Until `src` loads, the <img> shows `placeholders` as background layers
@@ -326,6 +419,17 @@ export default function Lightbox({
         height: number;
     } | null>(null);
     const imgLoaded = !!src && loaded?.url === src;
+    // Fit mode: an image smaller than the screen is enlarged to fill it,
+    // like a vector, instead of shown at its own size. Starts from the
+    // setting; the fit button flips it for as long as this viewer is open
+    // (stepping through a gallery keeps it).
+    const [fitToScreen, setFitToScreen] = useState(
+        () => settingsState.lightboxFitToScreen,
+    );
+    function toggleFit() {
+        setFitToScreen((f) => !f);
+        resetZoom();
+    }
     const viewGutter = isMobile ? 96 : 32; // 6em / 2em
     const maxW = Math.max(0, viewport.width - viewGutter);
     const maxH = Math.max(0, viewport.height - viewGutter);
@@ -335,7 +439,8 @@ export default function Lightbox({
         if (w === null || h === null) return null;
         // What the loaded image would get from the max-width/max-height caps
         // below: never past its own size, never past the viewport.
-        return vector
+        // Zami: a fitted image fills the viewport by its ratio, as a vector.
+        return vector || fitToScreen
             ? vectorMediaBox(w, h, maxW, maxH)
             : fitBox(w, h, maxW, maxH);
     })();
@@ -355,7 +460,7 @@ export default function Lightbox({
     // needs one, so until it loads it gets the whole viewport.
     const naturalBox =
         loaded && loaded.url === shownSrc && loaded.width > 0
-            ? vector
+            ? vector || fitToScreen
                 ? vectorMediaBox(loaded.width, loaded.height, maxW, maxH)
                 : fitBox(loaded.width, loaded.height, maxW, maxH)
             : null;
@@ -370,12 +475,41 @@ export default function Lightbox({
         imgH.value = imageH;
     }, [imageW, imageH, imgW, imgH]);
 
-    // Clamp the pan so the image can't be dragged past its visible edges.
+    // The image's laid-out width (before the zoom transform) against its
+    // natural width, so the zoom label can show the real pixel scale: a large
+    // image shrunk to fit is below 100%, a small one enlarged by fit mode
+    // above it. Zami: the laid-out width is the box computed above (what
+    // the image's onLayout would report), the natural one expo-image's
+    // onLoad.
+    const zoomRatio = (() => {
+        const natural = imgLoaded ? (loaded?.width ?? 0) : 0;
+        // A vector has no pixel size: its zoom is relative to its fit.
+        if (vector || !natural || !imageW) return 1;
+        return imageW / natural;
+    })();
+
+    // ── Sharp vectors ───────────────────────────────────────────────────────
+    // Zami: not ported: re-laying out a zoomed SVG at its zoom (and scaling
+    // the transform down by as much) so it is drawn again sharp. expo-image
+    // rasterizes the SVG once, and whether a larger layout makes it decode
+    // again has not been checked on a device; a zoomed SVG may stay blurry.
+    // A vector without a size already takes its ratio from the loaded file
+    // (`naturalBox` above), upstream's `loadedRatio`.
+
+    function resetZoom() {
+        scale.value = 1;
+        tx.value = 0;
+        ty.value = 0;
+    }
+
+    // Clamp the pan to `panLimit`: the image's overhang past each visible
+    // edge plus a slack margin while zoomed, so edge text can be brought
+    // clear of the toolbar and caption overlays.
     function maxPan(s: number) {
         "worklet";
         return {
-            x: Math.max(0, (imgW.value * s - viewW.value) / 2),
-            y: Math.max(0, (imgH.value * s - viewH.value) / 2),
+            x: panLimitOnUI(imgW.value * s, viewW.value, s, true),
+            y: panLimitOnUI(imgH.value * s, viewH.value, s),
         };
     }
 
@@ -449,6 +583,282 @@ export default function Lightbox({
         );
     }
 
+    // ── Swipe between gallery items ─────────────────────────────────────────
+    // A one-finger horizontal drag steps to the neighbouring item, as long as
+    // the image has no room to pan that way: it is not zoomed wider than the
+    // screen, or it is already panned to the edge the drag pulls away from.
+    // A drag that pans up to an edge stops there; the next drag swipes.
+    // Zami: the state lives in shared values for the UI-thread gestures.
+    const hasPrev = useSharedValue(!!onPrev);
+    const hasNext = useSharedValue(!!onNext);
+    useEffect(() => {
+        hasPrev.value = !!onPrev;
+        hasNext.value = !!onNext;
+    }, [onPrev, onNext, hasPrev, hasNext]);
+    const swipeEligible = useSharedValue(false); // may still become a swipe
+    // Which way this gesture's finger may swipe (the image can't pan there).
+    const swipeLeftOK = useSharedValue(false);
+    const swipeRightOK = useSharedValue(false);
+    const swiping = useSharedValue(false); // this gesture is a swipe
+    const downTime = useSharedValue(0);
+    // Zami: `I18nManager.isRTL` for the viewer's computed direction.
+    const rtl = I18nManager.isRTL;
+
+    // The drag shows the neighbour sliding in beside the finger (`overlay`).
+    // A release that steps animates both off and on in one ease-out motion;
+    // only when that motion has ended is the parent told to step (its src
+    // swap then lands on the neighbour already in place). Below threshold the
+    // image animates back and the overlay goes.
+    // Zami: the overlay's item and phase are React state (mirrored in a ref
+    // for the callbacks the gestures schedule); where it sits is the shared
+    // values below, so it follows the finger on the UI thread.
+    type SwipeOverlay = {
+        /** 1: the neighbour comes from the right; -1: from the left. */
+        side: -1 | 1;
+        item: LightboxNeighbour;
+        /** "drag": follows the finger. "settle": animating with the item. "handoff":
+         *  parked at the centre until the stepped-to image has loaded, so the
+         *  swap shows no gap or stale frame. */
+        phase: "drag" | "settle" | "handoff";
+    };
+    const [overlay, setOverlay] = useState<SwipeOverlay | null>(null);
+    const overlayRef = useRef<SwipeOverlay | null>(null);
+    function setOverlayState(next: SwipeOverlay | null) {
+        overlayRef.current = next;
+        setOverlay(next);
+    }
+    // The side the overlay is drawn on (0: none yet this gesture), and
+    // whether it is parked at the centre for the handoff.
+    const overlaySide = useSharedValue(0);
+    const overlayCentred = useSharedValue(false);
+    // A release that has been decided but whose animation has not yet ended.
+    const pendingSettle = useRef<{
+        commit: boolean;
+        target: () => void;
+        timer: ReturnType<typeof setTimeout>;
+    } | null>(null);
+    const handoffTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+        undefined,
+    );
+
+    /** The neighbour's box, sized the way the viewer sizes its own image so
+     *  the handoff lands on the same spot. Null when its size is unknown;
+     *  then there is no overlay and the swap is a plain one. */
+    function boxFor(
+        d: LightboxNeighbour["dims"],
+    ): { width: number; height: number } | null {
+        const w = safeDimension(d?.w);
+        const h = safeDimension(d?.h);
+        if (w === null || h === null) return null;
+        return fitToScreen
+            ? vectorMediaBox(w, h, maxW, maxH)
+            : fitBox(w, h, maxW, maxH);
+    }
+
+    // Zami: the latest props and layout, for the callbacks the gestures
+    // schedule on the JS thread.
+    const galleryRef = useRef({ onPrev, onNext, neighbours, boxFor });
+    useEffect(() => {
+        galleryRef.current = { onPrev, onNext, neighbours, boxFor };
+    });
+
+    // Warm the neighbours' full images through the same image request the
+    // viewer makes for its own, so a step lands on an image already loaded.
+    // Zami: expo-image's prefetch into its cache, with the media headers.
+    const prevSrc = neighbours?.prev?.src;
+    const nextSrc = neighbours?.next?.src;
+    useEffect(() => {
+        for (const u of [prevSrc, nextSrc]) {
+            if (!u || isObjectUrl(u)) continue;
+            const source = mediaSource(u);
+            void ExpoImage.prefetch(u, { headers: source?.headers }).catch(
+                () => {},
+            );
+        }
+    }, [prevSrc, nextSrc]);
+
+    /** A leftward drag goes forwards, mirrored in a right-to-left layout.
+     *  Zami: whether there's an item that way, for the worklets. */
+    function swipeHasTarget(dx: number) {
+        "worklet";
+        return dx < 0 !== rtl ? hasNext.value : hasPrev.value;
+    }
+
+    /** Zami: upstream's `swipeTarget(dx)`, on the JS thread. */
+    function swipeTarget(dx: number) {
+        const { onPrev, onNext } = galleryRef.current;
+        return dx < 0 !== rtl ? onNext : onPrev;
+    }
+
+    /** The neighbour a drag of `dx` steps to, if the gallery has one there. */
+    function neighbourFor(dx: number): LightboxNeighbour | null {
+        if (!swipeTarget(dx)) return null;
+        const { neighbours } = galleryRef.current;
+        return (dx < 0 !== rtl ? neighbours?.next : neighbours?.prev) ?? null;
+    }
+
+    /** Zami: the drag turned towards a side (or started): show that side's
+     *  neighbour following the finger, or none. */
+    function dragOverlay(dx: number) {
+        const item = neighbourFor(dx);
+        if (item && galleryRef.current.boxFor(item.dims)) {
+            overlayCentred.value = false;
+            setOverlayState({ side: dx < 0 ? 1 : -1, item, phase: "drag" });
+        } else if (overlayRef.current?.phase === "drag") {
+            setOverlayState(null);
+        }
+    }
+
+    function dropDragOverlay() {
+        if (overlayRef.current?.phase === "drag") setOverlayState(null);
+    }
+
+    /** The release animation has ended (or was cut short): step if it was a
+     *  commit, then hand the viewer to the neighbour. Idempotent. */
+    function finishSettle(): void {
+        const p = pendingSettle.current;
+        if (!p) return;
+        pendingSettle.current = null;
+        clearTimeout(p.timer);
+        if (!p.commit) {
+            setOverlayState(null);
+            return;
+        }
+        // The track is already off-screen. The new item must appear at the
+        // centre without animating in from there; the overlay covers it until
+        // its image has loaded.
+        cancelAnimation(swipeDx);
+        overlayCentred.value = true;
+        swipeDx.value = 0;
+        const o = overlayRef.current;
+        if (o) {
+            setOverlayState({ ...o, phase: "handoff" });
+            clearTimeout(handoffTimer.current);
+            handoffTimer.current = setTimeout(() => {
+                if (overlayRef.current?.phase === "handoff")
+                    setOverlayState(null);
+            }, 4000);
+        }
+        p.target();
+    }
+
+    /** Decide a released drag and animate it: a step carries the image off
+     *  one way and the neighbour in, a cancel sends the image back. */
+    function releaseSwipe(dx: number, elapsedMs: number, allowed: boolean) {
+        const width = viewW.value;
+        const target = swipeTarget(dx);
+        const commit =
+            allowed && !!target && swipeCommits(dx, elapsedMs, width);
+        if (!motionOK()) {
+            setOverlayState(null);
+            swipeDx.value = 0;
+            if (commit && target) target();
+            return;
+        }
+        const side: -1 | 1 = dx < 0 ? 1 : -1;
+        // Where the image's own track ends: off-screen, or back at the centre.
+        const end = commit ? -side * width : 0;
+        const ms = swipeSettleMs(Math.abs(end - swipeDx.value), width);
+        swipeDx.value = withTiming(
+            end,
+            { duration: ms, easing: SWIPE_EASE },
+            (finished) => {
+                "worklet";
+                if (finished) scheduleOnRN(finishSettle);
+            },
+        );
+        const o = overlayRef.current;
+        if (o) setOverlayState({ ...o, phase: "settle" });
+        pendingSettle.current = {
+            commit,
+            target: target ?? (() => {}),
+            // The animation's end normally ends it; this covers one that is
+            // cut short or never runs.
+            timer: setTimeout(finishSettle, ms + 80),
+        };
+    }
+
+    useEffect(
+        () => () => {
+            clearTimeout(handoffTimer.current);
+            if (pendingSettle.current)
+                clearTimeout(pendingSettle.current.timer);
+            pendingSettle.current = null;
+        },
+        [],
+    );
+
+    /** A new touch: record when it began, and finish the release it
+     *  interrupts mid-animation. */
+    function swipeTouch() {
+        "worklet";
+        downTime.value = Date.now();
+        scheduleOnRN(finishSettle);
+    }
+
+    /** At a one-finger touch: whether it may swipe, and which ways.
+     *  `maxX` is how far the image may pan sideways (0 for a video). */
+    function swipeBegin(maxX: number) {
+        "worklet";
+        swiping.value = false;
+        overlaySide.value = 0;
+        // A finger moving left pans the image left (tx falls), so it may
+        // swipe only once the image's right edge is already in view.
+        swipeLeftOK.value = tx.value <= -maxX + 1;
+        swipeRightOK.value = tx.value >= maxX - 1;
+        swipeEligible.value =
+            (hasPrev.value || hasNext.value) &&
+            (swipeLeftOK.value || swipeRightOK.value);
+    }
+
+    /** Picks the drag's axis once it has gone far enough, and moves the
+     *  item with a swipe. True while the drag is (or may still be) a swipe. */
+    function swipeUpdate(dx: number, dy: number) {
+        "worklet";
+        if (swipeEligible.value && !swiping.value) {
+            if (Math.abs(dx) > SWIPE_LOCK && Math.abs(dx) > Math.abs(dy)) {
+                // Towards a side the image can still pan to: pan instead.
+                if (dx < 0 ? swipeLeftOK.value : swipeRightOK.value)
+                    swiping.value = true;
+                else swipeEligible.value = false;
+            } else if (Math.abs(dy) > SWIPE_LOCK) swipeEligible.value = false;
+        }
+        if (swiping.value) {
+            // Pulling towards a side with nothing there only gives a little.
+            swipeDx.value = swipeHasTarget(dx) ? dx : dx * 0.3;
+            const side = dx < 0 ? 1 : -1;
+            if (side !== overlaySide.value) {
+                overlaySide.value = side;
+                scheduleOnRN(dragOverlay, dx);
+            }
+        }
+        return swipeEligible.value;
+    }
+
+    /** A second finger turns a swipe into a pinch. */
+    function swipeCancel() {
+        "worklet";
+        swipeEligible.value = false;
+        if (!swiping.value) return;
+        swiping.value = false;
+        swipeDx.value = 0;
+        scheduleOnRN(dropDragOverlay);
+    }
+
+    /** At release: hand a swipe to `releaseSwipe`. True when the gesture
+     *  was a swipe. */
+    function swipeEnd(dx: number, canceled: boolean) {
+        "worklet";
+        swipeEligible.value = false;
+        if (!swiping.value) {
+            scheduleOnRN(dropDragOverlay);
+            return false;
+        }
+        swiping.value = false;
+        scheduleOnRN(releaseSwipe, dx, Date.now() - downTime.value, !canceled);
+        return true;
+    }
+
     // Pinch: two fingers zoom about their midpoint.
     const pinchPrev = useSharedValue(1);
     const pinch = usePinchGesture({
@@ -467,18 +877,25 @@ export default function Lightbox({
         },
     });
 
-    // Single pointer: pan only when zoomed in. Zami: unzoomed, a drag pulls
-    // the image down to close it.
+    // Single pointer: a sideways swipe steps the gallery, otherwise pan
+    // when zoomed in. Zami: unzoomed, a vertical drag pulls the image down
+    // to close it.
     const panPointers = useSharedValue(0);
     const panDismiss = useSharedValue(false);
     const pan = usePanGesture({
+        onBegin: () => {
+            "worklet";
+            swipeTouch();
+        },
         onActivate: (e) => {
             "worklet";
             cancelAnimation(tx);
             cancelAnimation(ty);
             cancelAnimation(dismiss);
             panPointers.value = e.numberOfPointers;
-            panDismiss.value = scale.value <= MIN_SCALE;
+            panDismiss.value = scale.value <= 1;
+            if (e.numberOfPointers === 1) swipeBegin(maxPan(scale.value).x);
+            else swipeEligible.value = false;
         },
         onUpdate: (e) => {
             "worklet";
@@ -486,11 +903,14 @@ export default function Lightbox({
             // deltas are measured from jumps, so resume from the next event.
             if (e.numberOfPointers !== panPointers.value) {
                 panPointers.value = e.numberOfPointers;
+                if (e.numberOfPointers >= 2) swipeCancel();
                 return;
             }
             // Two fingers are the pinch's.
             if (e.numberOfPointers >= 2) return;
-            if (scale.value > MIN_SCALE) {
+            // Zami: until the drag picks an axis it neither pans nor pulls.
+            if (swipeUpdate(e.translationX, e.translationY)) return;
+            if (scale.value > 1) {
                 tx.value += e.changeX;
                 ty.value += e.changeY;
                 clampPan();
@@ -500,6 +920,7 @@ export default function Lightbox({
         },
         onDeactivate: (e) => {
             "worklet";
+            if (swipeEnd(e.translationX, e.canceled)) return;
             settleDismiss(e.velocityY, e.canceled);
         },
     });
@@ -514,7 +935,7 @@ export default function Lightbox({
         onActivate: (e) => {
             "worklet";
             if (!onImage(e.x, e.y)) return;
-            if (scale.value > MIN_SCALE) {
+            if (scale.value !== 1) {
                 scale.value = withTiming(1, ZOOM_TIMING);
                 tx.value = withTiming(0, ZOOM_TIMING);
                 ty.value = withTiming(0, ZOOM_TIMING);
@@ -525,7 +946,12 @@ export default function Lightbox({
     });
 
     // Zami: the gestures take the whole viewer, so a pinch can start beside a
-    // small image; a tap off the image is then the backdrop's click.
+    // small image; a tap off the image is then the backdrop's click. A tap
+    // fails once it moves, so a drag or pinch that ends off the image never
+    // closes the viewer (upstream's `gestureEndedAt` / `onBackdropClick`).
+    // Zami: not ported: a tap on an empty (transparent) part of a vector's
+    // box also closing the viewer. Upstream reads the pixel back through a
+    // canvas, which React Native lacks; here the whole box counts as image.
     const backdropTap = useTapGesture({
         onActivate: (e) => {
             "worklet";
@@ -539,36 +965,65 @@ export default function Lightbox({
         backdropTap,
     );
 
-    // Zami: the video keeps its native controls; only a mostly vertical,
-    // downward drag on it is the swipe to close.
+    // Zami: the video keeps its native controls; only a downward drag on it
+    // (the swipe to close) or a sideways one (the swipe between gallery
+    // items, which a video never pans against) is taken from them.
     const videoDismiss: PanGesture = usePanGesture({
         activeOffsetY: ENGAGE_PX,
+        activeOffsetX: [-ENGAGE_PX, ENGAGE_PX],
         failOffsetY: -ENGAGE_PX,
-        failOffsetX: [-ENGAGE_PX, ENGAGE_PX],
+        onBegin: () => {
+            "worklet";
+            swipeTouch();
+        },
         onActivate: () => {
             "worklet";
             cancelAnimation(dismiss);
+            cancelAnimation(swipeDx);
+            swipeBegin(0);
         },
         onUpdate: (e) => {
             "worklet";
+            if (swipeUpdate(e.translationX, e.translationY)) return;
             dismiss.value = Math.max(0, e.translationY);
         },
         onDeactivate: (e) => {
             "worklet";
+            if (swipeEnd(e.translationX, e.canceled)) return;
             settleDismiss(e.velocityY, e.canceled);
         },
     });
 
     const imageStyle = useAnimatedStyle(() => ({
         transform: [
-            { translateX: tx.value },
+            { translateX: tx.value + swipeDx.value },
             { translateY: ty.value + dismiss.value },
             { scale: scale.value },
         ],
     }));
     const videoStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: dismiss.value }],
+        transform: [
+            { translateX: swipeDx.value },
+            { translateY: dismiss.value },
+        ],
     }));
+    // The neighbour starts one viewport off the SCREEN's edge, not the
+    // image's: a zoomed image panned to its edge has its centre far to one
+    // side, and a neighbour placed beside that centre showed up on screen the
+    // moment the swipe began. A swipe only starts once the image's edge is in
+    // view, so moving both by one viewport also carries the image fully off.
+    const overlayStyle = useAnimatedStyle(() => ({
+        transform: [
+            {
+                translateX: overlayCentred.value
+                    ? 0
+                    : overlaySide.value * viewW.value + swipeDx.value,
+            },
+        ],
+    }));
+    const overlayShown =
+        overlay !== null && (overlay.phase !== "handoff" || !imgLoaded);
+    const overlayBox = overlay ? boxFor(overlay.item.dims) : null;
     const backdropStyle = useAnimatedStyle(() => ({
         opacity: 1 - Math.min(1, Math.abs(dismiss.value) / (viewH.value || 1)),
     }));
@@ -680,6 +1135,7 @@ export default function Lightbox({
                                         src={src}
                                         alt={alt}
                                         poster={poster}
+                                        loop={loop}
                                         encryptedFile={encryptedFile}
                                         mimetype={mimetype}
                                         sizeHint={sizeHint}
@@ -708,15 +1164,58 @@ export default function Lightbox({
                                         placeholderContentFit="fill"
                                         contentFit="contain"
                                         className="w-full h-full rounded-lg"
-                                        onLoad={(e) =>
+                                        onLoad={(e) => {
                                             setLoaded({
                                                 url: shownSrc,
                                                 width: e.source.width,
                                                 height: e.source.height,
-                                            })
-                                        }
+                                            });
+                                            if (
+                                                src &&
+                                                shownSrc === src &&
+                                                overlayRef.current?.phase ===
+                                                    "handoff"
+                                            )
+                                                setOverlayState(null);
+                                        }}
                                     />
                                 </Animated.View>
+                                {/* The neighbour, one viewport to the side, moving
+                                    with the finger during a swipe. Sits on top of the
+                                    image until it has loaded after a step.
+                                    Decorative: the gallery's own position label
+                                    announces the change. */}
+                                {overlay && overlayShown && overlayBox ? (
+                                    <View
+                                        pointerEvents="none"
+                                        accessibilityElementsHidden
+                                        importantForAccessibility="no-hide-descendants"
+                                        style={StyleSheet.absoluteFill}
+                                        className="items-center justify-center overflow-hidden"
+                                    >
+                                        <Animated.View
+                                            style={[overlayBox, overlayStyle]}
+                                        >
+                                            <Image
+                                                source={mediaSource(
+                                                    overlay.item.src ||
+                                                        undefined,
+                                                )}
+                                                placeholder={(
+                                                    overlay.item.placeholders ??
+                                                    []
+                                                )
+                                                    .map((p) => mediaSource(p))
+                                                    .filter(
+                                                        (p) => p !== undefined,
+                                                    )}
+                                                placeholderContentFit="fill"
+                                                contentFit="contain"
+                                                className="w-full h-full rounded-lg"
+                                            />
+                                        </Animated.View>
+                                    </View>
+                                ) : null}
                             </View>
                         </GestureDetector>
                     )}
@@ -781,7 +1280,7 @@ export default function Lightbox({
                                 {favourited ? (
                                     <SvgIcon
                                         d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                                        className="w-5 h-5 text-discord-warning"
+                                        className="w-5 h-5 text-zam-warning"
                                     />
                                 ) : (
                                     <SvgIcon
@@ -817,15 +1316,14 @@ export default function Lightbox({
                     {!isVideo ? (
                         <ZoomControls
                             scale={scale}
+                            zoomRatio={zoomRatio}
                             bottom={Math.max(insets.bottom, 12)}
                             zoom={(factor) =>
                                 zoomAt(factor, viewW.value / 2, viewH.value / 2)
                             }
-                            reset={() => {
-                                scale.value = 1;
-                                tx.value = 0;
-                                ty.value = 0;
-                            }}
+                            reset={resetZoom}
+                            fitToScreen={fitToScreen}
+                            toggleFit={toggleFit}
                         />
                     ) : null}
 
@@ -881,14 +1379,21 @@ export default function Lightbox({
 /** Zami: touch-accessible zoom buttons, with the gesture's current scale. */
 function ZoomControls({
     scale,
+    zoomRatio,
     bottom,
     zoom,
     reset,
+    fitToScreen,
+    toggleFit,
 }: {
     scale: SharedValue<number>;
+    /** The image's laid-out width over its natural one (1 for a vector). */
+    zoomRatio: number;
     bottom: number;
     zoom: (factor: number) => void;
     reset: () => void;
+    fitToScreen: boolean;
+    toggleFit: () => void;
 }) {
     const [percent, setPercent] = useState(100);
     useAnimatedReaction(
@@ -896,6 +1401,17 @@ function ZoomControls({
         (next, previous) => {
             if (next !== previous) scheduleOnRN(setPercent, next);
         },
+    );
+    // The real pixel scale, for the label.
+    const [zoomPercent, setZoomPercent] = useState(() =>
+        Math.round(zoomRatio * 100),
+    );
+    useAnimatedReaction(
+        () => Math.round(scale.value * zoomRatio * 100),
+        (next, previous) => {
+            if (next !== previous) scheduleOnRN(setZoomPercent, next);
+        },
+        [zoomRatio],
     );
     return (
         <View
@@ -919,7 +1435,7 @@ function ZoomControls({
                 onPress={reset}
             >
                 <Text className="text-white text-sm tabular-nums text-center">
-                    {percent}%
+                    {zoomPercent}%
                 </Text>
             </Pressable>
             <Pressable
@@ -931,6 +1447,38 @@ function ZoomControls({
                 onPress={() => zoom(ZOOM_STEP)}
             >
                 <Plus size={20} className="text-white" />
+            </Pressable>
+            <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("lightbox.fitToScreen")}
+                // aria-pressed
+                accessibilityState={{ selected: fitToScreen }}
+                className={`p-2 rounded-full ${fitToScreen ? "bg-white/20" : ""}`}
+                onPress={toggleFit}
+            >
+                {fitToScreen ? (
+                    // Arrows pointing in: back to actual size.
+                    <SvgIcon
+                        d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-5 h-5 text-white"
+                    />
+                ) : (
+                    // Arrows pointing out: fill the screen.
+                    <SvgIcon
+                        d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="w-5 h-5 text-white"
+                    />
+                )}
             </Pressable>
         </View>
     );
@@ -950,6 +1498,7 @@ function LightboxVideo({
     src,
     alt,
     poster,
+    loop,
     encryptedFile,
     mimetype,
     sizeHint,
@@ -959,13 +1508,26 @@ function LightboxVideo({
     src: string;
     alt: string;
     poster: string | null;
+    loop: boolean;
     encryptedFile?: EncryptedFileInfo & { url: string };
     mimetype: string | null;
     sizeHint: number | null;
     maxWidth: number;
     maxHeight: number;
 }) {
-    const videoBlobUrl = isObjectUrl(src) ? src : null;
+    // Third-party video (e.g. a tweet's GIF mp4 on video.twimg.com) needs no
+    // token, and the authed streamer refuses to fetch it (and CORS would block
+    // it anyway), so the element loads it directly, like the inline player.
+    function isDirectVideo(url: string): boolean {
+        if (isObjectUrl(url)) return true;
+        if (encryptedFile) return false;
+        const hs = getHomeserverBaseUrl();
+        return !!hs && /^https?:/i.test(url) && !isSameOrigin(url, hs);
+    }
+
+    // A `blob:` src is already local bytes. The caller owns it, so play it
+    // as is and never revoke it here. A third-party URL is played as is too.
+    const videoBlobUrl = isDirectVideo(src) ? src : null;
     const [videoFailed, setVideoFailed] = useState(false);
     const [videoReady, setVideoReady] = useState(false);
     const [videoProgress, setVideoProgress] = useState<DownloadProgress | null>(
@@ -974,9 +1536,9 @@ function LightboxVideo({
     // A stream that broke retries once as a full, verified download.
     const [videoStreamBroke, setVideoStreamBroke] = useState(false);
 
-    // The URL the action streams, or null when the element has a blob / is
-    // not a video / has given up.
-    const videoStreamUrl = !videoFailed && !isObjectUrl(src) ? src : null;
+    // The URL the action streams, or null when the element has a direct src /
+    // is not a video / has given up.
+    const videoStreamUrl = !videoFailed && !isDirectVideo(src) ? src : null;
     // Encrypted files too small to be worth playing on unverified bytes (see
     // STREAM_ENCRYPTED_MIN_BYTES), or a browser with no MediaSource, take the
     // download-verify-play route.
@@ -988,7 +1550,14 @@ function LightboxVideo({
                 sizeHint < STREAM_ENCRYPTED_MIN_BYTES));
 
     function onVideoBroke() {
-        if (!videoStreamUrl) return;
+        if (!videoStreamUrl) {
+            // A directly loaded third-party video has no fallback.
+            if (videoBlobUrl && !isObjectUrl(videoBlobUrl)) {
+                console.error("Failed to load video");
+                setVideoFailed(true);
+            }
+            return;
+        }
         if (!videoStreamBroke && !videoForceBlob) {
             setVideoStreamBroke(true);
             setVideoReady(false);
@@ -1000,9 +1569,11 @@ function LightboxVideo({
 
     // ⚠ Exactly ONE video element is ever live (this viewer is a singleton in
     // the modal slot) and it is only ever created after the user clicked a
-    // tile. It carries no `loop`, and above all NO onpause handler that calls
-    // play() — that pattern fights the browser's own load-shedding forever and
-    // pegged the main thread when it lived in LinkPreview. Do not add one back.
+    // tile. It must have NO onpause handler that calls play(): that pattern
+    // fights the browser's own load-shedding forever and pegged the main
+    // thread when it lived in LinkPreview. Do not add one back. (`loop` is a
+    // different thing and is fine: the browser just seeks to 0 at the end and
+    // can still pause it. Only GIF-style media sets it.)
 
     // Zami: the video's own size, once its metadata is in; the box is 16:9
     // until then.
@@ -1033,6 +1604,7 @@ function LightboxVideo({
                             onError: onVideoBroke,
                         }}
                         poster={poster}
+                        loop={loop}
                         className="rounded-lg bg-black"
                         style={box}
                         onLoadedMetadata={(w, h) => setNatural({ w, h })}
@@ -1166,7 +1738,7 @@ function useAuthedVideoSrc({
 }
 
 /**
- * Zami: the `<video>` element, `autoplay` with `controls` and `use:rememberVolume`:
+ * Zami: the `<video>` element, `autoplay` with `controls`, `{loop}` and `use:rememberVolume`:
  * its bare `src`, or what `use:authedVideoSrc` feeds it, with its `poster` over it
  * until the first frame. Its `onloadedmetadata` reads the video's size, which the
  * player reports as `onResize`.
@@ -1175,6 +1747,7 @@ function AuthedVideo({
     src,
     authed,
     poster,
+    loop,
     className,
     style,
     onLoadedMetadata,
@@ -1184,6 +1757,7 @@ function AuthedVideo({
     src: string | null | undefined;
     authed: AuthedVideoSrcParams;
     poster: string | null;
+    loop: boolean;
     className: string;
     style: ViewStyle;
     onLoadedMetadata: (videoWidth: number, videoHeight: number) => void;
@@ -1196,6 +1770,7 @@ function AuthedVideo({
             src={streamed ?? src}
             poster={poster}
             controls
+            loop={loop}
             autoplay
             use={rememberVolume}
             className={className}

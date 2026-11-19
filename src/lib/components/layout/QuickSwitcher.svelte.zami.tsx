@@ -168,13 +168,13 @@ export default function QuickSwitcher({ onClose }: Props) {
             onClose={onClose}
             labelledBy="quick-switcher-title"
             layerClass="z-50 flex items-start justify-center pt-[15vh] px-4"
-            panelClass="relative w-full max-w-xl bg-discord-backgroundSecondary rounded-lg shadow-xl overflow-hidden"
+            panelClass="relative w-full max-w-xl bg-zam-backgroundSecondary rounded-lg shadow-xl overflow-hidden"
         >
             <View className="p-4 flex flex-col gap-3">
                 <Text
                     nativeID="quick-switcher-title"
                     accessibilityRole="header"
-                    className="text-sm font-semibold text-discord-textPrimary"
+                    className="text-sm font-semibold text-zam-textPrimary"
                 >
                     {t("quickSwitcher.title")}
                 </Text>
@@ -194,11 +194,11 @@ export default function QuickSwitcher({ onClose }: Props) {
                     accessibilityState={{ expanded: true }}
                     accessibilityLabel={t("quickSwitcher.placeholder")}
                     placeholder={t("quickSwitcher.placeholder")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
-                    className="w-full px-3 py-2.5 rounded bg-discord-backgroundTertiary text-discord-textPrimary text-base border-2 border-transparent focus:border-discord-accent"
+                    placeholderTextColorClassName="accent-zam-textMuted"
+                    className="w-full px-3 py-2.5 rounded bg-zam-backgroundTertiary text-zam-textPrimary text-base border-2 border-transparent focus:border-zam-accent"
                 />
                 {!deferredQuery.trim() && results.length > 0 ? (
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("quickSwitcher.recentAndUnread")}
                     </Text>
                 ) : null}
@@ -218,7 +218,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                             accessibilityRole="button"
                             accessibilityState={{ selected: i === selected }}
                             className={`flex-row items-center gap-3 px-2 py-1.5 mx-1 rounded ${
-                                i === selected ? "bg-discord-messageHover" : ""
+                                i === selected ? "bg-zam-messageHover" : ""
                             }`}
                             onPress={() => choose(e)}
                             onHoverIn={() => setSelected(i)}
@@ -234,15 +234,15 @@ export default function QuickSwitcher({ onClose }: Props) {
                                 numberOfLines={1}
                                 className={`flex-1 min-w-0 text-sm ${
                                     e.unread
-                                        ? "text-discord-textPrimary font-semibold"
-                                        : "text-discord-textSecondary"
+                                        ? "text-zam-textPrimary font-semibold"
+                                        : "text-zam-textSecondary"
                                 }`}
                             >
                                 {e.name}
                             </Text>
                             {e.mention ? (
                                 <View
-                                    className="w-2 h-2 rounded-full bg-discord-danger flex-shrink-0"
+                                    className="w-2 h-2 rounded-full bg-zam-danger flex-shrink-0"
                                     accessibilityLabel={t(
                                         "quickSwitcher.mentioned",
                                     )}
@@ -250,7 +250,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                             ) : null}
                             <Text
                                 numberOfLines={1}
-                                className="flex-shrink text-xs text-discord-textMuted max-w-[40%]"
+                                className="flex-shrink text-xs text-zam-textMuted max-w-[40%]"
                             >
                                 {e.space
                                     ? t("quickSwitcher.space")
@@ -259,7 +259,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                         </Pressable>
                     )}
                     ListEmptyComponent={
-                        <Text className="px-2 py-3 text-sm text-discord-textMuted">
+                        <Text className="px-2 py-3 text-sm text-zam-textMuted">
                             {t("quickSwitcher.noResults")}
                         </Text>
                     }
@@ -267,7 +267,7 @@ export default function QuickSwitcher({ onClose }: Props) {
                 {/* Zami: the hint names keyboard keys, so a touchscreen
                     doesn't show it. */}
                 {isTouchscreen ? null : (
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("quickSwitcher.hint")}
                     </Text>
                 )}

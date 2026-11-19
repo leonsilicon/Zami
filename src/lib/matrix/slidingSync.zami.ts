@@ -63,6 +63,10 @@ const SLIDING_LIST_STATE: string[][] = [
     // one: the composer lock, message actions and the room list menus gate
     // on it, and a missing event reads as "everyone is 0, everything is 0".
     ["m.room.power_levels", ""],
+    // MSC3949 role tags: tuwunel matches types literally, so both the stable
+    // and the unstable type are listed (see getRoomPowerLevelTags).
+    ["m.room.power_level_tags", ""],
+    ["in.cinny.room.power_level_tags", ""],
     ["m.space.parent", "*"],
     // Space/room emoji packs are offered in every room's picker, not just the
     // room that owns them, so they must be loaded for the whole list.
@@ -72,6 +76,11 @@ const SLIDING_LIST_STATE: string[][] = [
     // Sound packs, likewise: a call offers its spaces' packs and those the
     // user enabled for every call (soundboard_rooms), wherever they live.
     ["moe.crafty.room_soundboard", "*"],
+    // ZDMB marks rooms bridged from Discord threads with their parent channel,
+    // which the room list needs to nest them (utils/bridgedThreads.ts).
+    ["moe.crafty.zdmb.thread_parent", ""],
+    // ...and every bridged room with its Discord channel type and clean name.
+    ["moe.crafty.zdmb.channel", ""],
     ["m.room.member", MSC3575_STATE_KEY_ME],
     // Calls: who is in each room's call (room-list rosters, DM ringing) and
     // the member events of whoever just sent something (the caller's join or

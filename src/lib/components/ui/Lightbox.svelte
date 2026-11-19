@@ -9,6 +9,9 @@
         /** Still shown behind a video until its data arrives. Ignored for
          *  images, which are their own poster. */
         poster?: string | null;
+        /** Loop the video: for GIF-style media (a tweet's GIF mp4), never for
+         *  a real video. */
+        loop?: boolean;
         /** Name to save as. Falls back to the last path segment of `src`, which
          *  is a bare media id (no extension) on Matrix download URLs. */
         filename?: string;
@@ -20,6 +23,13 @@
             previewUrl: string;
             /** Pointer to the message, for an encrypted gif (see favouriteFile.ts). */
             source?: { roomId: string; eventId: string };
+            /** The image's media mxc: a favourite holding that media counts as
+             *  this one, and an encrypted gif is saved with it. */
+            mxc?: string;
+            /** The file name, saved with an unencrypted gif so the picker sends
+             *  it under that name. Not stored for an encrypted one: its name is
+             *  read from its message. */
+            name?: string;
         };
         /** Gallery navigation. When supplied, a chevron and the matching arrow
          *  key step to the neighbouring item; omit at the ends of the list. */
@@ -47,6 +57,22 @@
          *  original painting in while it decrypts), shown over the stand-ins
          *  until `src` loads. */
         preview?: FrameRelay | null;
+        /** Images only: the items either side of this one in the gallery. A
+         *  swipe slides the neighbour in alongside the finger, and each
+         *  neighbour's `src` is fetched ahead so the step lands on a loaded
+         *  image. Omit a side at the ends of the list. */
+        neighbours?: {
+            prev?: LightboxNeighbour | null;
+            next?: LightboxNeighbour | null;
+        };
+    }
+
+    /** A neighbouring image: its full `src` ("" while still decrypting), and
+     *  the same stand-ins and size the viewer would show for it. */
+    interface LightboxNeighbour {
+        src: string;
+        placeholders?: readonly (string | null | undefined)[];
+        dims?: { w: unknown; h: unknown } | null;
     }
 
     import {
@@ -54,15 +80,20 @@
         openModal,
         clearModalIfOwner,
     } from "$lib/stores/interface.svelte";
+    import { settingsState } from "$lib/stores/settings.svelte";
     import {
         isFavouriteGif,
         addFavouriteGif,
         removeFavouriteGif,
+        favouriteSize,
+        favouriteUrlForMxc,
     } from "$lib/stores/favourites.svelte";
     import {
         fetchAttachmentBlob,
         fetchDecryptedAttachmentBlob,
+        getHomeserverBaseUrl,
     } from "$lib/matrix/client";
+    import { isSameOrigin } from "$lib/utils/mxcUri";
     import { authedVideoSrc } from "$lib/actions/authedVideoSrc";
     import { rememberVolume } from "$lib/actions/rememberVolume";
     import { authedMediaBlobUrl } from "$lib/stores/mediaAuth.svelte";
@@ -78,6 +109,8 @@
     import type { DownloadProgress } from "$lib/utils/downloadProgress";
     import { fade, scale as scaleTransition } from "svelte/transition";
     import { motionOK } from "$lib/utils/motionPreference";
+    import { panLimit } from "$lib/utils/lightboxPan";
+    import { swipeCommits, swipeSettleMs } from "$lib/utils/lightboxSwipe";
     import { onMount, untrack } from "svelte";
 
     // Dynamic viewport units (dvw/dvh) are Safari 15.4+; before that a style
@@ -90,6 +123,7 @@
         alt = "",
         kind = "image",
         poster = null,
+        loop = false,
         filename,
         onClose,
         favourite,
@@ -102,6 +136,7 @@
         placeholders = [],
         dims = null,
         preview = null,
+        neighbours,
     }: Props = $props();
 
     const isVideo = $derived(kind === "video");
@@ -118,21 +153,43 @@
         isVideo ? t("lightbox.videoNoun") : t("lightbox.imageNoun"),
     );
 
+    /** The favourite this image is saved as, by its URL or else by its media,
+     *  or undefined. Reads favouritesState, so callers stay reactive. */
+    function savedFavouriteUrl(f: NonNullable<typeof favourite>) {
+        if (isFavouriteGif(f.url)) return f.url;
+        return f.mxc ? favouriteUrlForMxc(f.mxc) : undefined;
+    }
+
     // Reactively tracks favourite state (reads favouritesState.gifs $state).
     const favourited = $derived(
-        favourite ? isFavouriteGif(favourite.url) : false,
+        favourite ? savedFavouriteUrl(favourite) !== undefined : false,
     );
 
     function toggleFavourite(e: MouseEvent) {
         e.stopPropagation();
         if (!favourite) return;
-        if (isFavouriteGif(favourite.url)) {
-            removeFavouriteGif(favourite.url);
+        const saved = savedFavouriteUrl(favourite);
+        if (saved !== undefined) {
+            removeFavouriteGif(saved);
         } else {
+            // The loaded file's own size, else the size it was sent with.
+            const natural =
+                imgLoaded && imgEl
+                    ? favouriteSize(imgEl.naturalWidth, imgEl.naturalHeight)
+                    : {};
             addFavouriteGif({
                 url: favourite.url,
                 previewUrl: favourite.previewUrl,
                 source: favourite.source,
+                // Only an encrypted gif is stored with its mxc: a plain one
+                // already matches through the media its URL names.
+                ...(favourite.source && favourite.mxc
+                    ? { mxc: favourite.mxc }
+                    : {}),
+                ...(!favourite.source && favourite.name
+                    ? { name: favourite.name }
+                    : {}),
+                ...(natural.width ? natural : favouriteSize(dims?.w, dims?.h)),
             });
         }
     }
@@ -219,10 +276,20 @@
     // A stream that broke retries once as a full, verified download.
     let videoStreamBroke = $state(false);
 
-    // The URL the action streams, or null when the element has a blob / is
-    // not a video / has given up.
+    // Third-party video (e.g. a tweet's GIF mp4 on video.twimg.com) needs no
+    // token, and the authed streamer refuses to fetch it (and CORS would block
+    // it anyway), so the element loads it directly, like the inline player.
+    function isDirectVideo(url: string): boolean {
+        if (url.startsWith("blob:")) return true;
+        if (encryptedFile) return false;
+        const hs = getHomeserverBaseUrl();
+        return !!hs && /^https?:/i.test(url) && !isSameOrigin(url, hs);
+    }
+
+    // The URL the action streams, or null when the element has a direct src /
+    // is not a video / has given up.
     const videoStreamUrl = $derived(
-        isVideo && !videoFailed && !src.startsWith("blob:") ? src : null,
+        isVideo && !videoFailed && !isDirectVideo(src) ? src : null,
     );
     // Encrypted files too small to be worth playing on unverified bytes (see
     // STREAM_ENCRYPTED_MIN_BYTES), or a browser with no MediaSource, take the
@@ -236,7 +303,14 @@
     );
 
     function onVideoBroke() {
-        if (!videoStreamUrl) return;
+        if (!videoStreamUrl) {
+            // A directly loaded third-party video has no fallback.
+            if (videoBlobUrl && !videoBlobUrl.startsWith("blob:")) {
+                console.error("Failed to load video");
+                videoFailed = true;
+            }
+            return;
+        }
         if (!videoStreamBroke && !videoForceBlob) {
             videoStreamBroke = true;
             videoReady = false;
@@ -248,9 +322,11 @@
 
     // ⚠ Exactly ONE video element is ever live (this viewer is a singleton in
     // the modal slot) and it is only ever created after the user clicked a
-    // tile. It carries no `loop`, and above all NO onpause handler that calls
-    // play() — that pattern fights the browser's own load-shedding forever and
-    // pegged the main thread when it lived in LinkPreview. Do not add one back.
+    // tile. It must have NO onpause handler that calls play(): that pattern
+    // fights the browser's own load-shedding forever and pegged the main
+    // thread when it lived in LinkPreview. Do not add one back. (`loop` is a
+    // different thing and is fine: the browser just seeks to 0 at the end and
+    // can still pause it. Only GIF-style media sets it.)
     //
     // `src` and `kind` are this effect's only dependencies; the state writes
     // are untracked so they cannot re-enter it (effect_update_depth_exceeded).
@@ -267,8 +343,8 @@
             videoStreamBroke = false;
         });
         // A `blob:` src is already local bytes. The caller owns it, so play it
-        // as is and never revoke it here.
-        if (target?.startsWith("blob:")) {
+        // as is and never revoke it here. A third-party URL is played as is too.
+        if (target && untrack(() => isDirectVideo(target))) {
             untrack(() => (videoBlobUrl = target));
             return () => {
                 if (videoEl) videoEl.pause();
@@ -296,6 +372,13 @@
             scale = 1;
             tx = 0;
             ty = 0;
+            // The new item lands at the centre without animating. After a
+            // swipe it is already sitting there under the neighbour overlay
+            // (see finishSettle), so nothing moves.
+            holdStill();
+            swipeDx = 0;
+            renderScale = 1;
+            loadedRatio = null;
             imgLoaded = false;
             authedSrc = null;
             authedFallbackTried = false;
@@ -334,11 +417,57 @@
     // in a box sized from `dims` (otherwise an unloaded <img> is 0×0). They
     // are dropped once it loads so a transparent image doesn't show them.
     let imgLoaded = $state(false);
+    // A vector sent without a size takes its ratio from the loaded file, so
+    // its box hugs the drawing instead of spanning the whole viewport width.
+    let loadedRatio = $state<{ w: number; h: number } | null>(null);
+    // Fit mode: an image smaller than the screen is enlarged to fill it,
+    // like a vector, instead of shown at its own size. Starts from the
+    // setting; the fit button flips it for as long as this viewer is open
+    // (stepping through a gallery keeps it).
+    let fitToScreen = $state(untrack(() => settingsState.lightboxFitToScreen));
+    function toggleFit() {
+        fitToScreen = !fitToScreen;
+        resetZoom();
+    }
+    // The <img>'s laid-out width (before the zoom transform), so the zoom
+    // label can show the real pixel scale: a large image shrunk to fit is
+    // below 100%, a small one enlarged by fit mode above it.
+    let layoutW = $state(0);
+    $effect(() => {
+        const el = imgEl;
+        if (!el || typeof ResizeObserver === "undefined") return;
+        const ro = new ResizeObserver(() => (layoutW = el.offsetWidth));
+        ro.observe(el);
+        return () => ro.disconnect();
+    });
+    const zoomPercent = $derived.by(() => {
+        const natural = imgLoaded ? (loadedRatio?.w ?? 0) : 0;
+        // A vector has no pixel size: its zoom is relative to its fit.
+        if (vector || !natural || !layoutW) return Math.round(scale * 100);
+        return Math.round(((scale * layoutW) / renderScale / natural) * 100);
+    });
     const viewGutter = $derived(interfaceState.isMobile ? "6em" : "2em");
     const imgBoxStyle = $derived.by(() => {
-        const w = safeDimension(dims?.w);
-        const h = safeDimension(dims?.h);
+        // Without a declared size, a fitted image takes its ratio from the
+        // loaded file, as a vector does.
+        const ratioFromFile = vector || fitToScreen;
+        const w =
+            safeDimension(dims?.w) ??
+            (ratioFromFile ? (loadedRatio?.w ?? null) : null);
+        const h =
+            safeDimension(dims?.h) ??
+            (ratioFromFile ? (loadedRatio?.h ?? null) : null);
         const fitViewport = `calc(100${vu}vw - ${viewGutter})`;
+        if (fitToScreen && !vector) {
+            // Until its ratio is known the image shows at its own size (the
+            // max caps still keep it on screen).
+            if (w === null || h === null) return "";
+            return (
+                `width: min(${fitViewport}, ` +
+                `calc((100${vu}vh - ${viewGutter}) * ${w} / ${h})); ` +
+                `height: auto; aspect-ratio: ${w} / ${h};`
+            );
+        }
         if (vector) {
             // A vector has no pixel size to cap at, so it fills the viewport
             // width, or as much of it as its ratio allows, whatever its declared
@@ -387,6 +516,199 @@
     let downY = 0;
     let moved = false; // distinguishes a tap from a drag/pinch
 
+    // ── Swipe between gallery items ─────────────────────────────────────────
+    // A one-finger horizontal drag steps to the neighbouring item, as long as
+    // the image has no room to pan that way: it is not zoomed wider than the
+    // screen, or it is already panned to the edge the drag pulls away from.
+    // A drag that pans up to an edge stops there; the next drag swipes.
+    // Touch and pen only: a mouse has the chevrons and arrow keys.
+    //
+    // The drag shows the neighbour sliding in beside the finger (`overlay`).
+    // A release that steps animates both off and on in one ease-out motion;
+    // only when that motion has ended is the parent told to step (its src
+    // swap then lands on the neighbour already in place). Below threshold the
+    // image animates back and the overlay goes.
+    let swipeDx = $state(0); // how far the item follows the finger
+    let swipeEligible = false; // this gesture may still become a swipe
+    // Which way this gesture's finger may swipe (the image can't pan there).
+    let swipeLeftOK = false;
+    let swipeRightOK = false;
+    let swiping = $state(false); // this gesture is a swipe
+    let downTime = 0;
+    const SWIPE_LOCK = 10; // px before the drag picks an axis
+    const SWIPE_EASE = "cubic-bezier(0.22, 1, 0.36, 1)"; // ease-out
+
+    type SwipeOverlay = {
+        /** 1: the neighbour comes from the right; -1: from the left. */
+        side: -1 | 1;
+        item: LightboxNeighbour;
+        /** "drag": follows the finger. "settle": animating with the item. "handoff":
+         *  parked at the centre until the stepped-to image has loaded, so the
+         *  swap shows no gap or stale frame. */
+        phase: "drag" | "settle" | "handoff";
+    };
+    let overlay = $state<SwipeOverlay | null>(null);
+    // Length of the release animation in ms; 0 when nothing is animating.
+    let swipeAnimMs = $state(0);
+    // A release that has been decided but whose animation has not yet ended.
+    let pendingSettle: {
+        commit: boolean;
+        target: () => void;
+        timer: ReturnType<typeof setTimeout>;
+    } | null = null;
+    let handoffTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Warm the neighbours' full images through the same <img> request the
+    // viewer makes for its own, so a step lands on an image already loaded.
+    // Nothing is decoded or copied into an object URL here; the Image refs
+    // only hold the request, and are released when the neighbours change.
+    $effect(() => {
+        const urls = [neighbours?.prev?.src, neighbours?.next?.src].filter(
+            (u): u is string => !!u && !u.startsWith("blob:"),
+        );
+        const warm = urls.map((u) => {
+            const img = new Image();
+            img.src = u;
+            return img;
+        });
+        return () => {
+            for (const img of warm) img.src = "";
+        };
+    });
+
+    /** How far the image may pan sideways either way from centre (see
+     *  `panLimit`). 0 at fit; always 0 for a video. */
+    function maxPanX(): number {
+        if (isVideo || !imgEl) return 0;
+        const w = (imgEl.offsetWidth * scale) / renderScale;
+        return panLimit(w, window.innerWidth, scale, true);
+    }
+
+    /** A leftward drag goes forwards, mirrored in a right-to-left layout. */
+    function swipeTarget(dx: number): (() => void) | undefined {
+        const rtl =
+            !!viewerEl && getComputedStyle(viewerEl).direction === "rtl";
+        return dx < 0 !== rtl ? onNext : onPrev;
+    }
+
+    /** The neighbour a drag of `dx` steps to, if the gallery has one there. */
+    function neighbourFor(dx: number): LightboxNeighbour | null {
+        if (!swipeTarget(dx)) return null;
+        const rtl =
+            !!viewerEl && getComputedStyle(viewerEl).direction === "rtl";
+        return (dx < 0 !== rtl ? neighbours?.next : neighbours?.prev) ?? null;
+    }
+
+    /** The neighbour's box, sized the way the viewer sizes its own image so
+     *  the handoff lands on the same spot. "" when its size is unknown; then
+     *  there is no overlay and the swap is a plain one. */
+    function boxStyleFor(dims: LightboxNeighbour["dims"]): string {
+        const w = safeDimension(dims?.w);
+        const h = safeDimension(dims?.h);
+        if (w === null || h === null) return "";
+        const fitViewport = `calc(100${vu}vw - ${viewGutter})`;
+        const byHeight = `calc((100${vu}vh - ${viewGutter}) * ${w} / ${h})`;
+        if (fitToScreen)
+            return `width: min(${fitViewport}, ${byHeight}); height: auto; aspect-ratio: ${w} / ${h};`;
+        return `width: min(${w}px, ${fitViewport}, ${byHeight}); height: auto; aspect-ratio: ${w} / ${h};`;
+    }
+
+    const overlayShown = $derived(
+        overlay !== null && (overlay.phase !== "handoff" || !imgLoaded),
+    );
+    const overlayBox = $derived(overlay ? boxStyleFor(overlay.item.dims) : "");
+    const overlayPlaceholder = $derived(
+        overlay ? placeholderStyle(overlay.item.placeholders ?? []) : "",
+    );
+    // The neighbour starts one viewport off the SCREEN's edge, not the
+    // image's: a zoomed image panned to its edge has its centre far to one
+    // side, and a neighbour placed beside that centre showed up on screen the
+    // moment the swipe began. A swipe only starts once the image's edge is in
+    // view, so moving both by one viewport also carries the image fully off.
+    const overlayX = $derived(
+        overlay && overlay.phase !== "handoff"
+            ? overlay.side * window.innerWidth + swipeDx
+            : 0,
+    );
+    const overlayTransition = $derived(
+        overlay?.phase === "settle" && swipeAnimMs
+            ? `transform ${swipeAnimMs}ms ${SWIPE_EASE}`
+            : "none",
+    );
+
+    // Frames in which the transform must not animate: an instant re-place.
+    // Each call holds for two frames; a later call keeps the hold alive.
+    let stillToken = 0;
+    function holdStill(): void {
+        rebasing = true;
+        const id = ++stillToken;
+        requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+                if (id === stillToken) rebasing = false;
+            }),
+        );
+    }
+
+    /** The release animation has ended (or was cut short): step if it was a
+     *  commit, then hand the viewer to the neighbour. Idempotent. */
+    function finishSettle(): void {
+        const p = pendingSettle;
+        if (!p) return;
+        pendingSettle = null;
+        clearTimeout(p.timer);
+        swipeAnimMs = 0;
+        if (!p.commit) {
+            overlay = null;
+            return;
+        }
+        // The track is already off-screen. The new item must appear at the
+        // centre without animating in from there; the overlay covers it until
+        // its image has loaded.
+        holdStill();
+        swipeDx = 0;
+        if (overlay) {
+            overlay = { ...overlay, phase: "handoff" };
+            clearTimeout(handoffTimer);
+            handoffTimer = setTimeout(() => {
+                if (overlay?.phase === "handoff") overlay = null;
+            }, 4000);
+        }
+        p.target();
+    }
+
+    /** Decide a released drag and animate it: a step carries the image off
+     *  one way and the neighbour in, a cancel sends the image back. */
+    function releaseSwipe(dx: number, elapsedMs: number, allowed: boolean) {
+        const width = window.innerWidth;
+        const target = swipeTarget(dx);
+        const commit =
+            allowed && !!target && swipeCommits(dx, elapsedMs, width);
+        if (!motionOK()) {
+            overlay = null;
+            swipeDx = 0;
+            if (commit && target) target();
+            return;
+        }
+        const side: -1 | 1 = dx < 0 ? 1 : -1;
+        // Where the image's own track ends: off-screen, or back at the centre.
+        const end = commit ? -side * width : 0;
+        const ms = swipeSettleMs(Math.abs(end - swipeDx), width);
+        swipeAnimMs = ms;
+        swipeDx = end;
+        if (overlay) overlay = { ...overlay, phase: "settle" };
+        pendingSettle = {
+            commit,
+            target: target ?? (() => {}),
+            // transitionend normally ends it; this covers a transition that
+            // never runs (no distance to cover, or the event is missed).
+            timer: setTimeout(finishSettle, ms + 80),
+        };
+    }
+
+    function onSwipeEnd(e: TransitionEvent): void {
+        if (e.propertyName === "transform" && pendingSettle) finishSettle();
+    }
+
     // Double-tap (mihon/tachiyomi style): the first double-tap zooms in at the
     // point, the next resets. A single tap does nothing. The old code toggled on
     // every single tap, so a quick double tap zoomed in then straight back out.
@@ -396,7 +718,8 @@
     const DOUBLE_TAP_MS = 300;
     const DOUBLE_TAP_DIST = 40;
 
-    const MIN_SCALE = 1;
+    // Below 1 the image shrinks inside its fitted size.
+    const MIN_SCALE = 0.1;
     const MAX_SCALE = 16;
     // One +/- press, button or key, multiplies the zoom by this.
     const ZOOM_STEP = 1.25;
@@ -405,13 +728,96 @@
     // onPointerUp below.
     let lastPointerType = "";
 
-    /** Clamp the pan so the image can't be dragged past its visible edges. */
+    // ── Sharp vectors ───────────────────────────────────────────────────────
+    // A CSS transform scales the bitmap the browser drew at layout size, so a
+    // zoomed SVG came out as blurry as a placeholder. Once the zoom settles,
+    // the vector is laid out at `renderScale` times its fitted size (and the
+    // transform scaled down by as much), which makes the browser draw it again
+    // at that resolution. Capped: past 8x the layers get large on phones.
+    const MAX_RENDER_SCALE = 8;
+    let renderScale = $state(1);
+    // Fitted layout size, measured while renderScale is 1.
+    let baseW = 0;
+    let baseH = 0;
+    // True for the frames in which renderScale changes, so the transform
+    // swaps without the transition animating it from the old ratio.
+    let rebasing = $state(false);
+    function setRenderScale(next: number) {
+        holdStill();
+        renderScale = next;
+    }
+    $effect(() => {
+        if (!vector || !imgLoaded) return;
+        const target = Math.min(MAX_RENDER_SCALE, Math.max(1, scale));
+        if (target === renderScale) return;
+        const timer = setTimeout(() => {
+            if (!imgEl) return;
+            if (renderScale === 1) {
+                baseW = imgEl.offsetWidth;
+                baseH = imgEl.offsetHeight;
+            }
+            setRenderScale(target);
+        }, 250);
+        return () => clearTimeout(timer);
+    });
+    // The fitted size changes with the window; measure it again.
+    onMount(() => {
+        const onResize = () => {
+            if (renderScale !== 1) setRenderScale(1);
+        };
+        window.addEventListener("resize", onResize);
+        return () => {
+            window.removeEventListener("resize", onResize);
+            clearTimeout(handoffTimer);
+            if (pendingSettle) clearTimeout(pendingSettle.timer);
+            pendingSettle = null;
+        };
+    });
+    const renderSizeStyle = $derived(
+        renderScale > 1
+            ? `width: ${baseW * renderScale}px; height: ${baseH * renderScale}px; max-width: none; max-height: none;`
+            : "",
+    );
+
+    /** Whether the vector draws nothing at (x,y), give or take a few pixels,
+     *  so a click there closes the viewer like one on the backdrop: much of
+     *  an SVG's box is often empty. False when it can't tell (a cross-origin
+     *  image taints the canvas). */
+    function vectorEmptyAt(x: number, y: number): boolean {
+        if (!imgEl) return false;
+        const r = imgEl.getBoundingClientRect();
+        if (x < r.left || x >= r.right || y < r.top || y >= r.bottom)
+            return true;
+        const PAD = 4;
+        try {
+            const c = document.createElement("canvas");
+            c.width = c.height = PAD * 2 + 1;
+            const ctx = c.getContext("2d", { willReadFrequently: true });
+            if (!ctx) return false;
+            ctx.drawImage(
+                imgEl,
+                PAD - (x - r.left),
+                PAD - (y - r.top),
+                r.width,
+                r.height,
+            );
+            const px = ctx.getImageData(0, 0, c.width, c.height).data;
+            for (let i = 3; i < px.length; i += 4) if (px[i] > 0) return false;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /** Clamp the pan to `panLimit`: the image's overhang past each visible
+     *  edge plus a slack margin while zoomed, so edge text can be brought
+     *  clear of the toolbar and caption overlays. */
     function clampPan() {
         if (!imgEl) return;
-        const w = imgEl.offsetWidth * scale;
-        const h = imgEl.offsetHeight * scale;
-        const maxX = Math.max(0, (w - window.innerWidth) / 2);
-        const maxY = Math.max(0, (h - window.innerHeight) / 2);
+        const w = (imgEl.offsetWidth * scale) / renderScale;
+        const h = (imgEl.offsetHeight * scale) / renderScale;
+        const maxX = panLimit(w, window.innerWidth, scale, true);
+        const maxY = panLimit(h, window.innerHeight, scale);
         tx = Math.min(maxX, Math.max(-maxX, tx));
         ty = Math.min(maxY, Math.max(-maxY, ty));
     }
@@ -458,7 +864,7 @@
     // only; a touch double-tap that also fires dblclick is ignored here.
     function onImgDblClick(e: MouseEvent) {
         if (lastPointerType !== "mouse") return;
-        if (scale > 1) resetZoom();
+        if (scale !== 1) resetZoom();
         else zoomAt(2, e.clientX, e.clientY);
     }
 
@@ -479,21 +885,51 @@
         return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     }
 
+    // When a drag or pinch last ended. The backdrop is a button, so the
+    // pointer-up that ends a gesture started on it would otherwise click it
+    // and close the viewer.
+    let gestureEndedAt = -Infinity;
+    function onBackdropClick() {
+        if (performance.now() - gestureEndedAt < 400) return;
+        onClose();
+    }
+
     function onPointerDown(e: PointerEvent) {
+        // A video's own controls take its gestures; only a swipe on the
+        // backdrop around it is handled.
+        if (isVideo && e.pointerType === "mouse") return;
+        // A new touch lands mid-animation: finish the release it interrupts.
+        finishSettle();
         (e.target as Element).setPointerCapture?.(e.pointerId);
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         lastPointerType = e.pointerType;
         downX = e.clientX;
         downY = e.clientY;
+        downTime = e.timeStamp;
         moved = false;
         if (pointers.size === 2) {
             const [a, b] = [...pointers.values()];
             lastDist = dist(a, b);
+            // A second finger turns a swipe into a pinch.
+            swipeEligible = false;
+            swiping = false;
+            swipeDx = 0;
+            if (overlay?.phase === "drag") overlay = null;
         } else if (pointers.size === 1) {
             panStartX = e.clientX;
             panStartY = e.clientY;
             panBaseTx = tx;
             panBaseTy = ty;
+            swiping = false;
+            // A finger moving left pans the image left (tx falls), so it may
+            // swipe only once the image's right edge is already in view.
+            const max = maxPanX();
+            swipeLeftOK = tx <= -max + 1;
+            swipeRightOK = tx >= max - 1;
+            swipeEligible =
+                e.pointerType !== "mouse" &&
+                !!(onPrev || onNext) &&
+                (swipeLeftOK || swipeRightOK);
         }
     }
 
@@ -505,7 +941,7 @@
         if (pointers.size >= 2) {
             const [a, b] = [...pointers.values()];
             const d = dist(a, b);
-            if (lastDist > 0) {
+            if (lastDist > 0 && !isVideo) {
                 const m = midpoint(a, b);
                 zoomAt(d / lastDist, m.x, m.y);
             }
@@ -514,9 +950,34 @@
             return;
         }
 
-        // Single pointer: pan only when zoomed in.
-        if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8) moved = true;
-        if (scale > 1) {
+        // Single pointer: a sideways swipe steps the gallery, otherwise pan
+        // when zoomed in.
+        const dx = e.clientX - downX;
+        const dy = e.clientY - downY;
+        if (Math.hypot(dx, dy) > 8) moved = true;
+        if (swipeEligible && !swiping) {
+            if (Math.abs(dx) > SWIPE_LOCK && Math.abs(dx) > Math.abs(dy)) {
+                // Towards a side the image can still pan to: pan instead.
+                if (dx < 0 ? swipeLeftOK : swipeRightOK) swiping = true;
+                else swipeEligible = false;
+            } else if (Math.abs(dy) > SWIPE_LOCK) swipeEligible = false;
+        }
+        if (swiping) {
+            // Pulling towards a side with nothing there only gives a little.
+            swipeDx = swipeTarget(dx) ? dx : dx * 0.3;
+            const item = neighbourFor(dx);
+            if (item && boxStyleFor(item.dims)) {
+                overlay = {
+                    side: dx < 0 ? 1 : -1,
+                    item,
+                    phase: "drag",
+                };
+            } else if (overlay?.phase === "drag") {
+                overlay = null;
+            }
+            return;
+        }
+        if (scale > 1 && !isVideo) {
             tx = panBaseTx + (e.clientX - panStartX);
             ty = panBaseTy + (e.clientY - panStartY);
             clampPan();
@@ -537,6 +998,34 @@
         if (pointers.size > 0) return;
         lastDist = 0;
 
+        // A click or tap on an empty part of a vector's box is a click on
+        // the backdrop.
+        if (moved) gestureEndedAt = performance.now();
+
+        if (!swiping && overlay?.phase === "drag") overlay = null;
+        if (swiping) {
+            swiping = false;
+            swipeEligible = false;
+            releaseSwipe(
+                e.clientX - downX,
+                e.timeStamp - downTime,
+                e.type === "pointerup",
+            );
+            return;
+        }
+        if (isVideo) return;
+        if (
+            e.type === "pointerup" &&
+            e.target === imgEl &&
+            !moved &&
+            !wasPinch &&
+            vector &&
+            vectorEmptyAt(e.clientX, e.clientY)
+        ) {
+            onClose();
+            return;
+        }
+
         // Zoom only on a DOUBLE tap: the first zooms in at the tap point, the
         // next resets. A single tap does nothing, so the gesture no longer
         // zooms-in-then-out on a quick double tap.
@@ -547,7 +1036,7 @@
                 Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) <
                     DOUBLE_TAP_DIST;
             if (isDoubleTap) {
-                if (scale > 1) {
+                if (scale !== 1) {
                     scale = 1;
                     tx = 0;
                     ty = 0;
@@ -660,7 +1149,12 @@
         aria-label={t("lightbox.closeViewer", { mediaNoun: mediaNounLabel })}
         in:fade={{ duration: motionOK() ? 150 : 0 }}
         class="absolute inset-0 bg-black/80"
-        onclick={onClose}
+        style="touch-action: none;"
+        onclick={onBackdropClick}
+        onpointerdown={onPointerDown}
+        onpointermove={onPointerMove}
+        onpointerup={onPointerUp}
+        onpointercancel={onPointerUp}
     ></button>
 
     <!-- Dialog: full-screen flex-centered layer. pointer-events-none lets clicks
@@ -732,7 +1226,7 @@
                 >
                     {#if favourited}
                         <svg
-                            class="w-5 h-5 text-discord-warning"
+                            class="w-5 h-5 text-zam-warning"
                             fill="currentColor"
                             viewBox="0 0 24 24"
                         >
@@ -836,7 +1330,10 @@
                     ? '6em'
                     : '2em'}); max-height: calc(100{vu}vh - {interfaceState.isMobile
                     ? '6em'
-                    : '2em'});"
+                    : '2em'}); transform: translateX({swipeDx}px); transition: {swiping ||
+                rebasing
+                    ? 'none'
+                    : 'transform 0.2s ease'};"
             >
                 {#if (videoBlobUrl || videoStreamUrl) && !videoFailed}
                     <div class="relative">
@@ -857,6 +1354,7 @@
                                 poster={poster ?? undefined}
                                 use:rememberVolume
                                 controls
+                                {loop}
                                 autoplay
                                 preload="metadata"
                                 playsinline
@@ -928,7 +1426,15 @@
                     {alt}
                     class="pointer-events-auto"
                     onload={() => {
-                        if (src) imgLoaded = true;
+                        if (!src) return;
+                        imgLoaded = true;
+                        if (overlay?.phase === "handoff") overlay = null;
+                        if (imgEl) layoutW = imgEl.offsetWidth;
+                        if (imgEl?.naturalWidth && imgEl.naturalHeight)
+                            loadedRatio = {
+                                w: imgEl.naturalWidth,
+                                h: imgEl.naturalHeight,
+                            };
                     }}
                     onerror={onImgError}
                     onpointerdown={onPointerDown}
@@ -937,16 +1443,21 @@
                     onpointercancel={onPointerUp}
                     ondblclick={onImgDblClick}
                     ondragstart={(e) => e.preventDefault()}
+                    ontransitionend={onSwipeEnd}
                     style="max-width: calc(100{vu}vw - {interfaceState.isMobile
                         ? '6em'
                         : '2em'}); max-height: calc(100{vu}vh - {interfaceState.isMobile
                         ? '6em'
-                        : '2em'}); object-fit: contain; border-radius: 0.5em; touch-action: none; transform: translate({tx}px, {ty}px) scale({scale}); transition: {pointers.size ===
-                    0
-                        ? 'transform 0.2s ease'
+                        : '2em'}); object-fit: contain; border-radius: 0.5em; touch-action: none; transform: translate({tx +
+                        swipeDx}px, {ty}px) scale({scale /
+                        renderScale}); transition: {pointers.size === 0 &&
+                    !rebasing
+                        ? swipeAnimMs
+                            ? `transform ${swipeAnimMs}ms ${SWIPE_EASE}`
+                            : 'transform 0.2s ease'
                         : 'none'}; cursor: {scale > 1
                         ? 'grab'
-                        : 'zoom-in'}; {imgBoxStyle} {imgPlaceholderStyle}"
+                        : 'zoom-in'}; {imgBoxStyle} {renderSizeStyle} {imgPlaceholderStyle}"
                     class:hidden={previewShown && !imgBoxStyle}
                 />
                 {#if preview && !imgLoaded}
@@ -962,13 +1473,37 @@
                             ? "absolute inset-0 w-full h-full pointer-events-none"
                             : "block"}
                         class:hidden={!previewShown}
-                        style="max-width: calc(100{vu}vw - {viewGutter}); max-height: calc(100{vu}vh - {viewGutter}); object-fit: contain; border-radius: 0.5em; transform: translate({tx}px, {ty}px) scale({scale}); transition: {pointers.size ===
-                        0
+                        style="max-width: calc(100{vu}vw - {viewGutter}); max-height: calc(100{vu}vh - {viewGutter}); object-fit: contain; border-radius: 0.5em; transform: translate({tx +
+                            swipeDx}px, {ty}px) scale({scale}); transition: {pointers.size ===
+                            0 && !rebasing
                             ? 'transform 0.2s ease'
                             : 'none'};"
                     ></canvas>
                 {/if}
             </div>
+            <!-- The neighbour, one viewport to the side, moving with the finger
+                 during a swipe. Sits on top of the image until it has loaded
+                 after a step. Decorative: the gallery's own position label
+                 announces the change. -->
+            {#if overlay && overlayShown && overlayBox}
+                <div
+                    class="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden"
+                    aria-hidden="true"
+                >
+                    <div
+                        class="relative"
+                        style="{overlayBox} {overlayPlaceholder} border-radius: 0.5em; transform: translateX({overlayX}px); transition: {overlayTransition};"
+                        ontransitionend={onSwipeEnd}
+                    >
+                        <img
+                            src={overlay.item.src || undefined}
+                            alt=""
+                            class="block w-full h-full"
+                            style="object-fit: contain; border-radius: 0.5em;"
+                        />
+                    </div>
+                </div>
+            {/if}
         {/if}
         {#if !isVideo}
             <!-- Zoom controls, shown while the viewer is hovered or has focus.
@@ -1002,7 +1537,7 @@
                     aria-label={t("lightbox.zoomReset")}
                     class="min-w-[3.5rem] px-2 py-1 rounded-full text-sm tabular-nums hover:bg-black/70 transition-colors"
                 >
-                    {Math.round(scale * 100)}%
+                    {zoomPercent}%
                 </button>
                 <button
                     type="button"
@@ -1020,6 +1555,42 @@
                         viewBox="0 0 24 24"
                     >
                         <path stroke-linecap="round" d="M12 5v14M5 12h14" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    onclick={toggleFit}
+                    aria-pressed={fitToScreen}
+                    title={fitToScreen
+                        ? t("lightbox.actualSize")
+                        : t("lightbox.fitToScreen")}
+                    aria-label={t("lightbox.fitToScreen")}
+                    class="p-2 rounded-full hover:bg-black/70 transition-colors {fitToScreen
+                        ? 'bg-white/20'
+                        : ''}"
+                >
+                    <svg
+                        class="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        viewBox="0 0 24 24"
+                    >
+                        {#if fitToScreen}
+                            <!-- Arrows pointing in: back to actual size. -->
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"
+                            />
+                        {:else}
+                            <!-- Arrows pointing out: fill the screen. -->
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                            />
+                        {/if}
                     </svg>
                 </button>
             </div>

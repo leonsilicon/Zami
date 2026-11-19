@@ -16,9 +16,9 @@ export default function MessageDecorations({
         d.badge ? (
             <View
                 key={d.key}
-                className="flex-row items-center px-1.5 py-0.5 rounded bg-discord-backgroundSecondary border border-discord-divider"
+                className="flex-row items-center px-1.5 py-0.5 rounded bg-zam-backgroundSecondary border border-zam-divider"
             >
-                <Text className="text-[10px] font-semibold leading-none text-discord-textMuted">
+                <Text className="text-[10px] font-semibold leading-none text-zam-textMuted">
                     {d.badge}
                 </Text>
             </View>
@@ -27,9 +27,9 @@ export default function MessageDecorations({
                 key={d.key}
                 accessible
                 accessibilityLabel={d.tooltip}
-                className="flex-row items-center justify-center w-3.5 h-3.5 rounded-full bg-discord-backgroundSecondary border border-discord-divider"
+                className="flex-row items-center justify-center w-3.5 h-3.5 rounded-full bg-zam-backgroundSecondary border border-zam-divider"
             >
-                <Text className="text-[9px] font-semibold text-discord-textMuted">
+                <Text className="text-[9px] font-semibold text-zam-textMuted">
                     i
                 </Text>
             </View>

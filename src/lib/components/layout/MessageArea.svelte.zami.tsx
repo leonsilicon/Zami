@@ -1,5 +1,9 @@
 import { DomMount, Pulse, Spin, SvgIcon } from "@-/com.leonsilicon.zami.rn";
-import { sameObject, useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import {
+    sameObject,
+    shallowEqual,
+    useRune,
+} from "@-/com.leonsilicon.zami.svelte-react";
 import {
     createCoalescer,
     movesOthersReceipts,
@@ -98,6 +102,9 @@ import {
     getRoom,
     isRoomCachedOnly,
     getReadUpToEventId,
+    getOwnReadReceipt,
+    getMarkedUnread,
+    onMarkedUnreadChange,
     getReceiptsByDisplayedEvent,
     onReceiptEvent,
     getRoomCallMemberships,
@@ -107,12 +114,14 @@ import {
     getCallSummaries,
     getContextCallSummaries,
     getOwnUserId,
+    getDirectRoomIds,
     decryptEventsForDisplay,
     isRenderableTimelineEvent,
     onCallEvent,
     shouldLoadMembersOnOpen,
     type ReadReceiptInfo,
 } from "$lib/matrix/client";
+import Avatar from "$lib/components/ui/Avatar.svelte";
 import { isCallEventType } from "$lib/utils/callSummary";
 import { logSync } from "$lib/matrix/syncLog";
 import { setActiveRoom } from "$lib/stores/rooms.svelte";
@@ -161,12 +170,12 @@ import {
 import {
     shouldShowHeader,
     dateSeparatorLabel,
-    unreadDividerBefore,
+    unreadDividerIndex,
     isNearBottom,
     timelineKey,
 } from "$lib/utils/timelineDisplay";
 import { shouldDismissSelectionOnScroll } from "$lib/utils/scrollDismiss";
-import { daySeparator } from "$lib/utils/timeFormat";
+import { daySeparator, messageTimestamp } from "$lib/utils/timeFormat";
 import { canSendReceipt } from "$lib/utils/receiptGate";
 import {
     historyEdge,
@@ -182,7 +191,11 @@ import {
 import { createBackfillGate } from "$lib/utils/backfillGate";
 import { hostBridge } from "$lib/plugins/hostBridge";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
-import { pluginPanel, openPluginPanel } from "$lib/plugins/pluginPanel.svelte";
+import {
+    pluginPanel,
+    registeredPanelKey,
+    openPluginPanel,
+} from "$lib/plugins/pluginPanel.svelte";
 import { pluginMount } from "$lib/plugins/pluginMount";
 import { rollupRoomThreadUnread } from "$lib/utils/threadUnread";
 import { isOffCanvasClosed } from "$lib/utils/drawerInert";
@@ -195,11 +208,16 @@ import {
     Maximize2,
     Lock,
     Users,
-    Hash,
     Image,
     MoreHorizontal,
     X,
+    ChevronRight,
 } from "lucide-svelte";
+import { bridgedThreadParent } from "$lib/stores/bridgedThreads.svelte";
+import { bridgedChannel } from "$lib/stores/bridgedChannels.svelte";
+import { channelIconKind } from "$lib/utils/bridgedChannels";
+import ChannelTypeIcon from "$lib/components/ui/ChannelTypeIcon.svelte";
+import { navigateToRoom } from "$lib/stores/rooms.svelte";
 import RoomHeaderOverflowMenu from "$lib/components/layout/RoomHeaderOverflowMenu.svelte";
 import RoomTopicSheet from "$lib/components/layout/RoomTopicSheet.svelte";
 import {
@@ -274,10 +292,32 @@ const CHEVRON_DOWN_PATH =
     "M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z";
 const INFO_PATH =
     "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z";
+const CHECK_PATH = "M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z";
 
 // Zami: `isNearBottom`'s default slack, for the list's follow-the-bottom
 // threshold.
 const AT_BOTTOM_SLACK = 100;
+
+// Gap left above the divider on open: some read history plus the bar.
+const UNREAD_DIVIDER_TOP_GAP = 72;
+const UNREAD_HOLD_MS = 1500;
+// Zami: how long after the hold's first aim its landing spot is trusted.
+const BOTTOM_CHECK_MS = 200;
+
+/** Zami: upstream's `dividerIndex` over a given list and unread state. */
+function dividerIndexOf(
+    messages: MatrixEvent[],
+    unreadDividerEventId: string | null,
+    unreadReadTs: number | null,
+    unreadFromFirst: boolean,
+): number {
+    if (!unreadDividerEventId) return -1;
+    if (unreadFromFirst) {
+        const i = messages.findIndex((e) => e.getId() === unreadDividerEventId);
+        return i >= 0 ? i : unreadDividerIndex(messages, null, unreadReadTs);
+    }
+    return unreadDividerIndex(messages, unreadDividerEventId, unreadReadTs);
+}
 // Zami: how long a smooth scroll to a jumped-to message runs before the
 // keep-it-in-view loop re-aims it (a re-aim cuts an animation short).
 const SMOOTH_SCROLL_MS = 400;
@@ -390,9 +430,10 @@ export default function MessageArea({
             if (hostBridge.startReply === handler) hostBridge.startReply = null;
         };
     }, [room]);
-    const [editRequestedEventId, setEditRequestedEventId] = useState<
-        string | null
-    >(null);
+    // The message being edited in the composer (edit mode). Set by a message's
+    // Edit action, ArrowUp in the composer, or a plugin's composer.startEdit.
+    // Cleared on room switch, and by the composer when the edit ends.
+    const [editEvent, setEditEvent] = useState<MatrixEvent | null>(null);
 
     // Zami: `await tick()`: resolves once React has committed what was set
     // before it.
@@ -406,14 +447,12 @@ export default function MessageArea({
         );
     }, [tick]);
 
-    // Plugin composer.startEdit → start inline edit of your own text message.
+    // Plugin composer.startEdit → edit your own text message in the composer.
     // Single slot; the mounted room area owns it and only acts on its own room.
-    // Guards own + editable text (parity with requestEditLastMessage). The
-    // transient editRequestedEventId pulse is how the matching MessageItem
-    // enters edit mode (its editRequested prop → $effect → startEdit()).
+    // Guards own + editable text (parity with requestEditLastMessage).
     useEffect(() => {
         const activeRoom = room;
-        const handler = async (ctx: { roomId: string; eventId: string }) => {
+        const handler = (ctx: { roomId: string; eventId: string }) => {
             if (ctx.roomId !== activeRoom.roomId) return;
             const ev = findEventById(activeRoom, ctx.eventId);
             if (
@@ -423,16 +462,13 @@ export default function MessageArea({
                 !isEditableContent(ev.getContent())
             )
                 return;
-            await revealForEdit(ctx.eventId);
-            setEditRequestedEventId(ctx.eventId);
-            await tick();
-            setEditRequestedEventId(null);
+            setEditEvent(ev);
         };
         hostBridge.startEdit = handler;
         return () => {
             if (hostBridge.startEdit === handler) hostBridge.startEdit = null;
         };
-    }, [room, tick]);
+    }, [room]);
     const [threadRootId, setThreadRootId] = useState<string | null>(null);
     // Desktop: thread replaces the timeline instead of docking as a side
     // panel. Sticky for the session so an expanded reader stays expanded
@@ -518,25 +554,10 @@ export default function MessageArea({
         // Zami: no window to re-fit: the list windows itself.
     }
 
-    async function requestEditLastMessage() {
+    function requestEditLastMessage() {
         const last = lastEditableOwnMessage(currentMessages(), auth.userId);
         if (!last) return;
-        await revealForEdit(last.getId()!);
-        setEditRequestedEventId(last.getId()!);
-        await tick();
-        setEditRequestedEventId(null);
-    }
-    // Zami: upstream's window mounts the row an edit is asked of; the list
-    // only mounts rows near the screen, so bring it on screen first (as
-    // focusing its edit box would).
-    async function revealForEdit(eventId: string) {
-        if (viewableKeys.current.length === 0) return;
-        const index = await revealRow(eventId);
-        if (index === null) return;
-        const event = rows.current[index];
-        if (event && viewableKeys.current.includes(rowKey(event))) return;
-        scrollRowIntoView(index, 0.5, false);
-        await layoutSettled();
+        setEditEvent(last);
     }
     // Right-side panels live in the shared interfaceState.sidebar slot, so only
     // one is ever open and the central Escape/back handler can dismiss them.
@@ -718,7 +739,10 @@ export default function MessageArea({
         if (
             interfaceState.sidebar === "plugin" &&
             cur &&
-            !pluginHeaderBtns.some((b) => b.key === cur.key)
+            !pluginHeaderBtns.some((b) => b.key === cur.key) &&
+            !pluginRegistry.panels.some(
+                (e) => registeredPanelKey(e.pluginId, e.value.id) === cur.key,
+            )
         ) {
             closeSidebar();
         }
@@ -808,6 +832,7 @@ export default function MessageArea({
                 if (win && roomRef.current.roomId === rid) {
                     setContextWindow(win);
                     setContextMessages(getContextWindowEvents(win));
+                    setContextAtReadPosition(false);
                     await tick();
                 }
             } finally {
@@ -819,9 +844,18 @@ export default function MessageArea({
         // Cancel any previous scroll loop so we never leak an interval that
         // would keep yanking the scroll position and block the user.
         stopScrollIntoView();
+        // Smooth-scroll only to a message that is nearly on screen. Further
+        // away, the animation ran through spacer where no rows are mounted
+        // (window updates wait for the jump), so it showed blank space for
+        // most of the way. Land there at once with its neighbours mounted.
+        // Zami: the list mounts the row and its neighbours as it scrolls to
+        // it (scrollRowIntoView), so no window to move first.
+        const far = isFarFromView(el);
         // Zami: the loop re-aims at the row by id (new messages shift its
-        // index), and only once a smooth scroll has had time to land.
-        const smooth = scrollBehavior() === "smooth";
+        // index), and only once a smooth scroll has had time to land. A
+        // non-animated re-aim at a row already in place doesn't move the
+        // list, so it needs no check that the row moved (upstream's listTop).
+        const smooth = !far && scrollBehavior() === "smooth";
         const started = Date.now();
         const aim = (animated: boolean) => {
             const index = indexOfEvent(eventId);
@@ -843,6 +877,22 @@ export default function MessageArea({
             // scrolling, so onScroll would never page it forward.
             catchUpContextView();
         }, 2000);
+    }
+
+    /** More than a screen and a half between `el` and the viewport centre. */
+    // Zami: counted in rows, from the rows on screen (viewableKeys); `index`
+    // is the row's index in the list.
+    function isFarFromView(index: number): boolean {
+        const list = rows.current;
+        const on: number[] = [];
+        for (const key of viewableKeys.current) {
+            const i = list.findIndex((e) => rowKey(e) === key);
+            if (i >= 0) on.push(i);
+        }
+        if (on.length === 0) return false;
+        const lo = Math.min(...on);
+        const hi = Math.max(...on);
+        return Math.abs(index - (lo + hi) / 2) > (hi - lo + 1) * 1.5;
     }
 
     // Ensure the scroll loop never outlives the component (e.g. room switch).
@@ -1118,6 +1168,45 @@ export default function MessageArea({
         () => (void roomsState.roomsTick, getRoomDisplayName(room)),
         [room],
     );
+    // DMs get their own chat-start wording: users don't know a DM is a room.
+    const isDirectRoom = useRune(
+        () => (void roomsState.roomsTick, getDirectRoomIds().has(room.roomId)),
+        [room],
+    );
+    // A Discord thread bridged by ZDMB: the header leads with its channel,
+    // like Discord's "#channel > thread". Only a joined channel (not a forum,
+    // which is a space) gets the link.
+    const threadParentRoom = useRune(
+        () => {
+            void roomsState.roomsTick;
+            const parent = bridgedThreadParent(room.roomId);
+            const r = parent ? getRoom(parent.roomId) : null;
+            return r && !r.isSpaceRoom() && r.getMyMembership() === "join"
+                ? { roomId: r.roomId, name: getRoomDisplayName(r) }
+                : null;
+        },
+        [room],
+        { isEqual: shallowEqual },
+    );
+    // Discord-style channel icon from ZDMB's channel tag; other rooms keep #.
+    const headerIconKind = useRune(() => {
+        void roomsState.roomsTick;
+        return channelIconKind(bridgedChannel(room.roomId)?.type, {
+            isThread: bridgedThreadParent(room.roomId) !== null,
+        });
+    }, [room]);
+    // Zami: the parent channel's icon, read here: the header is no block for
+    // an {@const}.
+    const threadParentIconKind = useRune(
+        () =>
+            threadParentRoom
+                ? channelIconKind(
+                      (void roomsState.roomsTick,
+                      bridgedChannel(threadParentRoom.roomId))?.type,
+                  )
+                : null,
+        [threadParentRoom?.roomId],
+    );
     // Re-reads the live Room's state; depends on roomsTick to refresh when the
     // m.room.encryption state event lands (the Room mutates in place).
     const roomEncrypted = useRune(
@@ -1172,6 +1261,11 @@ export default function MessageArea({
         useLiveState<TimelineWindow | null>(null);
     const [contextMessages, setContextMessages, contextMessagesRef] =
         useLiveState<MatrixEvent[] | null>(null);
+    // The window was opened at the read position by entering the room, not
+    // by jumping to a message. It's an ordinary visit: "Jump to present"
+    // stays and the "Viewing message context" banner never shows, even once
+    // the room is read and the unread bar goes away.
+    const [contextAtReadPosition, setContextAtReadPosition] = useState(false);
     const loadingNewer = useRef(false);
     // Zami: the store replaces a room's list whole, never changes it in place.
     const liveMessages = useRune(() => getMessages(roomId), [roomId], {
@@ -1259,7 +1353,10 @@ export default function MessageArea({
     const stickToBottom = isAtBottom && !isContextView;
 
     // ── Row windowing (utils/timelineWindow) ──
-    // Zami: the FlatList's (see the top of the file).
+    // Zami: the FlatList's (see the top of the file), and with it the top
+    // spacer's slack (topSlack, cancelShift, settleTopSlack) and the native
+    // anchor row (setNativeAnchorRow): maintainVisibleContentPosition holds
+    // the reader's row without writing the scroll offset mid-fling.
 
     // timelineKey is only undefined for an event with neither id, which the
     // list never holds; "" keeps the types honest.
@@ -1289,19 +1386,28 @@ export default function MessageArea({
     // `viewPosition` 0 lines its bottom up with the view's ("end"), 0.5
     // centres it, 1 puts it at the top. A row the list hasn't laid out yet is
     // first scrolled near by its estimated offset, then aimed at again.
+    // `viewOffset` moves it that many pixels further from where viewPosition
+    // puts it (towards the bottom for a negative one).
     const scrollTarget = useRef<{
         index: number;
         viewPosition: number;
+        viewOffset: number;
         tries: number;
     } | null>(null);
     function scrollRowIntoView(
         index: number,
         viewPosition: number,
         animated: boolean,
+        viewOffset = 0,
     ) {
         if (index >= rows.current.length) return;
-        scrollTarget.current = { index, viewPosition, tries: 0 };
-        scrollEl.current?.scrollToIndex({ index, viewPosition, animated });
+        scrollTarget.current = { index, viewPosition, viewOffset, tries: 0 };
+        scrollEl.current?.scrollToIndex({
+            index,
+            viewPosition,
+            viewOffset,
+            animated,
+        });
     }
     function onScrollToIndexFailed(info: {
         index: number;
@@ -1321,6 +1427,7 @@ export default function MessageArea({
             scrollEl.current?.scrollToIndex({
                 index: target.index,
                 viewPosition: target.viewPosition,
+                viewOffset: target.viewOffset,
                 animated: false,
             });
         }, 50);
@@ -1406,9 +1513,174 @@ export default function MessageArea({
         return summaryCache.map;
     }, [callSummaryVersion, summaryCache]);
 
-    // The event ID the user has read up to — used to show "New messages" divider on load
+    // The event ID the user had read up to when they opened the room, while
+    // that read state is still unacknowledged. Drives the unread bar and turns
+    // off sticking to the bottom; cleared once the room is marked read.
+    // Put the "New Messages" divider near the top (a little read history
+    // above it, room for the unread bar) and keep it there while rows and
+    // media around it settle, as a jump to a message does. Any touch hands
+    // control back at once. Few unread messages clamp this to the bottom,
+    // which counts as reading them.
+    // Zami: the divider's row is aimed at (its day separator, when it has
+    // one, sits above the divider), and a touch on the list stops the loop
+    // (onListTouchStart), after which onScroll takes over.
+    function holdDividerNearTop(firstUnreadId: string) {
+        if (!scrollEl.current) return;
+        stopScrollIntoView();
+        // Zami: scrollToIndex clamps at the bottom before applying
+        // viewOffset, so a divider too near the bottom to reach the top lands
+        // the gap above the bottom; seen there, go to the bottom instead.
+        // Judged a moment after the first aim, once its scroll event has
+        // reported where the list landed.
+        let placedAt: number | null = null;
+        let atBottom = false;
+        const place = () => {
+            if (atBottom) {
+                scrollEl.current?.scrollToOffset({
+                    offset: 0,
+                    animated: false,
+                });
+                return;
+            }
+            if (
+                placedAt !== null &&
+                Date.now() - placedAt >= BOTTOM_CHECK_MS &&
+                metrics.current.offset <= UNREAD_DIVIDER_TOP_GAP + 1
+            ) {
+                atBottom = true;
+                place();
+                return;
+            }
+            const index = indexOfEvent(firstUnreadId);
+            if (index === null) return;
+            scrollRowIntoView(index, 1, false, -UNREAD_DIVIDER_TOP_GAP);
+            placedAt ??= Date.now();
+        };
+        const finish = () => {
+            // Something else (a jump, a room switch) already took over.
+            if (intervalId.current !== hold) return;
+            stopScrollIntoView();
+            setIsAtBottom(measureAtBottom());
+            if (isAtBottomRef.current && atLiveEdge())
+                markAsReadIfDisplayable();
+        };
+        place();
+        const hold = setInterval(place, 50);
+        intervalId.current = hold;
+        scrollStopTimeout.current = setTimeout(finish, UNREAD_HOLD_MS);
+    }
+
+    // Whether the bottom of what's shown is the newest message: always in the
+    // live timeline; in a window only once it has paged up to the live edge.
+    // Reaching the bottom only counts as reading the room there.
+    function atLiveEdge(): boolean {
+        if (contextMessagesRef.current === null) return true;
+        const win = contextWindowRef.current;
+        return !!win && !contextWindowCanPaginate(win, true);
+    }
     const [unreadMarkerEventId, setUnreadMarkerEventId, unreadMarkerRef] =
         useLiveState<string | null>(null);
+    // Where the "New Messages" divider sits. Unlike the marker above it stays
+    // for the whole visit (as in Discord), so reaching the bottom doesn't wipe
+    // out where the new messages started. Re-derived on every room open.
+    const [unreadDividerEventId, setUnreadDividerEventId, unreadDividerRef] =
+        useLiveState<string | null>(null);
+    // When the receipt's event isn't loaded, its time places the divider.
+    const [unreadReadTs, setUnreadReadTs, unreadReadTsRef] = useLiveState<
+        number | null
+    >(null);
+    // "Mark as unread" names the first UNREAD message, so the divider goes
+    // above unreadDividerEventId instead of below it.
+    const [unreadFromFirst, setUnreadFromFirst, unreadFromFirstRef] =
+        useLiveState(false);
+    // Marked unread while looking at the room: reaching the bottom or
+    // refocusing doesn't read it again; leaving or "Mark as read" do.
+    const keepUnreadHere = useRef(false);
+    // Row the divider sits above; -1 while the loaded rows don't reach back
+    // to the read position (or nothing is unread).
+    const dividerIndex = useMemo(
+        () =>
+            dividerIndexOf(
+                messages,
+                unreadDividerEventId,
+                unreadReadTs,
+                unreadFromFirst,
+            ),
+        [messages, unreadDividerEventId, unreadReadTs, unreadFromFirst],
+    );
+    // Zami: dividerIndex as it stands now, for the async code below.
+    function currentDividerIndex(): number {
+        return dividerIndexOf(
+            currentMessages(),
+            unreadDividerRef.current,
+            unreadReadTsRef.current,
+            unreadFromFirstRef.current,
+        );
+    }
+    // The unread bar's "N new messages since <time>". When the read position
+    // is further back than the loaded history, the count is a lower bound and
+    // "since" is when the user last read the room.
+    // Zami: refreshed on this room's timeline writes (`messages`) and on
+    // unread counts changing (unreadTick), not on every timelineTick.
+    const unreadTick = useRune(() => roomsState.unreadTick);
+    const unreadSummary = useMemo(() => {
+        void unreadTick;
+        if (!unreadMarkerEventId) return null;
+        if (dividerIndex >= 0) {
+            const since = messageTimestamp(messages[dividerIndex].getTs());
+            const loaded = messages.length - dividerIndex;
+            // A window opened at the read position holds only part of the
+            // unread run; the server's count covers all of it when the room
+            // notifies, else what's loaded is a lower bound.
+            if (
+                !isContextView ||
+                (!!contextWindow &&
+                    !contextWindowCanPaginate(contextWindow, true))
+            )
+                return {
+                    key: "messageArea.unreadSince",
+                    params: { count: loaded, since },
+                } as const;
+            const counted = room.getUnreadNotificationCount() ?? 0;
+            return counted >= loaded
+                ? ({
+                      key: "messageArea.unreadSince",
+                      params: { count: counted, since },
+                  } as const)
+                : ({
+                      key: "messageArea.unreadSinceMany",
+                      params: { count: loaded, since },
+                  } as const);
+        }
+        if (
+            !unreadFromFirst &&
+            messages.some((e) => e.getId() === unreadMarkerEventId)
+        )
+            return null;
+        const newest = messages[messages.length - 1];
+        if (unreadReadTs !== null && newest && newest.getTs() <= unreadReadTs)
+            return null;
+        const count = Math.max(
+            room.getUnreadNotificationCount() ?? 0,
+            messages.length,
+        );
+        return unreadReadTs
+            ? ({
+                  key: "messageArea.unreadSinceMany",
+                  params: { count, since: messageTimestamp(unreadReadTs) },
+              } as const)
+            : ({ key: "messageArea.unreadMany", params: { count } } as const);
+    }, [
+        unreadTick,
+        unreadMarkerEventId,
+        dividerIndex,
+        messages,
+        isContextView,
+        contextWindow,
+        room,
+        unreadFromFirst,
+        unreadReadTs,
+    ]);
 
     // This room's recent share of history events that render as a message
     // (low in rooms full of joins); sizes the next page (utils/backfillSizing).
@@ -1418,8 +1690,10 @@ export default function MessageArea({
     useEffect(() => {
         void room.roomId; // track room changes
         setReplyToEvent(null);
+        setEditEvent(null);
         setContextWindow(null);
         setContextMessages(null);
+        setContextAtReadPosition(false);
         // Release the backfill lock so the new room's initial backfill isn't
         // blocked by a load still in flight for the previous room (F2). The
         // finally in loadOlderMessages only clears the lock for its own room.
@@ -1441,7 +1715,6 @@ export default function MessageArea({
 
     // Load messages when room changes — always reload from SDK state (fast, in-memory)
     const openRoom = useEffectEvent((id: string) => {
-        let readUpTo: string | null = null;
         const events = getTimelineMessages(room);
         setMessages(id, events);
         // Re-derive "more history?" on every visit instead of trusting a
@@ -1451,20 +1724,118 @@ export default function MessageArea({
         // post-gap messages (older ones "vanished") and scrolling to the
         // top did nothing. loadPreviousMessages re-checks the real token.
         setCanLoadMore(id, true);
-        // Determine if there are unread messages by checking read marker vs last event
-        const marker = getReadUpToEventId(room);
-        const lastEventId = events[events.length - 1]?.getId();
-        if (marker && marker !== lastEventId) {
-            readUpTo = marker;
-        }
+        // Unread when our receipt is behind the newest event. Under
+        // sliding sync the receipt's event is usually not loaded yet
+        // (rooms open with only their newest event), so getReadUpToEventId
+        // is null and the receipt's own time has to tell.
+        // Zami: upstream's untrack block, as a function returning what it
+        // found.
+        const { readUpTo, readTs, fromFirst } = (() => {
+            let readUpTo: string | null = null;
+            const marker = getReadUpToEventId(room);
+            const receipt = getOwnReadReceipt(room);
+            const last = events[events.length - 1];
+            // "Mark as unread" wins over the receipt (which can't move back):
+            // from the chosen message, or the newest one when the room was
+            // marked without a position (room menu, another client).
+            const marked = getMarkedUnread(room);
+            const from =
+                marked?.from ??
+                (marked && last?.getId()
+                    ? { eventId: last.getId()!, ts: last.getTs() }
+                    : null);
+            if (from)
+                return {
+                    readUpTo: from.eventId,
+                    readTs: from.ts - 1,
+                    fromFirst: true,
+                };
+            if (marker) {
+                // Unread only when a shown message from someone else follows
+                // the receipt. It often sits on a hidden event (a join, a
+                // reaction, an edit) newer than the last shown message; a
+                // plain "not the last shown message" check called such a
+                // fully read room unread and opened it at the receipt.
+                const live = room.getLiveTimeline().getEvents();
+                const at = live.findIndex((e) => e.getId() === marker);
+                if (at < 0) {
+                    if (marker !== last?.getId()) readUpTo = marker;
+                } else {
+                    const shown = new Set(events);
+                    if (
+                        live
+                            .slice(at + 1)
+                            .some(
+                                (e) =>
+                                    shown.has(e) &&
+                                    e.getSender() !== auth.userId,
+                            )
+                    )
+                        readUpTo = marker;
+                }
+            } else if (
+                receipt &&
+                receipt.ts > 0 &&
+                last &&
+                last.getId() !== receipt.eventId &&
+                last.getSender() !== auth.userId &&
+                last.getTs() > receipt.ts
+            ) {
+                readUpTo = receipt.eventId;
+            }
+            return {
+                readUpTo,
+                readTs: receipt && receipt.ts > 0 ? receipt.ts : null,
+                fromFirst: false,
+            };
+        })();
         setUnreadMarkerEventId(readUpTo);
+        setUnreadDividerEventId(readUpTo);
+        setUnreadReadTs(readTs);
+        setUnreadFromFirst(fromFirst);
+        keepUnreadHere.current = false;
         void layoutSettled().then(async () => {
             if (readUpTo) {
-                // Scroll so the first unread message is visible near the top
-                const markerEl = await revealRow(readUpTo);
+                // The read position isn't loaded (under sliding sync a room
+                // opens with only its newest event). Open a window AT it, as
+                // a jump to that message would, instead of paging back from
+                // the present: an active room can have a huge gap, and pages
+                // are slow. Scrolling down pages the window forward; jumping
+                // to the present goes straight to the live timeline.
+                if (currentDividerIndex() < 0) {
+                    setJumpingToEventId(readUpTo);
+                    let win: TimelineWindow | null = null;
+                    try {
+                        win = await createContextWindow(room, readUpTo);
+                    } catch (err) {
+                        console.warn(
+                            "Opening at the read position failed:",
+                            err,
+                        );
+                    } finally {
+                        setJumpingToEventId(null);
+                    }
+                    if (roomRef.current.roomId !== id) return;
+                    if (win) {
+                        setContextWindow(win);
+                        setContextMessages(getContextWindowEvents(win));
+                        setContextAtReadPosition(true);
+                        await tick();
+                    }
+                }
                 if (roomRef.current.roomId !== id) return;
-                if (markerEl !== null && scrollEl.current) {
-                    scrollRowIntoView(markerEl, 0, false);
+                // Scroll so the first unread message is visible near the top
+                const at = currentDividerIndex();
+                const firstUnreadId =
+                    at >= 0 ? currentMessages()[at].getId() : null;
+                const markerEl = firstUnreadId
+                    ? await revealRow(firstUnreadId)
+                    : null;
+                if (roomRef.current.roomId !== id) return;
+                // Zami: the divider is part of the first unread row, so
+                // it's always there once the row is.
+                if (markerEl !== null && firstUnreadId && scrollEl.current) {
+                    holdDividerNearTop(firstUnreadId);
                 } else {
                     scrollToBottom(true);
                 }
@@ -1478,7 +1849,8 @@ export default function MessageArea({
             if (
                 scrollEl.current &&
                 scrollHeight > 0 &&
-                scrollHeight <= clientHeight
+                scrollHeight <= clientHeight &&
+                atLiveEdge()
             ) {
                 markAsReadIfDisplayable();
             }
@@ -1928,7 +2300,54 @@ export default function MessageArea({
         };
     }, [room]);
 
+    // Another device can read the room while it's open: drop the unread bar
+    // once our receipt reaches the latest event.
+    useEffect(() => {
+        void receiptTick;
+        if (!unreadMarkerRef.current || getMarkedUnread(room)) return;
+        const last = getLatestTimelineEvent(room);
+        if (last && getReadUpToEventId(room) === last.getId())
+            setUnreadMarkerEventId(null);
+    }, [receiptTick, room, unreadMarkerRef, setUnreadMarkerEventId]);
+
+    // Show the room as unread from `from` without leaving it (a message's
+    // "Mark as unread", here or on another device).
+    const showMarkedUnread = useEffectEvent(
+        (from: { eventId: string; ts: number }) => {
+            setUnreadMarkerEventId(from.eventId);
+            setUnreadDividerEventId(from.eventId);
+            setUnreadReadTs(from.ts - 1);
+            setUnreadFromFirst(true);
+            keepUnreadHere.current = true;
+        },
+    );
+    useEffect(() => {
+        interfaceState.markUnreadFrom = (from) => showMarkedUnread(from);
+        return () => {
+            interfaceState.markUnreadFrom = null;
+        };
+    }, []);
+    // The flag changing for this room while it's open: marked elsewhere shows
+    // it; cleared (another device reading it) ends it.
+    const onMarkedUnread = useEffectEvent((roomId: string) => {
+        const current = roomRef.current;
+        if (roomId !== current.roomId) return;
+        const marked = getMarkedUnread(current);
+        if (marked?.from) {
+            if (unreadDividerRef.current !== marked.from.eventId)
+                showMarkedUnread(marked.from);
+        } else if (!marked && keepUnreadHere.current) {
+            keepUnreadHere.current = false;
+            setUnreadMarkerEventId(null);
+        }
+    });
+    useEffect(
+        () => onMarkedUnreadChange((roomId) => onMarkedUnread(roomId)),
+        [room],
+    );
+
     function markAsRead() {
+        keepUnreadHere.current = false;
         const currentRoom = roomRef.current;
         const last = getLatestTimelineEvent(currentRoom);
         if (!last) return;
@@ -1944,6 +2363,7 @@ export default function MessageArea({
     // in the background. While gated out, local unread state deliberately
     // persists — it clears when the user next focuses (onWindowFocusRegained).
     function markAsReadIfDisplayable() {
+        if (keepUnreadHere.current) return;
         // Zami: the window's focus and visibility are AppState's "active".
         const active = AppState.currentState === "active";
         if (canSendReceipt({ hasFocus: active, visible: active })) {
@@ -1977,8 +2397,12 @@ export default function MessageArea({
 
     // Shift+PageUp (Settings > Keybinds): back to the oldest unread message.
     const jumpToUnread = useEffectEvent(() => {
-        if (unreadMarkerRef.current)
-            void scrollToMessage(unreadMarkerRef.current);
+        const at = currentDividerIndex();
+        if (at >= 0) {
+            const firstUnread = currentMessages()[at].getId();
+            if (firstUnread) void scrollToMessage(firstUnread);
+        } else if (unreadDividerRef.current)
+            void scrollToMessage(unreadDividerRef.current);
     });
     useEffect(() => {
         interfaceState.jumpToUnread = () => jumpToUnread();
@@ -2154,8 +2578,8 @@ export default function MessageArea({
         // Scroll preservation across a history prepend.
         // Zami: none needed: older rows land past the inverted list's top, and
         // its offset from the bottom, which holds the reader's place, doesn't
-        // change (upstream nudges the oldest rendered message back to where it
-        // was).
+        // change (upstream nudges a message on screen, backfillReferenceRow,
+        // back to where it was).
         try {
             if (contextMessagesRef.current !== null && contextWin) {
                 await paginateContextWindow(contextWin, false);
@@ -2278,17 +2702,22 @@ export default function MessageArea({
         const held = viewableKeys.current[0];
         setContextWindow(null);
         setContextMessages(null);
+        setContextAtReadPosition(false);
         setMessages(currentRoom.roomId, live);
         await tick();
         const el = anchor ? await revealRow(anchor.eventId) : null;
         if (el === null || !scrollEl.current) {
             scrollToBottom(true);
-            return;
+        } else {
+            if (!held || !live.some((e) => rowKey(e) === held))
+                scrollRowIntoView(el, 1, false);
+            await layoutSettled();
+            setIsAtBottom(measureAtBottom());
         }
-        if (!held || !live.some((e) => rowKey(e) === held))
-            scrollRowIntoView(el, 1, false);
-        await layoutSettled();
-        setIsAtBottom(measureAtBottom());
+        // Landing at the present from a window opened at the read position
+        // reads the room; no scroll event follows to say so.
+        if (isAtBottomRef.current && unreadMarkerRef.current)
+            markAsReadIfDisplayable();
     }
 
     // Every message row at least partly on screen, top to bottom, with its
@@ -2468,7 +2897,7 @@ export default function MessageArea({
         void scrollToMessage(eventId);
     });
     const onOpenThread = useStableCallback(openThread);
-    const onEditDone = useCallback(() => messageInputEl.current?.focus(), []);
+    const onStartEdit = useCallback((ev: MatrixEvent) => setEditEvent(ev), []);
     const onRevealBlocked = useCallback((eventId: string) => {
         setRevealedBlockedIds((ids) => ({ ...ids, [eventId]: true }));
     }, []);
@@ -2481,20 +2910,20 @@ export default function MessageArea({
     const rowsContext = useMemo(
         (): RowsContext => ({
             messages,
-            unreadMarkerEventId,
+            dividerIndex,
             isRawDebugEvent,
             ignoredUserIds,
             myUserId,
             revealedBlockedIds,
             receiptsByEvent,
             callSummaries,
-            editRequestedEventId,
+            editEventId: editEvent?.getId() ?? null,
             highlight,
         }),
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- isRawDebugEvent reads showAllEvents and debugTick.
         [
             messages,
-            unreadMarkerEventId,
+            dividerIndex,
             showAllEvents,
             debugTick,
             ignoredUserIds,
@@ -2502,7 +2931,7 @@ export default function MessageArea({
             revealedBlockedIds,
             receiptsByEvent,
             callSummaries,
-            editRequestedEventId,
+            editEvent,
             highlight,
         ],
     );
@@ -2521,7 +2950,7 @@ export default function MessageArea({
                     onReply={onReply}
                     jumpToReply={jumpToReply}
                     onOpenThread={onOpenThread}
-                    onEditDone={onEditDone}
+                    onStartEdit={onStartEdit}
                     onRevealBlocked={onRevealBlocked}
                     onRowTouch={onRowTouch}
                 />
@@ -2533,7 +2962,7 @@ export default function MessageArea({
             onReply,
             jumpToReply,
             onOpenThread,
-            onEditDone,
+            onStartEdit,
             onRevealBlocked,
             onRowTouch,
         ],
@@ -2634,21 +3063,21 @@ export default function MessageArea({
     // Zami: a header button's icon color, which upstream's button sets as its
     // text color (`currentColor`).
     const headerIconClass = (active: boolean) =>
-        active ? "text-discord-accent" : "text-discord-textMuted";
+        active ? "text-zam-accent" : "text-zam-textMuted";
     const headerButtonClass = (active: boolean) =>
         `p-1.5 rounded transition-colors ${
-            active ? "bg-discord-messageHover" : "hover:bg-discord-messageHover"
+            active ? "bg-zam-messageHover" : "hover:bg-zam-messageHover"
         }`;
 
     const threadBadge =
         threadRollup.mentions > 0 ? (
-            <View className="absolute -top-1 -end-1 flex-shrink-0 bg-discord-danger rounded-full min-w-[16px] h-4 px-1 flex-row items-center justify-center ring-2 ring-discord-backgroundSecondary">
+            <View className="absolute -top-1 -end-1 flex-shrink-0 bg-zam-danger rounded-full min-w-[16px] h-4 px-1 flex-row items-center justify-center ring-2 ring-zam-backgroundSecondary">
                 <Text className="text-white text-[10px] leading-none font-bold">
                     {threadRollup.mentions > 99 ? "99+" : threadRollup.mentions}
                 </Text>
             </View>
         ) : threadRollup.anyUnread ? (
-            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-accent ring-2 ring-discord-backgroundSecondary" />
+            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-accent ring-2 ring-zam-backgroundSecondary" />
         ) : null;
     // Zami: what the badge's `title` said, for screen readers.
     const threadBadgeLabel =
@@ -2710,18 +3139,23 @@ export default function MessageArea({
                         {/* Drop overlay */}
                         {/* Zami: not ported (see dragging files above). */}
 
-                        {/* Main chat area */}
+                        {/* Main chat area. `relative` makes it the containing block for the
+                            absolute overlays below (unread bar, jump pills), so they span only
+                            the chat column and not the side panels beside it. */}
                         <View
                             style={{ direction: uiDir }}
-                            className="flex-1 flex-col min-w-0 overflow-hidden"
+                            className="flex-1 flex-col min-w-0 overflow-hidden relative"
                         >
                             {/* Room header */}
-                            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-discord-divider shadow-sm flex-shrink-0">
+                            {/* Zami: not ported: `data-zam-region="room-header"`,
+                                the DOM hook plugins find it by (pluginDom.ts);
+                                there's no DOM for them to query. */}
+                            <View className="h-12 px-4 flex-row items-center gap-3 border-b border-zam-divider shadow-sm flex-shrink-0">
                                 {isMobile ? (
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={onMenuOpen}
-                                        className="relative p-1.5 -ms-1 rounded hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                                        className="relative p-1.5 -ms-1 rounded hover:bg-zam-messageHover transition-colors flex-shrink-0"
                                         accessibilityLabel={
                                             hasAnyLoud
                                                 ? `${t("common.openRoomList")}, ${t("messageArea.unreadNotifications")}`
@@ -2729,17 +3163,56 @@ export default function MessageArea({
                                         }
                                     >
                                         <SvgIcon
-                                            className="w-5 h-5 text-discord-textMuted"
+                                            className="w-5 h-5 text-zam-textMuted"
                                             d={MENU_PATH}
                                         />
                                         {hasAnyLoud ? (
-                                            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-discord-danger border border-discord-background" />
+                                            <View className="absolute top-0.5 end-0.5 w-2 h-2 rounded-full bg-zam-danger border border-zam-background" />
                                         ) : null}
                                     </Pressable>
                                 ) : null}
-                                <Hash
+                                {threadParentRoom ? (
+                                    <>
+                                        {/* Zami: `title` has no equivalent; it names
+                                            the button for accessibility. */}
+                                        <Pressable
+                                            accessibilityRole="button"
+                                            accessibilityLabel={t(
+                                                "bridgedThreads.goToParent",
+                                                { name: threadParentRoom.name },
+                                            )}
+                                            onPress={() =>
+                                                navigateToRoom(
+                                                    threadParentRoom.roomId,
+                                                )
+                                            }
+                                            className="hidden sm:flex flex-row items-center gap-1 min-w-0 max-w-[30%] transition-colors"
+                                        >
+                                            <ChannelTypeIcon
+                                                kind={
+                                                    threadParentIconKind ??
+                                                    "text"
+                                                }
+                                                size={20}
+                                                class="flex-shrink-0 text-zam-textMuted"
+                                            />
+                                            <Text
+                                                numberOfLines={1}
+                                                className="flex-shrink font-semibold text-zam-textMuted"
+                                            >
+                                                {threadParentRoom.name}
+                                            </Text>
+                                        </Pressable>
+                                        <ChevronRight
+                                            size={16}
+                                            className="hidden sm:flex text-zam-textMuted flex-shrink-0 rtl:-scale-x-100"
+                                        />
+                                    </>
+                                ) : null}
+                                <ChannelTypeIcon
+                                    kind={headerIconKind}
                                     size={20}
-                                    className="text-discord-textMuted flex-shrink-0"
+                                    class="text-zam-textMuted flex-shrink-0"
                                 />
                                 {/* 5rem floor below md only: the header's buttons cannot shrink, so
                                     without a floor the name and topic each get a proportional share of
@@ -2749,7 +3222,7 @@ export default function MessageArea({
                                 <Text
                                     accessibilityRole="header"
                                     numberOfLines={1}
-                                    className="flex-shrink font-semibold text-discord-textPrimary min-w-[5rem] md:min-w-0"
+                                    className="flex-shrink font-semibold text-zam-textPrimary min-w-[5rem] md:min-w-0"
                                 >
                                     {roomName}
                                 </Text>
@@ -2763,13 +3236,13 @@ export default function MessageArea({
                                     >
                                         <Lock
                                             size={16}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </View>
                                 ) : null}
                                 {topic ? (
                                     <>
-                                        <View className="w-px h-5 bg-discord-divider" />
+                                        <View className="w-px h-5 bg-zam-divider" />
                                         {isMobile ? (
                                             <Pressable
                                                 accessibilityRole="button"
@@ -2781,7 +3254,7 @@ export default function MessageArea({
                                             >
                                                 <Text
                                                     numberOfLines={1}
-                                                    className="text-sm text-discord-textMuted"
+                                                    className="text-sm text-zam-textMuted"
                                                 >
                                                     {topic}
                                                 </Text>
@@ -2789,7 +3262,7 @@ export default function MessageArea({
                                         ) : (
                                             <Text
                                                 numberOfLines={1}
-                                                className="text-sm text-discord-textMuted flex-auto min-w-0"
+                                                className="text-sm text-zam-textMuted flex-auto min-w-0"
                                             >
                                                 {topic}
                                             </Text>
@@ -2809,20 +3282,20 @@ export default function MessageArea({
                                             disabled:
                                                 joinPendingRoomId !== null,
                                         }}
-                                        className="p-1.5 rounded transition-colors hover:bg-discord-messageHover disabled:opacity-50"
+                                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover disabled:opacity-50"
                                         accessibilityLabel={callLabel}
                                     >
                                         {joining ? (
                                             <Pulse>
                                                 <Phone
                                                     size={20}
-                                                    className="text-discord-textMuted"
+                                                    className="text-zam-textMuted"
                                                 />
                                             </Pulse>
                                         ) : (
                                             <Phone
                                                 size={20}
-                                                className="text-discord-textMuted"
+                                                className="text-zam-textMuted"
                                             />
                                         )}
                                     </Pressable>
@@ -2834,14 +3307,14 @@ export default function MessageArea({
                                         onPress={() =>
                                             showCallView(room.roomId)
                                         }
-                                        className="p-1.5 rounded transition-colors hover:bg-discord-messageHover"
+                                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
                                         accessibilityLabel={t(
                                             "messageArea.showCall",
                                         )}
                                     >
                                         <Maximize2
                                             size={20}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </Pressable>
                                 ) : null}
@@ -3059,7 +3532,9 @@ export default function MessageArea({
                             {/* Zami: inverted (see the top of the file): its header is
                                 the bottom (the tombstone banner, below the newest
                                 message) and its footer the top (the history edge).
-                                Keyed by room, so a room opens at its own bottom. */}
+                                Keyed by room, so a room opens at its own bottom.
+                                Zami: not ported: `data-zam-region="timeline"`
+                                (see the room header's). */}
                             <FlatList
                                 key={roomId}
                                 ref={scrollEl}
@@ -3126,6 +3601,8 @@ export default function MessageArea({
                                     <HistoryEdge
                                         state={historyEdgeState}
                                         roomName={roomName}
+                                        room={room}
+                                        isDirectRoom={isDirectRoom}
                                     />
                                 }
                             />
@@ -3139,7 +3616,9 @@ export default function MessageArea({
                             {/* Scroll to bottom button. Hidden while a composer suggestion list is
                                 open so it doesn't fight the autocomplete for the same space. */}
                             {!isAtBottom &&
-                            !isContextView &&
+                            (!isContextView ||
+                                unreadSummary ||
+                                contextAtReadPosition) &&
                             messages.length > 0 &&
                             !composerAutocompleteOpen ? (
                                 <View
@@ -3152,14 +3631,18 @@ export default function MessageArea({
                                         preventDefault. */}
                                     <Pressable
                                         accessibilityRole="button"
-                                        onPress={() => scrollToBottom(false)}
-                                        className="bg-discord-backgroundSecondary hover:bg-discord-messageHover px-3 py-1.5 rounded-full shadow-lg border border-discord-divider transition-colors flex-row items-center gap-1.5"
+                                        onPress={() =>
+                                            isContextView
+                                                ? void rejoinLive()
+                                                : scrollToBottom(false)
+                                        }
+                                        className="bg-zam-backgroundSecondary hover:bg-zam-messageHover px-3 py-1.5 rounded-full shadow-lg border border-zam-divider transition-colors flex-row items-center gap-1.5"
                                     >
                                         <SvgIcon
-                                            className="w-4 h-4 text-discord-textPrimary"
+                                            className="w-4 h-4 text-zam-textPrimary"
                                             d={CHEVRON_DOWN_PATH}
                                         />
-                                        <Text className="text-discord-textPrimary text-sm font-medium">
+                                        <Text className="text-zam-textPrimary text-sm font-medium">
                                             {t("messageArea.jumpToPresent")}
                                         </Text>
                                     </Pressable>
@@ -3173,9 +3656,9 @@ export default function MessageArea({
                                     className="absolute start-0 end-0 flex-row justify-center z-10"
                                     style={{ bottom: composerHeight + 12 }}
                                 >
-                                    <View className="bg-discord-backgroundSecondary px-3 py-1.5 rounded-full shadow-lg border border-discord-divider flex-row items-center gap-2">
-                                        <Spin className="w-3.5 h-3.5 border-2 border-discord-accent border-t-transparent rounded-full" />
-                                        <Text className="text-discord-textMuted text-sm">
+                                    <View className="bg-zam-backgroundSecondary px-3 py-1.5 rounded-full shadow-lg border border-zam-divider flex-row items-center gap-2">
+                                        <Spin className="w-3.5 h-3.5 border-2 border-zam-accent border-t-transparent rounded-full" />
+                                        <Text className="text-zam-textMuted text-sm">
                                             {t(
                                                 "messageArea.searchingForMessage",
                                             )}
@@ -3184,18 +3667,58 @@ export default function MessageArea({
                                 </View>
                             ) : null}
 
-                            {/* Context view banner */}
-                            {isContextView ? (
+                            {/* Unread bar: how much arrived since last visit, with a jump back to
+                                the divider and a way to dismiss it without scrolling down. */}
+                            {unreadSummary ? (
+                                <View className="absolute top-12 start-0 end-0 mx-4 z-10 flex-row items-stretch rounded-b-lg overflow-hidden shadow-lg bg-zam-accent">
+                                    <Pressable
+                                        accessibilityRole="button"
+                                        onPress={() =>
+                                            interfaceState.jumpToUnread?.()
+                                        }
+                                        className="flex-1 min-w-0 px-3 py-1 hover:bg-white/10"
+                                    >
+                                        <Text
+                                            numberOfLines={1}
+                                            className="text-white text-sm font-semibold"
+                                        >
+                                            {t(
+                                                unreadSummary.key,
+                                                unreadSummary.params,
+                                            )}
+                                        </Text>
+                                    </Pressable>
+                                    <Pressable
+                                        accessibilityRole="button"
+                                        onPress={markAsRead}
+                                        className="flex-shrink-0 px-3 py-1 hover:bg-white/10 flex-row items-center gap-1"
+                                    >
+                                        <Text className="text-white text-sm font-semibold">
+                                            {t("messageArea.markAsRead")}
+                                        </Text>
+                                        <SvgIcon
+                                            className="w-4 h-4 text-white"
+                                            d={CHECK_PATH}
+                                        />
+                                    </Pressable>
+                                </View>
+                            ) : null}
+
+                            {/* Context view banner (the unread bar stands in for it while a room
+                                is opened at the read position) */}
+                            {isContextView &&
+                            !unreadSummary &&
+                            !contextAtReadPosition ? (
                                 <View
                                     pointerEvents="box-none"
                                     className="absolute top-12 start-0 end-0 flex-row justify-center z-10"
                                 >
-                                    <View className="bg-discord-warning/20 px-3 py-1.5 rounded-full shadow-lg border border-discord-warning/40 flex-row items-center gap-2">
+                                    <View className="bg-zam-warning/20 px-3 py-1.5 rounded-full shadow-lg border border-zam-warning/40 flex-row items-center gap-2">
                                         <SvgIcon
-                                            className="w-3.5 h-3.5 flex-shrink-0 text-discord-warning"
+                                            className="w-3.5 h-3.5 flex-shrink-0 text-zam-warning"
                                             d={INFO_PATH}
                                         />
-                                        <Text className="text-discord-warning text-sm">
+                                        <Text className="text-zam-warning text-sm">
                                             {t(
                                                 "messageArea.viewingMessageContext",
                                             )}
@@ -3205,7 +3728,7 @@ export default function MessageArea({
                                             onPress={() => void rejoinLive()}
                                             className="ms-1"
                                         >
-                                            <Text className="text-discord-warning text-sm underline">
+                                            <Text className="text-zam-warning text-sm underline">
                                                 {t("messageArea.returnToLive")}
                                             </Text>
                                         </Pressable>
@@ -3225,9 +3748,9 @@ export default function MessageArea({
                                         direction: uiDir,
                                         marginBottom: 16 + bottomInset,
                                     }}
-                                    className="flex-shrink-0 mx-4 rounded-lg border border-discord-backgroundModifier bg-discord-backgroundSecondary px-4 py-3"
+                                    className="flex-shrink-0 mx-4 rounded-lg border border-zam-backgroundModifier bg-zam-backgroundSecondary px-4 py-3"
                                 >
-                                    <Text className="text-xs text-discord-textMuted">
+                                    <Text className="text-xs text-zam-textMuted">
                                         {t("messageArea.cachedRoomHint")}
                                     </Text>
                                 </View>
@@ -3252,13 +3775,17 @@ export default function MessageArea({
                                         roomName={roomName}
                                         room={room}
                                         replyToEvent={replyToEvent}
+                                        editEvent={editEvent}
+                                        onCancelEdit={() => {
+                                            setEditEvent(null);
+                                        }}
                                         scrollEl={timelineScroller}
                                         keepScrollOnSend={isContextView}
                                         onCancelReply={() => {
                                             setReplyToEvent(null);
                                         }}
-                                        onRequestEditLast={() =>
-                                            void requestEditLastMessage()
+                                        onRequestEditLast={
+                                            requestEditLastMessage
                                         }
                                         onSedEdit={(cmd) =>
                                             sedEditLastMessage(
@@ -3305,7 +3832,7 @@ export default function MessageArea({
                                     />
                                 </Animated.View>
                                 <Animated.View
-                                    className="absolute inset-y-0 right-0 z-40 h-full bg-discord-backgroundSecondary"
+                                    className="absolute inset-y-0 right-0 z-40 h-full bg-zam-backgroundSecondary"
                                     style={[
                                         {
                                             width: PINNED_WIDTH,
@@ -3361,7 +3888,7 @@ export default function MessageArea({
                                     />
                                 </Animated.View>
                                 <Animated.View
-                                    className="absolute inset-y-0 right-0 z-40 h-full bg-discord-backgroundSecondary"
+                                    className="absolute inset-y-0 right-0 z-40 h-full bg-zam-backgroundSecondary"
                                     style={[
                                         {
                                             width: MEMBER_WIDTH,
@@ -3399,36 +3926,36 @@ export default function MessageArea({
                             rendering touched. Title is escaped text; body is the plugin's own DOM
                             mounted via pluginMount (cleanup runs on unmount/close/supersede). */}
                         {currentPluginPanel ? (
-                            // Zami: `bg-discord-background`: upstream's
-                            // `bg-discord-backgroundPrimary` names no color
+                            // Zami: `bg-zam-background`: upstream's
+                            // `bg-zam-backgroundPrimary` names no color
                             // (tailwind.config.js has `background`), which
                             // leaves the full-screen panel see-through.
                             <View
                                 style={{ direction: uiDir }}
                                 className={
                                     isMobile
-                                        ? "absolute inset-0 z-40 flex-col bg-discord-background"
-                                        : "w-80 flex-shrink-0 flex-col border-l border-discord-divider bg-discord-backgroundSecondary"
+                                        ? "absolute inset-0 z-40 flex-col bg-zam-background"
+                                        : "w-80 flex-shrink-0 flex-col border-l border-zam-divider bg-zam-backgroundSecondary"
                                 }
                             >
-                                <View className="flex-row items-center justify-between px-4 h-12 flex-shrink-0 border-b border-discord-divider">
+                                <View className="flex-row items-center justify-between px-4 h-12 flex-shrink-0 border-b border-zam-divider">
                                     <Text
                                         numberOfLines={1}
-                                        className="flex-shrink font-semibold text-discord-textPrimary"
+                                        className="flex-shrink font-semibold text-zam-textPrimary"
                                     >
                                         {currentPluginPanel.title}
                                     </Text>
                                     <Pressable
                                         accessibilityRole="button"
                                         onPress={closeSidebar}
-                                        className="p-1.5 rounded hover:bg-discord-messageHover"
+                                        className="p-1.5 rounded hover:bg-zam-messageHover"
                                         accessibilityLabel={t(
                                             "messageArea.closePanel",
                                         )}
                                     >
                                         <X
                                             size={20}
-                                            className="text-discord-textMuted"
+                                            className="text-zam-textMuted"
                                         />
                                     </Pressable>
                                 </View>
@@ -3529,14 +4056,16 @@ const rowKey = (event: MatrixEvent) => timelineKey(event) ?? "";
 /** Zami: what a row reads to work out its props (see rowsContext). */
 interface RowsContext {
     messages: MatrixEvent[];
-    unreadMarkerEventId: string | null;
+    /** The row the "New Messages" divider sits above, or -1. */
+    dividerIndex: number;
     isRawDebugEvent: (event: MatrixEvent) => boolean;
     ignoredUserIds: string[];
     myUserId: string | null;
     revealedBlockedIds: Record<string, boolean>;
     receiptsByEvent: Map<string, ReadReceiptInfo[]> | null;
     callSummaries: Map<string, CallSummary>;
-    editRequestedEventId: string | null;
+    /** The message being edited in the composer. */
+    editEventId: string | null;
     highlight: { eventId: string; n: number } | null;
 }
 
@@ -3561,14 +4090,14 @@ function createRowsStore(): RowsStore {
     const store: RowsStore = {
         context: {
             messages: [],
-            unreadMarkerEventId: null,
+            dividerIndex: -1,
             isRawDebugEvent: () => false,
             ignoredUserIds: [],
             myUserId: null,
             revealedBlockedIds: {},
             receiptsByEvent: null,
             callSummaries: new Map(),
-            editRequestedEventId: null,
+            editEventId: null,
             highlight: null,
         },
         version: 0,
@@ -3605,7 +4134,7 @@ interface RowProps {
     receipts: ReadReceiptInfo[];
     mentionHighlight: boolean;
     callSummary: CallSummary | null;
-    editRequested: boolean;
+    isBeingEdited: boolean;
     highlightN: number;
 }
 
@@ -3617,9 +4146,7 @@ function rowPropsOf(context: RowsContext, event: MatrixEvent): RowProps {
         messages,
         index: i,
         sepTs: i >= 0 ? dateSeparatorLabel(messages, i) : null,
-        unreadHere:
-            i >= 0 &&
-            unreadDividerBefore(messages, i, context.unreadMarkerEventId),
+        unreadHere: i >= 0 && i === context.dividerIndex,
         rawDebug: context.isRawDebugEvent(event),
         blocked:
             shouldHideMessage(
@@ -3631,7 +4158,8 @@ function rowPropsOf(context: RowsContext, event: MatrixEvent): RowProps {
         receipts: context.receiptsByEvent?.get(id) ?? NO_RECEIPTS,
         mentionHighlight: mentionHighlightOf(event),
         callSummary: context.callSummaries.get(id) ?? null,
-        editRequested: context.editRequestedEventId === event.getId(),
+        isBeingEdited:
+            !!context.editEventId && context.editEventId === event.getId(),
         highlightN:
             context.highlight && context.highlight.eventId === event.getId()
                 ? context.highlight.n
@@ -3702,7 +4230,7 @@ interface TimelineRowProps {
     onReply: (event: MatrixEvent) => void;
     jumpToReply: (eventId: string) => void;
     onOpenThread: (rootEventId: string) => void;
-    onEditDone: () => void;
+    onStartEdit: (event: MatrixEvent) => void;
     onRevealBlocked: (eventId: string) => void;
     onRowTouch: (eventId: string) => void;
 }
@@ -3720,7 +4248,7 @@ const TimelineRow = memo(function TimelineRow({
     onReply,
     jumpToReply,
     onOpenThread,
-    onEditDone,
+    onStartEdit,
     onRevealBlocked,
     onRowTouch,
 }: TimelineRowProps) {
@@ -3735,7 +4263,7 @@ const TimelineRow = memo(function TimelineRow({
         receipts,
         mentionHighlight,
         callSummary,
-        editRequested,
+        isBeingEdited,
         highlightN,
     } = useRowProps(rowsStore, event);
     // One box per row, measured for the spacers. It carries the
@@ -3746,20 +4274,20 @@ const TimelineRow = memo(function TimelineRow({
         <View onTouchStart={() => onRowTouch(event.getId() ?? "")}>
             {sepTs !== null ? (
                 <View className="flex-row items-center gap-4 px-4 my-4">
-                    <View className="flex-1 h-px bg-discord-divider" />
-                    <Text className="text-xs font-semibold text-discord-textMuted">
+                    <View className="flex-1 h-px bg-zam-divider" />
+                    <Text className="text-xs font-semibold text-zam-textMuted">
                         {daySeparator(sepTs)}
                     </Text>
-                    <View className="flex-1 h-px bg-discord-divider" />
+                    <View className="flex-1 h-px bg-zam-divider" />
                 </View>
             ) : null}
             {unreadHere ? (
                 <View className="flex-row items-center gap-3 px-4 my-2">
-                    <View className="flex-1 h-px bg-discord-danger/60" />
-                    <Text className="text-xs font-semibold text-discord-danger uppercase tracking-wide">
+                    <View className="flex-1 h-px bg-zam-danger/60" />
+                    <Text className="text-xs font-semibold text-zam-danger uppercase tracking-wide">
                         {t("messageArea.newMessages")}
                     </Text>
-                    <View className="flex-1 h-px bg-discord-danger/60" />
+                    <View className="flex-1 h-px bg-zam-danger/60" />
                 </View>
             ) : null}
             {rawDebug ? (
@@ -3767,17 +4295,17 @@ const TimelineRow = memo(function TimelineRow({
             ) : blocked ? (
                 <View className="px-4 py-1.5 flex-row items-center gap-2">
                     <SvgIcon
-                        className="w-3.5 h-3.5 flex-shrink-0 text-discord-textMuted"
+                        className="w-3.5 h-3.5 flex-shrink-0 text-zam-textMuted"
                         d={BLOCKED_PATH}
                     />
-                    <Text className="text-xs text-discord-textMuted italic">
+                    <Text className="text-xs text-zam-textMuted italic">
                         {t("messageArea.messageFromABlockedUser")}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => onRevealBlocked(event.getId() ?? "")}
                     >
-                        <Text className="text-xs text-discord-accent font-medium">
+                        <Text className="text-xs text-zam-accent font-medium">
                             {t("messageArea.showBlockedMessage")}
                         </Text>
                     </Pressable>
@@ -3795,8 +4323,8 @@ const TimelineRow = memo(function TimelineRow({
                         onReply={onReply}
                         jumpToReply={jumpToReply}
                         onOpenThread={onOpenThread}
-                        editRequested={editRequested}
-                        onEditDone={onEditDone}
+                        onStartEdit={onStartEdit}
+                        isBeingEdited={isBeingEdited}
                         receipts={receipts}
                         mentionHighlight={mentionHighlight}
                         callSummary={callSummary}
@@ -3896,9 +4424,13 @@ function TimelineCell({
 function HistoryEdge({
     state,
     roomName,
+    room,
+    isDirectRoom,
 }: {
     state: "start" | "loading" | "none";
     roomName: string;
+    room: Room;
+    isDirectRoom: boolean;
 }) {
     return (
         <>
@@ -3907,7 +4439,7 @@ function HistoryEdge({
             {state === "loading" ? (
                 <View className="flex-row justify-center py-4">
                     <Spin
-                        className="w-6 h-6 border-2 border-discord-accent border-t-transparent rounded-full"
+                        className="w-6 h-6 border-2 border-zam-accent border-t-transparent rounded-full"
                         accessibilityRole="progressbar"
                         accessibilityLabel={t("messageArea.loadingHistory")}
                     />
@@ -3915,19 +4447,39 @@ function HistoryEdge({
             ) : null}
 
             {/* Chat start, shown only once the room's m.room.create is loaded */}
-            {state === "start" ? (
+            {state === "start" && isDirectRoom ? (
                 <View className="px-4 pb-4">
-                    <View className="w-16 h-16 rounded-full bg-discord-accent flex-row items-center justify-center mb-4">
+                    <View className="mb-4">
+                        <Avatar
+                            src={getRoomAvatar(room)}
+                            name={roomName}
+                            id={room.roomId}
+                            size={64}
+                        />
+                    </View>
+                    <Text
+                        accessibilityRole="header"
+                        className="text-2xl font-bold text-zam-textPrimary mb-1"
+                    >
+                        {roomName}
+                    </Text>
+                    <Text className="text-zam-textMuted">
+                        {t("messageArea.dmStart", { name: roomName })}
+                    </Text>
+                </View>
+            ) : state === "start" ? (
+                <View className="px-4 pb-4">
+                    <View className="w-16 h-16 rounded-full bg-zam-accent flex-row items-center justify-center mb-4">
                         <Text className="text-3xl font-bold text-white">#</Text>
                     </View>
                     <Text
                         accessibilityRole="header"
-                        className="text-2xl font-bold text-discord-textPrimary mb-1"
+                        className="text-2xl font-bold text-zam-textPrimary mb-1"
                     >
                         {t("messageArea.welcomeTo")}
                         {roomName}!
                     </Text>
-                    <Text className="text-discord-textMuted">
+                    <Text className="text-zam-textMuted">
                         {t("messageArea.thisIsTheBeginningOfThe")}
                         {roomName} {t("messageArea.room")}
                     </Text>
@@ -3951,19 +4503,16 @@ function TombstoneBanner({
     onJoin: () => void;
 }) {
     return (
-        <View className="mx-4 mt-2 mb-4 p-3 rounded-lg bg-discord-backgroundTertiary border border-discord-warning flex-row items-center gap-3">
+        <View className="mx-4 mt-2 mb-4 p-3 rounded-lg bg-zam-backgroundTertiary border border-zam-warning flex-row items-center gap-3">
             <SvgIcon
-                className="w-5 h-5 text-discord-warning flex-shrink-0"
+                className="w-5 h-5 text-zam-warning flex-shrink-0"
                 d={WARNING_PATH}
             />
             <View className="flex-1 min-w-0">
-                <Text className="text-sm font-semibold text-discord-textPrimary">
+                <Text className="text-sm font-semibold text-zam-textPrimary">
                     {t("messageArea.thisRoomHasBeenUpgraded")}
                 </Text>
-                <Text
-                    numberOfLines={1}
-                    className="text-xs text-discord-textMuted"
-                >
+                <Text numberOfLines={1} className="text-xs text-zam-textMuted">
                     {body}
                 </Text>
             </View>
@@ -3972,7 +4521,7 @@ function TombstoneBanner({
                 onPress={onJoin}
                 disabled={joining}
                 accessibilityState={{ disabled: joining }}
-                className="flex-shrink-0 px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                className="flex-shrink-0 px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
             >
                 <Text className="text-white text-sm font-semibold">
                     {alreadyJoined
@@ -4010,7 +4559,7 @@ function MessageHighlight({ n }: { n: number }) {
         <Animated.View
             pointerEvents="none"
             style={style}
-            className="absolute inset-0 bg-[rgb(var(--discord-mention-highlight-rgb)_/_0.35)]"
+            className="absolute inset-0 bg-[rgb(var(--zam-mention-highlight-rgb)_/_0.35)]"
         />
     );
 }

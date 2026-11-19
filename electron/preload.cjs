@@ -5,6 +5,14 @@
 
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Page visibility for main.cjs's out-of-sight memory trims. Unlike the
+// window's own state it is also hidden while other windows fully cover it
+// (Chromium's occlusion tracking on Windows and macOS).
+const sendPageHidden = () =>
+    ipcRenderer.send("window:page-hidden", document.hidden);
+document.addEventListener("visibilitychange", sendPageHidden);
+window.addEventListener("DOMContentLoaded", sendPageHidden);
+
 // Plugins' native code (pluginNative.cjs): main answers "plugin-native:open"
 // with a MessagePort to the plugin's host. A port can't cross contextBridge,
 // so it is posted to the page's window, tagged with the id the page asked
@@ -40,6 +48,25 @@ ipcRenderer.on("share-audio:ready", (e, meta) => {
     for (const cb of shareAudioListeners) cb(info);
 });
 
+// Native window share (nativeShare.cjs). The helper's frames come over a
+// MessagePort posted to the page, tagged with the grant's request info;
+// src/lib/desktopScreenShare.ts takes it from there.
+ipcRenderer.on("native-share:port", (e, meta) => {
+    if (!meta || typeof meta !== "object" || !e.ports[0]) return;
+    const info = {
+        requestId: Number(meta.requestId),
+        width: Number(meta.width),
+        height: Number(meta.height),
+        encoder: typeof meta.encoder === "string" ? meta.encoder : "",
+        hardware: meta.hardware === true,
+    };
+    window.postMessage(
+        { tag: "zam:native-share-port", info },
+        window.location.origin,
+        [e.ports[0]],
+    );
+});
+
 contextBridge.exposeInMainWorld("desktop", {
     showWindow: () => ipcRenderer.send("show-window"),
     pluginNative: {
@@ -47,6 +74,23 @@ contextBridge.exposeInMainWorld("desktop", {
         open: (req) => ipcRenderer.invoke("plugin-native:open", req),
         remove: (pluginId) =>
             ipcRenderer.invoke("plugin-native:remove", String(pluginId)),
+    },
+    // Plugins' raw sockets (pluginSockets.cjs, zam.network).
+    pluginSockets: {
+        tcp: (req) => ipcRenderer.invoke("plugin-sockets:tcp", req),
+        udp: (req) => ipcRenderer.invoke("plugin-sockets:udp", req),
+        write: (id, data) =>
+            ipcRenderer.invoke("plugin-sockets:write", id, data),
+        send: (id, host, port, data) =>
+            ipcRenderer.invoke("plugin-sockets:send", id, host, port, data),
+        close: (id) => ipcRenderer.invoke("plugin-sockets:close", id),
+        closePlugin: (pluginId) =>
+            ipcRenderer.invoke("plugin-sockets:close-plugin", String(pluginId)),
+        onEvent: (cb) => {
+            const h = (_e, msg) => cb(msg);
+            ipcRenderer.on("plugin-sockets:event", h);
+            return () => ipcRenderer.removeListener("plugin-sockets:event", h);
+        },
     },
     // Plugins' rules for embedded pages (pluginFrames.cjs, zam.frames).
     pluginFrames: {
@@ -61,8 +105,8 @@ contextBridge.exposeInMainWorld("desktop", {
             return () => ipcRenderer.removeListener("sso:callback", h);
         },
     },
-    // Updates. A Flatpak build takes its shell from `flatpak update`; the
-    // main process then only offers it web bundles (see bundleUpdater.cjs).
+    // Updates: a web bundle where the shell allows it (bundleUpdater.cjs),
+    // else the installer, or in Flatpak the Flatpak portal.
     updates: {
         check: () => ipcRenderer.send("updates:check"),
         download: () => ipcRenderer.send("updates:download"),
@@ -107,6 +151,10 @@ contextBridge.exposeInMainWorld("desktop", {
             return () => shareAudioListeners.delete(cb);
         },
         stopAudio: () => ipcRenderer.send("share-audio:stop"),
+        // Settings for the native window capture (nativeShare.cjs), sent
+        // before a share; main validates and applies them at the next grant.
+        configureNative: (cfg) =>
+            ipcRenderer.send("native-share:configure", cfg),
     },
     notify: {
         flash: () => ipcRenderer.send("notify:flash"),
@@ -132,6 +180,7 @@ contextBridge.exposeInMainWorld("desktop", {
                 scan: !!want?.scan,
                 fake: !!want?.fake,
                 media: !!want?.media,
+                steam: !!want?.steam,
                 autoRestartDiscord: !!want?.autoRestartDiscord,
                 userId: String(want?.userId ?? ""),
                 games: Array.isArray(want?.games)
@@ -152,6 +201,19 @@ contextBridge.exposeInMainWorld("desktop", {
         status: () => ipcRenderer.invoke("rich-presence:status"),
         restartDiscord: () =>
             ipcRenderer.invoke("rich-presence:restart-discord"),
+        setSteamDebugging: (enabled) =>
+            ipcRenderer.invoke("rich-presence:steam-debugging", !!enabled),
+        restartSteam: () => ipcRenderer.invoke("rich-presence:restart-steam"),
+        // Accept a Steam game invite (see richPresence.cjs joinGame). Only the
+        // known fields cross over; the main process validates the rest.
+        joinGame: (req) =>
+            ipcRenderer.invoke("rich-presence:join-game", {
+                kind: req?.kind === "steam" ? "steam" : "",
+                appId: String(req?.appId ?? ""),
+                connect: String(req?.connect ?? ""),
+                steamId: String(req?.steamId ?? ""),
+                lobbyId: String(req?.lobbyId ?? ""),
+            }),
         onEvent: (cb) => {
             const h = (_e, ev) => cb(ev);
             ipcRenderer.on("rich-presence:event", h);
@@ -206,6 +268,8 @@ contextBridge.exposeInMainWorld("desktop", {
             ipcRenderer.invoke("gpu:set-video-encode", !!enabled),
         setH264ProfileFix: (enabled) =>
             ipcRenderer.invoke("gpu:set-h264-profile-fix", !!enabled),
+        setGameAuto: (enabled) =>
+            ipcRenderer.invoke("gpu:set-game-auto", !!enabled),
         setSkiaGraphite: (enabled) =>
             ipcRenderer.invoke("gpu:set-skia-graphite", !!enabled),
         setNvidiaVideo: (mode) =>
@@ -263,6 +327,31 @@ contextBridge.exposeInMainWorld("desktop", {
             ipcRenderer.on("context-menu:save-image", h);
             return () =>
                 ipcRenderer.removeListener("context-menu:save-image", h);
+        },
+        // Right-click "Copy image": main copies the image as shown, then
+        // asks for the original (a tile shows a smaller copy); the page
+        // answers with its PNG bytes, which replace the clipboard image.
+        onCopyImage: (cb) => {
+            const h = (_e, id, url) => cb(id, url);
+            ipcRenderer.on("context-menu:copy-image", h);
+            return () =>
+                ipcRenderer.removeListener("context-menu:copy-image", h);
+        },
+        copyImageData: (id, png) => {
+            ipcRenderer.send("context-menu:copy-image-data", id, png);
+        },
+        // Message actions (React, Reply, Edit, ...) for the next right-click.
+        // sendSync so main has the items stored before Chromium's own
+        // context-menu event for the same click fires.
+        setMessageActions: (items) => {
+            ipcRenderer.sendSync("context-menu:message-actions", items);
+        },
+        // The key of the message action picked from the native menu.
+        onMessageAction: (cb) => {
+            const h = (_e, key) => cb(key);
+            ipcRenderer.on("context-menu:message-action", h);
+            return () =>
+                ipcRenderer.removeListener("context-menu:message-action", h);
         },
     },
 });

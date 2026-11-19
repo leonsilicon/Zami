@@ -150,17 +150,17 @@ export default function PollBody({ event, room }: Props) {
     }
 
     return view ? (
-        <View className="mt-1 max-w-md rounded-lg border border-discord-divider bg-discord-backgroundSecondary px-3 py-2.5">
+        <View className="mt-1 max-w-md rounded-lg border border-zam-divider bg-zam-backgroundSecondary px-3 py-2.5">
             <View className="flex-row items-start gap-2">
                 <SvgIcon
                     d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"
-                    className="w-4 h-4 mt-0.5 text-discord-textMuted flex-shrink-0"
+                    className="w-4 h-4 mt-0.5 text-zam-textMuted flex-shrink-0"
                 />
                 <View className="min-w-0 flex-shrink">
-                    <Text className="text-sm font-semibold text-discord-textPrimary break-words">
+                    <Text className="text-sm font-semibold text-zam-textPrimary break-words">
                         {view.poll.question}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {view.ended
                             ? t("pollBody.finalResults")
                             : view.showResults
@@ -192,22 +192,22 @@ export default function PollBody({ event, room }: Props) {
                             disabled={view.ended || isVoting}
                             className={`rounded border px-2.5 py-1.5 ${
                                 isWinner
-                                    ? "border-discord-accent bg-discord-accent/10"
+                                    ? "border-zam-accent bg-zam-accent/10"
                                     : isMine
-                                      ? "border-discord-accent bg-discord-accent/10"
-                                      : "border-discord-divider bg-discord-backgroundTertiary"
-                            } transition-colors disabled:cursor-default enabled:hover:border-discord-accent/60`}
+                                      ? "border-zam-accent bg-zam-accent/10"
+                                      : "border-zam-divider bg-zam-backgroundTertiary"
+                            } transition-colors disabled:cursor-default enabled:hover:border-zam-accent/60`}
                         >
                             <View className="flex-row items-center justify-between gap-2">
-                                <Text className="flex-shrink text-sm text-discord-textPrimary break-words min-w-0">
+                                <Text className="flex-shrink text-sm text-zam-textPrimary break-words min-w-0">
                                     {answer.text}
                                     {isMine && (
                                         <>
                                             {" "}
-                                            <Text className="text-xs text-discord-accent font-semibold">
+                                            <Text className="text-xs text-zam-accent font-semibold">
                                                 <Check
                                                     size={12}
-                                                    className="text-discord-accent"
+                                                    className="text-zam-accent"
                                                 />
                                                 {t("pollBody.selected")}
                                             </Text>
@@ -215,18 +215,18 @@ export default function PollBody({ event, room }: Props) {
                                     )}
                                 </Text>
                                 {view.showResults && (
-                                    <Text className="text-xs text-discord-textMuted flex-shrink-0">
+                                    <Text className="text-xs text-zam-textMuted flex-shrink-0">
                                         {count} · {pct(count, view.totalVotes)}%
                                     </Text>
                                 )}
                             </View>
                             {view.showResults && (
-                                <View className="mt-1 h-1 rounded-full bg-discord-background overflow-hidden">
+                                <View className="mt-1 h-1 rounded-full bg-zam-background overflow-hidden">
                                     <View
                                         className={`h-full rounded-full ${
                                             isWinner
-                                                ? "bg-discord-accent"
-                                                : "bg-discord-divider"
+                                                ? "bg-zam-accent"
+                                                : "bg-zam-divider"
                                         }`}
                                         style={{
                                             width: `${pct(count, view.totalVotes)}%`,
@@ -247,7 +247,7 @@ export default function PollBody({ event, room }: Props) {
                     }}
                     onPress={() => void submitVote()}
                     disabled={isVoting || draftAnswers === null}
-                    className="mt-2 self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="mt-2 self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Text className="text-white text-xs font-semibold">
                         {isVoting
@@ -257,7 +257,7 @@ export default function PollBody({ event, room }: Props) {
                 </Pressable>
             )}
 
-            <Text className="mt-2 text-xs text-discord-textMuted">
+            <Text className="mt-2 text-xs text-zam-textMuted">
                 {view.showResults
                     ? t("pollBody.voteCount", { count: view.totalVotes })
                     : t("pollBody.votesAreHidden")}
@@ -267,7 +267,7 @@ export default function PollBody({ event, room }: Props) {
             {view.canEnd &&
                 (confirmingEnd ? (
                     <View className="mt-2 flex-row items-center gap-2">
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("pollBody.closeThisPoll")}
                         </Text>
                         <Pressable
@@ -275,7 +275,7 @@ export default function PollBody({ event, room }: Props) {
                             accessibilityState={{ disabled: endingPoll }}
                             onPress={() => void endPoll()}
                             disabled={endingPoll}
-                            className="px-2.5 py-1 rounded bg-discord-danger hover:bg-discord-dangerHover transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded bg-zam-danger hover:bg-zam-dangerHover transition-colors disabled:opacity-50"
                         >
                             <Text className="text-white text-xs font-semibold">
                                 {endingPoll
@@ -288,7 +288,7 @@ export default function PollBody({ event, room }: Props) {
                             onPress={() => setConfirmingEnd(false)}
                             className="px-2.5 py-1 rounded"
                         >
-                            <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                            <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                 {t("common.cancel")}
                             </Text>
                         </Pressable>
@@ -299,14 +299,14 @@ export default function PollBody({ event, room }: Props) {
                         onPress={() => setConfirmingEnd(true)}
                         className="mt-2 self-start"
                     >
-                        <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary underline">
+                        <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary underline">
                             {t("pollBody.closePoll")}
                         </Text>
                     </Pressable>
                 ))}
         </View>
     ) : (
-        <Text className="text-xs text-discord-textMuted italic">
+        <Text className="text-xs text-zam-textMuted italic">
             {t("pollBody.pollUnsupportedFormat")}
         </Text>
     );

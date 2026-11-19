@@ -39,7 +39,12 @@
         expireActiveSession,
         applyRefreshedTokens,
     } from "$lib/stores/auth.svelte";
-    import { accountsState, switchActive } from "$lib/stores/accounts.svelte";
+    import {
+        accountsState,
+        recoverRegistryFromBackup,
+        switchActive,
+    } from "$lib/stores/accounts.svelte";
+    import { getLastOpenedRoomId } from "$lib/stores/rooms.svelte";
     import { rootView, shouldRestoreSession } from "$lib/utils/sessionView";
     import {
         IDLE_SESSION_STARTUP,
@@ -78,9 +83,14 @@
     // the URL. Restoring the stored account over it would swallow that result
     // (add-account sign-ins come back here too), so it is treated like add mode.
     const oauthReturnAtInit = isPendingOAuthCallback(window.location.href);
+    // An empty registry may mean the browser wiped localStorage (it does on a
+    // full disk) while the IndexedDB copy still holds the accounts. Checking
+    // that is async, so show the splash instead of the login card until it
+    // answers; on a fresh install that costs one IndexedDB read.
+    const mayRecoverAtInit = accountsState.registry.accounts.length === 0;
     let restoring = $state(
         shouldRestoreSession({
-            hasStoredSession: !!loadStoredSession(),
+            hasStoredSession: !!loadStoredSession() || mayRecoverAtInit,
             isAddAccountMode: addModeAtInit || oauthReturnAtInit,
         }),
     );
@@ -146,7 +156,10 @@
      * it just created instead of publishing them, so a dead session can never
      * own `disposeSync`.
      */
-    async function beginSync(attempt: number): Promise<void> {
+    async function beginSync(
+        attempt: number,
+        preferredRoomId: string | null = null,
+    ): Promise<void> {
         disposeSync?.();
         disposeSync = null;
         const dispose = await startSync(
@@ -155,6 +168,7 @@
             },
             handleSessionExpired,
             (reason) => showToast(reason, { tone: "accent" }),
+            preferredRoomId,
         );
         if (!isLiveAttempt(startup, attempt)) {
             dispose();
@@ -181,6 +195,7 @@
             },
             handleSessionExpired,
             (reason) => showToast(reason, { tone: "accent" }),
+            getLastOpenedRoomId(auth.userId),
         );
         if (startup.phase !== "active" || startup.attempt !== attempt) {
             dispose();
@@ -288,23 +303,37 @@
     }
 
     onMount(() => {
-        // Finish any crypto-store wipe a previous logout could not complete
-        // (another tab held the IndexedDB open, so the delete was blocked and
-        // the reload won). Fire-and-forget: boot must never wait on it. Every
-        // account still on this device is passed through so the sweep can
-        // never delete a store that is still in use.
-        retryPendingCryptoWipes(
-            accountsState.registry.accounts.map((a) => ({
-                userId: a.userId,
-                deviceId: a.deviceId,
-            })),
-        ).catch(() => {});
-        // The synchronous `restoring` flag already decided splash-vs-login for
-        // the first paint; here we run the actual async restore when it applies.
-        const stored = loadStoredSession();
-        if (!restoring || !stored) return;
-        const attempt = beginStartup();
         (async () => {
+            // Put back accounts a localStorage wipe took (registryBackup.ts)
+            // BEFORE anything reads the registry, the wipe sweep below included.
+            const recovered = await recoverRegistryFromBackup();
+            if (recovered) {
+                showToast(t("rootPage.storageWipedSessionRecovered"), {
+                    tone: "accent",
+                    sticky: true,
+                });
+            }
+            // Finish any crypto-store wipe a previous logout could not complete
+            // (another tab held the IndexedDB open, so the delete was blocked
+            // and the reload won). Fire-and-forget: boot must never wait on it.
+            // Every account still on this device is passed through so the sweep
+            // can never delete a store that is still in use.
+            retryPendingCryptoWipes(
+                accountsState.registry.accounts.map((a) => ({
+                    userId: a.userId,
+                    deviceId: a.deviceId,
+                })),
+            ).catch(() => {});
+            // The synchronous `restoring` flag already decided splash-vs-login
+            // for the first paint; here we run the actual async restore when it
+            // applies.
+            if (!restoring) return;
+            const stored = loadStoredSession();
+            if (!stored) {
+                restoring = false;
+                return;
+            }
+            const attempt = beginStartup();
             try {
                 await reconnect(
                     stored.homeserverUrl,
@@ -319,7 +348,7 @@
                           }
                         : undefined,
                 );
-                await beginSync(attempt);
+                await beginSync(attempt, getLastOpenedRoomId(stored.userId));
             } catch (err) {
                 // The device was signed out (its encryption data was lost):
                 // back to login like an expired session, saying why.

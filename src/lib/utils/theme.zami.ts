@@ -30,6 +30,17 @@ export function applyReduceMotion(on: boolean): void {
     else delete document.documentElement.dataset.reduceMotion;
 }
 
+/**
+ * Streamer mode: a root attribute that `app.css` keys on to blur anything
+ * marked `.streamer-hide` (own account id, emails, recovery key, tokens).
+ * Off deletes the attribute, like applyReduceMotion.
+ */
+export function applyStreamerMode(on: boolean): void {
+    if (typeof document === "undefined") return;
+    if (on) document.documentElement.dataset.streamerMode = "true";
+    else delete document.documentElement.dataset.streamerMode;
+}
+
 export function applyTheme(theme: Theme): void {
     if (typeof document === "undefined") return;
     document.documentElement.dataset.theme = theme;
@@ -46,7 +57,7 @@ export function applyTheme(theme: Theme): void {
 
 /**
  * Serialize a ThemeColors map to inline CSS custom property declarations.
- * Returns a string like "--discord-bg:#000000;--discord-bg-rgb:0 0 0;..."
+ * Returns a string like "--zam-bg:#000000;--zam-bg-rgb:0 0 0;..."
  * with the SAME set of vars that applyThemeColors would set on the root element.
  * Empty/null colors → returns "".
  */

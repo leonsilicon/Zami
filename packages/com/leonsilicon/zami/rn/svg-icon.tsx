@@ -5,7 +5,7 @@ import { useResolveClassNames } from "uniwind";
 
 // As for lucide icons (@-/com.leonsilicon.zami.icons): with no color class, Zam's
 // primary text color rather than black.
-const FALLBACK_COLOR = "text-discord-textPrimary";
+const FALLBACK_COLOR = "text-zam-textPrimary";
 
 export interface SvgIconProps {
   /** The `<path d>` of a single-path icon. */

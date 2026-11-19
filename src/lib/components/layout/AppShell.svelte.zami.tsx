@@ -54,6 +54,7 @@ const RoomSettings = lazyComponent(
 );
 import InviteModal from "$lib/components/layout/InviteModal.svelte";
 import CreatePollDialog from "$lib/components/messages/CreatePollDialog.svelte";
+import GameInviteDialog from "$lib/components/messages/GameInviteDialog.svelte";
 import ShareLocationDialog from "$lib/components/messages/ShareLocationDialog.svelte";
 import ShareTargetSheet from "$lib/components/messages/ShareTargetSheet.svelte";
 // Zami: lazyComponent, as CallView above.
@@ -77,7 +78,9 @@ import VerificationRequestCard from "$lib/components/layout/VerificationRequestC
 import ErrorToasts from "$lib/components/ui/ErrorToasts.svelte";
 import ScreenSharePicker from "$lib/components/layout/ScreenSharePicker.svelte";
 import JoinConsentDialog from "$lib/components/layout/JoinConsentDialog.svelte";
+import MeshConsentDialog from "$lib/components/layout/MeshConsentDialog.svelte";
 import PluginPopoverHost from "$lib/components/plugins/PluginPopoverHost.svelte";
+import PluginOverlayHost from "$lib/components/plugins/PluginOverlayHost.svelte";
 import QuickSwitcher from "$lib/components/layout/QuickSwitcher.svelte";
 import QuickActions, {
     type QuickActionsHandle,
@@ -101,6 +104,8 @@ import {
     roomsState,
     setActiveSpace,
     navigateToRoom,
+    isPendingInvite,
+    showInviteInbox,
     bumpUnreadTick,
     reloadLastLocationFromStorage,
     resolvePendingSurface,
@@ -116,6 +121,7 @@ import {
 } from "$lib/stores/interface.svelte";
 import { inviteDialogState } from "$lib/stores/inviteDialog.svelte";
 import { pollDialogState } from "$lib/stores/pollDialog.svelte";
+import { gameInviteDialogState } from "$lib/stores/gameInviteDialog.svelte";
 import { locationDialogState } from "$lib/stores/locationDialog.svelte";
 import { shareInboxState, receiveShare } from "$lib/stores/shareInbox.svelte";
 import { consumeWebShareStash, base64ToFile } from "$lib/utils/webShareStash";
@@ -128,6 +134,7 @@ import {
     savePendingRoute,
     takePendingRoute,
 } from "$lib/utils/pendingNotificationRoute";
+import { requestPersistentStorage } from "$lib/utils/persistentStorage";
 import { switchToAccount } from "$lib/stores/accountSwitch";
 import { syncServiceWorkerAccounts } from "$lib/swAccounts";
 import {
@@ -148,7 +155,7 @@ import { initLiveLocation } from "$lib/stores/liveLocation.svelte";
 import { initOutbox } from "$lib/stores/outbox.svelte";
 import { initBackgroundRelease } from "$lib/backgroundRelease";
 import { initHistoryTrim, noteOpenRoom } from "$lib/historyTrim";
-import { initPlugins } from "$lib/plugins/pluginBoot";
+import { initPlugins, emitPluginNotification } from "$lib/plugins/pluginBoot";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { resolveShortcut, eventToChord } from "$lib/plugins/pluginShortcuts";
 import {
@@ -170,6 +177,7 @@ import {
     reloadAccountSettings,
     setActiveSessionGraceMs,
     settingsState,
+    notificationBodyHidden,
     getLastSeenVersion,
     setLastSeenVersion,
 } from "$lib/stores/settings.svelte";
@@ -181,8 +189,13 @@ import {
 import { APP_VERSION } from "$lib/update";
 import { webBundleReady, webBundleSetAuto } from "$lib/androidWebBundle";
 import { isDesktopTray, setMinimizeToTray } from "$lib/desktopTray";
-import { startRichPresence } from "$lib/stores/richPresence.svelte";
+import {
+    clearRichPresenceForSignOut,
+    startRichPresence,
+} from "$lib/stores/richPresence.svelte";
 import { installDesktopSaveImage } from "$lib/desktopContextMenu";
+import { installDesktopMessageMenu } from "$lib/desktopMessageMenu";
+import { mirrorReceiptPrivacy } from "$lib/receiptPrivacySync";
 import { watchVideoPlayback } from "$lib/utils/videoPlaybackWatch";
 import { initUpdateWatch } from "$lib/stores/updateBanner.svelte";
 import UpdateBanner from "$lib/components/layout/UpdateBanner.svelte";
@@ -210,6 +223,7 @@ import {
     getSpaceLayout,
     getSpaceChildSignature,
     fetchSpaceHierarchy,
+    getCachedHierarchy,
     scheduleJoinedRoomsReconcile,
     setSlidingSyncActiveRoom,
     getRoom,
@@ -226,7 +240,12 @@ import {
     clearReadThreadCounts,
     onTimelineEvent,
     onOwnReceipt,
+    onMarkedUnreadChange,
     getClient,
+    acceptInvite,
+    rejectInvite,
+    lookupInvite,
+    settleDeclinedInvite,
     getOwnUserId,
     isInitialSyncComplete,
     clearServiceWorkerAuth,
@@ -241,7 +260,6 @@ import {
     publishActiveSession,
     getActiveSessionHeartbeat,
     updateServiceWorkerNotificationPrivacy,
-    updateServiceWorkerReceiptPrivacy,
     updateServiceWorkerRingEnabled,
     clearServiceWorkerNotifications,
     ensureCallNotifyPushRule,
@@ -297,6 +315,7 @@ import {
     appendPostedEventId,
     type PostedNotificationEntry,
 } from "$lib/utils/notificationDismiss";
+import { consumeNativeDeclines } from "$lib/declinedInvites";
 import { decideNotificationRoute } from "$lib/utils/notificationRouting";
 import { parseDeepLinkHash } from "$lib/utils/deepLinkHash";
 import { shouldShowWhatsNew } from "$lib/utils/changelog";
@@ -309,15 +328,21 @@ import {
     initPush,
     unregisterPush,
     clearDeliveredNativeNotifications,
+    dismissNativeRoomNotifications,
 } from "$lib/push";
-import { initWebPush, readWebPushState, teardownWebPush } from "$lib/webPush";
+import {
+    initWebPush,
+    readWebPushState,
+    teardownWebPush,
+    webPushDelivers,
+    isIosHomeScreenApp,
+} from "$lib/webPush";
 import {
     syncNativeAccounts,
     syncNativeSession,
     clearNativeSession,
     syncNativeNotificationPrivacy,
     syncNativeRingEnabled,
-    syncNativeReceiptPrivacy,
 } from "$lib/nativeSession";
 import { onNativeCallEvent } from "$lib/nativeCall";
 import { startPushDecryptResponder } from "$lib/pushDecrypt";
@@ -354,6 +379,7 @@ const Pane = {
     UpdateToastWatch: memo(UpdateToastWatch),
     IdentityChangeBanner: memo(IdentityChangeBanner),
     JoinConsentDialog: memo(JoinConsentDialog),
+    MeshConsentDialog: memo(MeshConsentDialog),
 };
 
 // Zami: the shell's callbacks that read only stores, made once, so the
@@ -497,6 +523,7 @@ export default function AppShell() {
     const noSpaces = useRune(() => roomsState.spaces.length === 0);
     const inviteRoomId = useRune(() => inviteDialogState.roomId);
     const pollRoomId = useRune(() => pollDialogState.roomId);
+    const gameInviteRoomId = useRune(() => gameInviteDialogState.roomId);
     const locationRoomId = useRune(() => locationDialogState.roomId);
     const hasSharePayload = useRune(() => !!shareInboxState.payload);
     const ringing = useRune(() => incomingCallsState.ringing);
@@ -1144,6 +1171,9 @@ export default function AppShell() {
         // This session's notifications have already been taken down; posting
         // another one now would strand it above the next account's session.
         if (notificationsShutDown.current) return;
+        // Streamer mode: not even "<sender> in <room>" may pop over a stream.
+        if (settingsState.streamerMode || !settingsState.deviceNotifications)
+            return;
         if (!shouldAlertDesktop(settingsState.desktopAlertMode, loud)) return;
         if (
             document.hasFocus() &&
@@ -1162,8 +1192,18 @@ export default function AppShell() {
         const text = notificationBody({
             sender,
             body,
-            hideBody: settingsState.hideNotificationBody,
+            hideBody: notificationBodyHidden(),
         });
+        try {
+            emitPluginNotification({
+                roomId: room.roomId,
+                eventId: eventId ?? "",
+                title,
+                body: text,
+            });
+        } catch {
+            // A plugin listener must never break posting the notification.
+        }
         try {
             // The desktop shell posts through the main process (no web
             // permission involved); the browser uses the Web Notification API.
@@ -1179,6 +1219,10 @@ export default function AppShell() {
                     Notification.permission !== "granted")
             )
                 return;
+            // An iOS Home Screen app gets every message as a web push too, and
+            // iOS does not let the page's popup and the worker's replace each
+            // other by tag, so both showed. The worker's one stays.
+            if (!native && isIosHomeScreenApp() && webPushDelivers()) return;
             const n: NativeNotificationHandle =
                 native ??
                 (new Notification(title, {
@@ -1257,13 +1301,15 @@ export default function AppShell() {
      */
     function postAccountNotification(notice: AccountNotice) {
         if (notificationsShutDown.current) return;
+        if (settingsState.streamerMode || !settingsState.deviceNotifications)
+            return;
         if (!shouldAlertDesktop(settingsState.desktopAlertMode, notice.loud))
             return;
         flashTaskbar();
         const text = notificationBody({
             sender: notice.sender,
             body: notice.body,
-            hideBody: settingsState.hideNotificationBody,
+            hideBody: notificationBodyHidden(),
         });
         try {
             const native = showNativeNotification({
@@ -1374,15 +1420,31 @@ export default function AppShell() {
         loud: boolean,
         live: boolean,
     ) {
+        // Do Not Disturb: no popup, sound or inbox ping on this device either
+        // (the master push rule only silences the server's pushes).
+        if (settingsState.doNotDisturb) return;
         const content = event.getContent() as any;
-        // Extensible events (e.g. polls) carry their text fallback in the
-        // MSC1767 key instead of body.
+        // Order: body, then stable m.text (a string, or the first text/plain
+        // entry of an array of representations), then the MSC1767 key that
+        // extensible events (e.g. polls) use for their text fallback.
+        const mText = content?.["m.text"];
+        const mTextBody = Array.isArray(mText)
+            ? mText.find(
+                  (r: any) =>
+                      r &&
+                      (r.mimetype === undefined ||
+                          r.mimetype === "text/plain") &&
+                      typeof r.body === "string",
+              )?.body
+            : mText;
         const rawBody =
             typeof content?.body === "string"
                 ? content.body
-                : typeof content?.["org.matrix.msc1767.text"] === "string"
-                  ? content["org.matrix.msc1767.text"]
-                  : "";
+                : typeof mTextBody === "string"
+                  ? mTextBody
+                  : typeof content?.["org.matrix.msc1767.text"] === "string"
+                    ? content["org.matrix.msc1767.text"]
+                    : "";
         // A still-encrypted (undecryptable) event has no cleartext body →
         // show a generic "🔒 Encrypted message" line instead of an empty one.
         const body = previewForEvent(event.getType(), rawBody);
@@ -1414,7 +1476,13 @@ export default function AppShell() {
         if (loud) {
             const soundEnabled =
                 localStorage.getItem("notifSoundEnabled") !== "false";
-            if (live && soundEnabled && !quietForOtherDevice) {
+            if (
+                live &&
+                soundEnabled &&
+                !quietForOtherDevice &&
+                settingsState.deviceNotifications &&
+                !settingsState.streamerMode
+            ) {
                 playPing();
             }
         }
@@ -1674,6 +1742,49 @@ export default function AppShell() {
         setSlidingSyncActiveRoom(activeRoomId);
     }, [activeRoomId]);
 
+    // Per-room read-receipt overrides reach the service worker and Android
+    // notification action as a resolved room list, so re-send it when the
+    // overrides change or the room/space tree does (rooms load after boot).
+    // Throttled, not debounced: roomsTick fires on every sync, which would
+    // keep resetting a debounce. An unchanged payload is dropped inside
+    // mirrorReceiptPrivacy.
+    // Zami: the shell doesn't re-render on roomsTick, so refreshRooms asks
+    // for it when it rebuilds the room tree (scheduleReceiptMirror).
+    const receiptMirrorTimer = useRef<
+        ReturnType<typeof setTimeout> | undefined
+    >(undefined);
+    function scheduleReceiptMirror() {
+        receiptMirrorTimer.current ??= setTimeout(() => {
+            receiptMirrorTimer.current = undefined;
+            mirrorReceiptPrivacy();
+        }, 3000);
+    }
+    const receiptOverrides = useRune(() => settingsState.receiptOverrides);
+    const privateReadReceipts = useRune(
+        () => settingsState.privateReadReceipts,
+    );
+    const ownPresence = useRune(() => settingsState.ownPresence);
+    const presenceUnsupported = useRune(
+        () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
+    );
+    useEffect(() => {
+        void receiptOverrides;
+        void privateReadReceipts;
+        void ownPresence;
+        void presenceUnsupported;
+        void shareProfilePresence;
+        scheduleReceiptMirror();
+    }, [
+        receiptOverrides,
+        privateReadReceipts,
+        ownPresence,
+        presenceUnsupported,
+        shareProfilePresence,
+    ]);
+
     // MSC4153: surface changed cross-signing identities among the open room's
     // members.
     // Zami: the checks wait their turn on the crypto queue, and the ones not
@@ -1718,8 +1829,10 @@ export default function AppShell() {
     // stayed open.
     const hierarchyGeneration = useRef(0);
     const hierarchyInFlightKey = useRef<string | null>(null);
-    const hierarchyLastAppliedKey = useRef<string | null>(null);
-    const hierarchyLastAppliedAt = useRef<number | null>(null);
+    // Per key, not just the latest: re-opening a space whose hierarchy was
+    // applied a moment ago must not refetch it because another space was
+    // opened in between. Bounded; keys carry child signatures so they churn.
+    const hierarchyAppliedAt = useRef(new Map<string, number>());
     const hierarchyLastFailedKey = useRef<string | null>(null);
     const hierarchyLastFailedAt = useRef<number | null>(null);
     // Zami: the space of the request in flight, and whether a background
@@ -1729,7 +1842,7 @@ export default function AppShell() {
 
     function requestHierarchy(spaceId: string, force: boolean) {
         const parentSpaceId = roomsState.spaceDrillParentId ?? null;
-        const key = hierarchyKey({
+        const key: string = hierarchyKey({
             spaceId,
             parentSpaceId,
             drillDepth: roomsState.spaceDrillDepth || 1,
@@ -1740,6 +1853,22 @@ export default function AppShell() {
             // Cheap: the child list behind this is memoized by signature.
             joinedChildCount: getRoomsInSpace(spaceId).length,
         });
+        const appliedAt = hierarchyAppliedAt.current.get(key) ?? null;
+        // A user-driven open of a space we already hold a fresh answer for
+        // (same key: its child state is unchanged) reuses it instead of
+        // re-walking a possibly huge, nested hierarchy. Stale-while-
+        // revalidate: the TTL path below still refreshes it in the
+        // background once it ages out.
+        if (
+            force &&
+            appliedAt !== null &&
+            Date.now() - appliedAt < HIERARCHY_TTL_MS &&
+            getCachedHierarchy(spaceId)
+        ) {
+            roomsState.spaceHierarchy = getCachedHierarchy(spaceId) ?? [];
+            roomsState.hierarchyLoading = false;
+            return;
+        }
         // Zami: a background refresh doesn't cut off a fetch of the same space;
         // it fetches again once that one has landed. Every room-list rebuild
         // asks, and while an account loads, each one counts more of the space's
@@ -1760,8 +1889,8 @@ export default function AppShell() {
             !shouldFetchHierarchy({
                 key,
                 inFlightKey: hierarchyInFlightKey.current,
-                lastAppliedKey: hierarchyLastAppliedKey.current,
-                lastAppliedAt: hierarchyLastAppliedAt.current,
+                lastAppliedKey: appliedAt === null ? null : key,
+                lastAppliedAt: appliedAt,
                 lastFailedKey: hierarchyLastFailedKey.current,
                 lastFailedAt: hierarchyLastFailedAt.current,
                 failureBackoffMs: HIERARCHY_FAILURE_BACKOFF_MS,
@@ -1778,7 +1907,11 @@ export default function AppShell() {
             // Cannot strand — the request holding this key settles into apply
             // or keep-previous, both of which clear the flag, and leaving for
             // Home clears it too.
-            if (force && hierarchyInFlightKey.current === key)
+            if (
+                force &&
+                hierarchyInFlightKey.current === key &&
+                !getCachedHierarchy(spaceId)
+            )
                 roomsState.hierarchyLoading = true;
             return;
         }
@@ -1788,9 +1921,12 @@ export default function AppShell() {
         hierarchyInFlightSpaceId.current = spaceId;
         // Zami: this fetch reflects everything up to now.
         hierarchyRefetchWanted.current = false;
-        // Only a user-driven open shows the spinner; a background TTL refresh
-        // must not flash one over data that is already on screen.
-        if (force) roomsState.hierarchyLoading = true;
+        // Only a user-driven open with nothing cached shows the spinner. A
+        // background TTL refresh, or an open that has the last known listing
+        // on screen (setActiveSpace seeds it from the persisted cache), just
+        // updates it in place when the fetch lands.
+        if (force && !getCachedHierarchy(spaceId))
+            roomsState.hierarchyLoading = true;
 
         fetchSpaceHierarchy(
             spaceId,
@@ -1814,8 +1950,11 @@ export default function AppShell() {
                 if (action === "drop") return;
                 if (action === "apply") {
                     roomsState.spaceHierarchy = hierarchy ?? [];
-                    hierarchyLastAppliedKey.current = key;
-                    hierarchyLastAppliedAt.current = Date.now();
+                    const applied = hierarchyAppliedAt.current;
+                    applied.delete(key);
+                    applied.set(key, Date.now());
+                    if (applied.size > 50)
+                        applied.delete(applied.keys().next().value as string);
                     hierarchyLastFailedKey.current = null;
                     hierarchyLastFailedAt.current = null;
                 } else {
@@ -1829,8 +1968,7 @@ export default function AppShell() {
                     // minutes with no spinner and no error.
                     hierarchyLastFailedKey.current = key;
                     hierarchyLastFailedAt.current = Date.now();
-                    hierarchyLastAppliedKey.current = null;
-                    hierarchyLastAppliedAt.current = null;
+                    hierarchyAppliedAt.current.delete(key);
                 }
                 roomsState.hierarchyLoading = false;
                 // Zami: the refresh that waited for this fetch (see above).
@@ -1900,7 +2038,10 @@ export default function AppShell() {
             ...generations,
             spaceId: roomsState.activeSpaceId,
         };
-        if (rebuild) rebuildRoomBuckets(layout);
+        if (rebuild) {
+            rebuildRoomBuckets(layout);
+            scheduleReceiptMirror();
+        }
         if (roomsState.activeSpaceId)
             requestHierarchy(roomsState.activeSpaceId, false);
         // The room list has just been rebuilt from the SDK, so this is the
@@ -1940,6 +2081,11 @@ export default function AppShell() {
         publishBucket("orphanRooms", classification.orphanRooms);
         publishBucket("directRooms", classification.directRooms);
         publishBucket("invitedRooms", classification.invitedRooms);
+        // A notification's deep link can name an invite before sync has
+        // delivered it (a cold start): once it arrives, show the invites inbox
+        // instead of a room with no timeline.
+        if (roomsState.activeRoomId && isPendingInvite(roomsState.activeRoomId))
+            showInviteInbox();
         publishBucket("knockedRooms", classification.knockedRooms);
         if (roomsState.activeSpaceId)
             publishBucket("roomsInSpace", classification.roomsInSpace);
@@ -1948,6 +2094,14 @@ export default function AppShell() {
     // Electron right-click "Save image as" (fetches with auth; see module).
     // Zami: a no-op without Electron's bridge.
     useEffect(installDesktopSaveImage, []);
+    useEffect(installDesktopMessageMenu, []);
+    // Keep the browser from evicting this origin's storage (crypto store,
+    // account backup) when the disk runs low. See persistentStorage.ts.
+    // Zami: "unsupported" here (no navigator.storage); the app's storage isn't
+    // evicted like a browser origin's.
+    useEffect(() => {
+        void requestPersistentStorage();
+    }, []);
 
     // Tell the main process when video plays (it weighs GPU crashes by it).
     // Zami: a no-op without Electron's bridge.
@@ -2052,9 +2206,11 @@ export default function AppShell() {
 
         refreshRooms();
         const client = getClient();
-        if (client) initPush(client).catch(console.error);
-        // PWA / browser web push (no-op on native or when no VAPID key set).
-        if (client) initWebPush(client).catch(console.error);
+        if (client && settingsState.deviceNotifications) {
+            initPush(client).catch(console.error);
+            // PWA / browser web push (no-op on native or when no VAPID key set).
+            initWebPush(client).catch(console.error);
+        }
         // Ring on a closed device: register the m.call.notify push rule once.
         // Idempotent + best-effort — never blocks or breaks the session.
         if (client) ensureCallNotifyPushRule().catch(() => {});
@@ -2151,22 +2307,9 @@ export default function AppShell() {
         // one guaranteed chance to correct a stale one. Deliberately OUTSIDE
         // the session guard above: logout clears the native key and the SW
         // auth, so a logout -> login cycle must re-arm both mirrors.
-        syncNativeNotificationPrivacy(settingsState.hideNotificationBody).catch(
-            () => {},
-        );
-        updateServiceWorkerNotificationPrivacy(
-            settingsState.hideNotificationBody,
-        );
-        if (auth.userId) {
-            updateServiceWorkerReceiptPrivacy(
-                auth.userId,
-                settingsState.privateReadReceipts,
-            );
-            syncNativeReceiptPrivacy(
-                auth.userId,
-                settingsState.privateReadReceipts,
-            ).catch(() => {});
-        }
+        syncNativeNotificationPrivacy(notificationBodyHidden()).catch(() => {});
+        updateServiceWorkerNotificationPrivacy(notificationBodyHidden());
+        mirrorReceiptPrivacy();
         // The DM ring setting, for the native push service and the SW.
         syncNativeRingEnabled(settingsState.ringEnabled).catch(() => {});
         updateServiceWorkerRingEnabled(settingsState.ringEnabled);
@@ -2227,6 +2370,12 @@ export default function AppShell() {
             );
         };
 
+        const waitForSignedInClient = async () => {
+            for (let i = 0; i < 60 && !(auth.userId && getClient()); i++) {
+                await new Promise((r) => setTimeout(r, 500));
+            }
+        };
+
         const quickReplyFromNotification = async (
             roomId: string,
             userId?: string | null,
@@ -2235,6 +2384,9 @@ export default function AppShell() {
             stashId?: string,
         ) => {
             if (!roomId || !text || !text.trim()) return;
+            // Woken from a dead app, the session and client may still be
+            // loading: wait for them (up to 30s) rather than dropping the reply.
+            await waitForSignedInClient();
             const decision = decideNotificationRoute(
                 { roomId, userId },
                 { userId: auth.userId },
@@ -2283,6 +2435,7 @@ export default function AppShell() {
             userId?: string | null,
         ) => {
             if (!roomId) return;
+            await waitForSignedInClient();
             const decision = decideNotificationRoute(
                 { roomId, userId },
                 { userId: auth.userId },
@@ -2294,6 +2447,75 @@ export default function AppShell() {
                 /* swallow — a failed background mark-read must not crash the shell */
             }
         };
+
+        // Accept / Decline on an invite notification. Goes through the app's
+        // own accept (it records a DM in m.direct and loads the room's full
+        // state), then opens the room; a failure lands on the invites inbox.
+        const inviteFromNotification = async (
+            roomId: string,
+            userId: string | null | undefined,
+            accept: boolean,
+        ) => {
+            if (!roomId) return;
+            if (accept) restoreAppWindow();
+            await waitForSignedInClient();
+            const decision = decideNotificationRoute(
+                { roomId, userId },
+                { userId: auth.userId },
+            );
+            if (decision.action !== "navigate") {
+                if (accept && decision.reason === "other-account" && userId)
+                    switchAccountForNotification(userId, roomId);
+                return;
+            }
+            // Woken from a dead app, sync may not have delivered the invite
+            // yet, and acceptInvite reads is_direct and the inviter from it.
+            for (let i = 0; i < 20 && !getClient()?.getRoom(roomId); i++) {
+                await new Promise((r) => setTimeout(r, 500));
+            }
+            try {
+                if (accept) {
+                    await acceptInvite(decision.roomId);
+                    navigateToRoom(decision.roomId);
+                } else {
+                    await rejectInvite(decision.roomId);
+                }
+            } catch (err) {
+                console.error("Invite action from notification failed", err);
+                showErrorToast(
+                    t(
+                        accept
+                            ? "inboxPanel.failedToAcceptInvite"
+                            : "inboxPanel.failedToRejectInvite",
+                    ),
+                );
+                if (accept) navigateToRoom(decision.roomId);
+            }
+        };
+
+        // Invites declined from an Android notification: settle them here, on
+        // start and on every return to the foreground (declinedInvites.ts).
+        const settleNotificationDeclines = async () => {
+            await waitForSignedInClient();
+            if (auth.userId)
+                await consumeNativeDeclines(
+                    auth.userId,
+                    lookupInvite,
+                    settleDeclinedInvite,
+                );
+        };
+        void settleNotificationDeclines();
+        const onVisibleSettleDeclines = () => {
+            if (document.visibilityState === "visible")
+                void settleNotificationDeclines();
+        };
+        document.addEventListener("visibilitychange", onVisibleSettleDeclines);
+
+        (window as any).__matrixInviteFromNotification = (
+            roomId: string,
+            userId: string | undefined,
+            accept: boolean,
+        ) => inviteFromNotification(roomId, userId, !!accept);
 
         (window as any).__matrixOpenRoom = (
             roomId: string,
@@ -2394,6 +2616,12 @@ export default function AppShell() {
                 );
             } else if (e.data?.type === "NOTIF_MARK_READ" && e.data.roomId) {
                 quickMarkReadFromNotification(e.data.roomId, e.data.userId);
+            } else if (e.data?.type === "NOTIF_INVITE" && e.data.roomId) {
+                void inviteFromNotification(
+                    e.data.roomId,
+                    e.data.userId,
+                    !!e.data.accept,
+                );
             }
         };
         if ("serviceWorker" in navigator) {
@@ -2569,6 +2797,25 @@ export default function AppShell() {
                 return;
             emitNotification(event, room, !!(actions?.tweaks as any)?.sound);
         });
+        // Android: the tray notifications are native, so take down the ones for
+        // rooms with nothing unread left (read here, or on another device).
+        // Debounced: receipts arrive in bursts.
+        let nativeSweepTimer: ReturnType<typeof setTimeout> | null = null;
+        const scheduleNativeNotificationSweep = () => {
+            if (nativeSweepTimer) clearTimeout(nativeSweepTimer);
+            nativeSweepTimer = setTimeout(() => {
+                nativeSweepTimer = null;
+                const client = getClient();
+                if (!client) return;
+                const read = client
+                    .getRooms()
+                    .filter((r) => r.getUnreadNotificationCount() === 0)
+                    .map((r) => r.roomId);
+                void dismissNativeRoomNotifications(read);
+            }, 400);
+        };
+        // A room marked (or no longer marked) unread, from any device.
+        const unsubMarkedUnread = onMarkedUnreadChange(() => bumpUnreadTick());
         // Zami: once per turn of the event loop, not per receipt. Each pass
         // walks every room twice, and a saved sync replays a receipt per room
         // in one chain of microtasks: per receipt, that was quadratic in the
@@ -2627,6 +2874,7 @@ export default function AppShell() {
                     readEventIds,
                 }),
             );
+            scheduleNativeNotificationSweep();
         }
         // Fires once the server confirms a read receipt (or it already is
         // confirmed), so the room's loud dot clears without waiting for a
@@ -2811,7 +3059,8 @@ export default function AppShell() {
                 roomsState.roomsTick++;
             if (
                 type === "im.client.space_layout" ||
-                type === "im.client.space_order"
+                type === "im.client.space_order" ||
+                type === "chat.commet.sidebar_ordering"
             )
                 refreshRooms();
             if (type === ACTIVE_SESSION_KEY) {
@@ -2876,6 +3125,7 @@ export default function AppShell() {
             unsubThreadNotify();
             unsubMissedNotify();
             unsubReceipts();
+            unsubMarkedUnread();
             unsubReadConfirmed();
             unsubFavourites();
             unsubCustomization();
@@ -2903,6 +3153,11 @@ export default function AppShell() {
             window.clearTimeout(heartbeatTimer);
             nativeBackHandle.remove();
             delete (window as any).__matrixOpenRoom;
+            delete (window as any).__matrixInviteFromNotification;
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibleSettleDeclines,
+            );
             delete (window as any).__matrixKeyboardContent;
             stopAccountPoller.current?.();
             stopAccountPoller.current = null;
@@ -2962,6 +3217,8 @@ export default function AppShell() {
         if (client) teardownWebPush(client).catch(() => {});
         clearNativeSession().catch(() => {});
         clearServiceWorkerAuth();
+        // Rich presence must come off the profile before the token dies.
+        await clearRichPresenceForSignOut();
         // Give the server-side token invalidation and the local store wipe a
         // bounded window to finish, then leave via a full reload so no store
         // state survives into the successor account's boot.
@@ -3052,15 +3309,15 @@ export default function AppShell() {
             {!isAuthenticated ? (
                 <View
                     accessibilityLiveRegion="polite"
-                    className="flex-1 flex-row items-center justify-center bg-discord-backgroundTertiary"
+                    className="flex-1 flex-row items-center justify-center bg-zam-backgroundTertiary"
                 >
                     <View className="flex-row items-center gap-3">
                         <Spin
                             accessibilityElementsHidden
                             importantForAccessibility="no-hide-descendants"
-                            className="w-6 h-6 border-2 border-discord-textMuted border-t-transparent rounded-full"
+                            className="w-6 h-6 border-2 border-zam-textMuted border-t-transparent rounded-full"
                         />
-                        <Text className="text-discord-textMuted">
+                        <Text className="text-zam-textMuted">
                             {t("appShell.redirecting")}
                         </Text>
                     </View>
@@ -3074,13 +3331,16 @@ export default function AppShell() {
                 // which upstream's browser keeps it out of. The bottom inset
                 // pads what's at the bottom of each column (below).
                 // VoiceOver's escape gesture is upstream's Escape key.
+                // Zami: not ported: `data-zam-region="app"`, the DOM hook
+                // plugins find the shell by (pluginDom.ts); there's no DOM to
+                // query.
                 <GestureDetector gesture={drawerPan}>
                     <View
                         onTouchStart={onShellTouchStart}
                         onAccessibilityEscape={() => {
                             dismissTopmost();
                         }}
-                        className="flex-1 flex-row overflow-hidden bg-discord-background"
+                        className="flex-1 flex-row overflow-hidden bg-zam-background"
                         style={{
                             direction: "ltr",
                             paddingTop: insets.top,
@@ -3100,7 +3360,7 @@ export default function AppShell() {
                             // Zami: its width follows the resize grip's drag on
                             // the UI thread (roomListColumnStyle).
                             <Animated.View
-                                className="relative flex-col flex-shrink-0 min-h-0 bg-discord-backgroundTertiary"
+                                className="relative flex-col flex-shrink-0 min-h-0 bg-zam-backgroundTertiary"
                                 style={[
                                     { paddingBottom: insets.bottom },
                                     roomListColumnStyle,
@@ -3158,7 +3418,7 @@ export default function AppShell() {
                                                 e.nativeEvent.actionName,
                                             )
                                         }
-                                        className="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-discord-accent/40 focus-visible:bg-discord-accent/40 transition-colors"
+                                        className="absolute inset-y-0 -right-1 w-2 z-20 cursor-col-resize touch-none hover:bg-zam-accent/40 focus-visible:bg-zam-accent/40 transition-colors"
                                     />
                                 </GestureDetector>
                             </Animated.View>
@@ -3203,7 +3463,7 @@ export default function AppShell() {
                                             e.nativeEvent.layout.width,
                                         )
                                     }
-                                    className={`absolute top-0 bottom-0 left-0 z-40 flex-col w-[19.5rem] bg-discord-backgroundTertiary ${
+                                    className={`absolute top-0 bottom-0 left-0 z-40 flex-col w-[19.5rem] bg-zam-backgroundTertiary ${
                                         leftDrawerClosed ? "" : "shadow-2xl"
                                     }`}
                                     style={[
@@ -3267,7 +3527,7 @@ export default function AppShell() {
                             (upstream's `env(safe-area-inset-bottom)` in
                             MessageInput), so the room pane's chat doesn't. */}
                         <View
-                            className="flex-row flex-1 min-w-0 overflow-hidden bg-discord-background"
+                            className="flex-row flex-1 min-w-0 overflow-hidden bg-zam-background"
                             style={{
                                 direction: uiDir,
                                 paddingBottom:
@@ -3315,8 +3575,8 @@ export default function AppShell() {
                                 />
                             ) : (
                                 <View className="flex-1 flex-col items-center justify-center p-8">
-                                    <View className="w-24 h-24 rounded-full bg-discord-backgroundSecondary flex-row items-center justify-center mb-6">
-                                        <Text className="text-5xl font-bold text-discord-textMuted">
+                                    <View className="w-24 h-24 rounded-full bg-zam-backgroundSecondary flex-row items-center justify-center mb-6">
+                                        <Text className="text-5xl font-bold text-zam-textMuted">
                                             #
                                         </Text>
                                     </View>
@@ -3327,11 +3587,11 @@ export default function AppShell() {
                                         <>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-2xl font-bold text-discord-textPrimary mb-2 text-center"
+                                                className="text-2xl font-bold text-zam-textPrimary mb-2 text-center"
                                             >
                                                 {t("appShell.noRoomsYet")}
                                             </Text>
-                                            <Text className="text-base text-discord-textMuted max-w-sm text-center">
+                                            <Text className="text-base text-zam-textMuted max-w-sm text-center">
                                                 {t(
                                                     "appShell.createARoomOrStartA",
                                                 )}
@@ -3341,11 +3601,11 @@ export default function AppShell() {
                                         <>
                                             <Text
                                                 accessibilityRole="header"
-                                                className="text-2xl font-bold text-discord-textPrimary mb-2 text-center"
+                                                className="text-2xl font-bold text-zam-textPrimary mb-2 text-center"
                                             >
                                                 {t("appShell.nothingInHome")}
                                             </Text>
-                                            <Text className="text-base text-discord-textMuted max-w-sm text-center">
+                                            <Text className="text-base text-zam-textMuted max-w-sm text-center">
                                                 {t(
                                                     "appShell.allOfYourRoomsLiveIn",
                                                 )}
@@ -3358,7 +3618,7 @@ export default function AppShell() {
                                             onPress={() =>
                                                 (interfaceState.leftOpen = true)
                                             }
-                                            className="mt-6 px-5 py-2.5 bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover rounded-lg transition-colors"
+                                            className="mt-6 px-5 py-2.5 bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover rounded-lg transition-colors"
                                         >
                                             <Text className="text-white text-sm font-semibold">
                                                 {t("appShell.openRoomList")}
@@ -3401,11 +3661,17 @@ export default function AppShell() {
 
             {modal === "create-poll" && pollRoomId && <CreatePollDialog />}
 
+            {modal === "game-invite" && gameInviteRoomId && (
+                <GameInviteDialog />
+            )}
+
             {modal === "share-location" && locationRoomId && (
                 <ShareLocationDialog />
             )}
 
             {modal === "plugin-popover" && <PluginPopoverHost />}
+
+            <PluginOverlayHost />
 
             {modal === "share-target" && hasSharePayload && (
                 <ShareTargetSheet />
@@ -3471,6 +3737,7 @@ export default function AppShell() {
             <Pane.UpdateToastWatch />
             <Pane.IdentityChangeBanner />
             <Pane.JoinConsentDialog />
+            <Pane.MeshConsentDialog />
         </>
     );
 }

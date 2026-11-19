@@ -18,7 +18,7 @@ export default function KeyCaps({ binding }: Props) {
             {parts.map((part, i) => (
                 <Text
                     key={i}
-                    className="min-w-[1.5rem] px-1.5 py-0.5 rounded border border-discord-divider bg-discord-backgroundTertiary text-xs font-mono text-discord-textPrimary text-center shadow-[0_1px_0_var(--discord-divider)]"
+                    className="min-w-[1.5rem] px-1.5 py-0.5 rounded border border-zam-divider bg-zam-backgroundTertiary text-xs font-mono text-zam-textPrimary text-center shadow-[0_1px_0_var(--zam-divider)]"
                 >
                     {part}
                 </Text>

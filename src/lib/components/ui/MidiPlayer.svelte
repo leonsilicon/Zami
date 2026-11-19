@@ -84,6 +84,9 @@
                         },
                         onEnded: () => {
                             playing = false;
+                            // Time arrives about 4 times a second, so the
+                            // last report falls short of the end.
+                            if (!scrubbing) position = duration;
                         },
                         onPreempted: () => {
                             playing = false;
@@ -159,7 +162,7 @@
             onpointerdown={() => (scrubbing = true)}
             onchange={() => (scrubbing = false)}
             aria-label={t("midiPlayer.seek")}
-            class="w-full h-1 accent-discord-accent cursor-pointer"
+            class="w-full h-1 accent-zam-accent cursor-pointer"
         />
         <div class="flex items-center gap-2">
             <button
@@ -168,7 +171,7 @@
                 aria-label={playing
                     ? t("midiPlayer.pause")
                     : t("midiPlayer.play")}
-                class="w-7 h-7 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center"
+                class="w-7 h-7 rounded-full bg-zam-accent flex-shrink-0 flex items-center justify-center"
             >
                 {#if playing}
                     <svg
@@ -185,7 +188,7 @@
                     >
                 {/if}
             </button>
-            <span class="text-discord-textMuted text-xs tabular-nums">
+            <span class="text-zam-textMuted text-xs tabular-nums">
                 {formatCallDuration(position * 1000)} / {formatCallDuration(
                     duration * 1000,
                 )}
@@ -198,7 +201,7 @@
                 value={shownVolume}
                 oninput={setVolume}
                 aria-label={t("midiPlayer.volume")}
-                class="ms-auto w-20 h-1 accent-discord-accent cursor-pointer"
+                class="ms-auto w-20 h-1 accent-zam-accent cursor-pointer"
             />
         </div>
     </div>
@@ -207,5 +210,5 @@
     <audio controls autoplay use:rememberVolume src={wavUrl} class="w-full h-8"
     ></audio>
 {:else}
-    <p class="text-xs text-discord-textMuted">{t("common.loading")}</p>
+    <p class="text-xs text-zam-textMuted">{t("common.loading")}</p>
 {/if}

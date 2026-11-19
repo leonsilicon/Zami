@@ -54,23 +54,21 @@ export default function CryptoUnavailableBanner() {
     return (
         <View
             accessibilityRole="alert"
-            className="flex-row max-w-full items-center gap-3 rounded-lg border border-discord-danger/50 bg-discord-backgroundSecondary px-4 py-2.5 shadow-lg"
+            className="flex-row max-w-full items-center gap-3 rounded-lg border border-zam-danger/50 bg-zam-backgroundSecondary px-4 py-2.5 shadow-lg"
         >
             <SvgIcon
                 d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 15h-2v-2h2zm0-4h-2V7h2z"
-                className="h-5 w-5 flex-shrink-0 text-discord-danger"
+                className="h-5 w-5 flex-shrink-0 text-zam-danger"
             />
             <View className="flex flex-shrink min-w-0 flex-col gap-0.5">
-                <Text className="text-sm text-discord-textPrimary">
-                    {message}
-                </Text>
+                <Text className="text-sm text-zam-textPrimary">{message}</Text>
                 {syncHeldForCrypto && (
-                    <Text className="text-sm text-discord-textPrimary">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("cryptoUnavailableBanner.syncPaused")}
                     </Text>
                 )}
                 {cryptoFailureKind === "other" && !!cryptoFailureDetail && (
-                    <Text className="break-words text-xs text-discord-textMuted">
+                    <Text className="break-words text-xs text-zam-textMuted">
                         {cryptoFailureDetail}
                     </Text>
                 )}
@@ -82,7 +80,7 @@ export default function CryptoUnavailableBanner() {
                 accessibilityState={{ disabled: waitingForSpace }}
                 onPress={retry}
                 disabled={waitingForSpace}
-                className="flex-shrink-0 rounded bg-discord-accent px-3 py-1 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex-shrink-0 rounded bg-zam-accent px-3 py-1 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
                 <Text className="text-sm font-medium text-white">
                     {t("cryptoUnavailableBanner.tryAgain")}
@@ -97,7 +95,7 @@ export default function CryptoUnavailableBanner() {
                     )}
                     className="flex-shrink-0"
                 >
-                    <X size={16} className="text-discord-textMuted" />
+                    <X size={16} className="text-zam-textMuted" />
                 </Pressable>
             )}
         </View>

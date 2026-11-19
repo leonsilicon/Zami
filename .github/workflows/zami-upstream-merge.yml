@@ -1,0 +1,74 @@
+# Merges the upstream sync's pull request (zami-upstream-sync.yml) by itself once it's
+# verified, with no one's approval:
+#  - the sync run found that Claude finished and `_zami check` passed, and named the commit
+#    it checked in a hidden marker in the description (`<!-- zami-automerge: <sha> -->`;
+#    a run that didn't get that far sets `hold`);
+#  - the pull request's head contains that commit (commits pushed on top of it, say a
+#    person's fix, merge the same way);
+#  - Zami CI and Zami Maestro both passed on that head.
+# It checks whenever one of those finishes on the sync branch. Mark the pull request as a
+# draft to keep it from merging.
+name: Zami upstream merge
+
+on:
+  workflow_run:
+    workflows: [Zami CI, Zami Maestro]
+    types: [completed]
+    branches: [zami/upstream-sync]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zami-upstream-merge
+  cancel-in-progress: false
+
+env:
+  BRANCH: zami/upstream-sync
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  merge:
+    # This repository's own branch only: a fork's pull request can have the same name.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge the sync pull request if it's verified
+        env:
+          # The merge is a push to trunk, which has to start trunk's workflows (CI, the
+          # staging build); one made with GITHUB_TOKEN wouldn't.
+          GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
+        run: |
+          pr=$(gh api "repos/$GH_REPO/pulls?head=${GH_REPO%%/*}:$BRANCH&state=open" -q '.[0] // empty')
+          if [ -z "$pr" ]; then
+            echo "There's no open sync pull request."
+            exit 0
+          fi
+          number=$(jq -r .number <<< "$pr")
+          head=$(jq -r .head.sha <<< "$pr")
+          if [ "$(jq -r .draft <<< "$pr")" = "true" ]; then
+            echo "#$number is a draft, so it stays open."
+            exit 0
+          fi
+          verified=$(jq -r '.body // ""' <<< "$pr" | sed -n 's/.*<!-- zami-automerge: \([0-9a-f]\{40\}\) -->.*/\1/p' | head -n 1)
+          if [ -z "$verified" ]; then
+            echo "#$number isn't marked ready: Claude didn't finish, or \`_zami check\` failed."
+            exit 0
+          fi
+          status=$(gh api "repos/$GH_REPO/compare/$verified...$head" -q .status)
+          if [ "$status" != "identical" ] && [ "$status" != "ahead" ]; then
+            echo "#$number's head ${head:0:10} doesn't contain the verified commit ${verified:0:10}."
+            exit 0
+          fi
+          runs=$(gh api "repos/$GH_REPO/actions/runs?head_sha=$head&event=pull_request&per_page=100" -q .workflow_runs)
+          for workflow in "Zami CI" "Zami Maestro"; do
+            latest=$(jq -c --arg name "$workflow" '[.[] | select(.name == $name)] | sort_by(.created_at) | last' <<< "$runs")
+            if [ "$(jq -r '.conclusion // "none"' <<< "$latest")" != "success" ]; then
+              echo "$workflow hasn't passed on ${head:0:10}: $(jq -r '"\(.status // "not run") \(.conclusion // "")"' <<< "$latest")."
+              exit 0
+            fi
+          done
+          # `sha` makes the merge fail rather than merge a head pushed since these checks.
+          gh api -X PUT "repos/$GH_REPO/pulls/$number/merge" -f merge_method=merge -f sha="$head" > /dev/null
+          echo "Merged #$number at ${head:0:10}."

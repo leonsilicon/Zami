@@ -7,7 +7,7 @@
 // the file through the share sheet.
 import { AppState, Linking } from "react-native";
 import { Uniwind } from "uniwind";
-import { createVariableBatch } from "#css-variables";
+import { createRootVariables, createVariableBatch, type VariableOverride } from "#css-variables";
 import { shareDownload } from "#download";
 import { domDocument } from "#dom";
 import { createEventHub } from "#events";
@@ -27,6 +27,19 @@ function setTheme(theme: string | undefined): void {
   // A preset's variables follow its theme: send them before the render it starts.
   variableBatch.begin();
   Uniwind.setTheme(name as never);
+  // So do the variables stylesheets set for this theme.
+  rootVariables.themeChanged();
+  for (const listener of Array.from(themeListeners)) listener();
+}
+
+const themeListeners = new Set<() => void>();
+
+/** Calls `listener` after Zam switches the theme (`documentElement.dataset.theme`). */
+export function onRootThemeChange(listener: () => void): () => void {
+  themeListeners.add(listener);
+  return () => {
+    themeListeners.delete(listener);
+  };
 }
 
 const dataset = new Proxy<Record<string, string>>(
@@ -43,41 +56,36 @@ const dataset = new Proxy<Record<string, string>>(
   },
 );
 
-// Inline CSS variables on the root, as Uniwind variables of the current theme. Removing
-// one restores the theme's own value, which Uniwind has no call for, so it's kept from
-// before the first override.
-const cssVariables: Record<string, string> = {};
-const themeValues = new Map<string, string>();
+// CSS variables on the root, as Uniwind variables of the current theme: the ones Zam sets
+// inline (its theme presets) and, over them, the ones stylesheets set (#css-variables).
 // One `updateCSSVariables` per task with only the changed variables: each call
 // re-renders every styled component, and a theme preset sets about 80 of them.
 const variableBatch = createVariableBatch((theme, variables) =>
   Uniwind.updateCSSVariables(theme as typeof Uniwind.currentTheme, variables),
 );
+const rootVariables = createRootVariables({
+  theme: () => Uniwind.currentTheme,
+  read: (name) => String(Uniwind.getCSSVariable(name) ?? ""),
+  write: variableBatch.set,
+});
 
-function setVariable(name: string, value: string): void {
-  variableBatch.set(Uniwind.currentTheme, name, value);
+/**
+ * The variables stylesheets declare for the root (`:root { --zam-bg: … }`), in the
+ * order they apply. They take precedence over the theme's and over what Zam's own code
+ * sets, for as long as they're listed here.
+ */
+export function setRootVariableOverrides(overrides: readonly VariableOverride[]): void {
+  rootVariables.setOverrides(overrides);
 }
 
 const rootStyle = {
   setProperty(name: string, value: string | null): void {
     if (!name.startsWith("--")) return;
-    if (value === null || value === "") {
-      rootStyle.removeProperty(name);
-      return;
-    }
-    const key = `${Uniwind.currentTheme} ${name}`;
-    if (!themeValues.has(key)) themeValues.set(key, String(Uniwind.getCSSVariable(name) ?? ""));
-    cssVariables[name] = value;
-    setVariable(name, value);
+    if (value === null || value === "") rootVariables.removeProperty(name);
+    else rootVariables.setProperty(name, value);
   },
-  removeProperty(name: string): string {
-    const value = cssVariables[name] ?? "";
-    delete cssVariables[name];
-    const original = themeValues.get(`${Uniwind.currentTheme} ${name}`);
-    if (value !== "" && original !== undefined && original !== "") setVariable(name, original);
-    return value;
-  },
-  getPropertyValue: (name: string): string => cssVariables[name] ?? "",
+  removeProperty: (name: string): string => rootVariables.removeProperty(name),
+  getPropertyValue: (name: string): string => rootVariables.getPropertyValue(name),
   // Zami: not ported: the root font size (Zam's text scale) and other inline styles.
 };
 

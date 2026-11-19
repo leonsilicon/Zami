@@ -563,7 +563,7 @@ export default function ImagePackEditor({
             const action = `${packKey(pack)}:${item.shortcode}`;
             return (
                 <View
-                    className={`bg-discord-backgroundTertiary px-2 ${
+                    className={`bg-zam-backgroundTertiary px-2 ${
                         row.first ? "pt-2" : ""
                     } ${row.last ? "pb-2 rounded-b" : "pb-1"}`}
                 >
@@ -593,11 +593,11 @@ export default function ImagePackEditor({
         }
         return (
             <View
-                className={`rounded-t bg-discord-backgroundTertiary overflow-hidden ${
+                className={`rounded-t bg-zam-backgroundTertiary overflow-hidden ${
                     row.first ? "" : "mt-3"
                 }`}
             >
-                <View className="flex-row items-center gap-2 px-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-2 px-3 py-2 border-b border-zam-divider">
                     {pack.avatarUrl ? (
                         <Image
                             source={mediaSource(pack.avatarUrl)}
@@ -608,13 +608,13 @@ export default function ImagePackEditor({
                     <View className="min-w-0 flex-1">
                         <Text
                             numberOfLines={1}
-                            className="text-sm font-semibold text-discord-textPrimary"
+                            className="text-sm font-semibold text-zam-textPrimary"
                         >
                             {pack.name}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="text-xs text-discord-textMuted"
+                            className="text-xs text-zam-textMuted"
                         >
                             {pack.inherited
                                 ? t("imagePackEditor.inheritedFrom", {
@@ -625,7 +625,7 @@ export default function ImagePackEditor({
                         {pack.attribution ? (
                             <Text
                                 numberOfLines={1}
-                                className="text-xs text-discord-textMuted"
+                                className="text-xs text-zam-textMuted"
                             >
                                 {t("imagePackEditor.attribution", {
                                     value: pack.attribution,
@@ -640,9 +640,9 @@ export default function ImagePackEditor({
                                 addToMine(pack);
                             }}
                             disabled={packBusy === packBusyKey(pack, "mine")}
-                            className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                            className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
                         >
-                            <Text className="text-xs text-discord-textPrimary">
+                            <Text className="text-xs text-zam-textPrimary">
                                 {t("imagePackEditor.addToMine")}
                             </Text>
                         </Pressable>
@@ -655,9 +655,9 @@ export default function ImagePackEditor({
                                             ? setEditingKey(null)
                                             : startEdit(pack)
                                     }
-                                    className="px-2 py-1 rounded hover:bg-discord-messageHover"
+                                    className="px-2 py-1 rounded hover:bg-zam-messageHover"
                                 >
-                                    <Text className="text-xs text-discord-textPrimary">
+                                    <Text className="text-xs text-zam-textPrimary">
                                         {t("imagePackEditor.editDetails")}
                                     </Text>
                                 </Pressable>
@@ -669,9 +669,9 @@ export default function ImagePackEditor({
                                     disabled={
                                         packBusy === packBusyKey(pack, "delete")
                                     }
-                                    className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                                    className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
                                 >
-                                    <Text className="text-xs text-discord-danger">
+                                    <Text className="text-xs text-zam-danger">
                                         {t("imagePackEditor.deletePack")}
                                     </Text>
                                 </Pressable>
@@ -685,18 +685,18 @@ export default function ImagePackEditor({
                         toggleGlobal(pack, checked);
                     }}
                     disabled={packBusy === packBusyKey(pack, "global")}
-                    className="items-center gap-2 px-3 py-2 border-b border-discord-divider"
+                    className="items-center gap-2 px-3 py-2 border-b border-zam-divider"
                     label={
-                        <Text className="flex-1 min-w-0 text-xs text-discord-textPrimary">
+                        <Text className="flex-1 min-w-0 text-xs text-zam-textPrimary">
                             {t("imagePackEditor.useInAllRooms")}{" "}
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("imagePackEditor.useInAllRoomsHint")}
                             </Text>
                         </Text>
                     }
                 />
                 {editingKey === pack.id && (
-                    <View className="gap-2 px-3 py-2 border-b border-discord-divider">
+                    <View className="gap-2 px-3 py-2 border-b border-zam-divider">
                         {/* Zami: the grid's two columns from sm up
                         (sm:grid-cols-2): the fields share a row there,
                         and the actions (sm:col-span-2) have their own. */}
@@ -705,8 +705,8 @@ export default function ImagePackEditor({
                                 value={editName}
                                 onChangeText={setEditName}
                                 placeholder={t("imagePackEditor.packName")}
-                                placeholderTextColorClassName="accent-discord-textMuted"
-                                className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                placeholderTextColorClassName="accent-zam-textMuted"
+                                className="min-w-0 sm:flex-1 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                             />
                             <TextInput
                                 value={editAttribution}
@@ -714,8 +714,8 @@ export default function ImagePackEditor({
                                 placeholder={t(
                                     "imagePackEditor.attributionPlaceholder",
                                 )}
-                                placeholderTextColorClassName="accent-discord-textMuted"
-                                className="min-w-0 sm:flex-1 bg-discord-backgroundSecondary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50"
+                                placeholderTextColorClassName="accent-zam-textMuted"
+                                className="min-w-0 sm:flex-1 bg-zam-backgroundSecondary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50"
                             />
                         </View>
                         <View className="flex-row items-center gap-2">
@@ -724,14 +724,14 @@ export default function ImagePackEditor({
                                 onPress={() => {
                                     pickPackAvatar();
                                 }}
-                                className="px-3 py-1.5 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover"
                             >
-                                <Text className="text-xs text-discord-textPrimary">
+                                <Text className="text-xs text-zam-textPrimary">
                                     {t("imagePackEditor.uploadPackAvatar")}
                                 </Text>
                             </Pressable>
                             {editAvatarMxc ? (
-                                <Text className="text-xs text-discord-textMuted">
+                                <Text className="text-xs text-zam-textMuted">
                                     {t("imagePackEditor.avatarReady")}
                                 </Text>
                             ) : null}
@@ -740,7 +740,7 @@ export default function ImagePackEditor({
                                     accessibilityRole="button"
                                     onPress={() => setEditAvatarMxc(null)}
                                 >
-                                    <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                                    <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                                         {t("imagePackEditor.removePackAvatar")}
                                     </Text>
                                 </Pressable>
@@ -754,7 +754,7 @@ export default function ImagePackEditor({
                                 disabled={
                                     packBusy === packBusyKey(pack, "edit")
                                 }
-                                className="px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover disabled:opacity-50"
+                                className="px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover disabled:opacity-50"
                             >
                                 <Text className="text-white text-xs font-semibold">
                                     {t("common.save")}
@@ -785,7 +785,7 @@ export default function ImagePackEditor({
                         <View className="gap-4 mb-4">
                             {canAdd && (
                                 <View className="gap-2">
-                                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                                         {t("imagePackEditor.addImage")}
                                     </Text>
                                     {/* Zami: the grid (sm:grid-cols-[1fr_auto]) as a column, and a
@@ -822,7 +822,7 @@ export default function ImagePackEditor({
                                                           ]
                                                         : []),
                                                 ]}
-                                                className="w-full bg-discord-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
+                                                className="w-full bg-zam-backgroundTertiary rounded px-3 py-2 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
                                             />
                                             {selectedEmotePackKey ===
                                                 "__new" && (
@@ -840,12 +840,12 @@ export default function ImagePackEditor({
                                                     placeholder={t(
                                                         "imagePackEditor.packName",
                                                     )}
-                                                    placeholderTextColorClassName="accent-discord-textMuted"
-                                                    className="w-full min-w-0 bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-discord-accent/50 disabled:opacity-50"
+                                                    placeholderTextColorClassName="accent-zam-textMuted"
+                                                    className="w-full min-w-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 border border-transparent focus:border-zam-accent/50 disabled:opacity-50"
                                                 />
                                             )}
-                                            <View className="flex-row items-center bg-discord-backgroundTertiary rounded border border-transparent">
-                                                <Text className="ps-3 text-sm text-discord-textMuted">
+                                            <View className="flex-row items-center bg-zam-backgroundTertiary rounded border border-transparent">
+                                                <Text className="ps-3 text-sm text-zam-textMuted">
                                                     :
                                                 </Text>
                                                 <TextInput
@@ -862,15 +862,15 @@ export default function ImagePackEditor({
                                                     placeholder={t(
                                                         "imagePackEditor.shortcode",
                                                     )}
-                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                     accessibilityLabel={t(
                                                         "imagePackEditor.addImage",
                                                     )}
                                                     autoCapitalize="none"
                                                     autoCorrect={false}
-                                                    className="min-w-0 flex-1 bg-transparent text-discord-textPrimary text-sm py-2 disabled:opacity-50"
+                                                    className="min-w-0 flex-1 bg-transparent text-zam-textPrimary text-sm py-2 disabled:opacity-50"
                                                 />
-                                                <Text className="pe-3 text-sm text-discord-textMuted">
+                                                <Text className="pe-3 text-sm text-zam-textMuted">
                                                     :
                                                 </Text>
                                             </View>
@@ -882,7 +882,7 @@ export default function ImagePackEditor({
                                                     handleEmoteUpload();
                                                 }}
                                                 disabled={emoteUploading}
-                                                className={`shrink-0 self-start px-3 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors ${
+                                                className={`shrink-0 self-start px-3 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors ${
                                                     emoteUploading
                                                         ? "opacity-50"
                                                         : ""
@@ -898,7 +898,7 @@ export default function ImagePackEditor({
                                             </Pressable>
                                         )}
                                     </View>
-                                    <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary">
+                                    <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-zam-backgroundTertiary">
                                         <Checkbox
                                             checked={newEmoteAsEmoji}
                                             onChange={setNewEmoteAsEmoji}
@@ -906,7 +906,7 @@ export default function ImagePackEditor({
                                             label={t(
                                                 "imagePackEditor.useAsEmoji",
                                             )}
-                                            labelClassName="text-xs text-discord-textPrimary"
+                                            labelClassName="text-xs text-zam-textPrimary"
                                             className="items-center gap-1.5"
                                         />
                                         <Checkbox
@@ -916,7 +916,7 @@ export default function ImagePackEditor({
                                             label={t(
                                                 "imagePackEditor.useAsSticker",
                                             )}
-                                            labelClassName="text-xs text-discord-textPrimary"
+                                            labelClassName="text-xs text-zam-textPrimary"
                                             className="items-center gap-1.5"
                                         />
                                     </View>
@@ -924,12 +924,12 @@ export default function ImagePackEditor({
                             )}
 
                             {emoteError ? (
-                                <Text className="text-sm text-discord-danger">
+                                <Text className="text-sm text-zam-danger">
                                     {emoteError}
                                 </Text>
                             ) : null}
                             {notice ? (
-                                <Text className="text-sm text-discord-textMuted">
+                                <Text className="text-sm text-zam-textMuted">
                                     {notice}
                                 </Text>
                             ) : null}
@@ -938,7 +938,7 @@ export default function ImagePackEditor({
                 </>
             }
             ListEmptyComponent={
-                <Text className="text-sm text-discord-textMuted text-center py-4">
+                <Text className="text-sm text-zam-textMuted text-center py-4">
                     {t("imagePackEditor.noCustomImages")}
                 </Text>
             }
@@ -989,8 +989,8 @@ const ImageRow = memo(function ImageRow({
     onRemove: (packId: string, shortcode: string) => void;
 }) {
     return (
-        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundSecondary">
-            <View className="w-12 h-12 rounded bg-discord-backgroundTertiary flex-shrink-0 overflow-hidden items-center justify-center">
+        <View className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundSecondary">
+            <View className="w-12 h-12 rounded bg-zam-backgroundTertiary flex-shrink-0 overflow-hidden items-center justify-center">
                 <Image
                     source={mediaSource(item.url)}
                     contentFit="contain"
@@ -1000,14 +1000,11 @@ const ImageRow = memo(function ImageRow({
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm font-medium text-discord-textPrimary"
+                    className="text-sm font-medium text-zam-textPrimary"
                 >
                     :{item.shortcode}:
                 </Text>
-                <Text
-                    numberOfLines={1}
-                    className="text-xs text-discord-textMuted"
-                >
+                <Text numberOfLines={1} className="text-xs text-zam-textMuted">
                     {item.mxcUrl}
                 </Text>
             </View>
@@ -1020,11 +1017,11 @@ const ImageRow = memo(function ImageRow({
                         }}
                         disabled={!editable || pendingEmoji}
                         label={t("common.emoji")}
-                        labelClassName="text-xs text-discord-textPrimary"
+                        labelClassName="text-xs text-zam-textPrimary"
                         className="items-center gap-1.5"
                     />
                 ) : item.canEmoji ? (
-                    <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
+                    <Text className="px-1.5 py-0.5 rounded bg-zam-backgroundTertiary text-xs text-zam-textMuted">
                         {t("common.emoji")}
                     </Text>
                 ) : null}
@@ -1036,11 +1033,11 @@ const ImageRow = memo(function ImageRow({
                         }}
                         disabled={!editable || pendingSticker}
                         label={t("imagePackEditor.sticker")}
-                        labelClassName="text-xs text-discord-textPrimary"
+                        labelClassName="text-xs text-zam-textPrimary"
                         className="items-center gap-1.5"
                     />
                 ) : item.canSticker ? (
-                    <Text className="px-1.5 py-0.5 rounded bg-discord-backgroundTertiary text-xs text-discord-textMuted">
+                    <Text className="px-1.5 py-0.5 rounded bg-zam-backgroundTertiary text-xs text-zam-textMuted">
                         {t("imagePackEditor.sticker")}
                     </Text>
                 ) : null}
@@ -1051,9 +1048,9 @@ const ImageRow = memo(function ImageRow({
                     onAddToMine(packId, item);
                 }}
                 disabled={mineBusy}
-                className="px-2 py-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                className="px-2 py-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
             >
-                <Text className="text-xs text-discord-textMuted hover:text-discord-textPrimary">
+                <Text className="text-xs text-zam-textMuted hover:text-zam-textPrimary">
                     {t("imagePackEditor.addToMine")}
                 </Text>
             </Pressable>
@@ -1065,9 +1062,9 @@ const ImageRow = memo(function ImageRow({
                         onRemove(packId, item.shortcode);
                     }}
                     disabled={pendingRemove}
-                    className="p-1 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                    className="p-1 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                 >
-                    <X size={16} className="text-discord-textMuted" />
+                    <X size={16} className="text-zam-textMuted" />
                 </Pressable>
             )}
         </View>

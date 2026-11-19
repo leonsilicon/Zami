@@ -14,6 +14,7 @@ import {
     View,
     type ViewStyle,
 } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Path } from "react-native-svg";
 import { WebView } from "react-native-webview";
 import {
@@ -27,6 +28,7 @@ import {
     videoFrameThumbnail,
 } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
 import { t } from "$lib/i18n";
 import {
     getUrlPreview,
@@ -55,12 +57,24 @@ import {
 } from "$lib/utils/gifEmbed";
 import { reservedMediaBox, safeDimension } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
-import { galleryNav, galleryPositionLabel } from "$lib/utils/mediaGallery";
+import {
+    fxStatusApiUrl,
+    parseFxStatusResponse,
+    type TweetEmbed,
+} from "$lib/utils/tweetEmbed";
+import TweetCard from "./TweetCard.svelte";
 import { isInstagramUrl } from "$lib/utils/instagramUrl";
 import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { resolveEmbed, mountEmbed } from "$lib/plugins/embeds";
 import { applyPreviewUrlTransforms } from "$lib/plugins/outgoingTransforms";
+import {
+    parseYoutubeUrl,
+    youtubeWatchUrl,
+    youtubeOembedUrl,
+    parseOembedTitle,
+    type YoutubeOembedMeta,
+} from "$lib/utils/youtube";
 
 // What each link resolved to this session. The timeline unmounts rows
 // away from the viewport (utils/timelineWindow); a row mounted again
@@ -79,6 +93,18 @@ function rememberPreview(key: string, r: Resolved) {
         resolvedPreviews.delete(resolvedPreviews.keys().next().value!);
     }
     resolvedPreviews.set(key, r);
+}
+
+// YouTube oEmbed titles per video id, null for a failed lookup so a broken
+// link is not asked for again on every mount.
+const YOUTUBE_OEMBED_MAX = 1000;
+const youtubeOembeds = new Map<string, YoutubeOembedMeta | null>();
+function rememberYoutubeOembed(id: string, meta: YoutubeOembedMeta | null) {
+    youtubeOembeds.delete(id);
+    if (youtubeOembeds.size >= YOUTUBE_OEMBED_MAX) {
+        youtubeOembeds.delete(youtubeOembeds.keys().next().value!);
+    }
+    youtubeOembeds.set(id, meta);
 }
 
 interface Props {
@@ -141,10 +167,21 @@ export default function LinkPreview({ url }: Props) {
     const [videoThumbError, setVideoThumbError] = useState(false);
 
     type DirectEmbed =
-        | { type: "youtube"; embedUrl: string }
+        | {
+              type: "youtube";
+              embedUrl: string;
+              watchUrl: string;
+              short: boolean;
+              start: number;
+          }
         | { type: "video"; videoUrl: string };
 
     const [directEmbed, setDirectEmbed] = useState<DirectEmbed | null>(null);
+    // Title and channel of the YouTube video, from oEmbed. Null until known
+    // (and for good when the lookup fails): the preview works without it.
+    const [youtubeTitle, setYoutubeTitle] = useState<YoutubeOembedMeta | null>(
+        null,
+    );
 
     // A YouTube embed shows its thumbnail until played: each player is a
     // whole YouTube page in its own frame (tens of MB before it plays, plus a
@@ -171,33 +208,7 @@ export default function LinkPreview({ url }: Props) {
         return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
     }
 
-    interface TweetMedia {
-        url: string;
-        width?: number;
-        height?: number;
-        thumbnail?: string;
-    }
-
-    // Tweet videos, by URL, that the user has played. The rest show their
-    // thumbnail: a mounted <video>, even unplayed, holds a decoder. A played
-    // one that is paused and scrolled well away is unmounted again and
-    // resumes from `tweetResumeAt` (actions/parkOffscreen).
-    const [tweetPlaying, setTweetPlaying] = useState<Set<string>>(
-        () => new Set(),
-    );
-    const [tweetResumeAt] = useState(() => new Map<string, number>());
-    interface TweetEmbed {
-        authorName: string;
-        authorHandle: string;
-        text: string;
-        photos: TweetMedia[];
-        videos: TweetMedia[];
-    }
-
     const [tweetEmbed, setTweetEmbed] = useState<TweetEmbed | null>(null);
-    const [lightboxTweetIndex, setLightboxTweetIndex] = useState<number | null>(
-        null,
-    );
 
     // Reactively track favourite state — isFavouriteGif reads favouritesState.gifs ($state) so this auto-tracks
     const favourited = useRune(() => isFavouriteGif(url), [url]);
@@ -215,36 +226,8 @@ export default function LinkPreview({ url }: Props) {
     }
 
     function getYoutubeEmbedUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h === "youtube.com" || h === "m.youtube.com") {
-                const id = u.searchParams.get("v");
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-            if (h === "youtu.be") {
-                const id = u.pathname.slice(1).split("?")[0];
-                if (id) return `https://www.youtube.com/embed/${id}`;
-            }
-        } catch {
-            /* */
-        }
-        return null;
-    }
-
-    function getTwitterApiUrl(rawUrl: string): string | null {
-        try {
-            const u = new URL(rawUrl);
-            const h = u.hostname.replace(/^www\./, "");
-            if (h !== "x.com" && h !== "twitter.com") return null;
-            // Path: /{user}/status/{id}
-            const m = u.pathname.match(/^\/([^/]+)\/status\/(\d+)/);
-            if (!m) return null;
-            return `https://api.fxtwitter.com/${m[1]}/status/${m[2]}`;
-        } catch {
-            /* */
-        }
-        return null;
+        const yt = parseYoutubeUrl(rawUrl);
+        return yt ? `https://www.youtube.com/embed/${yt.id}` : null;
     }
 
     // Zami: upstream's effect re-runs when the preview URL transforms change;
@@ -262,31 +245,59 @@ export default function LinkPreview({ url }: Props) {
         setImageError(false);
         setDirectEmbed(null);
         setTweetEmbed(null);
-        setLightboxTweetIndex(null);
         setVideoPlaying(false);
         setVideoParked(false);
         setVideoThumbError(false);
         setYoutubePlaying(false);
         youtubeResumeAt.current = 0;
-        setTweetPlaying((s) => (s.size === 0 ? s : new Set()));
-        tweetResumeAt.clear();
+        setYoutubeTitle(null);
 
         // A response that lands after the URL or the policy moved on must not
         // write itself back into state — otherwise flipping the setting to a
         // stricter value could be undone by the request it just cancelled.
         let cancelled = false;
 
-        const ytUrl = allowEmbeds ? getYoutubeEmbedUrl(currentUrl) : null;
-        if (ytUrl) {
-            setDirectEmbed({ type: "youtube", embedUrl: ytUrl });
+        const yt = allowEmbeds ? parseYoutubeUrl(currentUrl) : null;
+        if (yt) {
+            const watchUrl = youtubeWatchUrl(yt.id);
+            // The first play starts at the link's own offset (?t= / ?start=).
+            youtubeResumeAt.current = yt.start;
+            setDirectEmbed({
+                type: "youtube",
+                embedUrl: `https://www.youtube.com/embed/${yt.id}`,
+                watchUrl,
+                short: yt.short,
+                start: yt.start,
+            });
             setPending(false);
-            return;
+
+            // Title via oEmbed, behind the same consent as the embed above.
+            // Cached per id, failures included.
+            if (youtubeOembeds.has(yt.id)) {
+                setYoutubeTitle(youtubeOembeds.get(yt.id) ?? null);
+            } else {
+                const id = yt.id;
+                fetch(youtubeOembedUrl(watchUrl), {
+                    referrerPolicy: "no-referrer",
+                })
+                    .then(async (r) =>
+                        r.ok ? parseOembedTitle(await r.json()) : null,
+                    )
+                    .catch(() => null)
+                    .then((meta) => {
+                        rememberYoutubeOembed(id, meta);
+                        if (!cancelled) setYoutubeTitle(meta);
+                    });
+            }
+            return () => {
+                cancelled = true;
+            };
         }
 
-        // Twitter/X: use fxtwitter JSON API (has CORS headers). This is a
-        // request straight to a third party, so it needs the same consent as
-        // the media itself.
-        const twitterApiUrl = allowEmbeds ? getTwitterApiUrl(currentUrl) : null;
+        // Twitter/X: built from FxTwitter's status API (it sends CORS
+        // headers; see utils/tweetEmbed). This is a request straight to a
+        // third party, so it needs the same consent as the media itself.
+        const twitterApiUrl = allowEmbeds ? fxStatusApiUrl(currentUrl) : null;
         if (twitterApiUrl) {
             const known = resolvedPreviews.get(twitterApiUrl);
             if (known) {
@@ -299,31 +310,10 @@ export default function LinkPreview({ url }: Props) {
                 referrerPolicy: "no-referrer",
             })
                 .then((r) => r.json())
-                /* oxlint-disable typescript/no-explicit-any -- upstream's casts. */
-                .then((data: any) => {
+                .then((data: unknown) => {
                     if (cancelled) return;
-                    const tweet = data?.tweet;
-                    if (!tweet) return;
-                    const embed: TweetEmbed = {
-                        authorName: tweet.author?.name ?? "",
-                        authorHandle: tweet.author?.screen_name ?? "",
-                        text: tweet.text ?? "",
-                        // fxtwitter media objects carry width/height — keep them
-                        // so the grid can reserve layout space before the image
-                        // loads (otherwise it pops in and shoves the timeline).
-                        photos: (tweet.media?.photos ?? []).map((p: any) => ({
-                            url: p.url as string,
-                            width: p.width as number | undefined,
-                            height: p.height as number | undefined,
-                        })),
-                        videos: (tweet.media?.videos ?? []).map((v: any) => ({
-                            url: v.url as string,
-                            width: v.width as number | undefined,
-                            height: v.height as number | undefined,
-                            thumbnail: v.thumbnail_url as string | undefined,
-                        })),
-                    };
-                    /* oxlint-enable typescript/no-explicit-any */
+                    const embed = parseFxStatusResponse(data);
+                    if (!embed) return;
                     setTweetEmbed(embed);
                     rememberPreview(twitterApiUrl, {
                         preview: null,
@@ -485,6 +475,12 @@ export default function LinkPreview({ url }: Props) {
 
     const [videoFrame, setVideoFrame] = useState<VideoThumbnail | null>(null);
     const [videoFrameDone, setVideoFrameDone] = useState(false);
+    // Size of the grabbed frame, for a video whose preview gave no dimensions
+    // (the poster would otherwise be cropped into a guessed 16/9 box).
+    const [frameSize, setFrameSize] = useState<{
+        width: number;
+        height: number;
+    } | null>(null);
     const frameSrc = preview?.videoUrl;
     const needsFrame =
         !!frameSrc &&
@@ -494,6 +490,7 @@ export default function LinkPreview({ url }: Props) {
     useLayoutEffect(() => {
         const src = frameSrc;
         setVideoFrame(null);
+        setFrameSize(learnedMediaSize(src) ?? null);
         setVideoFrameDone(!needsFrame);
         if (!needsFrame || !src) return;
         let live = true;
@@ -542,7 +539,7 @@ export default function LinkPreview({ url }: Props) {
     // anything, so the button can appear immediately.
     const blockedEmbed =
         !embedsAllowed &&
-        (getYoutubeEmbedUrl(url) !== null || getTwitterApiUrl(url) !== null);
+        (getYoutubeEmbedUrl(url) !== null || fxStatusApiUrl(url) !== null);
     // Preview media the policy suppressed. `preview` is homeserver-sourced, so
     // reading it here costs nothing.
     const blockedMedia =
@@ -571,10 +568,7 @@ export default function LinkPreview({ url }: Props) {
                 }`}
             >
                 {favourited ? (
-                    <SvgIcon
-                        d={STAR}
-                        className="w-4 h-4 text-discord-warning"
-                    />
+                    <SvgIcon d={STAR} className="w-4 h-4 text-zam-warning" />
                 ) : (
                     <SvgIcon
                         d={STAR}
@@ -614,11 +608,12 @@ export default function LinkPreview({ url }: Props) {
         const posterUrl = canLoad(preview.videoThumbnailUrl)
             ? preview.videoThumbnailUrl
             : (videoFrame ?? undefined);
-        // Zami: `aspect-ratio` from the preview's video size, in a
-        // `max-w-lg w-full` box no taller than `max-height: 24rem`.
+        // Zami: `aspect-ratio` from the preview's video size (`videoAspect`:
+        // else the grabbed frame's), in a `max-w-lg w-full` box no taller
+        // than `max-height: 24rem`.
         // (A gif-style one is drawn at its own size, as the <video> is.)
-        const videoW = safeDimension(preview.videoWidth);
-        const videoH = safeDimension(preview.videoHeight);
+        const videoW = safeDimension(preview.videoWidth ?? frameSize?.width);
+        const videoH = safeDimension(preview.videoHeight ?? frameSize?.height);
         const videoSize =
             videoW && videoH ? { width: videoW, height: videoH } : null;
         return (
@@ -696,6 +691,18 @@ export default function LinkPreview({ url }: Props) {
                             accessible={false}
                             className="w-full h-full"
                             contentFit="cover"
+                            onLoad={(e) => {
+                                const { width, height } = e.source;
+                                if (!width || !height) return;
+                                if (preview?.videoThumbnailUrl === posterUrl)
+                                    return;
+                                setFrameSize({ width, height });
+                                learnMediaSize(
+                                    preview?.videoUrl,
+                                    width,
+                                    height,
+                                );
+                            }}
                             onError={() => setVideoThumbError(true)}
                         />
                         <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
@@ -709,42 +716,87 @@ export default function LinkPreview({ url }: Props) {
     }
 
     function body(): ReactNode {
-        if (directEmbed?.type === "youtube" && youtubePlaying)
-            // Zami: the <iframe> is a WebView. Not ported: parkYoutubeOffscreen
-            // (and pausing for pauseVideoOnScrollOff), which watch the player
-            // scroll out of view; the timeline's FlatList unmounts rows far
-            // off screen, which closes the player.
+        if (directEmbed?.type === "youtube")
+            // Shorts are vertical, so they get a narrow 9:16 column. The title
+            // sits under the player or thumbnail and stays put while it plays.
             return (
                 <View
-                    accessibilityLabel={t("linkPreview.youtubeVideo")}
-                    className="mt-1 w-full max-w-lg aspect-video rounded-lg overflow-hidden bg-black"
+                    className={`mt-1 w-full ${
+                        directEmbed.short
+                            ? "max-w-[min(100%,18rem)]"
+                            : "max-w-lg"
+                    }`}
                 >
-                    <YoutubeFrame
-                        src={youtubePlayerUrl(directEmbed.embedUrl)}
-                        title={t("linkPreview.youtubeVideo")}
-                    />
+                    {youtubePlaying ? (
+                        // Zami: the <iframe> is a WebView. Not ported:
+                        // parkYoutubeOffscreen (and pausing for
+                        // pauseVideoOnScrollOff), which watch the player scroll
+                        // out of view; the timeline's FlatList unmounts rows
+                        // far off screen, which closes the player.
+                        <View
+                            accessibilityLabel={
+                                youtubeTitle?.title ??
+                                t("linkPreview.youtubeVideo")
+                            }
+                            className={`w-full ${
+                                directEmbed.short
+                                    ? "max-w-[min(100%,18rem)] aspect-[9/16]"
+                                    : "max-w-lg aspect-video"
+                            } rounded-lg overflow-hidden bg-black`}
+                        >
+                            <YoutubeFrame
+                                src={youtubePlayerUrl(directEmbed.embedUrl)}
+                                title={
+                                    youtubeTitle?.title ??
+                                    t("linkPreview.youtubeVideo")
+                                }
+                            />
+                        </View>
+                    ) : (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t("linkPreview.playVideo")}
+                            className={`group/media relative w-full ${
+                                directEmbed.short
+                                    ? "max-w-[min(100%,18rem)] aspect-[9/16]"
+                                    : "max-w-lg aspect-video"
+                            } rounded-lg overflow-hidden bg-black`}
+                            onPress={() => setYoutubePlaying(true)}
+                        >
+                            <Image
+                                source={mediaSource(
+                                    youtubeThumbnail(directEmbed.embedUrl),
+                                )}
+                                accessible={false}
+                                className="w-full h-full"
+                                contentFit="cover"
+                            />
+                            <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
+                                {playBadge()}
+                            </View>
+                        </Pressable>
+                    )}
+                    {youtubeTitle ? (
+                        <View className="mt-1.5 min-w-0">
+                            <Text
+                                accessibilityRole="link"
+                                onPress={() => openLink(url)}
+                                numberOfLines={2}
+                                className="text-sm font-semibold text-zam-accent leading-snug"
+                            >
+                                {youtubeTitle.title}
+                            </Text>
+                            {youtubeTitle.author ? (
+                                <Text
+                                    numberOfLines={1}
+                                    className="text-xs text-zam-textMuted mt-0.5"
+                                >
+                                    {youtubeTitle.author}
+                                </Text>
+                            ) : null}
+                        </View>
+                    ) : null}
                 </View>
-            );
-        if (directEmbed?.type === "youtube")
-            return (
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={t("linkPreview.playVideo")}
-                    className="group/media mt-1 relative w-full max-w-lg aspect-video rounded-lg overflow-hidden bg-black"
-                    onPress={() => setYoutubePlaying(true)}
-                >
-                    <Image
-                        source={mediaSource(
-                            youtubeThumbnail(directEmbed.embedUrl),
-                        )}
-                        accessible={false}
-                        className="w-full h-full"
-                        contentFit="cover"
-                    />
-                    <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
-                        {playBadge()}
-                    </View>
-                </Pressable>
             );
         if (directEmbed?.type === "video")
             // Zami: a 16:9 box, as the <video> has no size of its own here.
@@ -756,240 +808,7 @@ export default function LinkPreview({ url }: Props) {
                     controls
                 />
             );
-        if (tweetEmbed) {
-            // Twitter/X card built from fxtwitter API
-            const allMedia =
-                tweetEmbed.videos.length > 0 || tweetEmbed.photos.length > 0
-                    ? [
-                          ...tweetEmbed.videos.map((v) => ({
-                              type: "video" as const,
-                              photoIndex: -1,
-                              ...v,
-                          })),
-                          ...tweetEmbed.photos.map((p, pi) => ({
-                              type: "photo" as const,
-                              photoIndex: pi,
-                              ...p,
-                          })),
-                      ]
-                    : [];
-            // Zami: the grid's `repeat(min(n, 2), minmax(0, 1fr))` columns,
-            // as rows of equal cells.
-            const columns = Math.min(allMedia.length, 2);
-            const rows: (typeof allMedia)[] = [];
-            for (let i = 0; i < allMedia.length; i += columns)
-                rows.push(allMedia.slice(i, i + columns));
-            const lightbox = (() => {
-                if (lightboxTweetIndex === null) return null;
-                const photo = tweetEmbed.photos[lightboxTweetIndex];
-                const nav = galleryNav(
-                    tweetEmbed.photos.length,
-                    lightboxTweetIndex,
-                );
-                const prev = nav.prevIndex;
-                const next = nav.nextIndex;
-                if (!photo) return null;
-                return (
-                    <Lightbox
-                        src={photo.url}
-                        alt=""
-                        onClose={() => setLightboxTweetIndex(null)}
-                        onPrev={
-                            prev !== null
-                                ? () => setLightboxTweetIndex(prev)
-                                : undefined
-                        }
-                        onNext={
-                            next !== null
-                                ? () => setLightboxTweetIndex(next)
-                                : undefined
-                        }
-                        position={galleryPositionLabel(
-                            tweetEmbed.photos.length,
-                            lightboxTweetIndex,
-                        )}
-                    />
-                );
-            })();
-            return (
-                <View className="mt-2">
-                    <Pressable
-                        accessibilityRole="link"
-                        onPress={() => openLink(url)}
-                        className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors"
-                    >
-                        {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
-
-                        <View className="flex flex-1 min-w-0 flex-col p-3 gap-2">
-                            {/* Author */}
-                            <View className="flex flex-col min-w-0">
-                                <Text className="text-xs text-discord-textMuted mb-0.5">
-                                    {t("linkPreview.xTwitter")}
-                                </Text>
-                                <Text className="text-sm font-semibold text-discord-accent leading-snug">
-                                    {tweetEmbed.authorName}{" "}
-                                    <Text className="text-sm font-normal text-discord-textMuted">
-                                        @{tweetEmbed.authorHandle}
-                                    </Text>
-                                </Text>
-                                {tweetEmbed.text ? (
-                                    <Text
-                                        numberOfLines={4}
-                                        className="text-xs text-discord-textSecondary mt-1 leading-relaxed"
-                                    >
-                                        {tweetEmbed.text}
-                                    </Text>
-                                ) : null}
-                            </View>
-
-                            {/* Media grid */}
-                            {allMedia.length > 0 ? (
-                                <View className="gap-1 rounded overflow-hidden">
-                                    {rows.map((row, ri) => (
-                                        <View
-                                            key={ri}
-                                            className="flex-row gap-1"
-                                        >
-                                            {row.map((item, ci) => {
-                                                // width/height reserve the box before load (from the
-                                                // fxtwitter media dims); w-full/h-auto keep it
-                                                // responsive within the grid cell.
-                                                const box = reservedMediaBox(
-                                                    item.width,
-                                                    item.height,
-                                                    512,
-                                                    512,
-                                                );
-                                                // Zami: a cell's shape: the box's, or 16:9
-                                                // (h-auto has nothing to go on before load).
-                                                const cellStyle: ViewStyle = {
-                                                    aspectRatio: box
-                                                        ? box.width / box.height
-                                                        : 16 / 9,
-                                                    maxHeight: 288,
-                                                };
-                                                return (
-                                                    <View
-                                                        key={ci}
-                                                        className="flex-1 min-w-0"
-                                                    >
-                                                        {item.type ===
-                                                            "video" &&
-                                                        !tweetPlaying.has(
-                                                            item.url,
-                                                        ) ? (
-                                                            <Pressable
-                                                                accessibilityRole="button"
-                                                                accessibilityLabel={t(
-                                                                    "linkPreview.playVideo",
-                                                                )}
-                                                                className="group/media relative w-full min-w-0 rounded overflow-hidden bg-black"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                                onPress={() => {
-                                                                    // Zami: a nested Pressable doesn't follow
-                                                                    // the enclosing link.
-                                                                    setTweetPlaying(
-                                                                        (s) =>
-                                                                            new Set(
-                                                                                s,
-                                                                            ).add(
-                                                                                item.url,
-                                                                            ),
-                                                                    );
-                                                                }}
-                                                            >
-                                                                {item.thumbnail ? (
-                                                                    <Image
-                                                                        source={mediaSource(
-                                                                            item.thumbnail,
-                                                                        )}
-                                                                        accessible={
-                                                                            false
-                                                                        }
-                                                                        className="w-full h-full"
-                                                                        contentFit="contain"
-                                                                    />
-                                                                ) : null}
-                                                                <View className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/media:bg-black/40 transition-colors">
-                                                                    {playBadge()}
-                                                                </View>
-                                                            </Pressable>
-                                                        ) : item.type ===
-                                                          "video" ? (
-                                                            // Zami: not ported: pauseOffscreen and
-                                                            // parkOffscreen (IntersectionObserver).
-                                                            // The native controls pause and play it.
-                                                            <Video
-                                                                src={item.url}
-                                                                className="w-full min-w-0 rounded bg-black"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                                use={
-                                                                    rememberVolume
-                                                                }
-                                                                controls
-                                                                autoplay
-                                                                onLoadedMetadata={(
-                                                                    player,
-                                                                ) => {
-                                                                    const at =
-                                                                        tweetResumeAt.get(
-                                                                            item.url,
-                                                                        );
-                                                                    if (at) {
-                                                                        player.currentTime =
-                                                                            at;
-                                                                        tweetResumeAt.delete(
-                                                                            item.url,
-                                                                        );
-                                                                    }
-                                                                }}
-                                                            />
-                                                        ) : (
-                                                            <Pressable
-                                                                accessibilityRole="imagebutton"
-                                                                onPress={() =>
-                                                                    setLightboxTweetIndex(
-                                                                        item.photoIndex,
-                                                                    )
-                                                                }
-                                                                className="w-full min-w-0 rounded overflow-hidden bg-black/10"
-                                                                style={
-                                                                    cellStyle
-                                                                }
-                                                            >
-                                                                <Image
-                                                                    source={mediaSource(
-                                                                        item.url,
-                                                                    )}
-                                                                    accessible={
-                                                                        false
-                                                                    }
-                                                                    className="w-full h-full"
-                                                                    contentFit="contain"
-                                                                />
-                                                            </Pressable>
-                                                        )}
-                                                    </View>
-                                                );
-                                            })}
-                                            {row.length < columns ? (
-                                                <View className="flex-1" />
-                                            ) : null}
-                                        </View>
-                                    ))}
-                                </View>
-                            ) : null}
-                        </View>
-                    </Pressable>
-                    {lightbox}
-                </View>
-            );
-        }
+        if (tweetEmbed) return <TweetCard tweet={tweetEmbed} />;
         if (matchedEmbed)
             // Plugin custom embed: renders a nicer card for a matching URL. ADDITIVE
             // and host-sanitized — see src/lib/plugins/embeds.ts. Keyed so a change
@@ -1000,7 +819,7 @@ export default function LinkPreview({ url }: Props) {
                 <DomMount
                     key={`${matchedEmbed.entryId}:${url}`}
                     className="mt-1"
-                    textClassName="text-sm text-discord-textPrimary"
+                    textClassName="text-sm text-zam-textPrimary"
                     resolveMxc={mxcToHttp}
                     document={document}
                     mount={(el) =>
@@ -1010,10 +829,14 @@ export default function LinkPreview({ url }: Props) {
                 />
             );
         if (pending && !preview) {
+            // Zami: `skeleton-delay` (space reserved at once, the placeholder
+            // invisible for the first 500ms so a preview that resolves
+            // quickly never flashes it) is Reanimated's `SKELETON_DELAY`.
             if (likelyMedia)
                 return (
-                    <View
-                        className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-discord-backgroundSecondary"
+                    <Animated.View
+                        entering={SKELETON_DELAY}
+                        className="mt-1 w-full max-w-lg aspect-video rounded-lg bg-zam-backgroundSecondary"
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
                     />
@@ -1022,27 +845,28 @@ export default function LinkPreview({ url }: Props) {
             // the fixed image box.
             // Zami: each line's box is its text's line height.
             return (
-                <View
+                <Animated.View
+                    entering={SKELETON_DELAY}
                     className="mt-2"
                     accessibilityElementsHidden
                     importantForAccessibility="no-hide-descendants"
                 >
-                    <View className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary">
-                        <View className="w-1 flex-shrink-0 bg-discord-divider" />
+                    <View className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary">
+                        <View className="w-1 flex-shrink-0 bg-zam-divider" />
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-3">
                             <Pulse className="flex-1 min-w-0">
                                 <View className="h-4 mb-0.5 justify-center">
-                                    <View className="w-24 h-2.5 rounded bg-discord-divider" />
+                                    <View className="w-24 h-2.5 rounded bg-zam-divider" />
                                 </View>
                                 <View className="h-[19px] justify-center">
-                                    <View className="w-3/5 h-3 rounded bg-discord-divider" />
+                                    <View className="w-3/5 h-3 rounded bg-zam-divider" />
                                 </View>
                                 <View className="mt-1">
                                     <View className="h-[19.5px] justify-center">
-                                        <View className="w-full h-2.5 rounded bg-discord-divider" />
+                                        <View className="w-full h-2.5 rounded bg-zam-divider" />
                                     </View>
                                     <View className="h-[19.5px] justify-center">
-                                        <View className="w-4/5 h-2.5 rounded bg-discord-divider" />
+                                        <View className="w-4/5 h-2.5 rounded bg-zam-divider" />
                                     </View>
                                 </View>
                             </Pulse>
@@ -1055,7 +879,7 @@ export default function LinkPreview({ url }: Props) {
                             />
                         </View>
                     </View>
-                </View>
+                </Animated.View>
             );
         }
         if (!preview) return null;
@@ -1067,14 +891,14 @@ export default function LinkPreview({ url }: Props) {
             // (e.g. an fxtwitter/fixvx preview that carries og:video + og:title).
             return (
                 <View className="mt-2">
-                    <View className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary">
+                    <View className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary">
                         {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
+                        <View className="w-1 flex-shrink-0 bg-zam-accent" />
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-2">
                             {preview.siteName ? (
                                 <Text
                                     numberOfLines={1}
-                                    className="text-xs text-discord-textMuted"
+                                    className="text-xs text-zam-textMuted"
                                 >
                                     {preview.siteName}
                                 </Text>
@@ -1086,7 +910,7 @@ export default function LinkPreview({ url }: Props) {
                                         openLink(preview.canonicalUrl || url)
                                     }
                                     numberOfLines={2}
-                                    className="text-sm font-semibold text-discord-accent leading-snug"
+                                    className="text-sm font-semibold text-zam-accent leading-snug"
                                 >
                                     {preview.title}
                                 </Text>
@@ -1094,7 +918,7 @@ export default function LinkPreview({ url }: Props) {
                             {preview.description ? (
                                 <Text
                                     numberOfLines={4}
-                                    className="text-xs text-discord-textSecondary leading-relaxed"
+                                    className="text-xs text-zam-textSecondary leading-relaxed"
                                 >
                                     {preview.description}
                                 </Text>
@@ -1172,10 +996,10 @@ export default function LinkPreview({ url }: Props) {
                     <Pressable
                         accessibilityRole="link"
                         onPress={() => openLink(preview.canonicalUrl || url)}
-                        className="flex-row max-w-lg rounded overflow-hidden border border-discord-divider bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors"
+                        className="flex-row max-w-lg rounded overflow-hidden border border-zam-divider bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors"
                     >
                         {/* Left accent bar */}
-                        <View className="w-1 flex-shrink-0 bg-discord-accent" />
+                        <View className="w-1 flex-shrink-0 bg-zam-accent" />
 
                         <View className="flex flex-1 min-w-0 flex-col p-3 gap-3">
                             {/* Text content */}
@@ -1183,7 +1007,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.siteName ? (
                                     <Text
                                         numberOfLines={1}
-                                        className="text-xs text-discord-textMuted mb-0.5"
+                                        className="text-xs text-zam-textMuted mb-0.5"
                                     >
                                         {preview.siteName}
                                     </Text>
@@ -1191,7 +1015,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.title ? (
                                     <Text
                                         numberOfLines={2}
-                                        className="text-sm font-semibold text-discord-accent leading-snug"
+                                        className="text-sm font-semibold text-zam-accent leading-snug"
                                     >
                                         {preview.title}
                                     </Text>
@@ -1199,7 +1023,7 @@ export default function LinkPreview({ url }: Props) {
                                 {preview.description ? (
                                     <Text
                                         numberOfLines={3}
-                                        className="text-xs text-discord-textSecondary mt-1 leading-relaxed"
+                                        className="text-xs text-zam-textSecondary mt-1 leading-relaxed"
                                     >
                                         {preview.description}
                                     </Text>
@@ -1298,7 +1122,7 @@ export default function LinkPreview({ url }: Props) {
                 <Pressable
                     accessibilityRole="button"
                     onPress={() => setRevealedFor(url)}
-                    className="mt-1 self-start flex-row items-center gap-1.5 rounded border border-discord-divider bg-discord-backgroundSecondary px-2 py-1 transition-colors hover:border-discord-accent/50"
+                    className="mt-1 self-start flex-row items-center gap-1.5 rounded border border-zam-divider bg-zam-backgroundSecondary px-2 py-1 transition-colors hover:border-zam-accent/50"
                 >
                     <SvgIcon
                         fill="none"
@@ -1306,13 +1130,13 @@ export default function LinkPreview({ url }: Props) {
                         strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="w-3.5 h-3.5 text-discord-textSecondary"
+                        className="w-3.5 h-3.5 text-zam-textSecondary"
                     >
                         {EYE.map((d) => (
                             <Path key={d} d={d} />
                         ))}
                     </SvgIcon>
-                    <Text className="text-xs text-discord-textSecondary">
+                    <Text className="text-xs text-zam-textSecondary">
                         {t("linkPreview.loadPreviewMedia")}
                     </Text>
                 </Pressable>
@@ -1320,6 +1144,10 @@ export default function LinkPreview({ url }: Props) {
         </>
     );
 }
+
+/** Zami: `.skeleton-delay`'s `animation: skeleton-delay-in 150ms ease-out
+ *  500ms backwards`, a fade in from transparent. */
+const SKELETON_DELAY = FadeIn.duration(150).delay(500);
 
 /** Zami: a box `width`×`height` px, as the `<img>`'s width/height attributes
  *  with `max-w-full h-auto`: no wider than the column, keeping its shape. */
@@ -1375,7 +1203,11 @@ function escapeAttribute(text: string): string {
  * `origin` youtubePlayerUrl names. Links out of the player open in the browser.
  */
 function YoutubeFrame({ src, title }: { src: string; title: string }) {
-    const pageUrl = `${location.origin}/`;
+    // Plugins' `zam.frames` rules for this player, read as it loads: a rule's
+    // referrer is the page the frame sits in, and its script goes into every
+    // frame of the WebView (the rule's URLs pick the frames it runs in).
+    const rules = useMemo(() => zamiHost.frameRules?.(src) ?? {}, [src]);
+    const pageUrl = rules.referrer ?? `${location.origin}/`;
     const html = useMemo(
         () =>
             `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{display:block;border:0;width:100%;height:100%}</style></head><body><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></body></html>`,
@@ -1384,6 +1216,13 @@ function YoutubeFrame({ src, title }: { src: string; title: string }) {
     return (
         <WebView
             source={{ html, baseUrl: pageUrl }}
+            {...(rules.script !== undefined && {
+                injectedJavaScript: rules.script,
+                injectedJavaScriptForMainFrameOnly: false,
+                // react-native-webview only injects into a WebView that
+                // listens for messages.
+                onMessage: () => {},
+            })}
             originWhitelist={["*"]}
             allowsInlineMediaPlayback
             allowsFullscreenVideo

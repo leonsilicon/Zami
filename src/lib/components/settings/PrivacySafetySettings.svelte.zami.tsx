@@ -9,6 +9,8 @@ import {
     setPrivateReadReceipts,
     setSendTypingIndicators,
     setHideNotificationBody,
+    setStreamerMode,
+    notificationBodyHidden,
     setLinkPreviewMedia,
     setIndexEncryptedRooms,
     settingsState,
@@ -16,14 +18,11 @@ import {
 import type { LinkPreviewMedia } from "$lib/utils/linkPreviewPolicy";
 import {
     updateServiceWorkerNotificationPrivacy,
-    updateServiceWorkerReceiptPrivacy,
     startEventIndex,
     deleteEventIndex,
 } from "$lib/matrix/client";
-import {
-    syncNativeNotificationPrivacy,
-    syncNativeReceiptPrivacy,
-} from "$lib/nativeSession";
+import { syncNativeNotificationPrivacy } from "$lib/nativeSession";
+import { mirrorReceiptPrivacy } from "$lib/receiptPrivacySync";
 import { auth } from "$lib/stores/auth.svelte";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -43,6 +42,7 @@ export default function PrivacySafetySettings() {
         () => settingsState.hideNotificationBody,
     );
     const linkPreviewMedia = useRune(() => settingsState.linkPreviewMedia);
+    const streamerMode = useRune(() => settingsState.streamerMode);
 
     const linkPreviewOptions: Array<{
         value: LinkPreviewMedia;
@@ -70,10 +70,20 @@ export default function PrivacySafetySettings() {
 
     function onToggleHideNotificationBody(value: boolean) {
         setHideNotificationBody(value);
+        pushNotificationPrivacy();
+    }
+
+    function onToggleStreamerMode(value: boolean) {
+        setStreamerMode(value);
+        pushNotificationPrivacy();
+    }
+
+    function pushNotificationPrivacy() {
         // The service worker and the Android FCM service each keep their own
         // copy of this flag — they cannot read localStorage.
-        updateServiceWorkerNotificationPrivacy(value);
-        syncNativeNotificationPrivacy(value).catch(() => {});
+        const hidden = notificationBodyHidden();
+        updateServiceWorkerNotificationPrivacy(hidden);
+        syncNativeNotificationPrivacy(hidden).catch(() => {});
     }
 
     function onToggleIndexEncryptedRooms(value: boolean) {
@@ -87,27 +97,40 @@ export default function PrivacySafetySettings() {
         setPrivateReadReceipts(value);
         // The service worker and the Android notification actions each keep
         // their own copy for quick mark-read.
-        if (auth.userId) {
-            updateServiceWorkerReceiptPrivacy(auth.userId, value);
-            syncNativeReceiptPrivacy(auth.userId, value).catch(() => {});
-        }
+        mirrorReceiptPrivacy();
     }
 
     return (
         <View className="gap-6">
             <SettingAnchor anchor="notif-privacy">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("privacySafetySettings.privacy")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("privacySafetySettings.streamerMode")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("privacySafetySettings.streamerModeHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={streamerMode}
+                        onChange={onToggleStreamerMode}
+                        label={t("privacySafetySettings.streamerMode")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.privateReadReceipts")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.hideYourReadReceiptsFromOther",
-                            )}
+                            )}{" "}
+                            {t("privacySafetySettings.receiptsOverrideHint")}
                         </Text>
                     </View>
                     <ToggleSwitch
@@ -116,12 +139,12 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.privateReadReceipts")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.sendTypingIndicators")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("privacySafetySettings.letOthersInARoomSee")}
                         </Text>
                     </View>
@@ -131,12 +154,12 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.sendTypingIndicators")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.indexEncryptedRooms")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("privacySafetySettings.indexEncryptedRoomsHint")}
                         </Text>
                     </View>
@@ -146,14 +169,14 @@ export default function PrivacySafetySettings() {
                         label={t("privacySafetySettings.indexEncryptedRooms")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "privacySafetySettings.hideMessageTextInNotifications",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.notificationsOnThisDeviceSayWho",
                             )}
@@ -169,10 +192,10 @@ export default function PrivacySafetySettings() {
                 </View>
                 <View className="flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("privacySafetySettings.linkPreviewMedia")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "privacySafetySettings.previewImagesAndVideosUsuallyCome",
                             )}
@@ -189,7 +212,7 @@ export default function PrivacySafetySettings() {
 
             <Text
                 accessibilityRole="header"
-                className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
             >
                 {t("privacySafetySettings.blockedUsers")}
             </Text>

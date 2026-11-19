@@ -17,6 +17,7 @@ import { check } from "#check";
 import { Manifest } from "#manifest";
 import { mapUpstreamPath, upstreamPathForZamiPath } from "#paths";
 import { Project } from "#project";
+import { remap } from "#remap";
 import { markDone, sync } from "#sync";
 
 Object.assign(process.env, {
@@ -341,4 +342,90 @@ test("excluding an upstream file drops its Zami version, unless Zami changed it"
   assert.equal(Manifest.read(zami).get("capacitor.config.zami.ts"), undefined);
   const zed = JSON.parse(get(zami, ".zed/settings.json")) as { file_scan_exclusions: string[] };
   assert.ok(zed.file_scan_exclusions.includes("capacitor.config.ts"));
+});
+
+test("remap points the manifest at upstream's rewritten history", () => {
+  const upstream = join(dir, "rewrite-upstream");
+  const zami = join(dir, "rewrite-zami");
+  mkdirSync(upstream);
+  git(upstream, "init", "-q", "-b", "master");
+  put(upstream, "src/same.ts", "same 1\n");
+  put(upstream, "src/scrubbed.ts", "user 1\n");
+  put(upstream, "src/later.ts", "later 1\n");
+  git(upstream, "add", "-A");
+  git(upstream, "commit", "-q", "-m", "upstream 1");
+  const first = git(upstream, "rev-parse", "HEAD").trim();
+  put(upstream, "src/same.ts", "same 2\n");
+  put(upstream, "src/scrubbed.ts", "user rani\n");
+  put(upstream, "src/later.ts", "later 2\n");
+  git(upstream, "add", "-A");
+  const date = "1700000000 +0000";
+  const commit = (message: string) =>
+    execFileSync("git", ["commit", "-q", "-m", message], {
+      cwd: upstream,
+      env: { ...process.env, GIT_AUTHOR_DATE: date },
+    });
+  commit("upstream 2");
+  const original = git(upstream, "rev-parse", "HEAD").trim();
+
+  git(dir, "init", "-q", "-b", "main", zami);
+  git(zami, "remote", "add", "upstream", upstream);
+  git(zami, "fetch", "-q", "upstream");
+  git(zami, "checkout", "-q", "-B", "main", "upstream/master");
+  put(zami, "zami-ports.json", JSON.stringify({ include: ["**"] }));
+  sync(new Project(zami));
+  git(zami, "add", "-A");
+  git(zami, "commit", "-q", "-m", "zami versions");
+
+  // Upstream rewrites "upstream 2" (same date and subject) to scrub a name from it, and
+  // changes src/later.ts there; a later commit puts src/later.ts back as it was.
+  git(upstream, "reset", "-q", "--hard", first);
+  put(upstream, "src/same.ts", "same 2\n");
+  put(upstream, "src/scrubbed.ts", "user user\n");
+  put(upstream, "src/later.ts", "later 2, rewritten\n");
+  git(upstream, "add", "-A");
+  commit("upstream 2");
+  const rewritten = git(upstream, "rev-parse", "HEAD").trim();
+  put(upstream, "src/later.ts", "later 2\n");
+  git(upstream, "add", "-A");
+  git(upstream, "commit", "-q", "-m", "upstream 3");
+  const third = git(upstream, "rev-parse", "HEAD").trim();
+  git(zami, "fetch", "-q", "upstream");
+  try {
+    git(zami, "merge", "-q", "--no-edit", "upstream/master");
+  } catch {
+    // Upstream's own files conflict; upstream's version wins (the sync workflow does this).
+    git(zami, "checkout", "upstream/master", "--", "src/scrubbed.ts");
+    git(zami, "commit", "-q", "--no-edit", "-a");
+  }
+  // The upstream file whose content changed in the rewrite gets its Zami version updated.
+  put(zami, "src/scrubbed.zami.ts", "user user\n");
+  git(zami, "commit", "-q", "-am", "zami: rewritten upstream file");
+
+  let project = new Project(zami);
+  assert.equal(project.upstreamSha, third);
+  assert.match(check(project).failures.join("\n"), /isn't part of the merged upstream history/);
+
+  const dry = remap(project, { dryRun: true });
+  assert.deepEqual(
+    Manifest.read(zami).get("src/same.zami.ts"),
+    original,
+    "a dry run writes nothing",
+  );
+  assert.equal(dry.remapped.size, 2);
+
+  const result = remap(new Project(zami));
+  assert.deepEqual(result.remapped.get("src/same.zami.ts"), [original, rewritten], "its twin");
+  assert.deepEqual(
+    result.remapped.get("src/later.zami.ts"),
+    [original, third],
+    "the twin has other content, but a later commit has the recorded one",
+  );
+  assert.match(result.unmapped.get("src/scrubbed.zami.ts") ?? "", /never has src\/scrubbed.ts/);
+
+  // A person marks the one it couldn't map as synced; then check passes.
+  markDone(new Project(zami), ["src/scrubbed.zami.ts"]);
+  project = new Project(zami);
+  assert.deepEqual(check(project).failures, []);
+  assert.equal(remap(project).remapped.size, 0, "nothing left to remap");
 });

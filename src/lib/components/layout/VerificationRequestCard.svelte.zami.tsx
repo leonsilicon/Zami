@@ -52,25 +52,25 @@ export default function VerificationRequestCard({ controller }: Props) {
     }
 
     return (
-        <View className="flex-row items-center gap-3 w-80 max-w-full px-4 py-3 rounded-lg shadow-lg bg-discord-background border border-discord-divider">
-            <View className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-discord-accent/20">
-                <ShieldQuestion size={20} className="text-discord-accent" />
+        <View className="flex-row items-center gap-3 w-80 max-w-full px-4 py-3 rounded-lg shadow-lg bg-zam-background border border-zam-divider">
+            <View className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zam-accent/20">
+                <ShieldQuestion size={20} className="text-zam-accent" />
             </View>
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm font-semibold text-discord-textPrimary truncate"
+                    className="text-sm font-semibold text-zam-textPrimary truncate"
                 >
                     {heading}
                 </Text>
                 {acceptError ? (
-                    <Text className="text-xs text-discord-danger">
+                    <Text className="text-xs text-zam-danger">
                         {acceptError}
                     </Text>
                 ) : (
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted truncate"
+                        className="text-xs text-zam-textMuted truncate"
                     >
                         {subtitle}
                     </Text>
@@ -82,17 +82,17 @@ export default function VerificationRequestCard({ controller }: Props) {
                 reload. */}
             <Pressable
                 accessibilityRole="button"
-                className="px-2.5 py-1 rounded bg-discord-messageHover hover:bg-discord-danger/20 transition-colors disabled:opacity-60"
+                className="px-2.5 py-1 rounded bg-zam-messageHover hover:bg-zam-danger/20 transition-colors disabled:opacity-60"
                 onPress={() => declineIncoming(controller)}
             >
-                <Text className="text-xs text-discord-textPrimary">
+                <Text className="text-xs text-zam-textPrimary">
                     {t("common.decline")}
                 </Text>
             </Pressable>
             <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ disabled: busy }}
-                className="px-2.5 py-1 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-60"
+                className="px-2.5 py-1 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-60"
                 disabled={busy}
                 onPress={() => void accept()}
             >

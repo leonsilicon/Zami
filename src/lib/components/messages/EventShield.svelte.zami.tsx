@@ -9,9 +9,7 @@ interface Props {
 export default function EventShield({ shield }: Props) {
     // Grey shields are advisory, red ones are a security warning.
     const toneClass =
-        shield.tone === "danger"
-            ? "text-discord-danger"
-            : "text-discord-textMuted";
+        shield.tone === "danger" ? "text-zam-danger" : "text-zam-textMuted";
 
     // Icon-only on purpose: a text label on every warning message is noise in a
     // room full of unverified devices. The reason travels in the tooltip and the

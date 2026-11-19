@@ -5,27 +5,31 @@ import { settingsState } from "$lib/stores/settings.svelte";
 
 let instance: Record<string, unknown> | null = null;
 let host: HTMLElement | null = null;
-let fireFar: (isIntersecting: boolean) => void = () => {};
+// The observer watching the YouTube player (parkYoutubeOffscreen's viewport
+// observer): reports the player in or out of view.
+let fireAway: (isIntersecting: boolean) => void = () => {};
 
 class FakeObserver {
-    constructor(
-        cb: IntersectionObserverCallback,
-        opts?: IntersectionObserverInit,
-    ) {
-        if (opts?.rootMargin)
-            fireFar = (isIntersecting) =>
-                cb(
+    constructor(private cb: IntersectionObserverCallback) {}
+    observe(el: Element) {
+        if (el.tagName === "IFRAME")
+            fireAway = (isIntersecting) =>
+                this.cb(
                     [{ isIntersecting } as IntersectionObserverEntry],
                     this as unknown as IntersectionObserver,
                 );
     }
-    observe() {}
     disconnect() {}
 }
 
 describe("LinkPreview embeds", () => {
     beforeEach(() => {
         vi.stubGlobal("IntersectionObserver", FakeObserver);
+        // oEmbed lookups: no network in tests, and a failed lookup shows no title.
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({ ok: false, json: async () => ({}) })),
+        );
         settingsState.linkPreviewMedia = "all";
     });
     afterEach(() => {
@@ -66,7 +70,7 @@ describe("LinkPreview embeds", () => {
                 source: frame.contentWindow,
             }),
         );
-        fireFar(false);
+        fireAway(false);
         flushSync();
         expect(host.querySelector("iframe")).toBeNull();
 
@@ -79,17 +83,56 @@ describe("LinkPreview embeds", () => {
         ).toBe("13");
     });
 
+    it("shows the oEmbed title and starts a played link at its offset", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => ({
+                ok: true,
+                json: async () => ({
+                    title: "Big Buck Bunny",
+                    author_name: "Blender",
+                }),
+            })),
+        );
+        host = document.createElement("div");
+        document.body.appendChild(host);
+        instance = mount(LinkPreview, {
+            target: host,
+            props: { url: "https://youtu.be/aqz-KE-bpKQ?t=1m30s" },
+        });
+        await vi.waitFor(() => {
+            flushSync();
+            expect(host!.textContent).toContain("Big Buck Bunny");
+        });
+        expect(host.textContent).toContain("Blender");
+        const link = host.querySelector<HTMLAnchorElement>("a")!;
+        expect(link.getAttribute("href")).toBe(
+            "https://youtu.be/aqz-KE-bpKQ?t=1m30s",
+        );
+        expect(link.getAttribute("target")).toBe("_blank");
+        expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+
+        host.querySelector<HTMLButtonElement>("button")!.click();
+        flushSync();
+        const frame = host.querySelector("iframe")!;
+        expect(frame.title).toBe("Big Buck Bunny");
+        expect(new URL(frame.src).searchParams.get("start")).toBe("90");
+    });
+
     it("mounts a tweet video only once played", async () => {
         vi.stubGlobal(
             "fetch",
             vi.fn(async () => ({
                 json: async () => ({
-                    tweet: {
+                    status: {
+                        type: "status",
+                        url: "https://x.com/a/status/123",
                         author: { name: "A", screen_name: "a" },
                         text: "hi",
                         media: {
                             videos: [
                                 {
+                                    type: "video",
                                     url: "https://video.example/v.mp4",
                                     thumbnail_url:
                                         "https://pbs.example/thumb.jpg",

@@ -9,7 +9,13 @@ Native.
 - **document:** `visibilityState`, `hidden`, `hasFocus()` and `visibilitychange` follow
   AppState (a backgrounded app is a hidden page). `documentElement.dataset.theme` switches
   the Uniwind theme, and `documentElement.style.setProperty("--x", …)` sets a Uniwind CSS
-  variable. Building, parsing and querying nodes happen in a detached DOM (linkedom),
+  variable. Stylesheets' variables for the root go over those:
+  `setRootVariableOverrides([{ theme, name, value }, …])` lists them in the order they
+  apply (`theme: null` is every theme), and each stays in force, whatever Zam's code sets
+  meanwhile, until a later list leaves it out; then the inline value comes back, or the
+  theme's own. `onRootThemeChange(listener)` is called after a theme switch.
+  @-/com.leonsilicon.zami.plugins feeds it the user's and plugins' CSS. Building, parsing
+  and querying nodes happen in a detached DOM (linkedom),
   which Zam uses for string-level HTML work (twemoji, code highlighting, reply
   fallbacks); nothing in it is displayed. An `<a>`'s click opens its link, or with
   `download` set, offers the file through the share sheet (iOS has no Downloads folder

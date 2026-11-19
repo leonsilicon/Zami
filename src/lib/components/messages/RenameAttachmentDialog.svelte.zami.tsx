@@ -17,6 +17,7 @@ import { t } from "$lib/i18n";
 // Edit a queued attachment before it is sent (Discord-style: tap the
 // attachment in the composer drawer). The caller owns the modal slot.
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+import { isSpoilerFilename, withSpoiler } from "$lib/utils/spoilerAttachment";
 
 interface Props {
     name: string;
@@ -45,6 +46,10 @@ export default function RenameAttachmentDialog({
     const inputEl = useRef<TextInputInstance>(null);
     // No path separators or control characters in a filename.
     const cleaned = value.replace(/[\\/\p{Cc}]/gu, "_").trim();
+    // A spoiler is just the filename prefix, so the toggle reads and writes
+    // the name field and the two can never disagree.
+    const spoiler = isSpoilerFilename(value.trimStart());
+    const canSpoiler = !!previewUrl && !video;
 
     useEffect(() => {
         if (!inputEl.current) return;
@@ -109,7 +114,7 @@ export default function RenameAttachmentDialog({
                             accessibilityViewIsModal
                             aria-labelledby="rename-attachment-title"
                             onAccessibilityEscape={onClose}
-                            className="relative z-10 shrink bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-xl max-h-full overflow-hidden"
+                            className="relative z-10 shrink bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-xl max-h-full overflow-hidden"
                         >
                             <ScrollView
                                 keyboardShouldPersistTaps="handled"
@@ -138,7 +143,7 @@ export default function RenameAttachmentDialog({
                                             if (width > 0 && height > 0)
                                                 setAspect(width / height);
                                         }}
-                                        className="w-full rounded bg-discord-backgroundTertiary"
+                                        className="w-full rounded bg-zam-backgroundTertiary"
                                         style={{
                                             aspectRatio: aspect,
                                             maxHeight: windowSize.height * 0.5,
@@ -148,12 +153,12 @@ export default function RenameAttachmentDialog({
                                 <Text
                                     nativeID="rename-attachment-title"
                                     role="heading"
-                                    className="text-lg font-bold text-discord-textPrimary"
+                                    className="text-lg font-bold text-zam-textPrimary"
                                 >
                                     {t("renameAttachmentDialog.editAttachment")}
                                 </Text>
                                 <View className="flex-col gap-1.5">
-                                    <Text className="text-xs font-bold uppercase text-discord-textSecondary">
+                                    <Text className="text-xs font-bold uppercase text-zam-textSecondary">
                                         {t("renameAttachmentDialog.filename")}
                                     </Text>
                                     {/* Zami: the form's submit is the input's
@@ -171,16 +176,46 @@ export default function RenameAttachmentDialog({
                                         autoCorrect={false}
                                         autoCapitalize="none"
                                         returnKeyType="done"
-                                        className="rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary focus:ring-2 focus:ring-discord-accent"
+                                        className="rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary focus:ring-2 focus:ring-zam-accent"
                                     />
                                 </View>
+                                {canSpoiler && (
+                                    <View className="flex-row items-center justify-between gap-3">
+                                        <View className="flex-1 min-w-0">
+                                            <Text className="text-sm text-zam-textPrimary">
+                                                {t(
+                                                    "renameAttachmentDialog.markSpoiler",
+                                                )}
+                                            </Text>
+                                            <Text className="text-xs text-zam-textMuted">
+                                                {t(
+                                                    "renameAttachmentDialog.markSpoilerHint",
+                                                )}
+                                            </Text>
+                                        </View>
+                                        <ToggleSwitch
+                                            checked={spoiler}
+                                            onChange={(v) =>
+                                                setValue(
+                                                    withSpoiler(
+                                                        value.trimStart(),
+                                                        v,
+                                                    ),
+                                                )
+                                            }
+                                            label={t(
+                                                "renameAttachmentDialog.markSpoiler",
+                                            )}
+                                        />
+                                    </View>
+                                )}
                                 {onDirectChange && (
                                     <View className="flex-row items-center justify-between gap-3">
                                         <View className="flex-1 min-w-0">
-                                            <Text className="text-sm text-discord-textPrimary">
+                                            <Text className="text-sm text-zam-textPrimary">
                                                 {t("messageInput.sendDirectly")}
                                             </Text>
-                                            <Text className="text-xs text-discord-textMuted">
+                                            <Text className="text-xs text-zam-textMuted">
                                                 {t(
                                                     "messageInput.directFileHint",
                                                 )}
@@ -201,7 +236,7 @@ export default function RenameAttachmentDialog({
                                         onPress={onClose}
                                         className="rounded px-4 py-2"
                                     >
-                                        <Text className="text-sm font-medium text-discord-textPrimary hover:underline">
+                                        <Text className="text-sm font-medium text-zam-textPrimary hover:underline">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
@@ -212,7 +247,7 @@ export default function RenameAttachmentDialog({
                                         accessibilityState={{
                                             disabled: !cleaned,
                                         }}
-                                        className={`rounded bg-discord-accent px-4 py-2 hover:bg-discord-accentHover ${
+                                        className={`rounded bg-zam-accent px-4 py-2 hover:bg-zam-accentHover ${
                                             !cleaned ? "opacity-50" : ""
                                         }`}
                                     >

@@ -316,15 +316,15 @@ export default function QuickActions({
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => open("create-dm")}
-                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                         >
                             <SvgIcon
-                                className="w-4 h-4 flex-shrink-0 opacity-70 text-discord-textMuted"
+                                className="w-4 h-4 flex-shrink-0 opacity-70 text-zam-textMuted"
                                 d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
                             />
                             <Text
                                 numberOfLines={1}
-                                className="flex-1 text-sm text-discord-textMuted"
+                                className="flex-1 text-sm text-zam-textMuted"
                             >
                                 {t("quickActions.newDm")}
                             </Text>
@@ -334,15 +334,15 @@ export default function QuickActions({
                         <Pressable
                             accessibilityRole="button"
                             onPress={() => open("create-room")}
-                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                            className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                         >
                             <SvgIcon
-                                className="w-4 h-4 flex-shrink-0 opacity-70 text-discord-textMuted"
+                                className="w-4 h-4 flex-shrink-0 opacity-70 text-zam-textMuted"
                                 d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"
                             />
                             <Text
                                 numberOfLines={1}
-                                className="flex-1 text-sm text-discord-textMuted"
+                                className="flex-1 text-sm text-zam-textMuted"
                             >
                                 {spaceId
                                     ? t("quickActions.createRoomInSpace")
@@ -357,15 +357,15 @@ export default function QuickActions({
                                 accessibilityRole={
                                     compact ? "menuitem" : "button"
                                 }
-                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-discord-textMuted"
+                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-zam-textMuted"
                                     d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-1 text-sm text-discord-textMuted"
+                                    className="flex-1 text-sm text-zam-textMuted"
                                 >
                                     {t("quickActions.createNewSpace")}
                                 </Text>
@@ -375,15 +375,15 @@ export default function QuickActions({
                                 accessibilityRole={
                                     compact ? "menuitem" : "button"
                                 }
-                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors"
+                                className="w-full flex-row items-center gap-2 pe-2 ps-2 py-1.5 hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
                             >
                                 <SvgIcon
-                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-discord-textMuted"
+                                    className="w-4 h-4 flex-shrink-0 opacity-70 text-zam-textMuted"
                                     d="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z"
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-1 text-sm text-discord-textMuted"
+                                    className="flex-1 text-sm text-zam-textMuted"
                                 >
                                     {t("quickActions.joinRoomByAddress")}
                                 </Text>
@@ -403,7 +403,7 @@ export default function QuickActions({
                     <ModalDialog
                         onClose={close}
                         labelledBy="quick-actions-title"
-                        panelClass="relative bg-discord-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-full overflow-hidden"
+                        panelClass="relative bg-zam-background rounded-lg shadow-xl w-full max-w-md mx-4 max-h-full overflow-hidden"
                     >
                         <ScrollView
                             keyboardShouldPersistTaps="handled"
@@ -412,7 +412,7 @@ export default function QuickActions({
                             <Text
                                 nativeID="quick-actions-title"
                                 role="heading"
-                                className="text-lg font-bold text-discord-textPrimary"
+                                className="text-lg font-bold text-zam-textPrimary"
                             >
                                 {mode === "create-room"
                                     ? spaceId
@@ -429,7 +429,7 @@ export default function QuickActions({
                             mode === "create-space" ? (
                                 <View className="flex flex-col gap-3">
                                     <View>
-                                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                             {mode === "create-space"
                                                 ? t("quickActions.spaceName")
                                                 : t("quickActions.roomName")}
@@ -456,12 +456,12 @@ export default function QuickActions({
                                                     ? t("quickActions.mySpace")
                                                     : "my-room"
                                             }
-                                            placeholderTextColorClassName="accent-discord-textMuted"
-                                            className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
+                                            className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                                         />
                                     </View>
                                     <View>
-                                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                             {t("common.topic")}{" "}
                                             <Text className="normal-case font-normal">
                                                 {t("quickActions.optional")}
@@ -485,8 +485,8 @@ export default function QuickActions({
                                                           "quickActions.whatSThisRoomAbout",
                                                       )
                                             }
-                                            placeholderTextColorClassName="accent-discord-textMuted"
-                                            className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
+                                            className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                                         />
                                     </View>
                                     {mode === "create-room" && (
@@ -496,10 +496,10 @@ export default function QuickActions({
                                             className="items-start gap-2.5"
                                             label={
                                                 <View className="shrink">
-                                                    <Text className="text-sm text-discord-textPrimary">
+                                                    <Text className="text-sm text-zam-textPrimary">
                                                         {t("common.videoRoom")}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "quickActions.opensStraightIntoACallMessages",
                                                         )}
@@ -510,13 +510,13 @@ export default function QuickActions({
                                     )}
                                     {mode === "create-room" && (
                                         <Details
-                                            className="rounded border border-discord-divider px-3 py-2"
+                                            className="rounded border border-zam-divider px-3 py-2"
                                             summary={
-                                                <Text className="shrink text-sm text-discord-textPrimary">
+                                                <Text className="shrink text-sm text-zam-textPrimary">
                                                     {t(
                                                         "quickActions.additionalCreators",
                                                     )}{" "}
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "quickActions.optional",
                                                         )}
@@ -525,7 +525,7 @@ export default function QuickActions({
                                             }
                                         >
                                             <View className="mt-2 flex flex-col gap-2">
-                                                <Text className="text-xs text-discord-textMuted">
+                                                <Text className="text-xs text-zam-textMuted">
                                                     {t(
                                                         "quickActions.additionalCreatorsHint",
                                                     )}
@@ -549,12 +549,12 @@ export default function QuickActions({
                                             className="items-start gap-2.5"
                                             label={
                                                 <View className="shrink">
-                                                    <Text className="text-sm text-discord-textPrimary">
+                                                    <Text className="text-sm text-zam-textPrimary">
                                                         {t(
                                                             "quickActions.starterRooms",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "quickActions.starterRoomsHint",
                                                         )}
@@ -570,12 +570,12 @@ export default function QuickActions({
                                             className="items-start gap-2.5"
                                             label={
                                                 <View className="shrink">
-                                                    <Text className="text-sm text-discord-textPrimary">
+                                                    <Text className="text-sm text-zam-textPrimary">
                                                         {t(
                                                             "quickActions.enableEncryption",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "quickActions.canTBeTurnedOffLater",
                                                         )}
@@ -605,12 +605,12 @@ export default function QuickActions({
                                             className="items-start gap-2.5"
                                             label={
                                                 <View className="shrink">
-                                                    <Text className="text-sm text-discord-textPrimary">
+                                                    <Text className="text-sm text-zam-textPrimary">
                                                         {t(
                                                             "quickActions.encryptThisDm",
                                                         )}
                                                     </Text>
-                                                    <Text className="text-xs text-discord-textMuted">
+                                                    <Text className="text-xs text-zam-textMuted">
                                                         {t(
                                                             "quickActions.canTBeTurnedOffLater",
                                                         )}
@@ -620,16 +620,16 @@ export default function QuickActions({
                                         />
                                     )}
                                     {notice ? (
-                                        <View className="rounded bg-discord-warning/10 border border-discord-warning/30 px-3 py-2 gap-2">
-                                            <Text className="text-xs text-discord-warning">
+                                        <View className="rounded bg-zam-warning/10 border border-zam-warning/30 px-3 py-2 gap-2">
+                                            <Text className="text-xs text-zam-warning">
                                                 {notice}
                                             </Text>
                                             <Pressable
                                                 accessibilityRole="button"
                                                 onPress={openNoticeRoom}
-                                                className="self-start px-3 py-1.5 bg-discord-messageHover rounded"
+                                                className="self-start px-3 py-1.5 bg-zam-messageHover rounded"
                                             >
-                                                <Text className="text-discord-textPrimary text-xs">
+                                                <Text className="text-zam-textPrimary text-xs">
                                                     {t(
                                                         "quickActions.openTheDm",
                                                     )}
@@ -641,7 +641,7 @@ export default function QuickActions({
                             ) : (
                                 <View className="flex flex-col gap-3">
                                     <View>
-                                        <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-1.5">
+                                        <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-1.5">
                                             {t("quickActions.roomAddressOrId")}
                                         </Text>
                                         {/* Zami: no autocapitalization or
@@ -666,19 +666,19 @@ export default function QuickActions({
                                             placeholder={t(
                                                 "quickActions.roomServerCom",
                                             )}
-                                            placeholderTextColorClassName="accent-discord-textMuted"
-                                            className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                                            placeholderTextColorClassName="accent-zam-textMuted"
+                                            className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                                         />
                                     </View>
                                     {knockSent ? (
-                                        <Text className="text-sm text-discord-textSecondary">
+                                        <Text className="text-sm text-zam-textSecondary">
                                             {t(
                                                 "quickActions.requestSentYouLlBeAble",
                                             )}
                                         </Text>
                                     ) : knockOffered ? (
                                         <View>
-                                            <Text className="text-sm text-discord-textMuted mb-1.5">
+                                            <Text className="text-sm text-zam-textMuted mb-1.5">
                                                 {t(
                                                     "quickActions.youCanTJoinThisRoom",
                                                 )}
@@ -695,8 +695,8 @@ export default function QuickActions({
                                                 placeholder={t(
                                                     "common.reasonOptional",
                                                 )}
-                                                placeholderTextColorClassName="accent-discord-textMuted"
-                                                className="w-full px-3 py-2 bg-discord-backgroundSecondary text-discord-textPrimary rounded border border-discord-divider focus:border-discord-accent text-sm"
+                                                placeholderTextColorClassName="accent-zam-textMuted"
+                                                className="w-full px-3 py-2 bg-zam-backgroundSecondary text-zam-textPrimary rounded border border-zam-divider focus:border-zam-accent text-sm"
                                             />
                                         </View>
                                     ) : null}
@@ -704,7 +704,7 @@ export default function QuickActions({
                             )}
 
                             {error ? (
-                                <Text className="text-sm text-discord-danger">
+                                <Text className="text-sm text-zam-danger">
                                     {error}
                                 </Text>
                             ) : null}
@@ -715,9 +715,9 @@ export default function QuickActions({
                                     onPress={close}
                                     disabled={loading}
                                     accessibilityState={{ disabled: loading }}
-                                    className="px-4 py-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                    className="px-4 py-2 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors disabled:opacity-50"
                                 >
-                                    <Text className="text-sm font-medium text-discord-textMuted">
+                                    <Text className="text-sm font-medium text-zam-textMuted">
                                         {mode === "join-room" && knockSent
                                             ? t("common.close")
                                             : t("common.cancel")}
@@ -735,7 +735,7 @@ export default function QuickActions({
                                         accessibilityState={{
                                             disabled: loading || !input1.trim(),
                                         }}
-                                        className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors disabled:opacity-50 flex flex-row items-center gap-2"
+                                        className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors disabled:opacity-50 flex flex-row items-center gap-2"
                                     >
                                         {loading && (
                                             <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -752,7 +752,7 @@ export default function QuickActions({
                                         accessibilityState={{
                                             disabled: loading || !input1.trim(),
                                         }}
-                                        className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover active:bg-discord-accentHover transition-colors disabled:opacity-50 flex flex-row items-center gap-2"
+                                        className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover active:bg-zam-accentHover transition-colors disabled:opacity-50 flex flex-row items-center gap-2"
                                     >
                                         {loading && (
                                             <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />

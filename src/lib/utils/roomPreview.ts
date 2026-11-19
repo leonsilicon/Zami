@@ -1,6 +1,7 @@
 import type { MatrixEvent } from "matrix-js-sdk";
 import { t } from "$lib/i18n";
 import { eventPreviewText } from "$lib/utils/eventPreviewText";
+import { displayContent } from "$lib/utils/displayContent";
 import { belongsToMainTimeline } from "$lib/utils/threadModel";
 import {
     ENCRYPTED_MESSAGE_PLACEHOLDER,
@@ -12,15 +13,14 @@ import {
 const SCAN_LIMIT = 50;
 
 /**
- * One-line preview of the newest message in a timeline, for a room-list row:
- * edits, reactions, state events, redactions and thread replies are passed
- * over. Own messages get a "You: " prefix. Null when nothing in reach is
- * showable.
+ * The newest message in a timeline and its one-line text: edits, reactions,
+ * state events, redactions and thread replies are passed over. Null when
+ * nothing in reach is showable. Shared by the row preview and the DM list's
+ * recency sort, so a row sorts by the message it shows.
  */
-export function latestMessagePreview(
+export function latestMessage(
     events: readonly MatrixEvent[],
-    ownUserId: string | null,
-): string | null {
+): { event: MatrixEvent; text: string } | null {
     const stop = Math.max(0, events.length - SCAN_LIMIT);
     for (let i = events.length - 1; i >= stop; i--) {
         const ev = events[i];
@@ -37,14 +37,27 @@ export function latestMessagePreview(
         else {
             text = eventPreviewText(ev);
             if (!text) continue;
-            if (ev.getContent()?.msgtype === "m.emote") text = `* ${text}`;
+            if (displayContent(ev)?.msgtype === "m.emote") text = `* ${text}`;
         }
         // Collapse a multi-line body onto the row's single line.
         text = text.replace(/\s+/g, " ").trim();
         if (!text) continue;
-        return ev.getSender() === ownUserId
-            ? t("roomList.previewYou", { text })
-            : text;
+        return { event: ev, text };
     }
     return null;
+}
+
+/**
+ * One-line preview of the newest message in a timeline, for a room-list row.
+ * Own messages get a "You: " prefix. Null when nothing in reach is showable.
+ */
+export function latestMessagePreview(
+    events: readonly MatrixEvent[],
+    ownUserId: string | null,
+): string | null {
+    const found = latestMessage(events);
+    if (!found) return null;
+    return found.event.getSender() === ownUserId
+        ? t("roomList.previewYou", { text: found.text })
+        : found.text;
 }

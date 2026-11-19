@@ -6,7 +6,7 @@ The Zami app's `lucide-svelte`: Metro and TypeScript resolve that specifier to
 ```tsx
 import { X } from "lucide-svelte";
 
-<X size={16} className="text-discord-textMuted" />;
+<X size={16} className="text-zam-textMuted" />;
 ```
 
 Each icon is lucide-react-native's, at the version Zam pins, wrapped by `withClassName`

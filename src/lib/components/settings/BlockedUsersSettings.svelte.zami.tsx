@@ -33,14 +33,14 @@ export default function BlockedUsersSettings() {
 
     return (
         <View className="gap-4">
-            <Text className="text-xs text-discord-textMuted">
+            <Text className="text-xs text-zam-textMuted">
                 {t("blockedUsersSettings.messagesFromBlockedUsersAreHidden")}
             </Text>
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
             {userIds.length === 0 ? (
-                <Text className="text-sm text-discord-textMuted text-center py-8">
+                <Text className="text-sm text-zam-textMuted text-center py-8">
                     {t("blockedUsersSettings.youHavenTBlockedAnyone")}
                 </Text>
             ) : (
@@ -48,7 +48,7 @@ export default function BlockedUsersSettings() {
                     {userIds.map((userId) => (
                         <View
                             key={userId}
-                            className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary"
+                            className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary"
                         >
                             <Avatar
                                 src={null}
@@ -58,7 +58,7 @@ export default function BlockedUsersSettings() {
                             />
                             <Text
                                 numberOfLines={1}
-                                className="flex-1 min-w-0 text-sm text-discord-textPrimary font-mono"
+                                className="flex-1 min-w-0 text-sm text-zam-textPrimary font-mono"
                             >
                                 {userId}
                             </Text>
@@ -71,9 +71,9 @@ export default function BlockedUsersSettings() {
                                     void unblock(userId);
                                 }}
                                 disabled={pending === userId}
-                                className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                             >
-                                <Text className="text-xs font-semibold text-discord-textPrimary">
+                                <Text className="text-xs font-semibold text-zam-textPrimary">
                                     {t("common.unblock")}
                                 </Text>
                             </Pressable>

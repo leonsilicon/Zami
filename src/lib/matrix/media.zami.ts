@@ -8,14 +8,17 @@ import { settingsState } from "$lib/stores/settings.svelte";
 import { faststartMp4 } from "$lib/utils/mp4Faststart";
 import { progressiveJpegForUpload } from "$lib/utils/progressiveJpegUpload";
 import { stripLocationMetadata } from "$lib/utils/stripMetadata";
+import type { ReusableMedia } from "$lib/matrix/favouriteFile";
 import { withRandomFileName } from "$lib/utils/randomFileName";
 import { gifToAnimatedWebp } from "$lib/utils/gifToWebp";
 import { isMidiAttachment, midiSendMimetype } from "$lib/utils/midi";
+import { animatedMime, isAnimatedImage } from "$lib/utils/tileImage";
 import {
     createImageThumbnail,
     fitThumbnail,
     THUMBNAIL_MIN_SOURCE_BYTES,
 } from "$lib/utils/imageThumbnail";
+import { buildGalleryContent, toGalleryItem } from "$lib/utils/gallery";
 import { isRoomEncrypted, isRoomEncryptedForSend } from "$lib/matrix/crypto";
 import { withMessageRelation } from "$lib/utils/threadContent";
 import {
@@ -35,12 +38,13 @@ import {
 } from "$lib/utils/attachmentMime";
 import { exceedsUploadLimit, FileTooLargeError } from "$lib/utils/uploadLimits";
 import { parseMxc, isSameOrigin } from "$lib/utils/mxcUri";
+import { markPickerThumb, swControlsPage } from "$lib/utils/pickerThumbCache";
 import {
     readBodyWithProgress,
     type ReadProgressOptions,
 } from "$lib/utils/downloadProgress";
 import {
-    mediaItemFromEvent,
+    mediaItemsFromEvent,
     mediaFilterDefinition,
     type RoomMediaItem,
 } from "$lib/utils/roomMedia";
@@ -143,7 +147,13 @@ async function zamiImageThumbnail(
     const first = await imageThumbnailFor(file);
     if (!first) return null;
     const { w, h } = first;
-    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) return { blob: null, w, h };
+    // Zami: upstream's MSC4230 flag, from the same sniff. The animated WebP
+    // thumbnail itself is not ported (no ImageDecoder or OffscreenCanvas):
+    // the native thumbnail is the first frame, as upstream's fallback is.
+    const animated = await sniffAnimated(file);
+    if (file.size < THUMBNAIL_MIN_SOURCE_BYTES) {
+        return { blob: null, w, h, animated };
+    }
     const fit = await fitThumbnail(w, h, async (tw, th, quality) => {
         const made = await imageThumbnailFor(file, {
             maxEdge: Math.max(tw, th),
@@ -151,9 +161,24 @@ async function zamiImageThumbnail(
         });
         return made?.file ?? null;
     });
-    if (!fit || fit.blob.size >= file.size) return { blob: null, w, h };
-    return { ...fit, w, h };
+    if (!fit || fit.blob.size >= file.size) {
+        return { blob: null, w, h, animated };
+    }
+    return { ...fit, w, h, animated };
 }
+
+/** Zami: utils/imageThumbnail's sniffAnimation, which it doesn't export. */
+async function sniffAnimated(file: Blob): Promise<boolean> {
+    try {
+        const head = new Uint8Array(
+            await file.slice(0, ANIMATION_SNIFF_BYTES).arrayBuffer(),
+        );
+        return isAnimatedImage(head) && animatedMime(head) !== null;
+    } catch {
+        return false;
+    }
+}
+const ANIMATION_SNIFF_BYTES = 256 * 1024;
 
 // Zami: a JPEG's metadata comes off natively, byte for byte as utils/
 // stripMetadata's stripJpeg takes it off (its scan of the image data blocks the
@@ -301,23 +326,51 @@ export async function uploadAttachment(
     }
 }
 
-export async function sendFile(
+/**
+ * The event content for a media send, shared by an upload and a reused media.
+ * MSC2530 captions: with a caption, `filename` carries the original file name
+ * and `body` (plus optional formatted_body) carries the caption text, rendered
+ * as a message alongside the media. Without one, `body` is just the file name
+ * and no `filename` is sent.
+ */
+function mediaEventContent(
+    msgtype: string,
+    name: string,
+    attached: UploadedAttachment,
+    info: Record<string, unknown>,
+    caption: MediaCaption | undefined,
+): Record<string, unknown> {
+    const content: Record<string, unknown> = {
+        msgtype,
+        body: caption ? caption.body : name,
+        ...attached, // { url } or { file } — never both
+        info,
+        // Always present (spec recommendation): an m.mentions key — even empty —
+        // disables the legacy body-scan push rules on the receiving server.
+        "m.mentions": caption?.mentions ?? {},
+    };
+    if (caption) {
+        content.filename = name;
+        if (caption.formattedBody) {
+            content.format = "org.matrix.custom.html";
+            content.formatted_body = caption.formattedBody;
+        }
+    }
+    return content;
+}
+
+/**
+ * Upload one file (and its thumbnail) and build its media event content,
+ * without sending anything. The content is what sendFile posts; sendGallery
+ * takes it apart into gallery items. `caption` is applied as sendFile applies
+ * it; omit it for the uncaptioned content a gallery item is built from.
+ */
+export async function prepareFileContent(
     roomId: string,
     file: File,
-    caption?: MediaCaption,
-    // Thread to post into and/or message this file replies to.
-    relation?: MediaRelation,
-    // Plugin outgoing content transforms: run over the fully-built event
-    // content (thread relation included), right before the send.
-    transformContent?: (
-        content: Record<string, unknown>,
-    ) => Record<string, unknown>,
-    // Upload progress of the main file (its thumbnail is not counted).
     onProgress?: (loaded: number, total: number) => void,
-    // Awaited after the uploads, right before the event is sent, so a batch
-    // can upload in parallel yet post in order (utils/queuedFileSend).
-    beforeSend?: () => Promise<void>,
-): Promise<void> {
+    caption?: MediaCaption,
+): Promise<Record<string, unknown>> {
     const owner = captureClient();
     // Precheck the size against the server's advertised upload limit so an
     // over-limit file fails fast instead of a 413 mid-upload. This REJECTS
@@ -395,6 +448,12 @@ export async function sendFile(
         if (thumb) {
             info.w = thumb.w;
             info.h = thumb.h;
+            // MSC4230: lets receivers skip a server thumbnail that would
+            // freeze it. Only claimed for formats the sniff can read.
+            if (thumb.animated) {
+                info.is_animated = true;
+                info["org.matrix.msc4230.is_animated"] = true;
+            }
         }
         if (thumb?.blob) {
             ownedClientOrThrow(owner);
@@ -447,33 +506,135 @@ export async function sendFile(
         }
     }
 
-    // MSC2530 media captions: when a caption is supplied, `filename` carries the
-    // original file name and `body` (plus optional formatted_body) carries the
-    // caption text — rendered as a message alongside the media. Without a
-    // caption, `body` is just the file name and no `filename` is sent.
-    const content: Record<string, unknown> = {
+    return mediaEventContent(
         msgtype,
-        body: caption ? caption.body : toUpload.name,
-        ...uploadResult, // { url } or { file } — never both
+        toUpload.name,
+        uploadResult,
         info,
-        // Always present (spec recommendation): an m.mentions key — even empty —
-        // disables the legacy body-scan push rules on the receiving server.
-        "m.mentions": caption?.mentions ?? {},
-    };
-    if (caption) {
-        content.filename = toUpload.name;
-        if (caption.formattedBody) {
-            content.format = "org.matrix.custom.html";
-            content.formatted_body = caption.formattedBody;
-        }
-    }
+        caption,
+    );
+}
 
+export async function sendFile(
+    roomId: string,
+    file: File,
+    caption?: MediaCaption,
+    // Thread to post into and/or message this file replies to.
+    relation?: MediaRelation,
+    // Plugin outgoing content transforms: run over the fully-built event
+    // content (thread relation included), right before the send.
+    transformContent?: (
+        content: Record<string, unknown>,
+    ) => Record<string, unknown>,
+    // Upload progress of the main file (its thumbnail is not counted).
+    onProgress?: (loaded: number, total: number) => void,
+    // Awaited after the uploads, right before the event is sent, so a batch
+    // can upload in parallel yet post in order (utils/queuedFileSend).
+    beforeSend?: () => Promise<void>,
+): Promise<void> {
+    // Captured synchronously, before prepareFileContent's own capture, so both
+    // name the same client generation.
+    const owner = captureClient();
+    const content = await prepareFileContent(roomId, file, onProgress, caption);
     const finalContent = relationFor(roomId, content, relation);
     const outgoing = transformContent
         ? transformContent(finalContent)
         : finalContent;
     if (beforeSend) await beforeSend();
     await ownedClientOrThrow(owner).sendMessage(roomId, outgoing as never);
+}
+
+/**
+ * Send several files as one MSC4274 gallery message: one event, the shared
+ * `caption`, and one item per file in the order given. Only the uploads run
+ * in parallel; the event is built and sent once they all finish. A failing
+ * upload rejects the whole gallery and nothing is sent. `onProgress` reports
+ * each file's upload by its index in `files`.
+ */
+export async function sendGallery(
+    roomId: string,
+    files: File[],
+    caption?: MediaCaption,
+    // Thread to post into and/or message these files reply to.
+    relation?: MediaRelation,
+    // Plugin outgoing content transforms, as for sendFile.
+    transformContent?: (
+        content: Record<string, unknown>,
+    ) => Record<string, unknown>,
+    // Upload progress of each file (its thumbnail is not counted).
+    onProgress?: (index: number, loaded: number, total: number) => void,
+    // Awaited after the uploads, right before the event is sent.
+    beforeSend?: () => Promise<void>,
+): Promise<void> {
+    const owner = captureClient();
+    const contents = await Promise.all(
+        files.map((file, index) =>
+            prepareFileContent(
+                roomId,
+                file,
+                onProgress
+                    ? (loaded, total) => onProgress(index, loaded, total)
+                    : undefined,
+            ),
+        ),
+    );
+    const content = buildGalleryContent(contents.map(toGalleryItem), caption);
+    const finalContent = relationFor(roomId, content, relation);
+    const outgoing = transformContent
+        ? transformContent(finalContent)
+        : finalContent;
+    if (beforeSend) await beforeSend();
+    await ownedClientOrThrow(owner).sendMessage(roomId, outgoing as never);
+}
+
+/**
+ * Send a file whose media is already on the server (a favourite starred from an
+ * earlier message) by pointing a new `m.image` (or, for a video, `m.video`)
+ * event at it, with no upload.
+ * Resolves false, having sent nothing, when that can't be done safely: the
+ * key of encrypted media sits in the event itself, so it may only go into an
+ * encrypted room. The caller then uploads the bytes instead.
+ */
+export async function sendExistingMedia(
+    roomId: string,
+    media: ReusableMedia,
+    name: string,
+    caption?: MediaCaption,
+    relation?: MediaRelation,
+    transformContent?: (
+        content: Record<string, unknown>,
+    ) => Record<string, unknown>,
+    beforeSend?: () => Promise<void>,
+): Promise<boolean> {
+    const owner = captureClient();
+    const attached: UploadedAttachment | null = media.file
+        ? { file: media.file }
+        : media.url
+          ? { url: media.url }
+          : null;
+    if (!attached) return false;
+    if ("file" in attached && !(await isRoomEncryptedForSend(roomId))) {
+        return false;
+    }
+    ownedClientOrThrow(owner);
+
+    const mimetype = media.info.mimetype;
+    const content = mediaEventContent(
+        typeof mimetype === "string" && mimetype.startsWith("video/")
+            ? "m.video"
+            : "m.image",
+        name,
+        attached,
+        { ...media.info },
+        caption,
+    );
+    const finalContent = relationFor(roomId, content, relation);
+    const outgoing = transformContent
+        ? transformContent(finalContent)
+        : finalContent;
+    if (beforeSend) await beforeSend();
+    await ownedClientOrThrow(owner).sendMessage(roomId, outgoing as never);
+    return true;
 }
 
 /**
@@ -536,6 +697,17 @@ export function mxcToHttp(
         return `${baseUrl}/_matrix/client/v1/media/thumbnail/${serverName}/${mediaId}?width=${width}&height=${height}&method=${method}&animated=true`;
     }
     return `${baseUrl}/_matrix/client/v1/media/download/${serverName}/${mediaId}`;
+}
+
+/**
+ * A server thumbnail of a custom emoji or sticker, sized for the pickers and
+ * marked so the service worker keeps it on the device
+ * (utils/pickerThumbCache.ts). Null when the mxc URL is not valid.
+ */
+export function pickerThumbUrl(mxcUrl: string, size: number): string | null {
+    const url = mxcToHttp(mxcUrl, size, size, "scale");
+    if (!url) return null;
+    return swControlsPage() ? markPickerThumb(url) : url;
 }
 
 /** Fetch an attachment from the homeserver with auth and return an object URL for use in <video/audio src> and file downloads. */
@@ -745,9 +917,10 @@ export async function fetchRoomMediaPage(
 ): Promise<RoomMediaPage> {
     if (!matrixClient) throw new Error(t("media.notLoggedIn"));
     const encrypted = isRoomEncrypted(matrixClient.getRoom(roomId));
-    // An encrypted room can't be filtered server-side, so a page is every
-    // message and only a few are media: ask for more per round trip.
-    limit ??= encrypted ? 100 : 50;
+    // No room can be filtered to media server-side (see
+    // mediaFilterDefinition), so a page is every message and only a few are
+    // media: ask for more per round trip.
+    limit ??= 100;
 
     const filter = new Filter(matrixClient.getUserId());
     filter.setDefinition(mediaFilterDefinition(encrypted, limit));
@@ -775,14 +948,16 @@ export async function fetchRoomMediaPage(
 
     const items: RoomMediaItem[] = [];
     for (const event of events) {
-        const item = mediaItemFromEvent({
-            eventId: event.getId(),
-            sender: event.getSender(),
-            ts: event.getTs(),
-            type: event.getType(),
-            content: event.getContent() as Record<string, unknown>,
-        });
-        if (item) items.push(item);
+        // An MSC4274 gallery contributes one item per attachment.
+        items.push(
+            ...mediaItemsFromEvent({
+                eventId: event.getId(),
+                sender: event.getSender(),
+                ts: event.getTs(),
+                type: event.getType(),
+                content: event.getContent() as Record<string, unknown>,
+            }),
+        );
     }
 
     // End of history is the token, not the chunk: conduit-derived servers

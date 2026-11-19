@@ -15,12 +15,14 @@ import { openEncryptionSetup } from "$lib/stores/onboarding.svelte";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import AccountSwitcher from "$lib/components/layout/AccountSwitcher.svelte";
 import { auth } from "$lib/stores/auth.svelte";
+import { aliasUserLocalpart, shownUserId } from "$lib/utils/streamerAlias";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import {
     presenceDot,
     presenceDotClass,
     presenceLabel,
 } from "$lib/utils/presence";
+import { presenceControlsShown } from "$lib/utils/profilePresence";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { openModal, closeModal } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
@@ -60,10 +62,24 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
     // The chosen state, not the server's: tuwunel reports the highest
     // state across all our sessions, so an away pick would never show.
     const ownPresenceState = useRune(() => settingsState.ownPresence);
-    const ownPresence = {
-        dotClass: presenceDotClass(presenceDot(ownPresenceState)),
-        label: presenceLabel(ownPresenceState),
-    };
+    const doNotDisturb = useRune(() => settingsState.doNotDisturb);
+    const presenceUnsupported = useRune(
+        () => settingsState.presenceUnsupported,
+    );
+    const shareProfilePresence = useRune(
+        () => settingsState.shareProfilePresence,
+    );
+    const ownPresence =
+        doNotDisturb && ownPresenceState !== "offline"
+            ? {
+                  dotClass: "bg-zam-dnd",
+                  label: t("presence.doNotDisturb"),
+              }
+            : {
+                  dotClass: presenceDotClass(presenceDot(ownPresenceState)),
+                  label: presenceLabel(ownPresenceState),
+              };
+    const streamerMode = useRune(() => settingsState.streamerMode);
 
     // What Zam is showing on the profile right now (a detected game, an app's
     // rich presence), so it is plain that it is being sent.
@@ -75,22 +91,33 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
         setAccountSwitcherOpen(true);
     }
 
+    // Until the first sync the account data is not in, so the secret storage
+    // key reads as missing and the nudge offered to set up encryption for a
+    // few seconds after switching to an account that already has it.
+    const synced = useRune(
+        () => auth.syncState === "SYNCING" || auth.syncState === "PREPARED",
+    );
+
     // Verification status refresh (guarded by tick to avoid re-triggering).
     // Zami: the effect's dependency on the tick is that guard.
     const verificationTick = useRune(
         () => securityState.securityTick + verificationState.verificationTick,
     );
     useEffect(() => {
+        if (!synced) return;
         refreshVerificationStatus();
-    }, [verificationTick]);
+    }, [synced, verificationTick]);
 
     // Verification nudge (shown only when actionable and not dismissed).
-    const nudge = useRune(() =>
-        verificationStatusState.view &&
-        verificationStatusState.view.actionable &&
-        !verificationStatusState.nudgeDismissed
-            ? verificationStatusState.view
-            : null,
+    const nudge = useRune(
+        () =>
+            synced &&
+            verificationStatusState.view &&
+            verificationStatusState.view.actionable &&
+            !verificationStatusState.nudgeDismissed
+                ? verificationStatusState.view
+                : null,
+        [synced],
     );
 
     // An unverified session can ask its siblings directly instead of going
@@ -110,9 +137,7 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
 
     // Zami: the settings icon's stroke is `currentColor`, the button's text
     // color.
-    const settingsIconColor = useResolveClassNames(
-        "text-discord-textMuted",
-    ).color;
+    const settingsIconColor = useResolveClassNames("text-zam-textMuted").color;
     // Zami: openProfileCard() anchors the card to the button's
     // getBoundingClientRect(); the measured view stands in.
     const avatarButton = useRef<PressableInstance>(null);
@@ -120,27 +145,27 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
     const toneClass = !nudge
         ? ""
         : nudge.tone === "verified"
-          ? "text-discord-online"
+          ? "text-zam-online"
           : nudge.tone === "warning"
-            ? "text-discord-warning"
+            ? "text-zam-warning"
             : nudge.tone === "unverified"
-              ? "text-discord-danger"
-              : "text-discord-textMuted";
+              ? "text-zam-danger"
+              : "text-zam-textMuted";
     // Zami: no `bg-current`: the dot takes the tone's color as a background.
     const toneDotClass = !nudge
         ? ""
         : nudge.tone === "verified"
-          ? "bg-discord-online"
+          ? "bg-zam-online"
           : nudge.tone === "warning"
-            ? "bg-discord-warning"
+            ? "bg-zam-warning"
             : nudge.tone === "unverified"
-              ? "bg-discord-danger"
-              : "bg-discord-textMuted";
+              ? "bg-zam-danger"
+              : "bg-zam-textMuted";
 
     return (
         <>
             {nudge && (
-                <View className="w-full px-2 py-1.5 flex-row items-center gap-2 bg-discord-backgroundTertiary border-t border-discord-divider flex-shrink-0">
+                <View className="w-full px-2 py-1.5 flex-row items-center gap-2 bg-zam-backgroundTertiary border-t border-zam-divider flex-shrink-0">
                     <View className={`w-2 h-2 rounded-full ${toneDotClass}`} />
                     {/* Zami: `title` (the nudge's detail) has no React Native
                         equivalent. */}
@@ -180,10 +205,7 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                         onPress={dismissVerificationNudge}
                         accessibilityLabel={t("profileFooter.dismiss")}
                     >
-                        <X
-                            size={14}
-                            className="text-discord-textMuted text-sm"
-                        />
+                        <X size={14} className="text-zam-textMuted text-sm" />
                     </Pressable>
                 </View>
             )}
@@ -198,7 +220,7 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                     // Zami: `title` has no React Native equivalent.
                     <View
                         key={entry.id}
-                        className="w-full px-2 py-1.5 flex-row items-center gap-2 bg-discord-backgroundSecondary border-t border-discord-divider flex-shrink-0"
+                        className="w-full px-2 py-1.5 flex-row items-center gap-2 bg-zam-backgroundSecondary border-t border-zam-divider flex-shrink-0"
                     >
                         {!!art && (
                             <Image
@@ -213,13 +235,13 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                         <View className="flex-1 min-w-0">
                             <Text
                                 numberOfLines={1}
-                                className="text-sm font-semibold text-discord-textPrimary truncate"
+                                className="text-sm font-semibold text-zam-textPrimary truncate"
                             >
                                 {entryName(entry)}
                             </Text>
                             <Text
                                 numberOfLines={1}
-                                className="text-xs text-discord-textMuted truncate"
+                                className="text-xs text-zam-textMuted truncate"
                             >
                                 {detail || t("richPresence.sharingTitle")}
                             </Text>
@@ -228,7 +250,7 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                 );
             })}
 
-            <View className="w-full h-14 px-2 flex-row items-center gap-2 bg-discord-backgroundTertiary flex-shrink-0">
+            <View className="w-full h-14 px-2 flex-row items-center gap-2 bg-zam-backgroundTertiary flex-shrink-0">
                 <View className="flex-1 flex-row items-center gap-2 min-w-0">
                     {/* The profile card needs a room for power levels, and is mounted
                         with the room view, so there is nothing to open without one. */}
@@ -255,40 +277,52 @@ export default function ProfileFooter({ onLogout, onSettings }: Props) {
                     >
                         <Avatar
                             src={ownAvatarSrc}
-                            name={userId || "?"}
+                            name={
+                                userId ? shownUserId(userId, streamerMode) : "?"
+                            }
                             id={userId}
                             size={32}
                         />
-                        <View
-                            className={`absolute bottom-0 end-0 w-3 h-3 ${ownPresence.dotClass} rounded-full border-2 border-discord-backgroundTertiary`}
-                        />
+                        {(presenceControlsShown(
+                            presenceUnsupported,
+                            shareProfilePresence,
+                        ) ||
+                            doNotDisturb) && (
+                            <View
+                                className={`absolute bottom-0 end-0 w-3 h-3 ${ownPresence.dotClass} rounded-full border-2 border-zam-backgroundTertiary`}
+                            />
+                        )}
                     </Pressable>
                     {/* Zami: `title` has no React Native equivalent; the texts
                         name the button. */}
                     <Pressable
                         accessibilityRole="button"
                         onPress={openAccountSwitcher}
-                        className="flex-1 min-w-0 rounded p-1 -m-1 hover:bg-discord-messageHover transition-colors"
+                        className="flex-1 min-w-0 rounded p-1 -m-1 hover:bg-zam-messageHover transition-colors"
                     >
+                        {/* Zami: not ported: streamer-hide (streamer mode's blur) */}
                         <Text
                             numberOfLines={1}
-                            className="text-sm font-semibold text-discord-textPrimary truncate"
+                            className="text-sm font-semibold text-zam-textPrimary truncate"
                         >
-                            {userId?.split(":")[0].replace("@", "") ??
-                                t("profileFooter.unknown")}
+                            {userId
+                                ? streamerMode
+                                    ? aliasUserLocalpart(userId)
+                                    : userId.split(":")[0].replace("@", "")
+                                : t("profileFooter.unknown")}
                         </Text>
                         <Text
                             numberOfLines={1}
-                            className="text-xs text-discord-textSecondary truncate"
+                            className="text-xs text-zam-textSecondary truncate"
                         >
-                            {userId ?? ""}
+                            {userId ? shownUserId(userId, streamerMode) : ""}
                         </Text>
                     </Pressable>
                 </View>
                 <Pressable
                     accessibilityRole="button"
                     onPress={onSettings}
-                    className="p-1.5 rounded hover:bg-discord-messageHover transition-colors"
+                    className="p-1.5 rounded hover:bg-zam-messageHover transition-colors"
                     accessibilityLabel={t("common.settings")}
                 >
                     <SvgIcon className="w-5 h-5">

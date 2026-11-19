@@ -22,7 +22,7 @@ export default function EmojiSuggestions({
 }) {
     return (
         <View
-            className={`bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg ${className}`}
+            className={`bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg ${className}`}
         >
             {candidates.map((candidate, i) => (
                 <Pressable
@@ -35,7 +35,7 @@ export default function EmojiSuggestions({
                     onPressIn={() => onPick(candidate)}
                     onHoverIn={() => onSelectedIdxChange?.(i)}
                     className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
-                        i === selectedIdx ? "bg-discord-messageHover" : ""
+                        i === selectedIdx ? "bg-zam-messageHover" : ""
                     }`}
                 >
                     {candidate.kind === "unicode" ? (
@@ -45,11 +45,11 @@ export default function EmojiSuggestions({
                             </Text>
                             <Text
                                 numberOfLines={1}
-                                className="flex-shrink text-sm text-discord-textPrimary truncate"
+                                className="flex-shrink text-sm text-zam-textPrimary truncate"
                             >
                                 :{candidate.name}:
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {candidate.emoji}
                             </Text>
                         </>
@@ -63,13 +63,13 @@ export default function EmojiSuggestions({
                             />
                             <Text
                                 numberOfLines={1}
-                                className="flex-shrink text-sm text-discord-textPrimary truncate"
+                                className="flex-shrink text-sm text-zam-textPrimary truncate"
                             >
                                 :{candidate.shortcode}:
                             </Text>
                             <Text
                                 numberOfLines={1}
-                                className="ms-auto ps-2 text-xs text-discord-textMuted truncate max-w-[50%]"
+                                className="ms-auto ps-2 text-xs text-zam-textMuted truncate max-w-[50%]"
                             >
                                 {candidate.source === USER_EMOJI_SOURCE
                                     ? t("messageInput.yourEmotes")

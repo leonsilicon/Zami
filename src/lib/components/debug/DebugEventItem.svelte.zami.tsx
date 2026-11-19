@@ -33,46 +33,46 @@ export default function DebugEventItem({ event }: Props) {
     return (
         // Zami: the `flex` summary has no disclosure triangle.
         <Details
-            className="mx-4 my-0.5 rounded bg-discord-backgroundTertiary/40 border border-discord-divider"
+            className="mx-4 my-0.5 rounded bg-zam-backgroundTertiary/40 border border-zam-divider"
             summaryClassName="px-2 py-1 cursor-pointer select-none flex-wrap items-center gap-2"
             marker={false}
             summary={
                 <>
-                    <Text className="font-mono text-xs text-discord-warning/80">
+                    <Text className="font-mono text-xs text-zam-warning/80">
                         {time}
                     </Text>
-                    <Text className="font-mono text-xs text-discord-accent">
+                    <Text className="font-mono text-xs text-zam-accent">
                         {type}
                     </Text>
                     {stateKey !== undefined && stateKey !== null ? (
                         // Zami: the hover title (t("debugEventItem.stateKey")) has no equivalent.
-                        <Text className="font-mono text-xs text-discord-warning">
+                        <Text className="font-mono text-xs text-zam-warning">
                             ⊞ {stateKey || t("debugEventItem.empty")}
                         </Text>
                     ) : null}
-                    <Text className="font-mono text-xs text-discord-textSecondary break-all">
+                    <Text className="font-mono text-xs text-zam-textSecondary break-all">
                         {sender}
                     </Text>
                     {redacted ? (
-                        <Text className="font-mono text-xs text-discord-danger">
+                        <Text className="font-mono text-xs text-zam-danger">
                             {t("debugEventItem.redacted")}
                         </Text>
                     ) : null}
                     {failureReason ? (
-                        <Text className="font-mono text-xs text-discord-danger">
+                        <Text className="font-mono text-xs text-zam-danger">
                             {failureReason}
                         </Text>
                     ) : null}
                 </>
             }
         >
-            <View className="px-2 pb-2 pt-1 border-t border-discord-divider gap-1">
-                <Text className="font-mono text-xs text-discord-textMuted break-all">
+            <View className="px-2 pb-2 pt-1 border-t border-zam-divider gap-1">
+                <Text className="font-mono text-xs text-zam-textMuted break-all">
                     {t("debugEventItem.id", { eventId })}
                 </Text>
                 <Text
                     selectable
-                    className="font-mono text-xs whitespace-pre-wrap break-all text-discord-textPrimary"
+                    className="font-mono text-xs whitespace-pre-wrap break-all text-zam-textPrimary"
                 >
                     {contentJson}
                 </Text>

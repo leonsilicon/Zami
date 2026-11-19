@@ -23,7 +23,9 @@ export type SettingsTab =
     | "plugins"
     | "server"
     | "about"
-    | "debug";
+    | "debug"
+    // A plugin's page (zam.ui.addSettingsPage), by registry entry id.
+    | `plugin:${number}`;
 
 export interface SettingsTabEntry {
     id: SettingsTab;
@@ -120,20 +122,22 @@ export interface SettingsPlatform {
     desktopTray: boolean;
     /** The Capacitor Android app. */
     nativeApp: boolean;
-    /** The desktop app's rich presence bridge exists (`richPresenceAvailable()`). */
+    /** The desktop app's rich presence bridge exists (`richPresenceAvailable()`),
+     *  or a plugin has published rich presence. */
     richPresence: boolean;
 }
 
 /**
- * Whether a tab has content on this platform. General only holds the
- * desktop tray toggle, so web and Android hide it (and its search entries)
- * instead of showing an empty panel; Rich presence needs the desktop bridge.
+ * Whether a tab has content on this platform. General holds the desktop
+ * tray toggles and the proxy setting (desktop and Android), so the web hides
+ * it (and its search entries) instead of showing an empty panel; Rich
+ * presence needs the desktop bridge.
  */
 export function isSettingsTabAvailable(
     tab: SettingsTab,
     platform: SettingsPlatform,
 ): boolean {
-    if (tab === "general") return platform.desktopTray;
+    if (tab === "general") return platform.desktopTray || platform.nativeApp;
     if (tab === "rich-presence") return platform.richPresence;
     return true;
 }

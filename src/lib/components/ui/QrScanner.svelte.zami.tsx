@@ -252,7 +252,7 @@ export default function QrScanner({
             </View>
             <Text
                 accessibilityLiveRegion="polite"
-                className="text-xs text-discord-textMuted"
+                className="text-xs text-zam-textMuted"
             >
                 {status}
             </Text>

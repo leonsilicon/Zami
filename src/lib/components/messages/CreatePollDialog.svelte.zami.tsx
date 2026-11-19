@@ -94,7 +94,7 @@ export default function CreatePollDialog() {
                     >
                         <View
                             accessibilityViewIsModal
-                            className="relative z-10 bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-md max-h-[85vh] flex-shrink overflow-hidden"
+                            className="relative z-10 bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-md max-h-[85vh] flex-shrink overflow-hidden"
                         >
                             <ScrollView
                                 keyboardShouldPersistTaps="handled"
@@ -103,14 +103,14 @@ export default function CreatePollDialog() {
                             >
                                 <Text
                                     accessibilityRole="header"
-                                    className="text-lg font-bold text-discord-textPrimary"
+                                    className="text-lg font-bold text-zam-textPrimary"
                                 >
                                     {t("createPollDialog.createPoll")}
                                 </Text>
 
                                 {/* Question */}
                                 <View className="flex-col gap-1.5">
-                                    <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                         {t("createPollDialog.question")}
                                     </Text>
                                     <TextInput
@@ -123,14 +123,14 @@ export default function CreatePollDialog() {
                                             "createPollDialog.askSomething",
                                         )}
                                         maxLength={340}
-                                        className="w-full rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-2 focus:ring-discord-accent"
-                                        placeholderTextColorClassName="accent-discord-textMuted"
+                                        className="w-full rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                                        placeholderTextColorClassName="accent-zam-textMuted"
                                     />
                                 </View>
 
                                 {/* Options */}
                                 <View className="flex-col gap-1.5">
-                                    <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                         {t("createPollDialog.options")}
                                     </Text>
                                     <View className="flex-col gap-2">
@@ -153,8 +153,8 @@ export default function CreatePollDialog() {
                                                         { value: i + 1 },
                                                     )}
                                                     maxLength={340}
-                                                    className="flex-1 rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-2 focus:ring-discord-accent"
-                                                    placeholderTextColorClassName="accent-discord-textMuted"
+                                                    className="flex-1 rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                                                    placeholderTextColorClassName="accent-zam-textMuted"
                                                 />
                                                 <Pressable
                                                     accessibilityRole="button"
@@ -167,10 +167,10 @@ export default function CreatePollDialog() {
                                                     accessibilityLabel={t(
                                                         "createPollDialog.removeOption",
                                                     )}
-                                                    className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded hover:bg-discord-messageHover transition-colors disabled:opacity-30"
+                                                    className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded hover:bg-zam-messageHover transition-colors disabled:opacity-30"
                                                 >
                                                     <SvgIcon
-                                                        className="w-4 h-4 text-discord-textMuted"
+                                                        className="w-4 h-4 text-zam-textMuted"
                                                         d="M18.3 5.71 12 12l6.3 6.29-1.42 1.42L10.59 13.4 4.29 19.7 2.87 18.3 9.17 12 2.87 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"
                                                     />
                                                 </Pressable>
@@ -183,7 +183,7 @@ export default function CreatePollDialog() {
                                             onPress={addAnswer}
                                             className="self-start mt-1"
                                         >
-                                            <Text className="text-sm font-medium text-discord-accent hover:text-discord-accentHover hover:underline transition-colors">
+                                            <Text className="text-sm font-medium text-zam-accent hover:text-zam-accentHover hover:underline transition-colors">
                                                 {t(
                                                     "createPollDialog.addOption",
                                                 )}
@@ -194,10 +194,10 @@ export default function CreatePollDialog() {
 
                                 {/* Result visibility */}
                                 <View className="flex-col gap-1.5">
-                                    <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                    <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                         {t("createPollDialog.results")}
                                     </Text>
-                                    <View className="flex-row gap-1 rounded bg-discord-backgroundTertiary p-1">
+                                    <View className="flex-row gap-1 rounded bg-zam-backgroundTertiary p-1">
                                         <Pressable
                                             accessibilityRole="button"
                                             accessibilityState={{
@@ -206,7 +206,7 @@ export default function CreatePollDialog() {
                                             onPress={() => setKind("disclosed")}
                                             className={`flex-1 rounded px-3 py-1.5 transition-colors ${
                                                 kind === "disclosed"
-                                                    ? "bg-discord-accent"
+                                                    ? "bg-zam-accent"
                                                     : ""
                                             }`}
                                         >
@@ -214,7 +214,7 @@ export default function CreatePollDialog() {
                                                 className={`text-sm text-center ${
                                                     kind === "disclosed"
                                                         ? "text-white"
-                                                        : "text-discord-textSecondary hover:text-discord-textPrimary"
+                                                        : "text-zam-textSecondary hover:text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -233,7 +233,7 @@ export default function CreatePollDialog() {
                                             }
                                             className={`flex-1 rounded px-3 py-1.5 transition-colors ${
                                                 kind === "undisclosed"
-                                                    ? "bg-discord-accent"
+                                                    ? "bg-zam-accent"
                                                     : ""
                                             }`}
                                         >
@@ -241,7 +241,7 @@ export default function CreatePollDialog() {
                                                 className={`text-sm text-center ${
                                                     kind === "undisclosed"
                                                         ? "text-white"
-                                                        : "text-discord-textSecondary hover:text-discord-textPrimary"
+                                                        : "text-zam-textSecondary hover:text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -259,7 +259,7 @@ export default function CreatePollDialog() {
                                     label={t(
                                         "createPollDialog.allowSelectingMultipleOptions",
                                     )}
-                                    labelClassName="flex-shrink text-sm text-discord-textPrimary"
+                                    labelClassName="flex-shrink text-sm text-zam-textPrimary"
                                     className="items-center gap-2.5 cursor-pointer select-none"
                                     inputClassName="h-4 w-4 rounded"
                                 />
@@ -267,7 +267,7 @@ export default function CreatePollDialog() {
                                 {/* Footer */}
                                 <View className="flex-row items-center justify-end gap-3 pt-1">
                                     {errorReason ? (
-                                        <Text className="me-auto flex-shrink text-xs text-discord-textMuted">
+                                        <Text className="me-auto flex-shrink text-xs text-zam-textMuted">
                                             {errorReason}
                                         </Text>
                                     ) : null}
@@ -276,7 +276,7 @@ export default function CreatePollDialog() {
                                         onPress={closeCreatePollDialog}
                                         className="px-4 py-2 rounded"
                                     >
-                                        <Text className="text-sm font-medium text-discord-textSecondary hover:text-discord-textPrimary hover:underline transition-colors">
+                                        <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
@@ -286,7 +286,7 @@ export default function CreatePollDialog() {
                                         disabled={
                                             submitting || validation.ok !== true
                                         }
-                                        className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                        className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                                     >
                                         <Text className="text-white text-sm font-semibold">
                                             {submitting

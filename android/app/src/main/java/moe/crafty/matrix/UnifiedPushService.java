@@ -135,6 +135,7 @@ public class UnifiedPushService extends PushService {
         if (counts != null && counts.has("unread")) {
             unread = String.valueOf(counts.optInt("unread"));
         }
+        PushLog.log(ctx, "unifiedpush received");
         MatrixMessagingService.handleMatrixPush(ctx, roomId, eventId, unread, accountOf(n));
     }
 
@@ -176,7 +177,7 @@ public class UnifiedPushService extends PushService {
             URL ep = new URL(endpoint);
             String candidate = ep.getProtocol() + "://" + ep.getAuthority()
                 + "/_matrix/push/v1/notify";
-            conn = (HttpURLConnection) new URL(candidate).openConnection();
+            conn = ZamProxy.open(new URL(candidate));
             conn.setConnectTimeout(CONNECT_TIMEOUT);
             conn.setReadTimeout(READ_TIMEOUT);
             conn.setInstanceFollowRedirects(false);

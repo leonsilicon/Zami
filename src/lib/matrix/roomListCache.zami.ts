@@ -50,6 +50,7 @@ export const CACHED_ACCOUNT_DATA_TYPES = [
     EventType.Direct as string,
     "im.client.space_layout",
     "im.client.space_order",
+    "chat.commet.sidebar_ordering",
 ];
 
 // A DM with more joined members than this is a group chat; don't cache its
@@ -58,8 +59,11 @@ const MAX_CACHED_MEMBERS = 8;
 
 // Recent timeline events kept per room so a boot with no network can show the
 // conversation instead of an empty pane. Wire events only: encrypted rooms
-// cache the ciphertext the SDK's own store already holds, and decryption
-// happens at materialise time from the local crypto store.
+// cache the ciphertext the SDK's own store already holds. Decryption is NOT
+// part of materialising (there is no decrypt call there): client.ts decrypts
+// the room about to be opened before publishing the cache, then the rest in
+// the background. Until that pass reaches an event, the timeline renders a
+// neutral "decrypting" row, never the missing-keys copy.
 const MAX_CACHED_EVENTS = 40;
 
 interface CachedHero {
@@ -667,6 +671,54 @@ async function saveClientSnapshotNow(
     } catch (err) {
         reportStorageError(err, { fromIndexedDB: true });
         console.warn("[roomListCache] save failed", err);
+    }
+}
+
+// The /hierarchy cache lives in its own record, not in the room-list snapshot:
+// a snapshot is rewritten on a timer, only once the room list is complete, and
+// dropped to heal rooms, any of which would lose a hierarchy that took a
+// minute to fetch. It is kept until logout.
+const HIERARCHY_RECORD_VERSION = 1;
+const hierarchyRecordKey = (key: string) => `${key}|hierarchy`;
+
+export async function loadHierarchies(
+    key: string,
+): Promise<Record<string, SpaceChildInfo[]> | null> {
+    try {
+        const rec = await withStore<
+            | { v: number; hierarchies: Record<string, SpaceChildInfo[]> }
+            | undefined
+        >("readonly", (s) => s.get(hierarchyRecordKey(key)));
+        return rec && rec.v === HIERARCHY_RECORD_VERSION
+            ? rec.hierarchies
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+export async function saveHierarchies(
+    key: string,
+    hierarchies: Record<string, SpaceChildInfo[]>,
+): Promise<void> {
+    try {
+        await withStore("readwrite", (s) =>
+            s.put(
+                { v: HIERARCHY_RECORD_VERSION, hierarchies },
+                hierarchyRecordKey(key),
+            ),
+        );
+    } catch (err) {
+        reportStorageError(err, { fromIndexedDB: true });
+        console.warn("[roomListCache] hierarchy save failed", err);
+    }
+}
+
+export async function deleteHierarchies(key: string): Promise<void> {
+    try {
+        await withStore("readwrite", (s) => s.delete(hierarchyRecordKey(key)));
+    } catch {
+        // Nothing stored or no IndexedDB: nothing to wipe.
     }
 }
 

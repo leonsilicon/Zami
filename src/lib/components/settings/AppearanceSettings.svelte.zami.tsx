@@ -8,6 +8,7 @@ import ThemeColorEditor from "$lib/components/settings/ThemeColorEditor.svelte";
 import OptionSelector from "$lib/components/ui/OptionSelector.svelte";
 import {
     setRightAlignOwnBubbles,
+    setBubbleAllMessages,
     setShowNameColours,
     setTimeClock,
     setDateStyle,
@@ -37,7 +38,7 @@ const dateOptions: Array<{ value: DateStyle; label: string }> = [
     { value: "custom", label: t("appearanceSettings.custom") },
 ];
 
-const CSS_PLACEHOLDER = ":root {\n    --discord-accent: #e91e63 !important;\n}";
+const CSS_PLACEHOLDER = ":root {\n    --zam-accent: #e91e63 !important;\n}";
 
 // Zami: not ported: applying custom CSS. setCustomCss and setCustomCssEnabled store
 // the setting, then applyCustomCss adds a <style> element, which throws on React
@@ -59,6 +60,7 @@ export default function AppearanceSettings() {
     const rightAlignOwnBubbles = useRune(
         () => settingsState.rightAlignOwnBubbles,
     );
+    const bubbleAllMessages = useRune(() => settingsState.bubbleAllMessages);
     const showNameColours = useRune(() => settingsState.showNameColours);
     const keepSidebarOpen = useRune(() => settingsState.keepSidebarOpen);
     const customCssEnabled = useRune(() => settingsState.customCssEnabled);
@@ -88,20 +90,20 @@ export default function AppearanceSettings() {
     return (
         <View className="gap-6">
             <SettingAnchor anchor="appearance-language">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.language")}
                 </Text>
-                <View className="flex-col gap-2 py-2 border-b border-discord-divider sm:flex-row sm:items-center sm:justify-between">
+                <View className="flex-col gap-2 py-2 border-b border-zam-divider sm:flex-row sm:items-center sm:justify-between">
                     <View className="min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.displayLanguage")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("appearanceSettings.displayLanguageHint")}
                         </Text>
                     </View>
                     <Select
-                        className="bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded px-2 py-1.5 border border-discord-divider focus:outline-none focus:ring-2 focus:ring-discord-accent sm:max-w-[16rem]"
+                        className="bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent sm:max-w-[16rem]"
                         value={currentLocale}
                         onChange={onLocaleChange}
                         accessibilityLabel={t(
@@ -120,20 +122,20 @@ export default function AppearanceSettings() {
                 </View>
             </SettingAnchor>
             <SettingAnchor anchor="appearance-layout">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.layout")}
                 </Text>
                 <SettingAnchor
                     anchor="theme-rightalign"
-                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                    className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
                 >
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t(
                                 "appearanceSettings.rightAlignMyMessagesBubbleLayout",
                             )}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "appearanceSettings.displayYourOwnMessagesOnThe",
                             )}
@@ -148,14 +150,32 @@ export default function AppearanceSettings() {
                     />
                 </SettingAnchor>
                 <SettingAnchor
-                    anchor="appearance-namecolours"
-                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                    anchor="theme-bubbleall"
+                    className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
                 >
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("appearanceSettings.bubbleAllMessages")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("appearanceSettings.bubbleAllMessagesDesc")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={bubbleAllMessages}
+                        onChange={setBubbleAllMessages}
+                        label={t("appearanceSettings.bubbleAllMessages")}
+                    />
+                </SettingAnchor>
+                <SettingAnchor
+                    anchor="appearance-namecolours"
+                    className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
+                >
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.showNameColours")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("appearanceSettings.drawPeopleSNamesInThe")}
                         </Text>
                     </View>
@@ -167,13 +187,13 @@ export default function AppearanceSettings() {
                 </SettingAnchor>
                 <SettingAnchor
                     anchor="appearance-keepsidebar"
-                    className="flex-row items-center gap-3 py-2 border-b border-discord-divider"
+                    className="flex-row items-center gap-3 py-2 border-b border-zam-divider"
                 >
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.keepRoomListOpen")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("appearanceSettings.donTAutoCloseTheRoom")}
                         </Text>
                     </View>
@@ -187,16 +207,16 @@ export default function AppearanceSettings() {
             <ThemeColorEditor />
 
             <SettingAnchor anchor="appearance-custom-css">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.customCss")}
                 </Text>
-                <View className="flex-row items-center justify-between gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center justify-between gap-3 py-2 border-b border-zam-divider">
                     {/* Zami: `shrink`, a web flex item's default. */}
                     <View className="shrink min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.customCssEnable")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("appearanceSettings.customCssHint")}
                         </Text>
                     </View>
@@ -212,31 +232,31 @@ export default function AppearanceSettings() {
                 <TextInput
                     multiline
                     textAlignVertical="top"
-                    className="mt-3 w-full min-h-40 rounded border border-discord-divider bg-discord-backgroundTertiary p-2 font-mono text-xs text-discord-textPrimary focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                    className="mt-3 w-full min-h-40 rounded border border-zam-divider bg-zam-backgroundTertiary p-2 font-mono text-xs text-zam-textPrimary focus:outline-none focus:ring-2 focus:ring-zam-accent"
                     spellCheck={false}
                     autoCorrect={false}
                     autoCapitalize="none"
                     autoComplete="off"
                     placeholder={CSS_PLACEHOLDER}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityLabel={t("appearanceSettings.customCss")}
                     value={customCss}
                     onChangeText={(value) =>
                         applyingCustomCss(() => setCustomCss(value))
                     }
                 />
-                <Text className="mt-1 text-xs text-discord-textMuted">
+                <Text className="mt-1 text-xs text-zam-textMuted">
                     {t("appearanceSettings.customCssRecovery")}
                 </Text>
             </SettingAnchor>
 
             <SettingAnchor anchor="cust-timestamps">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-3">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3">
                     {t("appearanceSettings.timestamps")}
                 </Text>
 
-                <View className="flex-col gap-2 py-2 border-b border-discord-divider sm:flex-row sm:items-center sm:justify-between">
-                    <Text className="text-sm text-discord-textPrimary">
+                <View className="flex-col gap-2 py-2 border-b border-zam-divider sm:flex-row sm:items-center sm:justify-between">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("appearanceSettings.timeFormat")}
                     </Text>
                     <OptionSelector
@@ -247,8 +267,8 @@ export default function AppearanceSettings() {
                     />
                 </View>
 
-                <View className="flex-col gap-2 py-2 border-b border-discord-divider sm:flex-row sm:items-center sm:justify-between">
-                    <Text className="text-sm text-discord-textPrimary">
+                <View className="flex-col gap-2 py-2 border-b border-zam-divider sm:flex-row sm:items-center sm:justify-between">
+                    <Text className="text-sm text-zam-textPrimary">
                         {t("appearanceSettings.dateFormat")}
                     </Text>
                     <OptionSelector
@@ -260,8 +280,8 @@ export default function AppearanceSettings() {
                 </View>
 
                 {dateStyle === "custom" && (
-                    <View className="py-3 border-b border-discord-divider">
-                        <Text className="text-sm text-discord-textPrimary">
+                    <View className="py-3 border-b border-zam-divider">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.customDatePattern")}
                         </Text>
                         <TextInput
@@ -276,23 +296,23 @@ export default function AppearanceSettings() {
                             autoComplete="off"
                             autoCapitalize="none"
                             placeholder={t("appearanceSettings.yyyyMmDd")}
-                            placeholderTextColorClassName="accent-discord-textMuted"
-                            className={`mt-2 w-full px-2.5 py-1.5 rounded bg-discord-backgroundTertiary text-sm text-discord-textPrimary border ${
+                            placeholderTextColorClassName="accent-zam-textMuted"
+                            className={`mt-2 w-full px-2.5 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary border ${
                                 customPreview === null
-                                    ? "border-discord-danger"
-                                    : "border-discord-divider focus:border-discord-accent"
+                                    ? "border-zam-danger"
+                                    : "border-zam-divider focus:border-zam-accent"
                             } outline-none`}
                         />
                         {customPreview !== null ? (
-                            <Text className="mt-1.5 text-xs text-discord-textMuted">
+                            <Text className="mt-1.5 text-xs text-zam-textMuted">
                                 {t("appearanceSettings.preview")}{" "}
-                                <Text className="text-xs text-discord-textPrimary">
+                                <Text className="text-xs text-zam-textPrimary">
                                     {customPreview}
                                 </Text>{" "}
                                 {t("appearanceSettings.dateFnsTokensEGYyyy")}
                             </Text>
                         ) : (
-                            <Text className="mt-1.5 text-xs text-discord-danger">
+                            <Text className="mt-1.5 text-xs text-zam-danger">
                                 {t(
                                     "appearanceSettings.invalidFormatUseLowercaseDateFns",
                                 )}
@@ -303,10 +323,10 @@ export default function AppearanceSettings() {
 
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.alwaysShowAbsoluteDates")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "appearanceSettings.replaceTodayAndYesterdayWithThe",
                             )}
@@ -321,12 +341,12 @@ export default function AppearanceSettings() {
             </SettingAnchor>
 
             <SettingAnchor anchor="appearance-reducemotion">
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("appearanceSettings.reduceMotion")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "appearanceSettings.minimizeAnimationsAndTransitionsYourDevice",
                             )}

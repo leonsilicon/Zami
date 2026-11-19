@@ -33,41 +33,70 @@ import {
 } from "$lib/matrix/client";
 import { interfaceState } from "$lib/stores/interface.svelte";
 import { openProfileCard } from "$lib/stores/profileCard.svelte";
-import { presenceState, presenceFor } from "$lib/stores/presence.svelte";
+import { presenceFor } from "$lib/stores/presence.svelte";
+import { cachedNameColourFor } from "$lib/stores/profileFields.svelte";
 import {
     presenceDot,
     presenceDotClass,
     presenceLabel,
 } from "$lib/utils/presence";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { collectMemberDecorations } from "$lib/plugins/pluginMembers";
+import PowerLevelTagBadge from "$lib/components/ui/PowerLevelTagBadge.svelte";
+import {
+    acquirePowerLevelTags,
+    effectiveRoomTags,
+    type EffectiveRoomTags,
+} from "$lib/stores/powerLevelTags.svelte";
+import {
+    sortedTagLevels,
+    tagForPowerLevel,
+    type PowerLevelTag,
+} from "$lib/utils/powerLevelTags";
 
 interface Props {
     room: Room;
 }
 
-// Zami: the four `{#each}` blocks below are one FlatList: each group's
-// heading, then its members, as rows.
+// Row geometry for the windowed list (px).
+const HEADER_H = 24;
+const MEMBER_H = 40;
+const GROUP_GAP = 8;
+const PAD_Y = 8;
+// Zami: upstream's OVERSCAN (rows rendered beyond the viewport) is the
+// FlatList's `windowSize` below.
+
+// Zami: upstream's absolutely positioned rows are a FlatList's, and their
+// `top`/`height` its getItemLayout.
 type Row =
-    | { kind: "heading"; key: string; label: string }
+    | {
+          kind: "header";
+          key: string;
+          label: string;
+          top: number;
+          height: number;
+      }
     | {
           kind: "member";
           key: string;
           member: RoomMember;
-          /** The member's state event: a new one re-renders the row (a
-           *  rename or a new avatar mutates the same RoomMember). */
+          /** Zami: the member's state event: a new one re-renders the row
+           *  (a rename or a new avatar mutates the same RoomMember). */
           rev: MatrixEvent | undefined;
-          /** The muted second line (creators, admins), if any. */
-          role: string | null;
-          /** Regular members' names are muted. */
+          roleLabel: string | null;
+          roleTag: PowerLevelTag | null;
           muted: boolean;
-          /** The group's `mb-2`, on its last row. */
-          last: boolean;
+          top: number;
+          height: number;
       };
 
-type Group = "creators" | "admins" | "moderators" | "regular";
+// Zami: a member's group is "creators", the level of the tag that applies to
+// them, or "untitled" (below every tag).
+type Group = "creators" | "untitled" | number;
 
-// One pass and a shared collator: this re-runs on every sync response,
-// and in a big room three filters (each looking up every member's power
-// level) plus three localeCompare sorts were tens of ms per run.
+// One pass and a shared collator: a big room's three filters (each looking
+// up every member's power level) plus three localeCompare sorts were tens
+// of ms per run.
 // Zami: on Hermes each comparison is a native call, so the members are kept
 // sorted by name in an index: a member event moves one entry (a binary
 // search), and only a full reload sorts, in slices (@-/com.leonsilicon.zami.lists).
@@ -86,16 +115,39 @@ export default function MemberList({ room }: Props) {
     const isMobile = useRune(() => interfaceState.isMobile);
     const [memberTick, setMemberTick] = useState(0);
 
-    useEffect(() => {
-        loadRoomMembersIfNeeded(room)
-            .then(() => setMemberTick((n) => n + 1))
-            .catch(() => {});
-        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream's onMount.
-    }, []);
+    const scroller = useRef<FlatList<Row>>(null);
 
-    // Zami: upstream re-derives the members on every sync (`roomsTick`), or
-    // kicks/bans/joins from other sessions never leave the list; here this
-    // room's own state events do it, so another room's sync costs nothing.
+    // MessageArea keeps this component mounted across room switches and only
+    // swaps `room`, so the load, the subscription and the scroll position all
+    // follow it rather than running once on mount.
+    useEffect(() => {
+        const r = room;
+        let live = true;
+        loadRoomMembersIfNeeded(r)
+            .then(() => {
+                if (live) setMemberTick((n) => n + 1);
+            })
+            .catch(() => {});
+        scroller.current?.scrollToOffset({ offset: 0, animated: false });
+        // Power level tag edits are ordinary state events, so they arrive
+        // through the tags subscription instead.
+        const releaseTags = acquirePowerLevelTags(r.roomId);
+        return () => {
+            live = false;
+            releaseTags();
+        };
+    }, [room]);
+
+    // Zami: the room's tags, read through useRune so a tags edit (or a
+    // locale switch, for the defaults) rebuilds the groups. The parsed tags
+    // are memoised per state event, so the same tags compare equal.
+    const tagsInfo = useRune(() => effectiveRoomTags(room.roomId), [room], {
+        isEqual: sameTags,
+    });
+
+    // Zami: upstream regroups everything when onRoomMembersChanged fires
+    // (kicks/bans/joins from other sessions included); here this room's own
+    // state events move just the members they name, below.
     // The joined members by name; a small room's are sorted before the first
     // render, as upstream's `$derived` is.
     const [index] = useState(() => {
@@ -191,13 +243,23 @@ export default function MemberList({ room }: Props) {
     // Zami: the groups, as FlatList rows, rebuilt only when a member or a
     // power level changed (`version`); unchanged rows keep their objects.
     const [rowCache] = useState(() => createRowCache<Row>());
+    // Members are bucketed by the tag that applies to their power level, one
+    // bucket per defined tag level (highest first). Creators sit above all
+    // tags. Members below every tag land in the untitled bucket.
+    // Zami: the tags each member's cached group was worked out against.
+    const groupedFor = useRef<EffectiveRoomTags["tags"] | null>(null);
     const groups = useMemo(() => {
         void version;
+        const info = tagsInfo;
+        if (groupedFor.current !== info.tags) {
+            groupedFor.current = info.tags;
+            groupOf.clear();
+        }
+        const levels = sortedTagLevels(info.tags);
         const creators: RoomMember[] = [];
-        const admins: RoomMember[] = [];
-        const moderators: RoomMember[] = [];
-        const regular: RoomMember[] = [];
-        const lists = { creators, admins, moderators, regular };
+        const byLevel = new Map<number, RoomMember[]>();
+        for (const level of levels) byLevel.set(level, []);
+        const untitled: RoomMember[] = [];
         for (const { id, value: m } of index.entries) {
             let group = groupOf.get(id);
             if (group === undefined) {
@@ -206,76 +268,103 @@ export default function MemberList({ room }: Props) {
                 if (hasImmutableCreatorPower(room, m.userId))
                     group = "creators";
                 else {
-                    const l = getUserPowerLevel(room, m.userId);
-                    group =
-                        l >= 100
-                            ? "admins"
-                            : l >= 50
-                              ? "moderators"
-                              : "regular";
+                    const resolved = tagForPowerLevel(
+                        info.tags,
+                        getUserPowerLevel(room, m.userId),
+                    );
+                    group = resolved ? resolved.level : "untitled";
                 }
                 groupOf.set(id, group);
             }
-            lists[group].push(m);
+            if (group === "creators") creators.push(m);
+            else if (group === "untitled") untitled.push(m);
+            else byLevel.get(group)?.push(m);
         }
+        // Zami: the index keeps every list in name order already.
+        const tagged = levels.map((level) => ({
+            level,
+            tag: info.tags[level],
+            members: byLevel.get(level) ?? [],
+        }));
+        const lowestLevel =
+            levels.length > 0 ? levels[levels.length - 1] : null;
+        // Flat, sorted row list: header then members for each non-empty group.
+        const sections: {
+            key: string;
+            label: string;
+            members: RoomMember[];
+            roleLabel: string | null;
+            roleTag: PowerLevelTag | null;
+            muted: boolean;
+        }[] = [];
+        if (creators.length > 0)
+            sections.push({
+                key: "creators",
+                label: t("memberList.creators", { length: creators.length }),
+                members: creators,
+                roleLabel: t("roomSettings.creatorLabel"),
+                roleTag: null,
+                muted: false,
+            });
+        for (const { level, tag, members: list } of tagged) {
+            if (list.length === 0) continue;
+            // The lowest tag is the baseline: its rows stay unlabelled and
+            // muted, as regular members were before tags.
+            const isLowest = level === lowestLevel;
+            sections.push({
+                key: `tag:${level}`,
+                label: t("memberList.roleSection", {
+                    name: tag.name,
+                    length: list.length,
+                }),
+                members: list,
+                roleLabel: null,
+                roleTag: isLowest ? null : tag,
+                muted: isLowest && level <= 0,
+            });
+        }
+        if (untitled.length > 0)
+            sections.push({
+                key: "untitled",
+                label: t("memberList.members", { length: untitled.length }),
+                members: untitled,
+                roleLabel: null,
+                roleTag: null,
+                muted: true,
+            });
+
         const rows = rowCache.build((row) => {
             const out: Row[] = [];
-            function group(
-                id: string,
-                label: string,
-                list: RoomMember[],
-                role: string | null,
-                muted: boolean,
-                spaced: boolean,
-            ) {
-                if (list.length === 0) return;
-                out.push(row({ kind: "heading", key: `heading:${id}`, label }));
-                list.forEach((member, i) =>
+            let top = PAD_Y;
+            sections.forEach((s, i) => {
+                if (i > 0) top += GROUP_GAP;
+                out.push(
+                    row({
+                        kind: "header",
+                        key: `h:${s.key}`,
+                        label: s.label,
+                        top,
+                        height: HEADER_H,
+                    }),
+                );
+                top += HEADER_H;
+                for (const m of s.members) {
                     out.push(
                         row({
                             kind: "member",
-                            key: member.userId,
-                            member,
-                            rev: member.events.member,
-                            role,
-                            muted,
-                            last: spaced && i === list.length - 1,
+                            key: `m:${m.userId}`,
+                            member: m,
+                            rev: m.events.member,
+                            roleLabel: s.roleLabel,
+                            roleTag: s.roleTag,
+                            muted: s.muted,
+                            top,
+                            height: MEMBER_H,
                         }),
-                    ),
-                );
-            }
-            group(
-                "creators",
-                t("memberList.creators", { length: creators.length }),
-                creators,
-                t("roomSettings.creatorLabel"),
-                false,
-                true,
-            );
-            group(
-                "admins",
-                t("memberList.admins", { length: admins.length }),
-                admins,
-                t("memberList.admin"),
-                false,
-                true,
-            );
-            group(
-                "moderators",
-                t("memberList.moderators", { length: moderators.length }),
-                moderators,
-                null,
-                false,
-                true,
-            );
-            group(
-                "members",
-                t("memberList.members", { length: regular.length }),
-                regular,
-                null,
-                true,
-                false,
-            );
+                    );
+                    top += MEMBER_H;
+                }
+            });
             return out;
         });
         // While a large room's members sort, the heading already counts them.
@@ -284,52 +373,68 @@ export default function MemberList({ room }: Props) {
                 ? getRoomMembers(room).length
                 : index.entries.length;
         return { rows, count };
-    }, [version, room, index, groupOf, rowCache]);
+    }, [version, tagsInfo, room, index, groupOf, rowCache]);
 
-    const renderItem = useCallback(({ item: row }: ListRenderItemInfo<Row>) => {
-        if (row.kind === "heading") {
-            // px-4 matches the member rows' mx-2 + px-2 = 16px inset.
+    const renderItem = useCallback(
+        ({ item: row, index }: ListRenderItemInfo<Row>) => {
+            if (row.kind === "header") {
+                // Zami: the gap above a group is part of its header's cell.
+                return (
+                    <View
+                        style={{
+                            height: row.height,
+                            marginTop: index > 0 ? GROUP_GAP : 0,
+                        }}
+                        className="px-4 flex-row items-center"
+                    >
+                        <Text
+                            accessibilityRole="header"
+                            numberOfLines={1}
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
+                        >
+                            {row.label}
+                        </Text>
+                    </View>
+                );
+            }
             return (
-                <Text
-                    accessibilityRole="header"
-                    className="px-4 py-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
-                >
-                    {row.label}
-                </Text>
+                <MemberRow
+                    member={row.member}
+                    rev={row.rev}
+                    roleLabel={row.roleLabel}
+                    roleTag={row.roleTag}
+                    muted={row.muted}
+                />
             );
-        }
-        return (
-            <MemberRow
-                member={row.member}
-                rev={row.rev}
-                role={row.role}
-                muted={row.muted}
-                last={row.last}
-            />
-        );
-    }, []);
+        },
+        [],
+    );
 
+    // Zami: not ported: `data-zam-region="member-list"` (plugins' DOM region
+    // hook; there's no DOM here).
     return (
         <View
             className={`${
                 isMobile ? "" : "w-72"
-            } h-full bg-discord-backgroundSecondary flex flex-col flex-shrink-0 overflow-hidden border-l border-discord-divider`}
+            } h-full bg-zam-backgroundSecondary flex flex-col flex-shrink-0 overflow-hidden border-l border-zam-divider`}
         >
-            <View className="h-12 px-4 flex-row items-center border-b border-discord-divider flex-shrink-0">
+            <View className="h-12 px-4 flex-row items-center border-b border-zam-divider flex-shrink-0">
                 <Text
                     accessibilityRole="header"
-                    className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                    className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                 >
                     {t("memberList.members", { length: groups.count })}
                 </Text>
             </View>
 
             <FlatList
+                ref={scroller}
                 className="flex-1"
                 contentContainerClassName="py-2"
                 data={groups.rows}
                 keyExtractor={rowKey}
                 renderItem={renderItem}
+                getItemLayout={rowLayout}
                 // Zami: a screen or two either side, not FlatList's ten:
                 // each member row watches its own presence.
                 windowSize={5}
@@ -338,8 +443,21 @@ export default function MemberList({ room }: Props) {
     );
 }
 
+function sameTags(a: EffectiveRoomTags, b: EffectiveRoomTags): boolean {
+    return a.tags === b.tags && a.custom === b.custom;
+}
+
 function rowKey(row: Row): string {
     return row.key;
+}
+
+// Zami: a cell runs from the previous row's end (the gap above a header
+// included) to its row's; `top` already counts the list's PAD_Y (`py-2`).
+function rowLayout(data: ArrayLike<Row> | null | undefined, index: number) {
+    const row = data![index];
+    const prev = index > 0 ? data![index - 1] : undefined;
+    const offset = prev ? prev.top + prev.height : row.top;
+    return { length: row.top + row.height - offset, offset, index };
 }
 
 function getAvatarSrc(member: RoomMember): string | null {
@@ -347,16 +465,12 @@ function getAvatarSrc(member: RoomMember): string | null {
     return mxcToHttp(mxc);
 }
 
-// Presence dot class + tooltip per member. Depends on the presence tick
-// so dots recolor when m.presence events arrive over sync; unknown
+// Presence dot class + tooltip for one member. Called from the row
+// template, so only rendered (visible) rows ask presenceFor, which keeps
+// each dot recoloring when that user's m.presence arrives. An unknown
 // presence (e.g. the server has it disabled) renders as offline.
-// Zami: upstream's `memberPresence` map, one member at a time: each mounted
-// row reads its own, so a presence change re-renders only that row.
-function memberPresenceFor(userId: string): {
-    dotClass: string;
-    label: string;
-} {
-    void presenceState.presenceTick;
+// Zami: FlatList renders a window of rows; each reads its own through useRune.
+function presenceOf(userId: string): { dotClass: string; label: string } {
     const p = presenceFor(userId);
     const state = p?.state ?? "offline";
     return {
@@ -365,6 +479,22 @@ function memberPresenceFor(userId: string): {
             ? `${presenceLabel(state)} - ${p.statusMsg}`
             : presenceLabel(state),
     };
+}
+
+// Plugin badges / second lines (zam.members.decorate), computed lazily for
+// visible rows only.
+// Zami: each mounted row reads its own through useRune, which re-runs it on a
+// registry tick or a change to the member; upstream's cache across scrolling
+// isn't kept. `member.roomId` is the list's room.
+type Decoration = ReturnType<typeof collectMemberDecorations>;
+function decorationsOf(member: RoomMember): Decoration {
+    void pluginRegistry.tick;
+    const decorators = pluginRegistry.memberDecorators.map((e) => e.value);
+    if (decorators.length === 0) return null;
+    return collectMemberDecorations(decorators, {
+        roomId: member.roomId,
+        userId: member.userId,
+    });
 }
 
 // Zami: openProfileCard() anchors the card to the element's
@@ -390,31 +520,37 @@ function openCard(userId: string, e: GestureResponderEvent) {
 const MemberRow = memo(function MemberRow({
     member,
     rev,
-    role,
+    roleLabel,
+    roleTag,
     muted,
-    last,
 }: {
     member: RoomMember;
     /** The member's state event: the row re-renders when it changes. */
     rev: MatrixEvent | undefined;
-    role: string | null;
+    roleLabel: string | null;
+    roleTag: PowerLevelTag | null;
     muted: boolean;
-    last: boolean;
 }) {
-    const presence = useRune(() => memberPresenceFor(member.userId), [member], {
+    const presence = useRune(() => presenceOf(member.userId), [member], {
         isEqual: shallowEqual,
     });
     // Follows the Show Matrix IDs setting too.
     const name = useRune(() => memberDisplayName(member), [member, rev]);
+    const deco = useRune(() => decorationsOf(member), [member, rev]);
+    const nameColour = useRune(
+        () => cachedNameColourFor(member.userId),
+        [member],
+    );
+    const secondLine = [roleLabel, deco?.subtitle].filter(Boolean).join(" · ");
     // Zami: `w-[calc(100%-1rem)]` is the stretched row's
-    // width less its `mx-2`, which a column gives it.
+    // width less its `mx-2`, which a column gives it. The row's `title`
+    // (the decorations' tooltip) has no React Native equivalent.
     return (
         <Pressable
             accessibilityRole="button"
             onPress={(e) => openCard(member.userId, e)}
-            className={`flex-row items-center gap-2 px-2 py-1 mx-2 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors ${
-                last ? "mb-2" : ""
-            }`}
+            style={{ height: MEMBER_H }}
+            className="flex-row items-center gap-2 px-2 mx-2 rounded overflow-hidden hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors"
         >
             <View className="relative flex-shrink-0">
                 <Avatar
@@ -430,26 +566,55 @@ const MemberRow = memo(function MemberRow({
                     accessibilityLabel={presence.label}
                     className={`absolute bottom-0 end-0 w-2.5 h-2.5 ${
                         presence.dotClass
-                    } rounded-full border-2 border-discord-backgroundSecondary`}
+                    } rounded-full border-2 border-zam-backgroundSecondary`}
                 />
             </View>
             <View className="min-w-0 flex-1">
-                <Text
-                    numberOfLines={1}
-                    className={`text-sm font-medium ${
-                        muted
-                            ? "text-discord-textMuted"
-                            : "text-discord-textPrimary"
-                    } transition-colors`}
-                >
-                    {name}
-                </Text>
-                {role !== null ? (
+                <View className="flex-row items-center gap-1 min-w-0">
                     <Text
                         numberOfLines={1}
-                        className="text-xs text-discord-textMuted"
+                        style={nameColour ? { color: nameColour } : undefined}
+                        className={`flex-shrink text-sm leading-5 font-medium ${
+                            muted
+                                ? "text-zam-textMuted"
+                                : "text-zam-textPrimary"
+                        } ${
+                            muted && nameColour
+                                ? "opacity-60 group-hover:opacity-100"
+                                : ""
+                        } transition-colors`}
                     >
-                        {role}
+                        {name}
+                    </Text>
+                    {(deco?.badges ?? []).map((badge, i) => (
+                        <View
+                            key={i}
+                            className="flex-shrink-0 px-1 rounded bg-zam-backgroundTertiary"
+                        >
+                            <Text className="text-[10px] font-semibold uppercase text-zam-textMuted">
+                                {badge}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+                {roleTag ? (
+                    <View className="flex-row items-center gap-1 min-w-0">
+                        <PowerLevelTagBadge tag={roleTag} />
+                        {deco?.subtitle ? (
+                            <Text
+                                numberOfLines={1}
+                                className="shrink text-xs leading-4 text-zam-textMuted"
+                            >
+                                · {deco.subtitle}
+                            </Text>
+                        ) : null}
+                    </View>
+                ) : secondLine ? (
+                    <Text
+                        numberOfLines={1}
+                        className="text-xs leading-4 text-zam-textMuted"
+                    >
+                        {secondLine}
                     </Text>
                 ) : null}
             </View>

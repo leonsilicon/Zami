@@ -162,7 +162,7 @@ export default function ShareLocationDialog() {
                     >
                         <View
                             accessibilityViewIsModal
-                            className="relative z-10 bg-discord-backgroundSecondary rounded-lg shadow-xl w-full max-w-md max-h-[85vh] flex-shrink overflow-hidden"
+                            className="relative z-10 bg-zam-backgroundSecondary rounded-lg shadow-xl w-full max-w-md max-h-[85vh] flex-shrink overflow-hidden"
                         >
                             <ScrollView
                                 keyboardShouldPersistTaps="handled"
@@ -171,7 +171,7 @@ export default function ShareLocationDialog() {
                             >
                                 <Text
                                     accessibilityRole="header"
-                                    className="text-lg font-bold text-discord-textPrimary"
+                                    className="text-lg font-bold text-zam-textPrimary"
                                 >
                                     {t("shareLocationDialog.shareLocation")}
                                 </Text>
@@ -186,15 +186,15 @@ export default function ShareLocationDialog() {
                                             onPress={() => setMode("once")}
                                             className={`flex-1 rounded px-3 py-2 transition-colors ${
                                                 mode === "once"
-                                                    ? "bg-discord-accent"
-                                                    : "bg-discord-backgroundTertiary"
+                                                    ? "bg-zam-accent"
+                                                    : "bg-zam-backgroundTertiary"
                                             }`}
                                         >
                                             <Text
                                                 className={`text-sm font-medium text-center ${
                                                     mode === "once"
                                                         ? "text-white"
-                                                        : "text-discord-textSecondary hover:text-discord-textPrimary"
+                                                        : "text-zam-textSecondary hover:text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -210,15 +210,15 @@ export default function ShareLocationDialog() {
                                             onPress={() => setMode("live")}
                                             className={`flex-1 rounded px-3 py-2 transition-colors ${
                                                 mode === "live"
-                                                    ? "bg-discord-accent"
-                                                    : "bg-discord-backgroundTertiary"
+                                                    ? "bg-zam-accent"
+                                                    : "bg-zam-backgroundTertiary"
                                             }`}
                                         >
                                             <Text
                                                 className={`text-sm font-medium text-center ${
                                                     mode === "live"
                                                         ? "text-white"
-                                                        : "text-discord-textSecondary hover:text-discord-textPrimary"
+                                                        : "text-zam-textSecondary hover:text-zam-textPrimary"
                                                 }`}
                                             >
                                                 {t(
@@ -237,13 +237,13 @@ export default function ShareLocationDialog() {
                                                 accessibilityRole="button"
                                                 onPress={locate}
                                                 disabled={locating}
-                                                className="self-start flex-row items-center gap-2 rounded bg-discord-backgroundTertiary px-3 py-2 hover:bg-discord-messageHover transition-colors disabled:opacity-50"
+                                                className="self-start flex-row items-center gap-2 rounded bg-zam-backgroundTertiary px-3 py-2 hover:bg-zam-messageHover transition-colors disabled:opacity-50"
                                             >
                                                 <SvgIcon
-                                                    className="w-4 h-4 flex-shrink-0 text-discord-accent"
+                                                    className="w-4 h-4 flex-shrink-0 text-zam-accent"
                                                     d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"
                                                 />
-                                                <Text className="text-sm font-medium text-discord-textPrimary">
+                                                <Text className="text-sm font-medium text-zam-textPrimary">
                                                     {locating
                                                         ? t(
                                                               "shareLocationDialog.locating",
@@ -254,7 +254,7 @@ export default function ShareLocationDialog() {
                                                 </Text>
                                             </Pressable>
                                             {coords && (
-                                                <Text className="text-xs text-discord-textMuted">
+                                                <Text className="text-xs text-zam-textMuted">
                                                     {formatCoords(
                                                         coords.lat,
                                                         coords.lon,
@@ -265,7 +265,7 @@ export default function ShareLocationDialog() {
 
                                         {/* Description */}
                                         <View className="flex-col gap-1.5">
-                                            <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                            <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                                 {t(
                                                     "shareLocationDialog.descriptionOptional",
                                                 )}
@@ -280,15 +280,15 @@ export default function ShareLocationDialog() {
                                                     "shareLocationDialog.eGHomeTheCafOn",
                                                 )}
                                                 maxLength={340}
-                                                className="w-full rounded bg-discord-backgroundTertiary px-3 py-2 text-sm text-discord-textPrimary placeholder:text-discord-textMuted focus:outline-none focus:ring-2 focus:ring-discord-accent"
-                                                placeholderTextColorClassName="accent-discord-textMuted"
+                                                className="w-full rounded bg-zam-backgroundTertiary px-3 py-2 text-sm text-zam-textPrimary placeholder:text-zam-textMuted focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                                                placeholderTextColorClassName="accent-zam-textMuted"
                                             />
                                         </View>
                                     </>
                                 ) : (
                                     /* Live duration */
                                     <View className="flex-col gap-1.5">
-                                        <Text className="text-xs font-semibold uppercase tracking-wide text-discord-textMuted">
+                                        <Text className="text-xs font-semibold uppercase tracking-wide text-zam-textMuted">
                                             {t("shareLocationDialog.duration")}
                                         </Text>
                                         {/* Zami: the `<label for>` names the
@@ -308,9 +308,9 @@ export default function ShareLocationDialog() {
                                                     label: d.label,
                                                 }),
                                             )}
-                                            className="w-full rounded bg-discord-backgroundTertiary px-3 py-2 focus:outline-none focus:ring-2 focus:ring-discord-accent"
+                                            className="w-full rounded bg-zam-backgroundTertiary px-3 py-2 focus:outline-none focus:ring-2 focus:ring-zam-accent"
                                         />
-                                        <Text className="text-xs text-discord-textMuted">
+                                        <Text className="text-xs text-zam-textMuted">
                                             {t(
                                                 "shareLocationDialog.yourLiveLocationIsSharedWith",
                                             )}
@@ -321,7 +321,7 @@ export default function ShareLocationDialog() {
                                 {/* Footer */}
                                 <View className="flex-row items-center justify-end gap-3 pt-1">
                                     {error && (
-                                        <Text className="me-auto flex-shrink text-xs text-discord-danger">
+                                        <Text className="me-auto flex-shrink text-xs text-zam-danger">
                                             {error}
                                         </Text>
                                     )}
@@ -330,7 +330,7 @@ export default function ShareLocationDialog() {
                                         onPress={closeShareLocationDialog}
                                         className="px-4 py-2 rounded"
                                     >
-                                        <Text className="text-sm font-medium text-discord-textSecondary hover:text-discord-textPrimary hover:underline transition-colors">
+                                        <Text className="text-sm font-medium text-zam-textSecondary hover:text-zam-textPrimary hover:underline transition-colors">
                                             {t("common.cancel")}
                                         </Text>
                                     </Pressable>
@@ -341,7 +341,7 @@ export default function ShareLocationDialog() {
                                             sending ||
                                             (mode === "once" && !coords)
                                         }
-                                        className="px-4 py-2 rounded bg-discord-accent hover:bg-discord-accentHover transition-colors disabled:opacity-50"
+                                        className="px-4 py-2 rounded bg-zam-accent hover:bg-zam-accentHover transition-colors disabled:opacity-50"
                                     >
                                         <Text className="text-white text-sm font-semibold">
                                             {mode === "live"

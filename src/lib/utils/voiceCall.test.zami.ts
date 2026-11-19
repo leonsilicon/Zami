@@ -7,6 +7,8 @@ import {
     sfuJwtUrl,
     pickLivekitTransport,
     pickOwnLivekitTransport,
+    livekitServiceUrls,
+    isAdvertisedServiceUrl,
     remoteLivekitTargets,
     livekitTargetKey,
     screenShareCaptureResolution,
@@ -18,6 +20,7 @@ import {
     isRecentlyLeftHere,
     mutedIdentities,
     memberPublishTransport,
+    audibleSpeakerIds,
 } from "./voiceCall";
 
 describe("mutedIdentities", () => {
@@ -535,5 +538,77 @@ describe("memberPublishTransport", () => {
         const members = [{ transports: [a], focusSelection: "elsewhere" }];
         expect(memberPublishTransport(members, 0)).toBeUndefined();
         expect(memberPublishTransport(members, 1)).toBeUndefined();
+    });
+});
+
+describe("audibleSpeakerIds", () => {
+    const ids = ["@me:x:D1", "@bob:x:B1"];
+
+    it("keeps our own identity while our mic is open", () => {
+        expect(audibleSpeakerIds(ids, "@me:x", false)).toEqual(ids);
+    });
+
+    it("drops our own identity when our mic is closed", () => {
+        expect(audibleSpeakerIds(ids, "@me:x", true)).toEqual(["@bob:x:B1"]);
+    });
+
+    it("keeps everything when our user id is unknown", () => {
+        expect(audibleSpeakerIds(ids, null, true)).toEqual(ids);
+    });
+});
+
+describe("livekitServiceUrls", () => {
+    it("keeps only LiveKit foci with a string URL", () => {
+        expect(
+            livekitServiceUrls([
+                { type: "livekit", livekit_service_url: "https://a.example" },
+                { type: "other", livekit_service_url: "https://b.example" },
+                { type: "livekit", livekit_service_url: 3 },
+                null,
+            ]),
+        ).toEqual(["https://a.example"]);
+    });
+
+    it("reads nothing from a non-array", () => {
+        expect(livekitServiceUrls({ type: "livekit" })).toEqual([]);
+        expect(livekitServiceUrls(undefined)).toEqual([]);
+    });
+});
+
+describe("isAdvertisedServiceUrl", () => {
+    const advertised = ["https://LK.example/jwt/"];
+
+    it("matches ignoring a trailing slash and host case", () => {
+        expect(
+            isAdvertisedServiceUrl("https://lk.example/jwt", advertised),
+        ).toBe(true);
+    });
+
+    it("refuses another host, path or port", () => {
+        for (const url of [
+            "https://evil.example/jwt",
+            "https://lk.example/other",
+            "https://lk.example:8443/jwt",
+            "https://lk.example.evil.example/jwt",
+        ])
+            expect(isAdvertisedServiceUrl(url, advertised)).toBe(false);
+    });
+
+    it("refuses plain http and credentials", () => {
+        expect(
+            isAdvertisedServiceUrl("http://lk.example/jwt", [
+                "http://lk.example/jwt",
+            ]),
+        ).toBe(false);
+        expect(
+            isAdvertisedServiceUrl("https://u:p@lk.example/jwt", advertised),
+        ).toBe(false);
+    });
+
+    it("refuses garbage and an empty list", () => {
+        expect(isAdvertisedServiceUrl("not a url", advertised)).toBe(false);
+        expect(isAdvertisedServiceUrl("https://lk.example/jwt", [])).toBe(
+            false,
+        );
     });
 });

@@ -23,10 +23,7 @@ import {
     type TextInputInstance,
 } from "react-native";
 import { useInputKeys, useKeyScope } from "@-/com.leonsilicon.zami.browser";
-import {
-    lastIndexAtOrBefore,
-    type Selection,
-} from "@-/com.leonsilicon.zami.incremental";
+import type { Selection } from "@-/com.leonsilicon.zami.incremental";
 import {
     useSelected,
     useSelection,
@@ -49,6 +46,14 @@ import { scrollBehavior } from "$lib/utils/motionPreference";
 import { nextActiveIndex } from "$lib/utils/listboxNavigation";
 import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
 import { stickerOptionKeys } from "$lib/utils/pickerOptionKeys";
+import {
+    buildGridLayout,
+    rowAt,
+    scrollTopToReveal,
+    type GridRow,
+    type GridSection,
+} from "$lib/utils/virtualGrid";
+import { pickerThumbUrl } from "$lib/matrix/media";
 
 interface Props {
     roomId?: string | null;
@@ -58,31 +63,25 @@ interface Props {
     onSwitchToGif?: () => void;
 }
 
-// Zami: the web renders every pack into one scroll box and reveals each
-// pack's grid lazily (`lazySection`). Here one FlatList holds the packs as
-// rows, a header row and then rows of `cols` cells, and virtualizes them.
-// Every row's height is known, so `getItemLayout` and the pack scrolling
-// below work from these offsets instead of measuring elements.
+// Zami: the web positions the layout's rows (utils/virtualGrid.ts) absolutely
+// in one scroll box and renders those near the viewport. Here they are the
+// rows of a FlatList, which virtualizes them itself: each row also holds its
+// stickers and its `length`, the space down to the next row (a pack's last
+// row takes the section gap), for `getItemLayout`.
 type Row =
-    | {
-          kind: "header";
-          key: string;
-          sectionId: string;
-          label: string;
-          length: number;
-          offset: number;
-      }
-    | {
-          kind: "cells";
-          key: string;
+    | (Extract<GridRow, { kind: "header" }> & { length: number })
+    | (Extract<GridRow, { kind: "cells" }> & {
           items: CustomSticker[];
-          paddingTop: number;
           length: number;
-          offset: number;
-      };
+      });
 
-/** `grid gap-1`. */
-const GAP = 4;
+const GAP = 4; // gap-1, between cells and between rows
+const SECTION_GAP = 8; // mb-2 under each pack's grid
+// Stickers are drawn at most 56px (w-14); 192 covers a 3x screen without
+// fetching every original.
+// Zami: expo-image keeps the thumbnails in its disk cache, as Zam's service
+// worker does (utils/pickerThumbCache.ts).
+const STICKER_THUMB_PX = 192;
 
 const NO_STICKERS: CustomSticker[] = [];
 
@@ -113,8 +112,6 @@ export default function StickerPicker({
     // Zami: not ported: the combobox/listbox ARIA ids the cursor drives
     // (`listId`, aria-activedescendant), which React Native has no
     // equivalent of.
-    // Zami: no `revealedSections`: the FlatList only renders the rows near
-    // the viewport, which is what the IntersectionObserver reveal did.
 
     // Responsive columns: fit as many ~68px cells as the width allows, so
     // widening the panel shows MORE stickers instead of spreading 4 apart.
@@ -122,8 +119,11 @@ export default function StickerPicker({
     const [scrollWidth, setScrollWidth] = useState(0);
     const w = scrollWidth - 16; // minus the px-2 padding
     const cols = w > 0 ? Math.max(4, Math.floor(w / CELL)) : 4;
-    // Zami: the grid cell (`aspect-square`, `minmax(0, 1fr)` columns).
-    const cell = w > 0 ? (w - (cols - 1) * GAP) / cols : 0;
+    // The grid is virtualized like EmojiPicker's (utils/virtualGrid.ts): only
+    // rows near the viewport exist.
+    // Zami: the FlatList's width comes from onLayout; its height and scroll
+    // position are kept here, outside state, as nothing renders from them.
+    const listView = useRef({ y: 0, height: 0 });
 
     useEffect(() => {
         if (!isTouchscreen) searchEl.current?.focus();
@@ -188,9 +188,11 @@ export default function StickerPicker({
             .map((s) => s.sticker);
     }, [search, searchable]);
 
-    // Reset selection when search changes
+    // Reset selection, and go back to the top, when search changes
     useEffect(() => {
         moveCursor(-1);
+        scrollEl.current?.scrollToOffset({ offset: 0, animated: false });
+        listView.current.y = 0;
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only `search`, as upstream's effect does.
     }, [search]);
 
@@ -237,28 +239,103 @@ export default function StickerPicker({
     // "No results" line reads as ordinary content instead of an empty list.
     const hasOptions = flatItems.length > 0;
 
+    // ---- Virtualized layout (utils/virtualGrid.ts) ---------------------------
+    // Zami: the header's text-xs line (16) scales with the system text size,
+    // plus pt-2 (8) + pb-1 (4).
+    const HEADER_H = 12 + 16 * windowSize.fontScale;
+
+    // Zami: the grid cell (`minmax(0, 1fr)` columns).
+    const cellSize = w > 0 ? (w - GAP * (cols - 1)) / cols : 0;
+
+    const sections = useMemo((): GridSection[] => {
+        if (search)
+            return [
+                {
+                    id: "search",
+                    label: null,
+                    start: 0,
+                    count: searchResults.length,
+                },
+            ];
+        return stickerPacks.map((p) => ({
+            id: p.id,
+            label: p.id === "user" ? t("stickerPicker.myStickers2") : p.name,
+            start: sectionOffsets.get(p.id) ?? 0,
+            count: p.stickers.length,
+        }));
+    }, [search, searchResults, stickerPacks, sectionOffsets]);
+
+    const layout = useMemo(
+        () =>
+            buildGridLayout(sections, flatItems.length, {
+                cols,
+                cellSize,
+                gap: GAP,
+                headerHeight: HEADER_H,
+                sectionGap: SECTION_GAP,
+            }),
+        [sections, flatItems.length, cols, cellSize, HEADER_H],
+    );
+    // Zami: no `visibleRowRange`: the FlatList renders the rows near the
+    // viewport. Its rows are the layout's (see `Row`).
+    const rows = useMemo(
+        (): Row[] =>
+            layout.rows.map((row, i): Row => {
+                const length =
+                    (layout.rows[i + 1]?.top ?? layout.total) - row.top;
+                return row.kind === "header"
+                    ? { ...row, length }
+                    : {
+                          ...row,
+                          items: flatItems.slice(row.start, row.end),
+                          length,
+                      };
+            }),
+        [layout, flatItems],
+    );
+    const getItemLayout = useCallback(
+        (_: unknown, index: number) => ({
+            length: rows[index].length,
+            offset: rows[index].top,
+            index,
+        }),
+        [rows],
+    );
+
+    // Scroll the selected sticker into view and follow it with the active tab.
+    // Only `activeIndex` is tracked: reading `activeTab` or the scroll position
+    // here would re-run this on every scroll and yank the view back.
+    useEffect(() => {
+        const idx = activeIndex;
+        if (idx < 0 || idx >= flatItems.length) return;
+        const row = layout.rows[layout.itemRow[idx]];
+        if (!row) return;
+        if (!search && activeTab !== row.sectionId) setActiveTab(row.sectionId);
+        const view = listView.current;
+        if (!scrollEl.current || view.height === 0) return;
+        const next = scrollTopToReveal(row, view.y, view.height);
+        if (next !== null)
+            scrollEl.current.scrollToOffset({ offset: next, animated: false });
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
+    }, [activeIndex]);
+
     function scrollToSection(id: string) {
         setActiveTab(id);
         if (!scrollEl.current) return;
-        const el = rows.find(
-            (row) => row.kind === "header" && row.sectionId === id,
-        );
-        if (el)
+        const row = layout.rows.find((r) => r.sectionId === id);
+        if (row)
             scrollEl.current.scrollToOffset({
-                offset: Math.max(0, el.offset - 4),
+                offset: row.top,
                 animated: scrollBehavior() === "smooth",
             });
     }
 
     function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-        listView.current.y = e.nativeEvent.contentOffset.y;
+        const scrollTop = e.nativeEvent.contentOffset.y;
+        listView.current.y = scrollTop;
         if (search) return;
-        const top = e.nativeEvent.contentOffset.y;
-        // Zami: a binary search over the header offsets (`headers`, below).
-        const current =
-            headers.sectionIds[lastIndexAtOrBefore(headers.offsets, top + 8)] ??
-            "";
-        if (current && current !== activeTab) setActiveTab(current);
+        const row = layout.rows[rowAt(layout.rows, scrollTop + 8)];
+        if (row && row.sectionId !== activeTab) setActiveTab(row.sectionId);
     }
 
     // Zami: the same function across renders (calling the latest props), so
@@ -340,128 +417,6 @@ export default function StickerPicker({
     // Zami: the search field's `onkeydown`.
     useInputKeys(searchEl, { onKeydown: onSearchKeydown });
 
-    // Zami: the rows the FlatList renders, with their heights and offsets.
-    // Header text is `text-xs` (a 16px line, scaled with the system text
-    // size) plus its `pt-2 pb-1`; a grid row is a cell plus the `gap-1`
-    // below it, or the grid's `mb-2` below the last row.
-    const fontScale = windowSize.fontScale;
-    const rows = useMemo((): Row[] => {
-        const out: Row[] = [];
-        if (cell <= 0) return out;
-        let offset = 0;
-        const grid = (
-            sectionId: string,
-            count: number,
-            marginTop: number,
-            marginBottom: number,
-        ) => {
-            const start = sectionOffsets.get(sectionId) ?? 0;
-            const rowCount = Math.ceil(count / cols);
-            for (let r = 0; r < rowCount; r++) {
-                const paddingTop = r === 0 ? marginTop : 0;
-                const length =
-                    paddingTop +
-                    cell +
-                    (r === rowCount - 1 ? marginBottom : GAP);
-                out.push({
-                    kind: "cells",
-                    key: `row:${sectionId}:${r}`,
-                    items: flatItems.slice(
-                        start + r * cols,
-                        start + Math.min((r + 1) * cols, count),
-                    ),
-                    paddingTop,
-                    length,
-                    offset,
-                });
-                offset += length;
-            }
-        };
-        if (search) {
-            grid("search", searchResults.length, 4, 0);
-        } else {
-            for (const pack of stickerPacks) {
-                const length = 12 + 16 * fontScale;
-                out.push({
-                    kind: "header",
-                    key: `header:${pack.id}`,
-                    sectionId: pack.id,
-                    label:
-                        pack.id === "user"
-                            ? t("stickerPicker.myStickers2")
-                            : pack.name,
-                    length,
-                    offset,
-                });
-                offset += length;
-                grid(pack.id, pack.stickers.length, 0, 8);
-            }
-        }
-        return out;
-    }, [
-        cell,
-        cols,
-        fontScale,
-        search,
-        searchResults,
-        stickerPacks,
-        flatItems,
-        sectionOffsets,
-    ]);
-    // Zami: the header rows' offsets and packs, for onScroll's search.
-    const headers = useMemo(() => {
-        const offsets: number[] = [];
-        const sectionIds: string[] = [];
-        for (const row of rows) {
-            if (row.kind !== "header") continue;
-            offsets.push(row.offset);
-            sectionIds.push(row.sectionId);
-        }
-        return { offsets, sectionIds };
-    }, [rows]);
-    const getItemLayout = useCallback(
-        (_: unknown, index: number) => ({
-            length: rows[index].length,
-            offset: rows[index].offset,
-            index,
-        }),
-        [rows],
-    );
-
-    // Update the active tab and scroll the selected item into view.
-    // Zami: the FlatList renders every row near the viewport, so there's no
-    // pack to reveal; `scrollIntoView({ block: "nearest" })` is worked out
-    // from the row offsets and the list's own scroll position.
-    const listView = useRef({ y: 0, height: 0 });
-    useEffect(() => {
-        const idx = activeIndex;
-        if (idx < 0 || idx >= flatItems.length) return;
-
-        if (!search) {
-            for (const pack of stickerPacks) {
-                const start = sectionOffsets.get(pack.id) ?? 0;
-                if (idx >= start && idx < start + pack.stickers.length) {
-                    if (activeTab !== pack.id) setActiveTab(pack.id);
-                    break;
-                }
-            }
-        }
-
-        const item = flatItems[idx];
-        const row = rows.find(
-            (r) => r.kind === "cells" && r.items.includes(item),
-        );
-        const view = listView.current;
-        if (!row || !scrollEl.current || view.height === 0) return;
-        let y: number | null = null;
-        if (row.offset < view.y) y = row.offset;
-        else if (row.offset + row.length > view.y + view.height)
-            y = row.offset + row.length - view.height;
-        if (y !== null)
-            scrollEl.current.scrollToOffset({ offset: y, animated: false });
-        // oxlint-disable-next-line react-hooks/exhaustive-deps -- follows the cursor, as upstream's effect does.
-    }, [activeIndex]);
-
     // Zami: the sticker the cursor is on, outside React state: moving it
     // re-renders the cell it leaves and the one it lands on (`StickerCell`),
     // not every row.
@@ -482,7 +437,7 @@ export default function StickerPicker({
                     >
                         <Text
                             numberOfLines={1}
-                            className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide"
+                            className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide"
                         >
                             {row.label}
                         </Text>
@@ -491,13 +446,13 @@ export default function StickerPicker({
             return (
                 <StickerRow
                     row={row}
-                    cell={cell}
+                    cell={cellSize}
                     selection={selection}
                     pick={pick}
                 />
             );
         },
-        [cell, selection, pick],
+        [cellSize, selection, pick],
     );
 
     // Zami: `height: 50dvh` on touch. The desktop panel keeps the composer
@@ -515,18 +470,18 @@ export default function StickerPicker({
         <View
             className={`${
                 isTouchscreen ? "w-full rounded-t-xl" : "rounded-xl"
-            } relative bg-discord-backgroundSecondary border border-discord-divider shadow-2xl flex flex-col`}
+            } relative bg-zam-backgroundSecondary border border-zam-divider shadow-2xl flex flex-col`}
             style={panelStyle}
         >
             {isTouchscreen && (onSwitchToEmoji || onSwitchToGif) ? (
-                <View className="flex-row border-b border-discord-divider flex-shrink-0">
+                <View className="flex-row border-b border-zam-divider flex-shrink-0">
                     {onSwitchToEmoji ? (
                         <Pressable
                             onPress={onSwitchToEmoji}
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.emoji")}
                             </Text>
                         </Pressable>
@@ -534,9 +489,9 @@ export default function StickerPicker({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityState={{ selected: true }}
-                        className="flex-1 py-2 items-center border-b-2 border-discord-accent"
+                        className="flex-1 py-2 items-center border-b-2 border-zam-accent"
                     >
-                        <Text className="text-sm font-semibold text-discord-textPrimary">
+                        <Text className="text-sm font-semibold text-zam-textPrimary">
                             {t("common.stickers")}
                         </Text>
                     </Pressable>
@@ -546,7 +501,7 @@ export default function StickerPicker({
                             accessibilityRole="button"
                             className="flex-1 py-2 items-center"
                         >
-                            <Text className="text-sm font-medium text-discord-textMuted">
+                            <Text className="text-sm font-medium text-zam-textMuted">
                                 {t("common.gifs")}
                             </Text>
                         </Pressable>
@@ -562,7 +517,7 @@ export default function StickerPicker({
                     value={search}
                     onChangeText={setSearch}
                     placeholder={t("stickerPicker.searchStickers")}
-                    placeholderTextColorClassName="accent-discord-textMuted"
+                    placeholderTextColorClassName="accent-zam-textMuted"
                     accessibilityRole="search"
                     accessibilityLabel={t("stickerPicker.searchStickers2")}
                     accessibilityState={{ expanded: hasOptions }}
@@ -572,7 +527,7 @@ export default function StickerPicker({
                     // Zami: Enter picks the selected sticker (onSearchKeydown)
                     // and otherwise does nothing, rather than blurring.
                     submitBehavior="submit"
-                    className="w-full bg-discord-backgroundTertiary text-discord-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-discord-accent/30"
+                    className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
 
@@ -580,7 +535,7 @@ export default function StickerPicker({
                 // flex-1 so the empty state centres in the now fixed-height
                 // touch drawer instead of hugging the top of a half-empty box.
                 <View className="flex-1 items-center justify-center py-8 px-4">
-                    <Text className="text-center text-discord-textMuted text-sm">
+                    <Text className="text-center text-zam-textMuted text-sm">
                         {t("stickerPicker.noStickerPacksAvailable")}
                     </Text>
                 </View>
@@ -624,7 +579,7 @@ export default function StickerPicker({
                                     }}
                                     className={`flex-shrink-0 p-1.5 rounded transition-colors ${
                                         activeTab === pack.id
-                                            ? "bg-discord-messageHover"
+                                            ? "bg-zam-messageHover"
                                             : "opacity-40"
                                     }`}
                                 >
@@ -640,7 +595,7 @@ export default function StickerPicker({
                                     ) : pack.id === "user" ? (
                                         <SvgIcon
                                             d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
-                                            className="w-5 h-5 text-discord-textPrimary"
+                                            className="w-5 h-5 text-zam-textPrimary"
                                         />
                                     ) : pack.avatarUrl ? (
                                         <Image
@@ -650,7 +605,7 @@ export default function StickerPicker({
                                             contentFit="cover"
                                         />
                                     ) : (
-                                        <View className="w-5 h-5 rounded-full bg-discord-accent flex items-center justify-center">
+                                        <View className="w-5 h-5 rounded-full bg-zam-accent flex items-center justify-center">
                                             <Text className="text-white text-xs font-bold">
                                                 {pack.name[0]?.toUpperCase() ??
                                                     "?"}
@@ -692,8 +647,8 @@ export default function StickerPicker({
                         className="relative flex-1 min-h-0"
                         contentContainerClassName="px-2 pb-2"
                         ListEmptyComponent={
-                            search && searchResults.length === 0 ? (
-                                <Text className="text-center text-discord-textMuted text-sm py-8">
+                            search && !hasOptions ? (
+                                <Text className="text-center text-zam-textMuted text-sm py-8">
                                     {t("common.noResults")}
                                 </Text>
                             ) : undefined
@@ -718,10 +673,7 @@ const StickerRow = memo(function StickerRow({
     ...cellProps
 }: StickerCellProps & { row: Extract<Row, { kind: "cells" }> }) {
     return (
-        <View
-            style={{ height: row.length, paddingTop: row.paddingTop }}
-            className="flex-row gap-1"
-        >
+        <View style={{ height: row.length }} className="flex-row gap-1">
             {row.items.map((s) => (
                 <StickerCell key={s.shortcode} sticker={s} {...cellProps} />
             ))}
@@ -735,7 +687,7 @@ const StickerCell = memo(function StickerCell({
     selection,
     pick,
 }: StickerCellProps & { sticker: CustomSticker }) {
-    // Zami: `class:ring-2` / `class:ring-discord-accent` on the option the
+    // Zami: `class:ring-2` / `class:ring-zam-accent` on the option the
     // cursor is on.
     const selected = useSelected(selection, s);
     return (
@@ -745,14 +697,20 @@ const StickerCell = memo(function StickerCell({
             accessibilityLabel={s.shortcode}
             accessibilityState={{ selected }}
             style={{ width: cell, height: cell }}
-            className={`p-1 rounded hover:bg-discord-messageHover active:bg-discord-messageHover transition-colors flex items-center justify-center${
-                selected ? " border-2 border-discord-accent" : ""
+            className={`p-1 rounded hover:bg-zam-messageHover active:bg-zam-messageHover transition-colors flex items-center justify-center${
+                selected ? " border-2 border-zam-accent" : ""
             }`}
         >
+            {/* Zami: `w-full h-full max-w-14 max-h-14`. */}
             <Image
-                source={mediaSource(s.url)}
+                source={mediaSource(
+                    pickerThumbUrl(s.mxcUrl, STICKER_THUMB_PX) ?? s.url,
+                )}
                 accessibilityLabel={s.shortcode}
-                className="w-14 h-14"
+                style={{
+                    width: Math.min(cell - 8, 56),
+                    height: Math.min(cell - 8, 56),
+                }}
                 contentFit="contain"
             />
         </Pressable>

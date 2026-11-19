@@ -39,7 +39,7 @@ export function Checkbox({
   checked,
   onChange,
   label,
-  labelClassName = "text-sm text-discord-textPrimary",
+  labelClassName = "text-sm text-zam-textPrimary",
   accessibilityLabel,
   disabled = false,
   className = "items-center gap-2",
@@ -59,7 +59,7 @@ export function Checkbox({
     >
       <View
         className={`${inputClassName} border items-center justify-center ${
-          checked ? "bg-discord-accent border-discord-accent" : "border-discord-textMuted"
+          checked ? "bg-zam-accent border-zam-accent" : "border-zam-textMuted"
         } ${disabled ? "opacity-50" : ""}`}
       >
         {checked ? <CheckIcon size={checkSize} className="text-white" /> : null}

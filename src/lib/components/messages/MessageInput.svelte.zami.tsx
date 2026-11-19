@@ -67,6 +67,7 @@ import {
     sendFormattedMessage,
     sendSticker,
     sendFile,
+    sendExistingMedia,
     getMediaUploadSizeLimit,
     getMemberName,
     getMemberAvatar,
@@ -93,13 +94,22 @@ import {
     sendThreadReply,
     type CustomEmoji,
     type CustomSticker,
+    type MediaCaption,
+    type MediaRelation,
 } from "$lib/matrix/client";
+import { reusableMediaOfFile } from "$lib/matrix/favouriteFile";
 import { sendEventContent } from "$lib/matrix/pluginHost";
 import {
     buildFormattedBody as buildBody,
     mentionsFromFormatted,
+    mentionsFromHtml,
 } from "$lib/utils/messageBody";
-import { buildReplyContent } from "$lib/utils/replyContent";
+import {
+    editableBody,
+    isEmptyEdit,
+    sendMessageEdit,
+} from "$lib/matrix/editMessage";
+import { buildReplyContent, withReplyMention } from "$lib/utils/replyContent";
 import {
     buildTextContent,
     buildFormattedContent,
@@ -150,6 +160,7 @@ import RenameAttachmentDialog from "$lib/components/messages/RenameAttachmentDia
 import VoiceRecorder from "$lib/components/messages/VoiceRecorder.svelte";
 import OutboxStrip from "$lib/components/messages/OutboxStrip.svelte";
 import { openCreatePollDialog } from "$lib/stores/pollDialog.svelte";
+import { openGameInviteDialog } from "$lib/stores/gameInviteDialog.svelte";
 import { openShareLocationDialog } from "$lib/stores/locationDialog.svelte";
 import {
     getDraft,
@@ -172,6 +183,8 @@ import {
 } from "$lib/stores/composerFileQueue.svelte";
 import { sendQueuedFiles } from "$lib/utils/queuedFileSend";
 import { filesToRestoreAfterSend } from "$lib/utils/composerFileRestore";
+import { chunkGalleryItems } from "$lib/utils/gallery";
+import { sendGallery } from "$lib/matrix/media";
 import {
     shouldClearComposerAfterSend,
     shouldClearStoredDraft,
@@ -204,6 +217,7 @@ import { discardRoomSession, prepareToSend } from "$lib/matrix/crypto";
 import { matrixErrorMessage } from "$lib/utils/knock";
 import {
     Loader2,
+    Pencil,
     Plus,
     ImagePlay,
     Sticker,
@@ -230,6 +244,10 @@ interface Props {
     disabled?: boolean;
     replyToEvent?: MatrixEvent | null;
     onCancelReply?: () => void;
+    /** The message being edited in this composer (edit mode). Its text
+     *  replaces the composer's until the edit is saved or cancelled. */
+    editEvent?: MatrixEvent | null;
+    onCancelEdit?: () => void;
     onRequestEditLast?: () => void;
     /** `s/old/new/`: apply it to the user's last message here (the
      *  caller knows which messages that means). */
@@ -283,11 +301,11 @@ const MONO = Platform.select({ ios: "Menlo", default: "monospace" });
  *  corners of mention and spoiler pills, which nested text can't have. */
 const DECORATIONS: Record<string, string> = {
     "composer-mention":
-        "text-[rgb(var(--discord-accent-rgb)_/_1)] bg-[rgb(var(--discord-accent-rgb)_/_0.18)] font-medium",
-    "composer-custom-emoji": "text-discord-textPrimary",
-    "composer-link": "text-[rgb(var(--discord-accent-rgb)_/_1)] underline",
-    "composer-spoiler": "text-transparent bg-[var(--discord-spoiler-bg)]",
-    code: "bg-discord-backgroundTertiary text-[14px]",
+        "text-[rgb(var(--zam-accent-rgb)_/_1)] bg-[rgb(var(--zam-accent-rgb)_/_0.18)] font-medium",
+    "composer-custom-emoji": "text-zam-textPrimary",
+    "composer-link": "text-[rgb(var(--zam-accent-rgb)_/_1)] underline",
+    "composer-spoiler": "text-transparent bg-[var(--zam-spoiler-bg)]",
+    code: "bg-zam-backgroundTertiary text-[14px]",
     del: "line-through",
     strong: "font-bold",
     em: "italic",
@@ -679,6 +697,8 @@ export default function MessageInput({
     disabled: disabledProp = false,
     replyToEvent = null,
     onCancelReply,
+    editEvent = null,
+    onCancelEdit,
     onRequestEditLast,
     onSedEdit,
     onThreadCreated,
@@ -710,6 +730,8 @@ export default function MessageInput({
         effComposerKey,
         replyToEvent,
         onCancelReply,
+        editEvent,
+        onCancelEdit,
         scrollEl,
         keepScrollOnSend,
     });
@@ -719,6 +741,8 @@ export default function MessageInput({
             effComposerKey,
             replyToEvent,
             onCancelReply,
+            editEvent,
+            onCancelEdit,
             scrollEl,
             keepScrollOnSend,
         };
@@ -749,6 +773,29 @@ export default function MessageInput({
     const textEmpty = useValueStore(textStore, isEmptyText);
     const textBlank = useValueStore(textStore, isBlankText);
     const [isSending, setIsSending, isSendingRef] = useLiveState(false);
+    // Edit mode. `activeEdit` is the edit target when it belongs to this room
+    // (a target from another room is ignored). While editing, the composer
+    // holds the edit text and the draft the user had typed waits in
+    // `editStash`. Not reactive: only the edit effect and draft saves read it.
+    const activeEdit =
+        editEvent && editEvent.getRoomId() === roomId ? editEvent : null;
+    const editStash = useRef<{
+        key: string;
+        text: string;
+        mentions: Map<string, string>;
+    } | null>(null);
+    const [isSavingEdit, setIsSavingEdit, isSavingEditRef] =
+        useLiveState(false);
+    // What to persist as this composer's draft: the stashed draft while
+    // editing, so an edit never overwrites the real draft.
+    function draftTextNow(): string {
+        return editStash.current ? editStash.current.text : textRef.current;
+    }
+    function draftMentionsNow(): Map<string, string> {
+        return editStash.current
+            ? editStash.current.mentions
+            : pendingMentionsRef.current;
+    }
     // In-flight attachment send, scoped to the room the send targeted so a
     // room switch mid-upload doesn't show room A's "sending" note in room B.
     const [sendingFileCount, setSendingFileCount] = useState(0);
@@ -842,7 +889,7 @@ export default function MessageInput({
     useEffect(() => {
         const key = effComposerKey;
         return registerDraftFlusher(key, () =>
-            setDraft(key, textRef.current, pendingMentionsRef.current),
+            setDraft(key, draftTextNow(), draftMentionsNow()),
         );
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- the callback reads the live model.
     }, [effComposerKey]);
@@ -1279,8 +1326,15 @@ export default function MessageInput({
 
     // Mirrors the send button's own disabled condition so the button can go
     // accent-coloured the moment the message becomes sendable.
-    const canSend =
-        (!textBlank || fileQueue.length > 0) && !isSending && !disabled;
+    // An edit can be saved once it has text (or a caption, for media) and no
+    // save is already in flight.
+    // Zami: isEmptyEdit reads only whether the text is blank.
+    const editSaveBlocked =
+        !!activeEdit &&
+        (isSavingEdit || isEmptyEdit(activeEdit, textBlank ? "" : "x"));
+    const canSend = activeEdit
+        ? !editSaveBlocked && !disabled
+        : (!textBlank || fileQueue.length > 0) && !isSending && !disabled;
     const textareaFocusedBeforePicker = useRef(false);
 
     // Track keyboard height on mobile so pickers stay above it
@@ -1330,9 +1384,17 @@ export default function MessageInput({
           ? t("messageInput.selectARoomToStartChatting")
           : isThread
             ? t("messageInput.replyInThread")
-            : replyToEvent
+            : replyToEvent && !activeEdit
               ? t("messageInput.replyTo", { replyTargetName })
               : t("messageInput.message", { roomName });
+
+    // Whether this reply pings the author. Starts from the setting each time a
+    // different message is picked to reply to; the reply bar toggles it.
+    const [replyPing, setReplyPing] = useState(true);
+    const replyToEventId = replyToEvent?.getId();
+    useEffect(() => {
+        setReplyPing(settingsState.replyPingDefault);
+    }, [replyToEventId]);
 
     // Focus textarea when reply is set
     useEffect(() => {
@@ -1439,9 +1501,61 @@ export default function MessageInput({
         setText(restored);
         setPendingMentions(new Map(draft?.mentions ?? []));
         renderComposer(restored.length);
-        return () => setDraft(key, textRef.current, pendingMentionsRef.current);
+        return () => {
+            setDraft(key, draftTextNow(), draftMentionsNow());
+            // The stash was saved as this room's draft just above. The next
+            // body run loads the incoming draft, so the edit session ends here.
+            editStash.current = null;
+        };
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only the key, as upstream's untrack() does.
     }, [effComposerKey]);
+
+    // Edit mode: entering an edit swaps the composer to that message's text
+    // (stashing the draft), and leaving it restores the draft. Tracks only the
+    // target id, so re-rendering the same target never resets the text.
+    const activeEditId = activeEdit?.getId() ?? null;
+    useEffect(() => {
+        const ev = activeEdit;
+        if (ev) {
+            // Switching from one edit to another keeps the original draft.
+            if (!editStash.current)
+                editStash.current = {
+                    key: effComposerKey,
+                    text: textRef.current,
+                    mentions: new Map(pendingMentionsRef.current),
+                };
+            setPendingMentions(
+                mentionsFromHtml(
+                    ev.getContent().formatted_body as string | undefined,
+                ),
+            );
+            mention.setQuery(null);
+            emoji.setQuery(null);
+            slash.setQuery(null);
+            // Zami: not ported: resetUndoHistory (see TextUndoHistory above).
+            if (
+                showActionsMenu ||
+                showEmojiPicker ||
+                showGifPicker ||
+                showStickerPicker
+            )
+                closeModal();
+            setComposerText(editableBody(ev));
+            textareaEl.current?.focus();
+            return;
+        }
+        // Edit ended: saved, cancelled, or its room was left. A stash from
+        // another room is left for the draft effect to save.
+        const stash = editStash.current;
+        if (!stash || stash.key !== effComposerKey) return;
+        editStash.current = null;
+        setPendingMentions(new Map(stash.mentions));
+        setComposerText(stash.text);
+        // Back to typing after a save or cancel. Not on touch, where
+        // focusing would open the keyboard unasked.
+        if (!interfaceState.isMobile) textareaEl.current?.focus();
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- tracks only the target id, as upstream's untrack() does.
+    }, [activeEditId]);
 
     function splitUserAndReason(arg: string): {
         user: string;
@@ -1653,9 +1767,18 @@ export default function MessageInput({
         renderComposer(0);
 
         try {
-            const mentions = formatted
+            const baseMentions = formatted
                 ? mentionsFromFormatted(formatted)
                 : undefined;
+            const mentions =
+                command.kind === "emote"
+                    ? baseMentions
+                    : withReplyMention(
+                          baseMentions,
+                          replyTarget?.getSender(),
+                          replyPing,
+                          auth.userId,
+                      );
             if (command.kind === "emote") {
                 await sendEmote(
                     roomId,
@@ -1785,7 +1908,84 @@ export default function MessageInput({
         toastId: number;
     } | null>(null);
 
+    // Sends one queued file as media. A starred GIF re-uses its existing media
+    // instead of uploading the bytes again; when the room can't take that media
+    // (an encrypted one in a plaintext room) the bytes are uploaded as usual.
+    async function sendQueuedMedia(
+        item: QueuedFile,
+        roomId: string,
+        caption: MediaCaption | undefined,
+        relation: MediaRelation | undefined,
+        transform:
+            | ((c: Record<string, unknown>) => Record<string, unknown>)
+            | undefined,
+        onProgress: ((loaded: number, total: number) => void) | undefined,
+        ready: () => Promise<void>,
+    ): Promise<void> {
+        if (
+            item.reuse &&
+            (await sendExistingMedia(
+                roomId,
+                item.reuse,
+                item.name,
+                caption,
+                relation,
+                transform,
+                ready,
+            ))
+        )
+            return;
+        await sendFile(
+            roomId,
+            item.file,
+            caption,
+            relation,
+            transform,
+            onProgress,
+            ready,
+        );
+    }
+
+    // Save the edit in progress: the composer's text becomes the message's new
+    // content. The caller's onCancelEdit ends edit mode (which restores the
+    // draft). On failure the text stays so the user can retry.
+    async function submitEdit(ev: MatrixEvent) {
+        if (
+            isSavingEditRef.current ||
+            !room ||
+            isEmptyEdit(ev, textRef.current)
+        )
+            return;
+        setIsSavingEdit(true);
+        try {
+            await sendMessageEdit(
+                room,
+                ev,
+                textRef.current,
+                pendingMentionsRef.current,
+            );
+            if (live.current.editEvent === ev) live.current.onCancelEdit?.();
+        } catch (err) {
+            console.error("Failed to edit message:", err);
+            showErrorToast(t("messageInput.editFailed"));
+        } finally {
+            setIsSavingEdit(false);
+        }
+    }
+
+    function getEditPreview(): string {
+        if (!activeEdit) return "";
+        const body = editableBody(activeEdit);
+        return body.length > 80 ? body.slice(0, 80) + "…" : body;
+    }
+
     async function send() {
+        // Edit mode: Enter and the send button save the edit. Nothing else
+        // (commands, sed, attachments, replies, threads) applies to it.
+        if (activeEdit) {
+            await submitEdit(activeEdit);
+            return;
+        }
         // `s/old/new/` edits the last message instead of sending one. Not with
         // files queued: then the text is a caption.
         if (
@@ -1944,6 +2144,14 @@ export default function MessageInput({
             (useCaption || !trimmed)
                 ? (replyTarget.getId() ?? undefined)
                 : undefined;
+        const captionMentions = formatted
+            ? withReplyMention(
+                  mentionsFromFormatted(formatted),
+                  fileReplyToId ? replyTarget?.getSender() : undefined,
+                  replyPing,
+                  auth.userId,
+              )
+            : undefined;
         const fileRelation = (i: number) =>
             isThread || (i === 0 && fileReplyToId)
                 ? {
@@ -1951,6 +2159,31 @@ export default function MessageInput({
                       replyToEventId: i === 0 ? fileReplyToId : undefined,
                   }
                 : undefined;
+
+        // MSC4274 galleries (unless the debug setting disableGallerySend is
+        // on): the files that
+        // are neither direct offers nor reused media, in queue order, chunked
+        // to the per-event limit. A gallery needs two or more files; one file
+        // goes as before. Direct and reused files are never gallery items.
+        const galleryCandidates = !settingsState.disableGallerySend
+            ? filesToSend.filter((item) => !item.direct && !item.reuse)
+            : [];
+        const galleryChunks: QueuedFile[][] =
+            galleryCandidates.length >= 2
+                ? chunkGalleryItems(galleryCandidates)
+                : [];
+        const inGallery = galleryChunks.length > 0;
+        const galleried = new Set(galleryChunks.flat());
+        // Everything not in a gallery: the per-file path. With galleries off
+        // this is the whole queue, unchanged.
+        const rest = inGallery
+            ? filesToSend.filter((item) => !galleried.has(item))
+            : filesToSend;
+        // The thread relation alone, for a file that is not the first of a
+        // gallery's chunks (the reply rides on that first chunk only).
+        const threadOnlyRelation = isThread
+            ? { rootEventId: threadRootId!, replyToEventId: undefined }
+            : undefined;
 
         // The SDK creates the local echo synchronously, so a text message shows
         // in the timeline the moment we send it — with a retry/delete affordance
@@ -1980,7 +2213,12 @@ export default function MessageInput({
             })
         ) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const baseContent: Record<string, unknown> = replyToEvent
                 ? (buildReplyContent({
                       replyEventId: replyToEvent.getId()!,
@@ -2008,7 +2246,12 @@ export default function MessageInput({
         // blocked the next message behind a spinner. Reported in issue #40.
         if (trimmed && formatted && !useCaption) {
             const { html } = formatted;
-            const mentions = mentionsFromFormatted(formatted);
+            const mentions = withReplyMention(
+                mentionsFromFormatted(formatted),
+                replyToEvent?.getSender(),
+                replyPing,
+                auth.userId,
+            );
             const replyId = replyToEvent?.getId() ?? undefined;
             const threadArmed = createThreadArmedRef.current;
             setCreateThreadArmed(false);
@@ -2068,55 +2311,121 @@ export default function MessageInput({
             // it lands. A failed file doesn't stop the rest (their uploads
             // would be orphaned); only the failed files are restored below,
             // so a retry sends just those (audit MEDIA-03).
-            await sendQueuedFiles(
-                filesToSend,
-                (item, i, ready) => {
-                    if (item.direct)
-                        return ready().then(() =>
-                            offerFile(targetRoomId, item.file),
-                        );
-                    if (useCaption && i === 0 && formatted) {
-                        const { html } = formatted;
-                        return sendFile(
+            // Galleries first (MSC4274, when the setting is on): the gallery
+            // files go out as chunks in queue order, and the caption and reply
+            // ride on the first chunk. Every other file then takes the per-file
+            // path below, in queue order, so a direct offer or reused media
+            // posts after the galleries rather than between them. Each phase
+            // keeps its own ordering gate. A failure in one phase doesn't stop
+            // the other; the first failure (galleries first) is rethrown after
+            // both, so the restore below covers every unsent file.
+            let galleryFailure: { error: unknown } | null = null;
+            if (inGallery) {
+                try {
+                    await sendQueuedFiles(
+                        galleryChunks,
+                        (chunk, i, ready) =>
+                            sendGallery(
+                                targetRoomId,
+                                chunk.map((item) => item.file),
+                                useCaption && i === 0 && formatted
+                                    ? {
+                                          body: trimmed,
+                                          formattedBody:
+                                              formatted.html ?? undefined,
+                                          mentions: captionMentions,
+                                      }
+                                    : undefined,
+                                i === 0 ? fileRelation(0) : threadOnlyRelation,
+                                transformOutgoingContent,
+                                (local, loaded, total) =>
+                                    onUploadProgress(
+                                        filesToSend.indexOf(chunk[local]),
+                                    )(loaded, total),
+                                ready,
+                            ),
+                        (chunk, i) => {
+                            for (const item of chunk) sentIds.add(item.id);
+                            // The caption and the reply both ride on the first
+                            // chunk, so they are only safely sent once it is.
+                            if (i !== 0) return;
+                            if (
+                                fileReplyToId &&
+                                live.current.replyToEvent === replyTarget
+                            )
+                                live.current.onCancelReply?.();
+                            if (useCaption)
+                                clearComposerAfterSend(
+                                    targetComposerKey,
+                                    textAtSend,
+                                );
+                        },
+                    );
+                } catch (error) {
+                    galleryFailure = { error };
+                }
+            }
+
+            let restFailure: { error: unknown } | null = null;
+            try {
+                await sendQueuedFiles(
+                    rest,
+                    (item, i, ready) => {
+                        if (item.direct)
+                            return ready().then(() =>
+                                offerFile(targetRoomId, item.file),
+                            );
+                        if (!inGallery && useCaption && i === 0 && formatted) {
+                            const { html } = formatted;
+                            return sendQueuedMedia(
+                                item,
+                                targetRoomId,
+                                {
+                                    body: trimmed,
+                                    formattedBody: html ?? undefined,
+                                    mentions: captionMentions,
+                                },
+                                fileRelation(i),
+                                transformOutgoingContent,
+                                onUploadProgress(filesToSend.indexOf(item)),
+                                ready,
+                            );
+                        }
+                        return sendQueuedMedia(
+                            item,
                             targetRoomId,
-                            item.file,
-                            {
-                                body: trimmed,
-                                formattedBody: html ?? undefined,
-                                mentions: mentionsFromFormatted(formatted),
-                            },
-                            fileRelation(i),
-                            transformOutgoingContent,
-                            onUploadProgress(i),
+                            undefined,
+                            inGallery ? threadOnlyRelation : fileRelation(i),
+                            undefined,
+                            onUploadProgress(filesToSend.indexOf(item)),
                             ready,
                         );
-                    }
-                    return sendFile(
-                        targetRoomId,
-                        item.file,
-                        undefined,
-                        fileRelation(i),
-                        undefined,
-                        onUploadProgress(i),
-                        ready,
-                    );
-                },
-                (item, i) => {
-                    // The drawer was already cleared optimistically; just record
-                    // the success so a later failure won't restore this file.
-                    sentIds.add(item.id);
-                    if (
-                        i === 0 &&
-                        fileReplyToId &&
-                        live.current.replyToEvent === replyTarget
-                    )
-                        live.current.onCancelReply?.();
-                    // The caption rode on the first file — it's only safely
-                    // sent once that file is.
-                    if (useCaption && i === 0)
-                        clearComposerAfterSend(targetComposerKey, textAtSend);
-                },
-            );
+                    },
+                    (item, i) => {
+                        // The drawer was already cleared optimistically; just record
+                        // the success so a later failure won't restore this file.
+                        sentIds.add(item.id);
+                        if (
+                            !inGallery &&
+                            i === 0 &&
+                            fileReplyToId &&
+                            live.current.replyToEvent === replyTarget
+                        )
+                            live.current.onCancelReply?.();
+                        // The caption rode on the first file — it's only safely
+                        // sent once that file is.
+                        if (!inGallery && useCaption && i === 0)
+                            clearComposerAfterSend(
+                                targetComposerKey,
+                                textAtSend,
+                            );
+                    },
+                );
+            } catch (error) {
+                restFailure = { error };
+            }
+            const failure = galleryFailure ?? restFailure;
+            if (failure) throw failure.error;
             // Snap scroll to bottom after input shrinks — prevents content from drifting up
             snapTimelineToBottom();
         } catch (err) {
@@ -2148,6 +2457,7 @@ export default function MessageInput({
                     item.name,
                     previewUrlFor(item.file),
                     item.direct,
+                    item.reuse,
                 );
             }
         } finally {
@@ -2314,19 +2624,22 @@ export default function MessageInput({
         // Zami: Shift+Enter and the physical Enter are onSubmitEditing's.
 
         // Picker dismissal is handled centrally (+page Escape/back). Here we
-        // only cancel an in-progress reply, and only when nothing else is open.
+        // only cancel an in-progress edit or reply, and only when nothing else
+        // is open. An edit is cancelled before a reply.
         if (
             e.key === "Escape" &&
             !interfaceState.modal &&
             !interfaceState.sidebar &&
-            replyToEvent
+            (activeEdit || replyToEvent)
         ) {
-            onCancelReply?.();
+            if (activeEdit) onCancelEdit?.();
+            else onCancelReply?.();
         }
         // Ctrl+E / Ctrl+S (open pickers) are global shortcuts handled
         // centrally in AppShell.
         if (
             e.key === "ArrowUp" &&
+            !activeEdit &&
             !textRef.current &&
             !e.altKey &&
             !e.ctrlKey &&
@@ -2402,9 +2715,15 @@ export default function MessageInput({
             return;
         }
         // Picker dismissal is handled centrally (+page Escape/back). Here we
-        // only cancel an in-progress reply, and only when nothing else is open.
-        if (!interfaceState.modal && !interfaceState.sidebar && replyToEvent) {
-            onCancelReply?.();
+        // only cancel an in-progress edit or reply, and only when nothing else
+        // is open. An edit is cancelled before a reply.
+        if (
+            !interfaceState.modal &&
+            !interfaceState.sidebar &&
+            (activeEdit || replyToEvent)
+        ) {
+            if (activeEdit) onCancelEdit?.();
+            else onCancelReply?.();
         }
     }
 
@@ -2449,6 +2768,9 @@ export default function MessageInput({
     }
 
     function enqueueFile(file: File, defaultName?: string, direct = false) {
+        // Attachments are not offered while editing a message.
+        const { editEvent } = live.current;
+        if (editEvent && editEvent.getRoomId() === roomId) return;
         const name = file.name || defaultName || "file";
         addQueuedFile(
             live.current.effComposerKey,
@@ -2456,6 +2778,7 @@ export default function MessageInput({
             name,
             previewUrlFor(file),
             direct,
+            reusableMediaOfFile(file),
         );
         // Look up the upload size limit now, while the user is still writing,
         // so its round trip isn't added to the send (slow links: Tor).
@@ -2513,6 +2836,13 @@ export default function MessageInput({
     // deferral and onCompositionEnd). The TextInput owns its marked text and
     // leaves it alone when the model's text is drawn over it; onChangeText
     // reports the text with it.
+    // Zami: not ported: commitPendingComposition (the blur()+focus() that makes
+    // a mobile WebView's keyboard commit its pending word before a send): the
+    // TextInput reports the text with its marked text, and blurring it would
+    // dismiss the keyboard.
+    async function sendFromButton() {
+        await send();
+    }
 
     /** Read the editor into the model.
      *  Zami: `next` is what the TextInput now holds (onChangeText). */
@@ -2699,6 +3029,7 @@ export default function MessageInput({
                         ? () => setCreateThreadArmed(true)
                         : undefined
                 }
+                onInviteToGame={() => openGameInviteDialog(roomId)}
             />
         );
     }
@@ -2706,6 +3037,8 @@ export default function MessageInput({
     const closeIcon =
         "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z";
 
+    // Zami: not ported: `data-zam-region="composer"`, the DOM hook plugins
+    // find the composer by (pluginDom.ts); there's no DOM for them to query.
     return (
         <View
             onAccessibilityEscape={onEscape}
@@ -2719,30 +3052,87 @@ export default function MessageInput({
                 {typingUsers.length > 0 && (
                     <Text
                         numberOfLines={1}
-                        className="text-xs leading-4 text-discord-textMuted"
+                        className="text-xs leading-4 text-zam-textMuted"
                     >
                         {typingText()}
                     </Text>
                 )}
             </View>
+            {/* Edit bar: replaces the reply bar while a message is being edited. The
+                reply target itself is kept and returns when the edit ends. */}
+            {activeEdit && (
+                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent">
+                    <Pencil
+                        size={16}
+                        className="text-zam-accent flex-shrink-0"
+                    />
+                    <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
+                        <Text className="text-xs text-zam-accent font-semibold flex-shrink-0">
+                            {t("messageInput.editingMessage")}
+                        </Text>
+                        <Text
+                            numberOfLines={1}
+                            className="text-xs text-zam-textMuted min-w-0 flex-shrink"
+                        >
+                            {getEditPreview()}
+                        </Text>
+                    </View>
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("messageInput.cancelEditEsc")}
+                        onPress={() => onCancelEdit?.()}
+                        className="flex-shrink-0 p-0.5 rounded transition-colors"
+                    >
+                        <SvgIcon
+                            d={closeIcon}
+                            className="w-4 h-4 text-zam-textMuted"
+                        />
+                    </Pressable>
+                </View>
+            )}
             {/* Reply preview bar */}
-            {replyToEvent && (
-                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-discord-backgroundTertiary rounded-t-lg border-s-2 border-discord-accent">
+            {replyToEvent && !activeEdit && (
+                <View className="flex-row items-center gap-2 mb-1 px-3 py-1.5 bg-zam-backgroundTertiary rounded-t-lg border-s-2 border-zam-accent">
                     <SvgIcon
                         d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"
-                        className="w-4 h-4 text-discord-accent flex-shrink-0"
+                        className="w-4 h-4 text-zam-accent flex-shrink-0"
                     />
-                    {/* Zami: the two spans as one line that ellipsizes, the
-                        preview's `ms-2` as spaces. */}
-                    <Text numberOfLines={1} className="flex-1 min-w-0 text-xs">
-                        <Text className="text-xs text-discord-accent font-semibold">
-                            {t("messageInput.replyingTo", { replyTargetName })}
+                    <View className="flex-1 min-w-0 flex-row items-baseline gap-2">
+                        <Text className="text-xs text-zam-accent font-semibold flex-shrink-0">
+                            {t("messageInput.replyingTo", {
+                                replyTargetName,
+                            })}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
-                            {"  "}
+                        <Text
+                            numberOfLines={1}
+                            className="text-xs text-zam-textMuted min-w-0 flex-shrink"
+                        >
                             {getReplyPreview()}
                         </Text>
-                    </Text>
+                    </View>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={() => setReplyPing(!replyPing)}
+                        className="flex-shrink-0 px-1 rounded transition-colors"
+                        accessibilityLabel={
+                            replyPing
+                                ? t("messageInput.pingOffTitle")
+                                : t("messageInput.pingOnTitle")
+                        }
+                        accessibilityState={{ selected: replyPing }}
+                    >
+                        <Text
+                            className={`text-xs font-bold ${
+                                replyPing
+                                    ? "text-zam-accent"
+                                    : "text-zam-textMuted hover:text-zam-textPrimary"
+                            }`}
+                        >
+                            {replyPing
+                                ? t("messageInput.pingOn")
+                                : t("messageInput.pingOff")}
+                        </Text>
+                    </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("messageInput.cancelReplyEsc")}
@@ -2751,7 +3141,7 @@ export default function MessageInput({
                     >
                         <SvgIcon
                             d={closeIcon}
-                            className="w-4 h-4 text-discord-textMuted"
+                            className="w-4 h-4 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -2761,15 +3151,15 @@ export default function MessageInput({
             {sendingRoomId === roomId && sendingFileCount > 0 && (
                 <View className="flex-row items-center gap-2 mb-2">
                     <Spin>
-                        <Loader2 className="w-3.5 h-3.5 text-discord-textMuted" />
+                        <Loader2 className="w-3.5 h-3.5 text-zam-textMuted" />
                     </Spin>
-                    <Text className="text-xs text-discord-textMuted">
+                    <Text className="text-xs text-zam-textMuted">
                         {t("messageInput.sendingAttachments", {
                             count: sendingFileCount,
                         })}
                     </Text>
                     {uploadPercent !== null && (
-                        <Text className="text-xs text-discord-textMuted tabular-nums">
+                        <Text className="text-xs text-zam-textMuted tabular-nums">
                             {uploadPercent}%
                         </Text>
                     )}
@@ -2799,7 +3189,7 @@ export default function MessageInput({
                                     { name: item.name },
                                 )}
                                 onPress={() => openRename(item)}
-                                className="w-20 h-20 rounded-lg bg-discord-backgroundTertiary flex-row items-center justify-center overflow-hidden border border-discord-divider hover:border-discord-accent transition-colors"
+                                className="w-20 h-20 rounded-lg bg-zam-backgroundTertiary flex-row items-center justify-center overflow-hidden border border-zam-divider hover:border-zam-accent transition-colors"
                             >
                                 {item.previewUrl &&
                                 item.file.type.startsWith("video/") ? (
@@ -2822,7 +3212,7 @@ export default function MessageInput({
                                 ) : (
                                     <SvgIcon
                                         d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"
-                                        className="w-8 h-8 text-discord-textMuted"
+                                        className="w-8 h-8 text-zam-textMuted"
                                     />
                                 )}
                             </Pressable>
@@ -2834,13 +3224,13 @@ export default function MessageInput({
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="text-[10px] text-discord-textMuted text-center leading-tight"
+                                    className="text-[10px] text-zam-textMuted text-center leading-tight"
                                 >
                                     {item.name}
                                 </Text>
                             </Pressable>
                             {item.direct && (
-                                <Text className="text-[10px] font-semibold text-discord-accent">
+                                <Text className="text-[10px] font-semibold text-zam-accent">
                                     {t("messageInput.directFile")}
                                 </Text>
                             )}
@@ -2849,11 +3239,11 @@ export default function MessageInput({
                                 accessibilityRole="button"
                                 accessibilityLabel={t("common.remove")}
                                 onPress={() => removeFromQueue(item.id)}
-                                className="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-discord-backgroundSecondary border border-discord-divider hover:bg-discord-messageHover flex-row items-center justify-center transition-colors"
+                                className="absolute -top-0 -end-1.5 w-5 h-5 rounded-full bg-zam-backgroundSecondary border border-zam-divider hover:bg-zam-messageHover flex-row items-center justify-center transition-colors"
                             >
                                 <SvgIcon
                                     d={closeIcon}
-                                    className="w-3 h-3 text-discord-textMuted"
+                                    className="w-3 h-3 text-zam-textMuted"
                                 />
                             </Pressable>
                         </View>
@@ -2900,7 +3290,7 @@ export default function MessageInput({
             {/* Mention autocomplete picker */}
             <SuggestionsView suggestions={mention}>
                 {(mentionCandidates, mentionSelectedIdx) => (
-                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                    <View className="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg">
                         {mentionCandidates.map((member, i) => (
                             <Pressable
                                 // Upstream's `{#each}` is unkeyed: by index.
@@ -2914,7 +3304,7 @@ export default function MessageInput({
                                 onHoverIn={() => mention.setSelected(i)}
                                 className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
                                     i === mentionSelectedIdx
-                                        ? "bg-discord-messageHover"
+                                        ? "bg-zam-messageHover"
                                         : ""
                                 }`}
                             >
@@ -2928,13 +3318,13 @@ export default function MessageInput({
                                 />
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-sm text-discord-textPrimary font-medium truncate"
+                                    className="flex-shrink text-sm text-zam-textPrimary font-medium truncate"
                                 >
                                     {member.rawDisplayName || member.userId}
                                 </Text>
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs text-discord-textMuted truncate"
+                                    className="flex-shrink text-xs text-zam-textMuted truncate"
                                 >
                                     {member.userId}
                                 </Text>
@@ -2947,7 +3337,7 @@ export default function MessageInput({
             {/* Slash-command autocomplete picker */}
             <SuggestionsView suggestions={slash}>
                 {(slashCandidates, slashSelectedIdx) => (
-                    <View className="mb-1 bg-discord-backgroundSecondary border border-discord-divider rounded-lg overflow-hidden shadow-lg">
+                    <View className="mb-1 bg-zam-backgroundSecondary border border-zam-divider rounded-lg overflow-hidden shadow-lg">
                         {slashCandidates.map((command, i) => (
                             <Pressable
                                 key={i}
@@ -2958,27 +3348,27 @@ export default function MessageInput({
                                 onHoverIn={() => slash.setSelected(i)}
                                 className={`w-full flex-row items-center gap-2.5 px-3 py-1.5 transition-colors ${
                                     i === slashSelectedIdx
-                                        ? "bg-discord-messageHover"
+                                        ? "bg-zam-messageHover"
                                         : ""
                                 }`}
                             >
                                 <Text
                                     style={styles.mono}
-                                    className="text-sm text-discord-textPrimary flex-shrink-0"
+                                    className="text-sm text-zam-textPrimary flex-shrink-0"
                                 >
                                     /{command.name}
                                 </Text>
                                 {command.argHint && (
                                     <Text
                                         style={styles.mono}
-                                        className="text-xs text-discord-textMuted flex-shrink-0"
+                                        className="text-xs text-zam-textMuted flex-shrink-0"
                                     >
                                         {command.argHint}
                                     </Text>
                                 )}
                                 <Text
                                     numberOfLines={1}
-                                    className="flex-shrink text-xs text-discord-textMuted truncate ms-auto"
+                                    className="flex-shrink text-xs text-zam-textMuted truncate ms-auto"
                                 >
                                     {command.description}
                                 </Text>
@@ -2990,10 +3380,10 @@ export default function MessageInput({
 
             {/* Armed "create thread" banner: mirrors the reply banner pattern */}
             {createThreadArmed && !isThread && (
-                <View className="flex-row items-center justify-between gap-2 px-3 py-1.5 bg-discord-backgroundSecondary rounded-t-lg">
-                    <Text className="flex-shrink text-xs text-discord-textMuted">
+                <View className="flex-row items-center justify-between gap-2 px-3 py-1.5 bg-zam-backgroundSecondary rounded-t-lg">
+                    <Text className="flex-shrink text-xs text-zam-textMuted">
                         {t("messageInput.yourNextMessageWillStartA")}{" "}
-                        <Text className="text-xs font-bold text-discord-textMuted">
+                        <Text className="text-xs font-bold text-zam-textMuted">
                             {t("messageInput.thread")}
                         </Text>
                     </Text>
@@ -3007,7 +3397,7 @@ export default function MessageInput({
                     >
                         <SvgIcon
                             d={closeIcon}
-                            className="w-3.5 h-3.5 text-discord-textMuted"
+                            className="w-3.5 h-3.5 text-zam-textMuted"
                         />
                     </Pressable>
                 </View>
@@ -3042,11 +3432,9 @@ export default function MessageInput({
                 // Zami: `.input-box:focus-within`'s border, from the TextInput's
                 // focus.
                 <View
-                    className={`relative flex-row items-end gap-2 bg-discord-backgroundSecondary rounded-lg px-2.5 py-2.5 border transition-colors ${
-                        focused
-                            ? "border-discord-accent/30"
-                            : "border-transparent"
-                    } ${replyToEvent ? "rounded-ss-none" : ""}`}
+                    className={`relative flex-row items-end gap-2 bg-zam-backgroundSecondary rounded-lg px-2.5 py-2.5 border transition-colors ${
+                        focused ? "border-zam-accent/30" : "border-transparent"
+                    } ${replyToEvent || activeEdit ? "rounded-ss-none" : ""}`}
                 >
                     {/* "+" actions menu */}
                     <View className="flex-shrink-0 relative">
@@ -3059,7 +3447,7 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("common.add")}
                             accessibilityState={{
-                                disabled,
+                                disabled: disabled || !!activeEdit,
                                 expanded: showActionsMenu,
                             }}
                             onPress={() => {
@@ -3069,15 +3457,12 @@ export default function MessageInput({
                                     openComposerActions(effComposerKey);
                                 }
                             }}
-                            disabled={disabled}
-                            className={`relative p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40 ${
+                            disabled={disabled || !!activeEdit}
+                            className={`relative p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40 ${
                                 showActionsMenu ? "z-50" : ""
                             }`}
                         >
-                            <Plus
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Plus size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showActionsMenu &&
                             (isTouchscreen ? (
@@ -3113,7 +3498,7 @@ export default function MessageInput({
                         <textarea> would get for free. spellcheck follows the
                         "Check spelling" setting; autocorrect is the Safari name for
                         the same keyboard behaviour. */}
-                    <View className="flex-1 min-w-0 relative">
+                    <View className="flex-1 min-w-0 self-center relative">
                         {/* Zami: `.composer-editor:empty::before`, the placeholder
                             as one line that ellipsizes: a long room name must never
                             wrap and grow the composer (a TextInput's own
@@ -3125,7 +3510,7 @@ export default function MessageInput({
                             >
                                 <Text
                                     numberOfLines={1}
-                                    className="text-[16px] text-discord-textMuted"
+                                    className="text-[16px] text-zam-textMuted"
                                 >
                                     {composerPlaceholder}
                                 </Text>
@@ -3159,7 +3544,7 @@ export default function MessageInput({
                             // Zami: `.composer-editor`'s min-height and the 26px
                             // line upstream's `leading-relaxed` gives it, as
                             // padding around the TextInput's own line.
-                            className="w-full min-h-[32px] max-h-48 bg-transparent text-discord-textPrimary text-[16px] py-[6px]"
+                            className="w-full min-h-[32px] max-h-48 bg-transparent text-zam-textPrimary text-[16px] py-[6px]"
                         />
                     </View>
 
@@ -3180,14 +3565,14 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("messageInput.favouriteGifs")}
                             onPress={() => openPicker("gif")}
-                            disabled={disabled}
+                            disabled={disabled || !!activeEdit}
                             className={`${
                                 isTouchscreen ? "hidden" : ""
-                            } p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40`}
+                            } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
                         >
                             <ImagePlay
                                 size={20}
-                                className="text-discord-textMuted"
+                                className="text-zam-textMuted"
                             />
                         </Pressable>
                         {showGifPicker &&
@@ -3239,13 +3624,10 @@ export default function MessageInput({
                             onPress={() => openPicker("sticker")}
                             className={`${
                                 isTouchscreen ? "hidden" : ""
-                            } p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40`}
-                            disabled={disabled}
+                            } p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40`}
+                            disabled={disabled || !!activeEdit}
                         >
-                            <Sticker
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Sticker size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showStickerPicker &&
                             (isTouchscreen ? (
@@ -3288,13 +3670,10 @@ export default function MessageInput({
                             accessibilityRole="button"
                             accessibilityLabel={t("common.emoji")}
                             onPress={() => openPicker("emoji")}
-                            className="p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40"
+                            className="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
                             disabled={disabled}
                         >
-                            <Smile
-                                size={20}
-                                className="text-discord-textMuted"
-                            />
+                            <Smile size={20} className="text-zam-textMuted" />
                         </Pressable>
                         {showEmojiPicker &&
                             (isTouchscreen ? (
@@ -3380,16 +3759,16 @@ export default function MessageInput({
                                         }
                                     });
                                 }}
-                                disabled={disabled}
-                                className="p-1.5 rounded hover:bg-discord-messageHover transition-colors disabled:opacity-40"
+                                disabled={disabled || !!activeEdit}
+                                className="p-1.5 rounded hover:bg-zam-messageHover transition-colors disabled:opacity-40"
                             >
                                 {btn.icon ? (
                                     <SvgIcon
                                         d={btn.icon}
-                                        className="w-5 h-5 text-discord-textMuted"
+                                        className="w-5 h-5 text-zam-textMuted"
                                     />
                                 ) : (
-                                    <Text className="text-xs font-semibold text-discord-textMuted">
+                                    <Text className="text-xs font-semibold text-zam-textMuted">
                                         {btn.label.slice(0, 2)}
                                     </Text>
                                 )}
@@ -3403,21 +3782,23 @@ export default function MessageInput({
                     <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={t("messageInput.sendMessage")}
-                        onPress={() => void send()}
+                        onPress={() => void sendFromButton()}
                         disabled={
-                            (textBlank && fileQueue.length === 0) ||
-                            isSending ||
-                            disabled
+                            activeEdit
+                                ? editSaveBlocked || disabled
+                                : (textBlank && fileQueue.length === 0) ||
+                                  isSending ||
+                                  disabled
                         }
-                        className="flex-shrink-0 p-1.5 rounded transition-colors hover:bg-discord-messageHover disabled:opacity-40"
+                        className="flex-shrink-0 p-1.5 rounded transition-colors hover:bg-zam-messageHover disabled:opacity-40"
                     >
-                        {isSending ? (
+                        {isSending || isSavingEdit ? (
                             // Zami: `border-current` → the button's text color.
                             <Spin
                                 className={`w-5 h-5 border-2 ${
                                     canSend
-                                        ? "border-discord-accent"
-                                        : "border-discord-textMuted"
+                                        ? "border-zam-accent"
+                                        : "border-zam-textMuted"
                                 } border-t-transparent rounded-full`}
                             />
                         ) : (
@@ -3425,8 +3806,8 @@ export default function MessageInput({
                                 size={20}
                                 className={
                                     canSend
-                                        ? "text-discord-accent"
-                                        : "text-discord-textMuted"
+                                        ? "text-zam-accent"
+                                        : "text-zam-textMuted"
                                 }
                             />
                         )}

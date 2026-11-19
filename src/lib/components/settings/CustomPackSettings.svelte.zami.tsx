@@ -216,12 +216,12 @@ export default function CustomPackSettings({ kind }: Props) {
     return (
         <View className="gap-4">
             <View className="gap-2">
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                     {t("customPackSettings.add", { singular })}
                 </Text>
                 <View className="gap-2 sm:flex-row">
-                    <View className="flex-row items-center bg-discord-backgroundTertiary rounded border border-transparent focus-within:border-discord-accent/50 sm:flex-1">
-                        <Text className="ps-3 text-sm text-discord-textMuted">
+                    <View className="flex-row items-center bg-zam-backgroundTertiary rounded border border-transparent focus-within:border-zam-accent/50 sm:flex-1">
+                        <Text className="ps-3 text-sm text-zam-textMuted">
                             :
                         </Text>
                         <TextInput
@@ -235,21 +235,21 @@ export default function CustomPackSettings({ kind }: Props) {
                             autoCapitalize="none"
                             autoCorrect={false}
                             placeholder={t("customPackSettings.shortcode")}
-                            placeholderTextColorClassName="accent-discord-textMuted"
-                            className="min-w-0 flex-1 bg-transparent text-discord-textPrimary text-sm py-2 outline-none"
+                            placeholderTextColorClassName="accent-zam-textMuted"
+                            className="min-w-0 flex-1 bg-transparent text-zam-textPrimary text-sm py-2 outline-none"
                         />
-                        <Text className="pe-3 text-sm text-discord-textMuted">
+                        <Text className="pe-3 text-sm text-zam-textMuted">
                             :
                         </Text>
                     </View>
                     {kind === "emotes" && (
-                        <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-discord-backgroundTertiary">
+                        <View className="flex-row items-center gap-3 px-3 py-2 rounded bg-zam-backgroundTertiary">
                             <Checkbox
                                 checked={asEmoji}
                                 onChange={setAsEmoji}
                                 disabled={uploading}
                                 label={t("common.emoji")}
-                                labelClassName="text-xs text-discord-textPrimary"
+                                labelClassName="text-xs text-zam-textPrimary"
                                 className="items-center gap-1.5"
                             />
                             <Checkbox
@@ -257,7 +257,7 @@ export default function CustomPackSettings({ kind }: Props) {
                                 onChange={setAsSticker}
                                 disabled={uploading}
                                 label={t("customPackSettings.sticker")}
-                                labelClassName="text-xs text-discord-textPrimary"
+                                labelClassName="text-xs text-zam-textPrimary"
                                 className="items-center gap-1.5"
                             />
                         </View>
@@ -268,7 +268,7 @@ export default function CustomPackSettings({ kind }: Props) {
                             upload();
                         }}
                         disabled={uploading}
-                        className={`cursor-pointer px-3 py-2 rounded bg-discord-accent ${
+                        className={`cursor-pointer px-3 py-2 rounded bg-zam-accent ${
                             uploading ? "opacity-50 pointer-events-none" : ""
                         }`}
                     >
@@ -282,7 +282,7 @@ export default function CustomPackSettings({ kind }: Props) {
             </View>
 
             {error ? (
-                <Text className="text-sm text-discord-danger">{error}</Text>
+                <Text className="text-sm text-zam-danger">{error}</Text>
             ) : null}
             <View className="gap-1.5">
                 {/* Zami: memoized rows (typing a shortcode re-renders none of
@@ -304,7 +304,7 @@ export default function CustomPackSettings({ kind }: Props) {
                     />
                 ))}
                 {items.length === 0 && (
-                    <Text className="text-sm text-discord-textMuted text-center py-4">
+                    <Text className="text-sm text-zam-textMuted text-center py-4">
                         {kind === "emotes"
                             ? t("customPackSettings.noCustomImages")
                             : kind === "emojis"
@@ -338,8 +338,8 @@ const PackItemRow = memo(function PackItemRow({
     onRemove: (item: PackItem) => void;
 }) {
     return (
-        <View className="flex-row items-center gap-3 p-2 rounded bg-discord-backgroundTertiary">
-            <View className="w-12 h-12 rounded bg-discord-backgroundSecondary flex-shrink-0 overflow-hidden flex-row items-center justify-center">
+        <View className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary">
+            <View className="w-12 h-12 rounded bg-zam-backgroundSecondary flex-shrink-0 overflow-hidden flex-row items-center justify-center">
                 <Image
                     source={mediaSource(item.url)}
                     contentFit="contain"
@@ -350,13 +350,13 @@ const PackItemRow = memo(function PackItemRow({
             <View className="flex-1 min-w-0">
                 <Text
                     numberOfLines={1}
-                    className="text-sm font-medium text-discord-textPrimary truncate"
+                    className="text-sm font-medium text-zam-textPrimary truncate"
                 >
                     :{item.shortcode}:
                 </Text>
                 <Text
                     numberOfLines={1}
-                    className="text-xs text-discord-textMuted truncate"
+                    className="text-xs text-zam-textMuted truncate"
                 >
                     {item.mxcUrl}
                 </Text>
@@ -370,7 +370,7 @@ const PackItemRow = memo(function PackItemRow({
                         }
                         disabled={pendingEmoji}
                         label={t("common.emoji")}
-                        labelClassName="text-xs text-discord-textPrimary"
+                        labelClassName="text-xs text-zam-textPrimary"
                         className="items-center gap-1.5"
                     />
                     <Checkbox
@@ -380,7 +380,7 @@ const PackItemRow = memo(function PackItemRow({
                         }
                         disabled={pendingSticker}
                         label={t("customPackSettings.sticker")}
-                        labelClassName="text-xs text-discord-textPrimary"
+                        labelClassName="text-xs text-zam-textPrimary"
                         className="items-center gap-1.5"
                     />
                 </>
@@ -392,9 +392,9 @@ const PackItemRow = memo(function PackItemRow({
                 })}
                 onPress={() => onRemove(item)}
                 disabled={pendingRemove}
-                className="p-1 rounded hover:bg-discord-messageHover disabled:opacity-50"
+                className="p-1 rounded hover:bg-zam-messageHover disabled:opacity-50"
             >
-                <X size={14} className="text-discord-textMuted" />
+                <X size={14} className="text-zam-textMuted" />
             </Pressable>
         </View>
     );

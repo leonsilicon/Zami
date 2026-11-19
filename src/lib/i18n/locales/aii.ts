@@ -1156,8 +1156,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "mediaProgress.ofTotal": "{loaded} ܡܢ {total}",
     "messageItem.fileAttachment": "ܐܣܝܪܬܐ ܕܦܐܝܠ",
     "messageItem.download": "ܐܚܬ",
-    "messageItem.toSave": "ܩܐ ܢܛܪܐ ·",
-    "messageItem.toCancel": "ܩܐ ܒܘܛܠܐ",
     "messageItem.openThread": "ܦܬܘܚ ܚܘܛܐ",
     "messageItem.failedToSend": "ܫܕܪܐ ܠܐ ܦܠܚܠܗ.",
     "messageItem.retrying": "ܒܢܣܝܐ ܡܢ ܕܪܝܫ…",
@@ -2313,7 +2311,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "themeColorEditor.messageDisplay": "ܚܘܝܐ ܕܐܓܪ̈ܬܐ",
     "themeColorEditor.savedOnThisDeviceOnlyNot":
         "ܢܛܝܪܐ ܒܣ ܥܠ ܗܢܐ ܡܐܢܐ. ܠܐ ܐܚܝܕܐ ܝܠܗ ܥܡ ܚܘܫܒܢܐ ܕܝܘܟ.",
-    "themeColorEditor.appTextSize": "ܡܫܘܚܬܐ ܕܟܬܒܐ ܕܬܘܟܢܝܬܐ: {round}%",
     "themeColorEditor.scalesAllTextAndSpacingAcross":
         "ܡܫܚܠܦ ܡܫܘܚܬܐ ܕܟܠ ܟܬܒܐ ܘܦܘܪܫܐ ܒܟܠܗ̇ ܬܘܟܢܝܬܐ.",
     "themeColorEditor.font": "ܛܘܦܣܐ ܕܐܬ̈ܘܬܐ",
@@ -2774,7 +2771,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "fileOffer.cancelled": "ܫܘܕܪܐ ܒܛܝܠܐ ܝܠܗ.",
     "fileOffer.failedOffline": "ܫܕܪܢܐ ܠܝܬܠܗ. ܓܪܡ Zam ܦܝܫܐ ܦܬܝܚܐ ܓܒܝܗ.",
     "fileOffer.failedRefused": "ܫܘܬܐܣܐ ܕܫܕܪܢܐ ܠܐ ܩܒܠܠܗ ܐܗܐ ܫܘܕܪܐ.",
-    "fileOffer.failedNoSfu": "ܣܪܒܪ ܕܫܕܪܢܐ ܠܝܬܠܗ ܚܕܡܬܐ ܕܩܪܝܬܐ ܠܫܘܕܪܐ ܕܦܝܠ.",
     "fileOffer.failedConnection": "ܐܣܩܘܠܬܐ ܦܫܝܠܗ ܦܣܝܩܬܐ.",
     "fileOffer.failedStalled": "ܫܘܕܪܐ ܠܐ ܟܐ ܙܠܐ ܠܩܕܡ.",
     "fileOffer.failedCorrupt": "ܦܝܠ ܫܘܚܠܦܐ ܝܠܗ ܒܐܘܪܚܐ، ܡܛܠ ܗܕܐ ܫܕܐ ܝܠܗ.",

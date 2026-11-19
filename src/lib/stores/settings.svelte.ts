@@ -7,12 +7,18 @@
 // sync lands. See stores/customizationSync.svelte for the transport.
 import { t } from "$lib/i18n";
 import { MIN_SOUND_INTERVAL_MS } from "$lib/utils/soundboard";
+import {
+    parseReceiptOverrides,
+    type ReceiptOverride,
+} from "$lib/utils/receiptPrivacy";
 
 import { isPresenceState, type PresenceState } from "$lib/utils/presence";
+import { isDmSortOrder, type DmSortOrder } from "$lib/utils/roomOrdering";
 import {
     applyTheme,
     applyPreset,
     applyReduceMotion,
+    applyStreamerMode,
     normalizeTheme,
     themeColorsToCssText,
     type Theme,
@@ -68,9 +74,12 @@ import {
     type ThemeBase,
 } from "$lib/utils/themePreset";
 import {
-    resolveMessageFontSize,
     resolveMessageFont,
-    applyAppTextScale,
+    resolveStoredInterfaceScale,
+    resolveInterfaceScale,
+    resolveMessageTextScale,
+    applyInterfaceScale,
+    applyMessageTextScale,
     applyMessageFont,
     type MessageFontKey,
 } from "$lib/utils/messageDisplay";
@@ -177,6 +186,11 @@ function readSoundInterval(): number {
     return v === null ? MIN_SOUND_INTERVAL_MS : clampSoundInterval(Number(v));
 }
 
+function readDmSortOrder(): DmSortOrder {
+    const v = readAccountString("dmSortOrder");
+    return isDmSortOrder(v) ? v : "recent";
+}
+
 function readPresence(key: string, fallback: PresenceState): PresenceState {
     const v = readAccountString(key);
     return isPresenceState(v) ? v : fallback;
@@ -256,6 +270,8 @@ export const settingsState = $state({
      *  iMessage convention). Default OFF (Discord uniform-left). Rides
      *  customization sync so it follows the account across devices. */
     rightAlignOwnBubbles: readBool("rightAlignOwnBubbles", false),
+    /** Render everyone's messages in bubbles, not only own right-aligned ones. */
+    bubbleAllMessages: readBool("bubbleAllMessages", false),
     /** Draw senders' names in the colour they chose in their profile
      *  (MSC4522). Default ON. Rides customization sync. */
     showNameColours: readBool("showNameColours", true),
@@ -268,6 +284,10 @@ export const settingsState = $state({
     /** Debug: send and obey the order hint (matrix/orderHint). Default ON; off
      *  shows messages in the server's order, as Element does. */
     orderHints: readBool("orderHints", true),
+    /** Debug: announce our call membership as a sticky m.rtc.member (MSC4354)
+     *  instead of an m.call.member state event. Default OFF: clients that
+     *  only read state events won't see us in the call. */
+    stickyCallMembership: readBool("stickyCallMembership", false),
     /** Device-global: whether the packaged desktop/Android build auto-downloads
      *  updates. Default ON; the escape hatch is this toggle. */
     autoUpdateEnabled: readBool("autoUpdateEnabled", true),
@@ -306,6 +326,10 @@ export const settingsState = $state({
      *  computer are playing, from the system's now-playing info (SMTC/MPRIS).
      *  Needs richPresenceEnabled. Default OFF. */
     richPresenceMedia: readBool("richPresenceMedia", false),
+    /** Device-global (desktop only): report the Steam game being played and
+     *  its rich presence line, read through Steam's local debugging port.
+     *  Needs richPresenceEnabled. Default OFF. */
+    richPresenceSteam: readBool("richPresenceSteam", false),
     /** Device-global: render the read-receipt avatars under messages. Default
      *  ON (existing behaviour). Display only — it does not change whether we
      *  SEND receipts; that is `privateReadReceipts`. */
@@ -330,6 +354,11 @@ export const settingsState = $state({
      *  pixels and metadata. Default ON; turn off to upload files byte-for-byte
      *  as picked. Local-only. */
     progressiveJpegs: readBool("progressiveJpegs", true),
+    /** Debug: stop sending MSC4274 galleries. Two or more attachments picked
+     *  together normally go as ONE gallery message (one caption, several
+     *  items); on, each goes as its own message as before. Galleries from
+     *  others are shown either way. Default OFF. Local-only. */
+    disableGallerySend: readBool("disableGallerySend", false),
     /** Device-global: strip location and other identifying metadata (Exif GPS,
      *  XMP, IPTC, video location atoms; see utils/stripMetadata) from files
      *  before upload, keeping only the Exif orientation. Default ON; turning
@@ -344,6 +373,14 @@ export const settingsState = $state({
      *  receivers can watch it as it downloads. Only used when the result is
      *  smaller. Default OFF, since the file type changes. Local-only. */
     gifsAsWebp: readBool("gifsAsWebp", false),
+    /** Device-global: the image viewer opens with images smaller than the
+     *  screen enlarged to fill it, instead of at their own size. The viewer's
+     *  fit button flips it for the image being viewed. Default ON. */
+    lightboxFitToScreen: readBool("lightboxFitToScreen", true),
+    /** Device-global: whether a new reply pings the author of the message
+     *  it answers (adds them to `m.mentions`). The reply bar's toggle
+     *  overrides it per reply. Default ON, like Discord. */
+    replyPingDefault: readBool("replyPingDefault", true),
     /** Device-global: which sound bank plays MIDI attachments (see
      *  utils/midiSoundBank). Default "bundled", the SoundFont Zam ships, so
      *  MIDI sounds the same everywhere. Local-only: a custom bank lives in
@@ -360,8 +397,16 @@ export const settingsState = $state({
      *  theme. Empty by default; the switch lets it be paused without losing it. */
     customCss: readString("customCss") ?? "",
     customCssEnabled: readBool("customCssEnabled", true),
-    /** Device-local app-wide text scale, stored as px (12-24, default 16 = 100%). Drives the root font-size so all text + spacing scale. NOT synced. */
-    messageFontSize: resolveMessageFontSize(readString("messageFontSize")),
+    /** Device-local whole-UI scale in percent (75-150, step 5, default 100).
+     *  Drives the root font-size. Falls back to migrating the legacy
+     *  `messageFontSize` px key when `interfaceScale` was never written. NOT synced. */
+    interfaceScale: resolveStoredInterfaceScale(
+        readString("interfaceScale"),
+        readString("messageFontSize"),
+    ),
+    /** Device-local chat message + composer text scale in percent (80-200,
+     *  step 10, default 100). Drives --message-text-scale. NOT synced. */
+    messageTextScale: resolveMessageTextScale(readString("messageTextScale")),
     /** Device-local message font family key ("system" | "inter" | "atkinson").
      *  NOT synced: a bundled font binary cannot ride the JSON theme sync. */
     messageFont: resolveMessageFont(readString("messageFont")),
@@ -411,6 +456,17 @@ export const settingsState = $state({
      *  key into the ACTIVE account's scope and DELETE it, silently dropping the
      *  toggle for every other account on this device — with no error anywhere. */
     hideNotificationBody: readBool("hideNotificationBody", false),
+    /** Device-global: streamer mode. Blurs account identifiers and secrets
+     *  (`.streamer-hide`) and forces notification text off, so nothing private
+     *  lands on a live stream. Default OFF.
+     *
+     *  ⚠ Must stay readBool/writeBool (device-global), for the same reason as
+     *  hideNotificationBody. */
+    streamerMode: readBool("streamerMode", false),
+    /** Device-local master switch for notifications on THIS device: popups,
+     *  sound and push delivery. Off unregisters this device's pusher; other
+     *  devices and the account's push rules are untouched. */
+    deviceNotifications: readBool("deviceNotifications", true),
     /** Device-global: which notifications raise the OS pop-up and taskbar
      *  flash: "loud" (sound tweak only), "all" (loud + silent, the default) or
      *  "none". Device-local by design (readString/writeString, never scoped):
@@ -422,6 +478,11 @@ export const settingsState = $state({
     /** Send private read receipts (m.read.private): the server still tracks
      *  what you've read, but other users can't see it. Default is public. */
     privateReadReceipts: readAccountBool("privateReadReceipts", false),
+    /** Per-room / per-space overrides of `privateReadReceipts`, keyed by room
+     *  or space id (see utils/receiptPrivacy.ts). Absent = use the default. */
+    receiptOverrides: parseReceiptOverrides(
+        readAccountString("receiptOverrides"),
+    ),
     /** Tell other room members when you are typing. Default ON. Turning it
      *  off means no typing notification is ever sent (see sendTyping). */
     sendTypingIndicators: readAccountBool("sendTypingIndicators", true),
@@ -451,6 +512,19 @@ export const settingsState = $state({
     excludeInsecureDevices: readAccountBool("excludeInsecureDevices", false),
     /** Presence advertised to the homeserver (Settings → Account). */
     ownPresence: readPresence("ownPresence", "online"),
+    /** The homeserver has presence off (matrix.org), found by probing after
+     *  login. Not persisted: the presence options hide and invisible stops
+     *  hiding receipts and typing. False until the probe says otherwise. */
+    presenceUnsupported: false,
+    /** On a server without presence, publish ours in an extended profile field
+     *  instead (see utils/profilePresence.ts). Opt-in: the field is readable by
+     *  anyone who can see the profile. */
+    shareProfilePresence: readAccountBool("shareProfilePresence", false),
+    /** Do Not Disturb: silences notifications and ringing on every device
+     *  (the account's master push rule) and shows as idle to others. */
+    doNotDisturb: readAccountBool("doNotDisturb", false),
+    /** How untagged DMs are ordered (the DM list's header menu). */
+    dmSortOrder: readDmSortOrder(),
     /** The presence status_msg we last mirrored our profile status into. A
      *  presence update without a status_msg clears it on some servers, so it
      *  is re-sent with every presence change. */
@@ -505,6 +579,10 @@ export const settingsState = $state({
     pushToTalk: readAccountBool("pushToTalk", true),
     /** Include system/tab audio when screen sharing. */
     shareSystemAudio: readAccountBool("shareSystemAudio", true),
+    /** Windows desktop: capture and encode a shared window or screen in the
+     *  native helper, not in Chromium (matrix/call/nativeShare). Only the
+     *  Windows desktop app offers it. */
+    nativeScreenShare: readAccountBool("nativeScreenShare", true),
     /** Screen-share capture target, applied when a share starts (a mid-share
      *  change would re-prompt the OS picker). Stored as strings for the
      *  <select>s; fps is parsed to a number at the call site. */
@@ -529,6 +607,14 @@ export const settingsState = $state({
     /** Ask the SFU for video sized to the tile showing it, and pause video
      *  that isn't on screen (LiveKit adaptiveStream). Read at join. */
     adaptiveStream: readAccountBool("adaptiveStream", false),
+    /** Peer-to-peer calls (MSC4575) only through the homeserver's TURN
+     *  server, so the others see its address instead of ours. Read when a
+     *  connection is made. */
+    meshRelayOnly: readAccountBool("meshRelayOnly", false),
+    /** When the homeserver offers no TURN/STUN server: let peer-to-peer
+     *  calls ask a public STUN server (meshPolicy PUBLIC_STUN_URL) for our
+     *  public address. Off until the user says yes. */
+    meshPublicStun: readAccountBool("meshPublicStun", false),
     callSoundsEnabled: readAccountBool("callSoundsEnabled", true),
     callSoundsVolume: readAccountNumber("callSoundsVolume", 0.5),
     /** Ring for incoming DM calls. Deliberately independent of
@@ -536,6 +622,9 @@ export const settingsState = $state({
      *  different wishes. */
     ringEnabled: readAccountBool("ringEnabled", true),
     ringVolume: readAccountNumber("ringVolume", 1),
+    /** The ringtone: "" for the built-in tone, or a plugin's `plugin:<id>:<ringtone>`
+     *  (see audio/ringtoneChoice.ts). */
+    ringtone: readAccountString("ringtone") ?? "",
     /** Per-user call volume/mute, keyed by user id. */
     participantAudio: parseAudioMap(readAccountString("participantAudio")),
     /** Theme color presets. */
@@ -575,6 +664,7 @@ writeString("themeVars", themeColorsToCssText(bootColors));
 // element so CSS suppression is live before first paint, not only after a
 // toggle. The OS media query works independently of this attribute.
 applyReduceMotion(settingsState.reduceMotion);
+applyStreamerMode(settingsState.streamerMode);
 
 // Boot apply: the user's own stylesheet, unless the URL asks for none.
 applyCustomCss();
@@ -583,9 +673,10 @@ applyCustomCss();
 // their own attribute. The message editors set theirs explicitly.
 applySpellCheck(settingsState.spellCheckEnabled);
 
-// Boot apply: reflect the stored message text size + font onto the root so
-// the timeline is sized/styled before first paint, mirroring applyReduceMotion.
-applyAppTextScale(settingsState.messageFontSize);
+// Boot apply: reflect the stored interface + message text scales and font onto
+// the root so the UI is sized/styled before first paint, mirroring applyReduceMotion.
+applyInterfaceScale(settingsState.interfaceScale);
+applyMessageTextScale(settingsState.messageTextScale);
 applyMessageFont(settingsState.messageFont);
 
 // Boot apply: register the uploaded custom font (if any) from IndexedDB, then
@@ -663,6 +754,7 @@ export function customizationSnapshot(): ClientCustomization {
         keepSidebarOpen: settingsState.keepSidebarOpen,
         showMatrixIds: settingsState.showMatrixIds,
         rightAlignOwnBubbles: settingsState.rightAlignOwnBubbles,
+        bubbleAllMessages: settingsState.bubbleAllMessages,
         showNameColours: settingsState.showNameColours,
         shareCallStatus: settingsState.shareCallStatus,
         themePresets: Object.fromEntries(
@@ -739,6 +831,10 @@ export function applyCustomization(c: ClientCustomization): void {
         settingsState.rightAlignOwnBubbles = c.rightAlignOwnBubbles;
         writeBool("rightAlignOwnBubbles", c.rightAlignOwnBubbles);
     }
+    if (c.bubbleAllMessages !== undefined) {
+        settingsState.bubbleAllMessages = c.bubbleAllMessages;
+        writeBool("bubbleAllMessages", c.bubbleAllMessages);
+    }
     if (c.gifDefaultTab !== undefined) {
         settingsState.gifDefaultTab = normalizeGifTab(c.gifDefaultTab);
         writeString("gifDefaultTab", settingsState.gifDefaultTab);
@@ -781,6 +877,9 @@ export function reloadAccountSettings(): void {
         "privateReadReceipts",
         false,
     );
+    settingsState.receiptOverrides = parseReceiptOverrides(
+        readAccountString("receiptOverrides"),
+    );
     settingsState.sendTypingIndicators = readAccountBool(
         "sendTypingIndicators",
         true,
@@ -801,6 +900,13 @@ export function reloadAccountSettings(): void {
         false,
     );
     settingsState.ownPresence = readPresence("ownPresence", "online");
+    settingsState.presenceUnsupported = false;
+    settingsState.shareProfilePresence = readAccountBool(
+        "shareProfilePresence",
+        false,
+    );
+    settingsState.doNotDisturb = readAccountBool("doNotDisturb", false);
+    settingsState.dmSortOrder = readDmSortOrder();
     settingsState.ownStatusMessage =
         readAccountString("ownStatusMessage") ?? "";
     settingsState.audioInputDeviceId =
@@ -841,6 +947,10 @@ export function reloadAccountSettings(): void {
     settingsState.h264ProfileFix = readAccountBool("h264ProfileFix", true);
     settingsState.pushToTalk = readAccountBool("pushToTalk", true);
     settingsState.shareSystemAudio = readAccountBool("shareSystemAudio", true);
+    settingsState.nativeScreenShare = readAccountBool(
+        "nativeScreenShare",
+        true,
+    );
     settingsState.screenShareResolution =
         readAccountString("screenShareResolution") ?? "1080";
     settingsState.screenShareFps = readAccountString("screenShareFps") ?? "30";
@@ -851,6 +961,8 @@ export function reloadAccountSettings(): void {
         readAccountString("callVideoCodec"),
     );
     settingsState.adaptiveStream = readAccountBool("adaptiveStream", false);
+    settingsState.meshRelayOnly = readAccountBool("meshRelayOnly", false);
+    settingsState.meshPublicStun = readAccountBool("meshPublicStun", false);
     settingsState.callSoundsEnabled = readAccountBool(
         "callSoundsEnabled",
         true,
@@ -858,6 +970,7 @@ export function reloadAccountSettings(): void {
     settingsState.callSoundsVolume = readAccountNumber("callSoundsVolume", 0.5);
     settingsState.ringEnabled = readAccountBool("ringEnabled", true);
     settingsState.ringVolume = readAccountNumber("ringVolume", 1);
+    settingsState.ringtone = readAccountString("ringtone") ?? "";
     settingsState.participantAudio = parseAudioMap(
         readAccountString("participantAudio"),
     );
@@ -918,6 +1031,12 @@ export function setShowNameColours(value: boolean): void {
     customizationChanged();
 }
 
+export function setBubbleAllMessages(value: boolean): void {
+    settingsState.bubbleAllMessages = value;
+    writeBool("bubbleAllMessages", value);
+    customizationChanged();
+}
+
 export function setRightAlignOwnBubbles(value: boolean): void {
     settingsState.rightAlignOwnBubbles = value;
     writeBool("rightAlignOwnBubbles", value);
@@ -932,6 +1051,11 @@ export function setShowAllEvents(value: boolean): void {
 export function setOrderHints(value: boolean): void {
     settingsState.orderHints = value;
     writeBool("orderHints", value);
+}
+
+export function setStickyCallMembership(value: boolean): void {
+    settingsState.stickyCallMembership = value;
+    writeBool("stickyCallMembership", value);
 }
 
 export function setAutoUpdateEnabled(value: boolean): void {
@@ -1000,6 +1124,11 @@ export function setRichPresenceMedia(value: boolean): void {
     writeBool("richPresenceMedia", value);
 }
 
+export function setRichPresenceSteam(value: boolean): void {
+    settingsState.richPresenceSteam = value;
+    writeBool("richPresenceSteam", value);
+}
+
 /** Device-local: pictures already uploaded for rich presence, by source
  *  (JSON {key: mxc}), so each is uploaded once. */
 export function readRichPresenceImages(): string | null {
@@ -1065,6 +1194,11 @@ export function setProgressiveJpegs(value: boolean): void {
     writeBool("progressiveJpegs", value);
 }
 
+export function setDisableGallerySend(value: boolean): void {
+    settingsState.disableGallerySend = value;
+    writeBool("disableGallerySend", value);
+}
+
 export function setStripMetadata(value: boolean): void {
     settingsState.stripMetadata = value;
     writeBool("stripMetadata", value);
@@ -1080,6 +1214,16 @@ export function setGifsAsWebp(value: boolean): void {
     writeBool("gifsAsWebp", value);
 }
 
+export function setLightboxFitToScreen(value: boolean): void {
+    settingsState.lightboxFitToScreen = value;
+    writeBool("lightboxFitToScreen", value);
+}
+
+export function setReplyPingDefault(value: boolean): void {
+    settingsState.replyPingDefault = value;
+    writeBool("replyPingDefault", value);
+}
+
 export function setMidiSoundBank(value: MidiSoundBankChoice): void {
     settingsState.midiSoundBank = value;
     writeString("midiSoundBank", value);
@@ -1091,11 +1235,18 @@ export function setReduceMotion(value: boolean): void {
     applyReduceMotion(value);
 }
 
-export function setMessageFontSize(px: number): void {
-    const size = resolveMessageFontSize(px);
-    settingsState.messageFontSize = size;
-    writeString("messageFontSize", String(size));
-    applyAppTextScale(size);
+export function setInterfaceScale(percent: number): void {
+    const size = resolveInterfaceScale(percent);
+    settingsState.interfaceScale = size;
+    writeString("interfaceScale", String(size));
+    applyInterfaceScale(size);
+}
+
+export function setMessageTextScale(percent: number): void {
+    const size = resolveMessageTextScale(percent);
+    settingsState.messageTextScale = size;
+    writeString("messageTextScale", String(size));
+    applyMessageTextScale(size);
 }
 
 export function setMessageFont(key: MessageFontKey): void {
@@ -1192,6 +1343,23 @@ export function setHideNotificationBody(value: boolean): void {
     writeBool("hideNotificationBody", value);
 }
 
+export function setStreamerMode(value: boolean): void {
+    settingsState.streamerMode = value;
+    writeBool("streamerMode", value);
+    applyStreamerMode(value);
+}
+
+/** Whether notification text must be withheld: the explicit setting, or
+ *  streamer mode. Every notification producer reads this, never the raw flag. */
+export function notificationBodyHidden(): boolean {
+    return settingsState.hideNotificationBody || settingsState.streamerMode;
+}
+
+export function setDeviceNotifications(value: boolean): void {
+    settingsState.deviceNotifications = value;
+    writeBool("deviceNotifications", value);
+}
+
 export function setDesktopAlertMode(value: DesktopAlertMode): void {
     const next = normalizeDesktopAlertMode(value);
     settingsState.desktopAlertMode = next;
@@ -1207,6 +1375,18 @@ export function setKeepSidebarOpen(value: boolean): void {
 export function setPrivateReadReceipts(value: boolean): void {
     settingsState.privateReadReceipts = value;
     writeAccountBool("privateReadReceipts", value);
+}
+
+/** Set (or, with null, clear) a room's or space's read-receipt override. */
+export function setReceiptOverride(
+    id: string,
+    value: ReceiptOverride | null,
+): void {
+    const next = { ...settingsState.receiptOverrides };
+    if (value) next[id] = value;
+    else delete next[id];
+    settingsState.receiptOverrides = next;
+    writeAccountString("receiptOverrides", JSON.stringify(next));
 }
 
 export function setSendTypingIndicators(value: boolean): void {
@@ -1241,6 +1421,21 @@ export function setExcludeInsecureDevices(value: boolean): void {
 export function setOwnStatusMessageSetting(value: string): void {
     settingsState.ownStatusMessage = value;
     writeAccountString("ownStatusMessage", value);
+}
+
+export function setShareProfilePresenceSetting(value: boolean): void {
+    settingsState.shareProfilePresence = value;
+    writeAccountBool("shareProfilePresence", value);
+}
+
+export function setDoNotDisturbSetting(value: boolean): void {
+    settingsState.doNotDisturb = value;
+    writeAccountBool("doNotDisturb", value);
+}
+
+export function setDmSortOrder(value: DmSortOrder): void {
+    settingsState.dmSortOrder = value;
+    writeAccountString("dmSortOrder", value);
 }
 
 export function setOwnPresenceSetting(value: PresenceState): void {
@@ -1352,6 +1547,11 @@ export function setShareSystemAudio(value: boolean): void {
     writeAccountBool("shareSystemAudio", value);
 }
 
+export function setNativeScreenShare(value: boolean): void {
+    settingsState.nativeScreenShare = value;
+    writeAccountBool("nativeScreenShare", value);
+}
+
 export function setScreenShareResolution(value: string): void {
     settingsState.screenShareResolution = value;
     writeAccountString("screenShareResolution", value);
@@ -1427,6 +1627,16 @@ export function setCallVideoCodec(value: string): void {
     writeAccountString("callVideoCodec", settingsState.callVideoCodec);
 }
 
+export function setMeshRelayOnly(value: boolean): void {
+    settingsState.meshRelayOnly = value;
+    writeAccountBool("meshRelayOnly", value);
+}
+
+export function setMeshPublicStun(value: boolean): void {
+    settingsState.meshPublicStun = value;
+    writeAccountBool("meshPublicStun", value);
+}
+
 export function setAdaptiveStream(value: boolean): void {
     settingsState.adaptiveStream = value;
     writeAccountBool("adaptiveStream", value);
@@ -1453,6 +1663,12 @@ export function setRingEnabled(value: boolean): void {
 export function setRingVolume(value: number): void {
     settingsState.ringVolume = Math.min(1, Math.max(0, value));
     writeAccountString("ringVolume", String(settingsState.ringVolume));
+}
+
+/** "" for the built-in ringtone, or a plugin ringtone's stable key. */
+export function setRingtone(key: string): void {
+    settingsState.ringtone = key;
+    writeAccountString("ringtone", key);
 }
 
 /** Per-user call volume/mute. Stored as one account-scoped JSON blob. */

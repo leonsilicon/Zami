@@ -30,6 +30,8 @@
     "../../packages/com/leonsilicon/zami/rn/*.tsx",
     "../../packages/com/leonsilicon/zami/blob/*.ts",
     "../../packages/com/leonsilicon/zami/browser/*.ts",
+    "../../packages/com/leonsilicon/zami/plugins/*.ts",
+    "../../packages/com/leonsilicon/zami/plugins/*.tsx",
     // Every translated component, whether or not the app reaches it yet.
     "../../src/**/*.svelte.zami.tsx",
     "../../src/app.zami.d.ts",

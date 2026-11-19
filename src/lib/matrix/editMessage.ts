@@ -3,21 +3,26 @@
 // here, so the two produce identical replacement events.
 
 import type { MatrixEvent, Room } from "matrix-js-sdk";
-import { getCustomEmojis, sendEdit } from "$lib/matrix/client";
-import { buildFormattedBody, emoticonsFromHtml } from "$lib/utils/messageBody";
+import { getCustomEmojis, getRoomMembers, sendEdit } from "$lib/matrix/client";
+import {
+    buildFormattedBody,
+    emoticonsFromHtml,
+    mentionsFromHtml,
+} from "$lib/utils/messageBody";
 import { replaceEmojiShortcodes } from "$lib/data/emojiShortcodes";
 import {
     lastEditableOwnMessage,
     mediaEditBase,
 } from "$lib/utils/editableMessage";
 import { stripBodyFallback } from "$lib/utils/replyFallback";
+import { displayContent } from "$lib/utils/displayContent";
 import { applySedCommand, type SedCommand } from "$lib/utils/sedEdit";
 import { roomsState } from "$lib/stores/rooms.svelte";
 import { bumpReactionTick } from "$lib/stores/messages.svelte";
 
 /** The text an edit of `event` starts from: its current body, minus any reply fallback. */
 export function editableBody(event: MatrixEvent): string {
-    const raw = (event.getContent()?.body as string | undefined) ?? "";
+    const raw = (displayContent(event)?.body as string | undefined) ?? "";
     const isReply =
         !!event.getOriginalContent()?.["m.relates_to"]?.["m.in_reply_to"];
     return isReply ? stripBodyFallback(raw) : raw;
@@ -36,6 +41,7 @@ export async function sendMessageEdit(
     room: Room,
     event: MatrixEvent,
     text: string,
+    mentions?: Map<string, string>,
 ): Promise<void> {
     // Custom emotes for this edit: the message's existing ones first so they
     // survive even if their pack is gone, then the current packs (which win on
@@ -56,12 +62,23 @@ export async function sendMessageEdit(
     const newBody = trimmed || String(mediaBase?.filename ?? "");
     // Same rich-body pipeline as the composer, so a typed :shortcode: becomes
     // the custom emote.
-    const formattedBody = trimmed
+    // Mention pills: the ones already in the message's formatted_body (so they
+    // survive a plain-text edit), merged with any the editor just inserted,
+    // which win on a clash. Bare MXIDs typed in the body link to room members.
+    const mentionMap = new Map(
+        mentionsFromHtml(
+            event.getContent().formatted_body as string | undefined,
+        ),
+    );
+    for (const [token, userId] of mentions ?? []) mentionMap.set(token, userId);
+    const built = trimmed
         ? buildFormattedBody(trimmed, {
-              mentions: new Map(),
+              mentions: mentionMap,
               customEmojis: editEmotes,
-          }).html
+              memberIds: new Set(getRoomMembers(room).map((m) => m.userId)),
+          })
         : null;
+    const formattedBody = built?.html ?? null;
     // Latest resolved mentions live on the post-replacement content (the SDK
     // folds m.new_content in), so this carries them forward through the edit
     // per the v1.7 mentions module.
@@ -72,6 +89,12 @@ export async function sendMessageEdit(
         formattedBody ?? undefined,
         event.getContent()["m.mentions"],
         mediaBase,
+        built
+            ? {
+                  userIds: built.mentionedUserIds,
+                  room: built.mentionsRoom,
+              }
+            : undefined,
     );
     bumpReactionTick();
 }

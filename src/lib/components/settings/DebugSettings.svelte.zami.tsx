@@ -1,4 +1,4 @@
-import { Range } from "@-/com.leonsilicon.zami.rn";
+import { DomMount, Range } from "@-/com.leonsilicon.zami.rn";
 import {
     formatSessionStalls,
     formatStartup,
@@ -6,14 +6,16 @@ import {
     subscribeStartup,
     thisStartup,
 } from "@-/com.leonsilicon.zami.startup";
-import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
+import { useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import ExtendedProfileDebug from "$lib/components/settings/ExtendedProfileDebug.svelte";
 import GpuDebug from "$lib/components/settings/GpuDebug.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+import { pluginRegistry } from "$lib/stores/plugins.svelte";
+import { pluginMount } from "$lib/plugins/pluginMount";
 import { auth } from "$lib/stores/auth.svelte";
 import {
     isSlidingSyncEnabled,
@@ -49,6 +51,8 @@ import {
     setSoundIntervalMs,
     setShowAllEvents,
     setOrderHints,
+    setDisableGallerySend,
+    setStickyCallMembership,
     setUpdateNagDisabled,
     settingsState,
 } from "$lib/stores/settings.svelte";
@@ -62,12 +66,28 @@ import {
     MIN_ATTENUATION_DB,
 } from "$lib/utils/micProcessing";
 import { getSyncLog } from "$lib/matrix/syncLog";
+import {
+    eventIndexPrefetchStatus,
+    isEventIndexActive,
+} from "$lib/matrix/eventIndex";
+import { historyPrefetchAvailable } from "$lib/matrix/historyPrefetch";
+import type { PrefetchStatus } from "$lib/utils/historyPrefetchPlan";
+import {
+    cancelFullIndexBuild,
+    indexBuild,
+    startFullIndexBuild,
+} from "$lib/stores/indexBuild.svelte";
+import { fullIndexPercent, groupThousands } from "$lib/utils/fullIndexProgress";
 import { buildLogExport, saveLogExport } from "$lib/logExport";
 import {
     canToggleWebViewDebugging,
     getWebViewDebugging,
     setWebViewDebugging,
 } from "$lib/debugTools";
+import {
+    getIndexSyncStatus,
+    requestIndexSyncNow,
+} from "$lib/matrix/eventIndexSync";
 import { showToast } from "$lib/stores/toasts.svelte";
 
 // Zami: `space-y-*` (a child selector) does nothing in React Native; the same `gap-*`
@@ -87,8 +107,17 @@ export default function DebugSettings() {
     );
 
     const userId = useRune(() => auth.userId);
+    const pluginTick = useRune(() => pluginRegistry.tick);
+    const debugSections = useMemo(() => {
+        void pluginTick;
+        return [...pluginRegistry.debugSections];
+    }, [pluginTick]);
     const showAllEvents = useRune(() => settingsState.showAllEvents);
     const orderHints = useRune(() => settingsState.orderHints);
+    const disableGallerySend = useRune(() => settingsState.disableGallerySend);
+    const stickyCallMembership = useRune(
+        () => settingsState.stickyCallMembership,
+    );
     const ignoreCodecSupport = useRune(() => settingsState.ignoreCodecSupport);
     const h264ProfileFix = useRune(() => settingsState.h264ProfileFix);
     const micPauseGate = useRune(() => settingsState.micPauseGate);
@@ -149,6 +178,136 @@ export default function DebugSettings() {
             setLogsBusy(false);
         }
     }
+
+    // Search index sync with our other sessions: polled while the panel is open.
+    const [indexSync, setIndexSync] = useState(() => getIndexSyncStatus());
+    // Whether the local index is running (not reactive, so polled with the sync status).
+    const [indexActive, setIndexActive] = useState(() => isEventIndexActive());
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setIndexSync(getIndexSyncStatus());
+            setIndexActive(isEventIndexActive());
+        }, 1_000);
+        return () => clearInterval(timer);
+    }, []);
+    useEffect(() => {
+        if (prefetchOn) void refreshPrefetch();
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- once, as upstream's onMount.
+    }, []);
+
+    // Android background download of raw history pages. Read on demand (Refresh).
+    const prefetchOn = historyPrefetchAvailable();
+    const [prefetch, setPrefetch] = useState<PrefetchStatus | null>(null);
+    const [prefetchBusy, setPrefetchBusy] = useState(false);
+    async function refreshPrefetch(): Promise<void> {
+        if (prefetchBusy) return;
+        setPrefetchBusy(true);
+        try {
+            setPrefetch(await eventIndexPrefetchStatus());
+        } finally {
+            setPrefetchBusy(false);
+        }
+    }
+    const prefetchRows = (
+        prefetch
+            ? [
+                  [
+                      t("debugSettings.prefetchPages"),
+                      groupThousands(prefetch.pages),
+                  ],
+                  [
+                      t("debugSettings.prefetchSize"),
+                      `${(prefetch.bytes / (1024 * 1024)).toFixed(1)} MB`,
+                  ],
+                  [
+                      t("debugSettings.prefetchRooms"),
+                      groupThousands(prefetch.rooms),
+                  ],
+                  [
+                      t("debugSettings.prefetchLastRun"),
+                      prefetch.lastRunAt
+                          ? new Date(prefetch.lastRunAt).toLocaleString()
+                          : t("debugSettings.indexSyncNever"),
+                  ],
+                  [
+                      t("debugSettings.prefetchLastResult"),
+                      prefetch.lastResult ?? "-",
+                  ],
+                  [
+                      t("debugSettings.prefetchLastError"),
+                      prefetch.lastError ?? "-",
+                  ],
+              ]
+            : []
+    ) as [string, string][];
+
+    // Full index build: the run lives in indexBuild, so it survives closing this panel.
+    const buildState = useDeepRune(() => indexBuild.value);
+    const indexEncryptedRooms = useRune(
+        () => settingsState.indexEncryptedRooms,
+    );
+    const buildAllowed = indexEncryptedRooms && indexActive;
+    const buildHint = !indexEncryptedRooms
+        ? t("debugSettings.searchIndexDisabled")
+        : !indexActive
+          ? t("debugSettings.searchIndexNotRunning")
+          : t("debugSettings.searchIndexHint");
+    const buildPercent =
+        buildState.status === "running"
+            ? fullIndexPercent(
+                  buildState.progress.roomsDone,
+                  buildState.progress.roomsTotal,
+              )
+            : 0;
+    const buildResult = (() => {
+        if (buildState.status !== "finished") return null;
+        const r = buildState.result;
+        switch (r.reason) {
+            case "complete":
+                return t("debugSettings.searchIndexComplete");
+            case "partial":
+                return t("debugSettings.searchIndexPartial", {
+                    failed: r.failedRooms,
+                });
+            case "storage":
+                return t("debugSettings.searchIndexStorage");
+            case "aborted":
+                return t("debugSettings.searchIndexAborted");
+            case "unavailable":
+                return t("debugSettings.searchIndexUnavailable");
+        }
+    })();
+    const ago = (at: number | null) => {
+        if (!at) return t("debugSettings.indexSyncNever");
+        const sec = Math.max(0, Math.round((Date.now() - at) / 1000));
+        return sec < 90 ? `${sec}s` : `${Math.round(sec / 60)}m`;
+    };
+    const indexSyncRows = [
+        [
+            t("debugSettings.indexSyncSessions"),
+            `${indexSync.eligibleSessions} / ${indexSync.verifiedSessions} / ${indexSync.otherSessions}`,
+        ],
+        [
+            t("debugSettings.indexSyncAsked"),
+            `${indexSync.asks} (${ago(indexSync.lastAskAt)})`,
+        ],
+        [
+            t("debugSettings.indexSyncRoomsMissing"),
+            String(indexSync.roomsMissing),
+        ],
+        [
+            t("debugSettings.indexSyncRequestsReceived"),
+            String(indexSync.requestsReceived),
+        ],
+        [
+            t("debugSettings.indexSyncChunks"),
+            `${indexSync.chunksSent} / ${indexSync.chunksReceived}`,
+        ],
+        [
+            t("debugSettings.indexSyncMerged"),
+            `${indexSync.entriesMerged} (${ago(indexSync.lastMergeAt)})`,
+        ],
+    ] as [string, string][];
 
     const webViewDebugAvailable = canToggleWebViewDebugging();
     const [webViewDebug, setWebViewDebug] = useState(false);
@@ -354,11 +513,11 @@ export default function DebugSettings() {
     return (
         <View className="gap-6">
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("debugSettings.clientLogs")}
                 </Text>
-                <View className="flex-row flex-wrap items-center gap-3 py-2 border-b border-discord-divider">
-                    <Text className="flex-1 min-w-48 text-xs text-discord-textMuted">
+                <View className="flex-row flex-wrap items-center gap-3 py-2 border-b border-zam-divider">
+                    <Text className="flex-1 min-w-48 text-xs text-zam-textMuted">
                         {t("debugSettings.clientLogsHint")}
                     </Text>
                     <View className="flex-row gap-2">
@@ -367,11 +526,11 @@ export default function DebugSettings() {
                             accessibilityState={{ disabled: logsBusy }}
                             onPress={() => void copyLogs()}
                             disabled={logsBusy}
-                            className={`px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover ${
+                            className={`px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover ${
                                 logsBusy ? "opacity-50" : ""
                             }`}
                         >
-                            <Text className="text-xs font-semibold text-discord-textPrimary">
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
                                 {logsCopied
                                     ? t("debugSettings.copied")
                                     : t("debugSettings.copyLogs")}
@@ -382,23 +541,23 @@ export default function DebugSettings() {
                             accessibilityState={{ disabled: logsBusy }}
                             onPress={() => void saveLogs()}
                             disabled={logsBusy}
-                            className={`px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover ${
+                            className={`px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover ${
                                 logsBusy ? "opacity-50" : ""
                             }`}
                         >
-                            <Text className="text-xs font-semibold text-discord-textPrimary">
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
                                 {t("debugSettings.saveLogs")}
                             </Text>
                         </Pressable>
                     </View>
                 </View>
                 {webViewDebugAvailable ? (
-                    <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                    <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                         <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-discord-textPrimary">
+                            <Text className="text-sm text-zam-textPrimary">
                                 {t("debugSettings.webViewDebugging")}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.webViewDebuggingHint")}
                             </Text>
                         </View>
@@ -414,7 +573,7 @@ export default function DebugSettings() {
             {/* Zami: the launch timeline (@-/com.leonsilicon.zami.startup), for a
                 slow "Restoring session". A diagnostic, so not translated. */}
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     Startup
                 </Text>
                 {(
@@ -426,9 +585,9 @@ export default function DebugSettings() {
                     record ? (
                         <View
                             key={label}
-                            className="py-2 border-b border-discord-divider"
+                            className="py-2 border-b border-zam-divider"
                         >
-                            <Text className="text-sm text-discord-textPrimary mb-1">
+                            <Text className="text-sm text-zam-textPrimary mb-1">
                                 {label}
                             </Text>
                             {formatStartup(record, {
@@ -436,7 +595,7 @@ export default function DebugSettings() {
                             }).map((line, i) => (
                                 <Text
                                     key={i}
-                                    className="text-discord-textMuted font-mono text-xs"
+                                    className="text-zam-textMuted font-mono text-xs"
                                 >
                                     {line}
                                 </Text>
@@ -450,15 +609,15 @@ export default function DebugSettings() {
             <SessionStalls />
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("debugSettings.developer")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.showAllEvents")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "debugSettings.displayEveryMatrixTimelineEventIn",
                             )}
@@ -470,12 +629,12 @@ export default function DebugSettings() {
                         label={t("debugSettings.showAllEvents")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.orderHints")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.orderHintsHint")}
                         </Text>
                     </View>
@@ -485,12 +644,42 @@ export default function DebugSettings() {
                         label={t("debugSettings.orderHints")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("debugSettings.disableGallerySend")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("debugSettings.disableGallerySendHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={disableGallerySend}
+                        onChange={setDisableGallerySend}
+                        label={t("debugSettings.disableGallerySend")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("debugSettings.stickyCallMembership")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("debugSettings.stickyCallMembershipHint")}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={stickyCallMembership}
+                        onChange={setStickyCallMembership}
+                        label={t("debugSettings.stickyCallMembership")}
+                    />
+                </View>
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.ignoreCodecSupport")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.ignoreCodecSupportHint")}
                         </Text>
                     </View>
@@ -503,12 +692,12 @@ export default function DebugSettings() {
                         label={t("debugSettings.ignoreCodecSupport")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.h264ProfileFix")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.h264ProfileFixHint")}
                         </Text>
                     </View>
@@ -524,15 +713,15 @@ export default function DebugSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("debugSettings.voiceProcessing")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.pauseGate")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.pauseGateHint")}
                         </Text>
                     </View>
@@ -545,17 +734,17 @@ export default function DebugSettings() {
                         label={t("debugSettings.pauseGate")}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
                         <Text
                             nativeID="df-attenuation"
-                            className="text-sm text-discord-textPrimary"
+                            className="text-sm text-zam-textPrimary"
                         >
                             {t("debugSettings.noiseAttenuationLimit", {
                                 value: dfAttenuationDb,
                             })}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.noiseAttenuationLimitHint", {
                                 value: DEFAULT_ATTENUATION_DB,
                             })}
@@ -575,17 +764,17 @@ export default function DebugSettings() {
                         )}
                     />
                 </View>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
                         <Text
                             nativeID="sound-interval"
-                            className="text-sm text-discord-textPrimary"
+                            className="text-sm text-zam-textPrimary"
                         >
                             {t("debugSettings.soundboardInterval", {
                                 value: soundIntervalMs,
                             })}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.soundboardIntervalHint")}
                         </Text>
                     </View>
@@ -605,15 +794,15 @@ export default function DebugSettings() {
             </View>
 
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("debugSettings.syncStatus")}
                 </Text>
-                <View className="flex-row items-center gap-3 py-2 border-b border-discord-divider">
+                <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.useSlidingSync")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t(
                                 "debugSettings.experimentalLoadsRoomsInAGrowing",
                             )}
@@ -628,35 +817,35 @@ export default function DebugSettings() {
                 {syncRows.map(([label, value]) => (
                     <View
                         key={label}
-                        className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                        className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                     >
-                        <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                        <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
                             {label}
                         </Text>
-                        <Text className="flex-1 text-discord-textPrimary break-all font-mono text-xs">
+                        <Text className="flex-1 text-zam-textPrimary break-all font-mono text-xs">
                             {value}
                         </Text>
                     </View>
                 ))}
                 <View className="mt-3 flex-row items-center gap-2">
-                    <Text className="flex-1 text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="flex-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("debugSettings.syncLog")}
                     </Text>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => setSyncLog(getSyncLog())}
-                        className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                        className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover"
                     >
-                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
                             {t("debugSettings.refresh")}
                         </Text>
                     </Pressable>
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => void copySyncLog()}
-                        className="px-2.5 py-1 rounded bg-discord-backgroundSecondary hover:bg-discord-messageHover"
+                        className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover"
                     >
-                        <Text className="text-xs font-semibold text-discord-textPrimary">
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
                             {syncLogCopied
                                 ? t("debugSettings.copied")
                                 : t("common.copy")}
@@ -664,18 +853,18 @@ export default function DebugSettings() {
                     </Pressable>
                 </View>
                 {syncLog.length === 0 ? (
-                    <Text className="mt-1 text-xs text-discord-textMuted">
+                    <Text className="mt-1 text-xs text-zam-textMuted">
                         {t("debugSettings.syncLogEmpty")}
                     </Text>
                 ) : (
                     <ScrollView
                         nestedScrollEnabled
-                        className="mt-1 max-h-60 rounded bg-discord-backgroundTertiary grow-0"
+                        className="mt-1 max-h-60 rounded bg-zam-backgroundTertiary grow-0"
                         contentContainerClassName="p-2"
                     >
                         <Text
                             selectable
-                            className="whitespace-pre-wrap break-all text-xs font-mono text-discord-textPrimary select-text"
+                            className="whitespace-pre-wrap break-all text-xs font-mono text-zam-textPrimary select-text"
                         >
                             {syncLog.join("\n")}
                         </Text>
@@ -683,29 +872,224 @@ export default function DebugSettings() {
                 )}
             </View>
 
+            <View>
+                <View className="mb-2 flex-row items-center gap-2">
+                    <Text className="flex-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
+                        {t("debugSettings.indexSync")}
+                    </Text>
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: !indexSync.attached }}
+                        onPress={() => {
+                            requestIndexSyncNow();
+                            setIndexSync(getIndexSyncStatus());
+                        }}
+                        disabled={!indexSync.attached}
+                        className={`px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover ${
+                            !indexSync.attached ? "opacity-50" : ""
+                        }`}
+                    >
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
+                            {t("debugSettings.indexSyncNow")}
+                        </Text>
+                    </Pressable>
+                </View>
+                <Text className="mb-2 text-xs text-zam-textMuted">
+                    {indexSync.attached
+                        ? t("debugSettings.indexSyncHint")
+                        : t("debugSettings.indexSyncOff")}
+                </Text>
+                {indexSyncRows.map(([label, value]) => (
+                    <View
+                        key={label}
+                        className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
+                    >
+                        <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
+                            {label}
+                        </Text>
+                        <Text className="flex-1 text-zam-textPrimary break-all font-mono text-xs">
+                            {value}
+                        </Text>
+                    </View>
+                ))}
+                {indexSync.log.length > 0 ? (
+                    <ScrollView
+                        nestedScrollEnabled
+                        className="mt-2 max-h-48 rounded bg-zam-backgroundTertiary grow-0"
+                        contentContainerClassName="p-2"
+                    >
+                        <Text
+                            selectable
+                            className="whitespace-pre-wrap break-all text-xs font-mono text-zam-textPrimary select-text"
+                        >
+                            {indexSync.log.join("\n")}
+                        </Text>
+                    </ScrollView>
+                ) : null}
+            </View>
+
+            <View>
+                <View className="mb-2 flex-row items-center gap-2">
+                    <Text className="flex-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
+                        {t("debugSettings.searchIndex")}
+                    </Text>
+                    {buildState.status === "running" ? (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={cancelFullIndexBuild}
+                            className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover"
+                        >
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
+                                {t("debugSettings.searchIndexCancel")}
+                            </Text>
+                        </Pressable>
+                    ) : (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityState={{ disabled: !buildAllowed }}
+                            onPress={startFullIndexBuild}
+                            disabled={!buildAllowed}
+                            className={`px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover ${
+                                !buildAllowed ? "opacity-50" : ""
+                            }`}
+                        >
+                            <Text className="text-xs font-semibold text-zam-textPrimary">
+                                {t("debugSettings.searchIndexBuild")}
+                            </Text>
+                        </Pressable>
+                    )}
+                </View>
+                <Text className="mb-2 text-xs text-zam-textMuted">
+                    {buildHint}
+                </Text>
+                {buildState.status === "running" && (
+                    <>
+                        <View
+                            accessibilityRole="progressbar"
+                            accessibilityLabel={t(
+                                "debugSettings.searchIndexBar",
+                            )}
+                            accessibilityValue={{
+                                min: 0,
+                                max: 100,
+                                now: buildPercent,
+                            }}
+                            className="h-2 w-full overflow-hidden rounded bg-zam-backgroundTertiary"
+                        >
+                            {/* Zami: no `transition-[width]` in React Native. */}
+                            <View
+                                className="h-full bg-zam-accent"
+                                style={{ width: `${buildPercent}%` }}
+                            />
+                        </View>
+                        <Text className="mt-1 text-xs font-mono text-zam-textPrimary">
+                            {t("debugSettings.searchIndexProgress", {
+                                done: buildState.progress.roomsDone,
+                                total: buildState.progress.roomsTotal,
+                                messages: groupThousands(
+                                    buildState.progress.messagesIndexed,
+                                ),
+                            })}
+                        </Text>
+                    </>
+                )}
+                {buildResult && (
+                    <Text
+                        className="text-sm text-zam-textPrimary"
+                        accessibilityLiveRegion="polite"
+                    >
+                        {buildResult}
+                    </Text>
+                )}
+                {prefetchOn && (
+                    <View className="mt-4 border-t border-zam-divider pt-3">
+                        <View className="mb-1 flex-row items-center gap-2">
+                            <Text className="flex-1 text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
+                                {t("debugSettings.prefetchTitle")}
+                            </Text>
+                            <Pressable
+                                accessibilityRole="button"
+                                accessibilityState={{ disabled: prefetchBusy }}
+                                onPress={refreshPrefetch}
+                                disabled={prefetchBusy}
+                                className={`px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover ${
+                                    prefetchBusy ? "opacity-50" : ""
+                                }`}
+                            >
+                                <Text className="text-xs font-semibold text-zam-textPrimary">
+                                    {t("debugSettings.prefetchRefresh")}
+                                </Text>
+                            </Pressable>
+                        </View>
+                        <Text className="mb-2 text-xs text-zam-textMuted">
+                            {t("debugSettings.prefetchHint")}
+                        </Text>
+                        {prefetch ? (
+                            prefetchRows.map(([label, value]) => (
+                                <View
+                                    key={label}
+                                    className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
+                                >
+                                    <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
+                                        {label}
+                                    </Text>
+                                    <Text className="flex-1 text-zam-textPrimary break-all font-mono text-xs">
+                                        {value}
+                                    </Text>
+                                </View>
+                            ))
+                        ) : (
+                            <Text className="text-xs text-zam-textMuted">
+                                {t("debugSettings.searchIndexNotRunning")}
+                            </Text>
+                        )}
+                    </View>
+                )}
+            </View>
+
             <GpuDebug />
 
             <ExtendedProfileDebug />
 
+            {/* Plugin debug tools (zam.ui.addDebugSection).
+                Zami: the plugin builds DOM into the element (pluginMount),
+                which DomMount shows. */}
+            {debugSections.map((entry) => (
+                <View key={entry.entryId}>
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
+                        {String(entry.value.title)}
+                    </Text>
+                    <DomMount
+                        document={document}
+                        mount={(el) => {
+                            el.setAttribute("data-zam-plugin", entry.pluginId);
+                            return pluginMount(el, (el) =>
+                                entry.value.render(el),
+                            ).destroy;
+                        }}
+                    />
+                </View>
+            ))}
+
             <View>
-                <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                     {t("debugSettings.pushStatus")}
                 </Text>
                 {rows.map(([label, value]) => (
                     <View
                         key={label}
-                        className="flex-row items-start gap-3 py-1 border-b border-discord-divider"
+                        className="flex-row items-start gap-3 py-1 border-b border-zam-divider"
                     >
-                        <Text className="text-sm text-discord-textMuted flex-shrink-0 w-44">
+                        <Text className="text-sm text-zam-textMuted flex-shrink-0 w-44">
                             {label}
                         </Text>
-                        <Text className="flex-1 text-discord-textPrimary break-all font-mono text-xs">
+                        <Text className="flex-1 text-zam-textPrimary break-all font-mono text-xs">
                             {value}
                         </Text>
                     </View>
                 ))}
                 {pushDebug.lastError ? (
-                    <Text className="mt-3 text-xs text-discord-danger break-all font-mono">
+                    <Text className="mt-3 text-xs text-zam-danger break-all font-mono">
                         {t("debugSettings.lastError", {
                             lastError: pushDebug.lastError,
                         })}
@@ -718,7 +1102,7 @@ export default function DebugSettings() {
                 accessibilityState={{ disabled: loading }}
                 onPress={() => void diagnose()}
                 disabled={loading}
-                className={`self-start px-3 py-1.5 rounded bg-discord-accent hover:bg-discord-accentHover ${
+                className={`self-start px-3 py-1.5 rounded bg-zam-accent hover:bg-zam-accentHover ${
                     loading ? "opacity-50" : ""
                 }`}
             >
@@ -731,15 +1115,15 @@ export default function DebugSettings() {
 
             {pushers !== null || pushersError ? (
                 <View className="gap-2">
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("debugSettings.homeserverPushers")}
                     </Text>
                     {pushersError ? (
-                        <Text className="text-xs text-discord-danger break-all">
+                        <Text className="text-xs text-zam-danger break-all">
                             {pushersError}
                         </Text>
                     ) : pushers?.length === 0 ? (
-                        <Text className="text-sm text-discord-textMuted">
+                        <Text className="text-sm text-zam-textMuted">
                             {t(
                                 "debugSettings.theHomeserverHasNoPushersRegistered",
                             )}
@@ -749,8 +1133,8 @@ export default function DebugSettings() {
                             <Text
                                 className={`text-sm ${
                                     matchingPusher
-                                        ? "text-discord-textPositive"
-                                        : "text-discord-warning"
+                                        ? "text-zam-textPositive"
+                                        : "text-zam-warning"
                                 }`}
                             >
                                 {matchingPusher
@@ -764,21 +1148,21 @@ export default function DebugSettings() {
                             {(pushers ?? []).map((pusher, i) => (
                                 <View
                                     key={i}
-                                    className="bg-discord-backgroundTertiary rounded p-2"
+                                    className="bg-zam-backgroundTertiary rounded p-2"
                                 >
-                                    <Text className="text-xs font-mono text-discord-textPrimary break-all">
+                                    <Text className="text-xs font-mono text-zam-textPrimary break-all">
                                         {t("debugSettings.appId", {
                                             app_id: pusher.app_id,
                                         })}
                                     </Text>
-                                    <Text className="text-xs font-mono text-discord-textPrimary break-all">
+                                    <Text className="text-xs font-mono text-zam-textPrimary break-all">
                                         {t("debugSettings.url", {
                                             value:
                                                 pusher.url ??
                                                 t("debugSettings.none"),
                                         })}
                                     </Text>
-                                    <Text className="text-xs font-mono text-discord-textPrimary break-all">
+                                    <Text className="text-xs font-mono text-zam-textPrimary break-all">
                                         {t("debugSettings.pushkey", {
                                             pushkeyPreview:
                                                 pusher.pushkeyPreview,
@@ -793,29 +1177,29 @@ export default function DebugSettings() {
 
             {webPush?.supported ? (
                 <View className="gap-1">
-                    <Text className="text-xs font-mono font-semibold uppercase tracking-wide text-discord-textMuted">
+                    <Text className="text-xs font-mono font-semibold uppercase tracking-wide text-zam-textMuted">
                         {t("debugSettings.webPushPwa")}
                     </Text>
-                    <Text className="text-xs font-mono text-discord-textMuted">
+                    <Text className="text-xs font-mono text-zam-textMuted">
                         {t("debugSettings.vapidKey", {
                             value: webPush.configured
                                 ? t("debugSettings.set")
                                 : t("debugSettings.missing"),
                         })}
                     </Text>
-                    <Text className="text-xs font-mono text-discord-textMuted">
+                    <Text className="text-xs font-mono text-zam-textMuted">
                         {t("debugSettings.permission", {
                             permission: webPush.permission,
                         })}
                     </Text>
-                    <Text className="text-xs font-mono text-discord-textMuted">
+                    <Text className="text-xs font-mono text-zam-textMuted">
                         {t("debugSettings.subscription", {
                             value: webPush.subscribed
                                 ? t("debugSettings.active")
                                 : t("debugSettings.none"),
                         })}
                     </Text>
-                    <Text className="text-xs font-mono text-discord-textMuted">
+                    <Text className="text-xs font-mono text-zam-textMuted">
                         {t("debugSettings.homeserverPusher", {
                             value: pushers?.some(
                                 (pusher) => pusher.app_id === WEBPUSH_APP_ID,
@@ -825,7 +1209,7 @@ export default function DebugSettings() {
                         })}
                     </Text>
                     {webPush.error ? (
-                        <Text className="text-xs font-mono text-discord-danger">
+                        <Text className="text-xs font-mono text-zam-danger">
                             {t("debugSettings.error", {
                                 error: webPush.error,
                             })}
@@ -836,21 +1220,21 @@ export default function DebugSettings() {
 
             {gateway ? (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("debugSettings.gatewaySygnalFirebase")}
                     </Text>
                     <Text
                         className={`text-sm ${
                             gateway.reachable
-                                ? "text-discord-textPositive"
-                                : "text-discord-danger"
+                                ? "text-zam-textPositive"
+                                : "text-zam-danger"
                         }`}
                     >
                         {gateway.reachable
                             ? t("debugSettings.gatewayReachable")
                             : t("debugSettings.gatewayNotReachable")}
                     </Text>
-                    <Text className="text-xs text-discord-textMuted break-all font-mono mt-1">
+                    <Text className="text-xs text-zam-textMuted break-all font-mono mt-1">
                         {gateway.detail}
                     </Text>
                 </View>
@@ -858,44 +1242,44 @@ export default function DebugSettings() {
 
             {nativeSession ? (
                 <View className="gap-1">
-                    <Text className="text-xs text-discord-textMuted font-semibold uppercase tracking-wide">
+                    <Text className="text-xs text-zam-textMuted font-semibold uppercase tracking-wide">
                         {t("debugSettings.nativeSessionPushEnrichment")}
                     </Text>
                     {nativeSession.error ? (
-                        <Text className="text-xs text-discord-danger">
+                        <Text className="text-xs text-zam-danger">
                             {nativeSession.error}
                         </Text>
                     ) : (
                         <>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.homeserver", {
                                     value:
                                         nativeSession.homeserverUrl ??
                                         t("debugSettings.none"),
                                 })}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.user", {
                                     value:
                                         nativeSession.userId ??
                                         t("debugSettings.none"),
                                 })}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.device", {
                                     value:
                                         nativeSession.deviceId ??
                                         t("debugSettings.none"),
                                 })}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.accessToken", {
                                     value: nativeSession.hasToken
                                         ? "present"
                                         : t("debugSettings.none"),
                                 })}
                             </Text>
-                            <Text className="text-xs text-discord-textMuted">
+                            <Text className="text-xs text-zam-textMuted">
                                 {t("debugSettings.hideMessageText", {
                                     value: nativeSession.hideNotificationBody
                                         ? "on"
@@ -909,18 +1293,18 @@ export default function DebugSettings() {
 
             {rules ? (
                 <View>
-                    <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+                    <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                         {t("debugSettings.notificationRulesServer")}
                     </Text>
                     <View className="flex-row justify-between gap-3">
-                        <Text className="flex-shrink text-xs font-mono text-discord-textPrimary">
+                        <Text className="flex-shrink text-xs font-mono text-zam-textPrimary">
                             {t("debugSettings.allNotificationsMasterRule")}
                         </Text>
                         <Text
                             className={`text-xs font-mono ${
                                 accountNotificationsOff
-                                    ? "text-discord-warning"
-                                    : "text-discord-textPrimary"
+                                    ? "text-zam-warning"
+                                    : "text-zam-textPrimary"
                             }`}
                         >
                             {accountNotificationsOff === null
@@ -935,10 +1319,10 @@ export default function DebugSettings() {
                             key={rule.ruleId}
                             className="flex-row justify-between gap-3"
                         >
-                            <Text className="flex-shrink text-xs font-mono text-discord-textPrimary">
+                            <Text className="flex-shrink text-xs font-mono text-zam-textPrimary">
                                 {rule.label}
                             </Text>
-                            <Text className="text-xs font-mono text-discord-textPrimary">
+                            <Text className="text-xs font-mono text-zam-textPrimary">
                                 {rule.level}
                             </Text>
                         </View>
@@ -949,10 +1333,10 @@ export default function DebugSettings() {
             <View>
                 <View className="flex-row items-center gap-3 py-2">
                     <View className="flex-1 min-w-0">
-                        <Text className="text-sm text-discord-textPrimary">
+                        <Text className="text-sm text-zam-textPrimary">
                             {t("debugSettings.hideUpdatePrompts")}
                         </Text>
-                        <Text className="text-xs text-discord-textMuted">
+                        <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.hideUpdatePromptsHint")}
                         </Text>
                     </View>
@@ -981,7 +1365,7 @@ function SessionStalls() {
     ] as const;
     return (
         <View>
-            <Text className="text-xs font-semibold text-discord-textMuted uppercase tracking-wide mb-2">
+            <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
                 Stalls
             </Text>
             {records.map(([label, record]) => {
@@ -989,22 +1373,22 @@ function SessionStalls() {
                 return (
                     <View
                         key={label}
-                        className="py-2 border-b border-discord-divider"
+                        className="py-2 border-b border-zam-divider"
                     >
-                        <Text className="text-sm text-discord-textPrimary mb-1">
+                        <Text className="text-sm text-zam-textPrimary mb-1">
                             {label}
                         </Text>
                         {lines.length ? (
                             lines.map((line, i) => (
                                 <Text
                                     key={i}
-                                    className="text-discord-textMuted font-mono text-xs"
+                                    className="text-zam-textMuted font-mono text-xs"
                                 >
                                     {line}
                                 </Text>
                             ))
                         ) : (
-                            <Text className="text-discord-textMuted text-xs">
+                            <Text className="text-zam-textMuted text-xs">
                                 {!record
                                     ? "Nothing recorded."
                                     : record.finished

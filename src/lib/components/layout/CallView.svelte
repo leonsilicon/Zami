@@ -28,6 +28,12 @@
     import CallParticipantMenu from "$lib/components/layout/CallParticipantMenu.svelte";
     import ScreenShareQualityPopover from "$lib/components/layout/ScreenShareQualityPopover.svelte";
     import SoundboardButton from "$lib/components/layout/SoundboardButton.svelte";
+    import { pluginMount } from "$lib/plugins/pluginMount";
+    import {
+        callControlItems,
+        callPanelItems,
+        callTileDecorationItems,
+    } from "$lib/plugins/pluginCall.svelte";
     import CallEncryptionBadge from "$lib/components/layout/CallEncryptionBadge.svelte";
     import UserProfileCard from "$lib/components/ui/UserProfileCard.svelte";
     import VideoTile from "$lib/components/layout/VideoTile.svelte";
@@ -51,6 +57,7 @@
         toggleCallDeafen,
         toggleCamera,
         toggleScreenShare,
+        toggleShareAudioMute,
         focusTile,
         clearFocus,
         participantAudioFor,
@@ -104,7 +111,7 @@
 
     // Capture support is fixed for the session (no runtime change), so a plain
     // const is enough — used to hide the share-screen button where unsupported.
-    const screenShareSupported = screenShareSupportedHere();
+    const screenShareSupported = $derived(screenShareSupportedHere());
 
     // Live SDK objects mutate in place, so every read of call/room state hangs
     // off a tick: voiceTick for the roster, roomsTick for names and avatars.
@@ -333,15 +340,18 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="flex-1 flex flex-col min-w-0 bg-discord-backgroundTertiary">
+<div
+    data-zam-region="call"
+    class="flex-1 flex flex-col min-w-0 bg-zam-backgroundTertiary"
+>
     <!-- Header -->
     <div
-        class="h-12 px-4 flex items-center gap-2 flex-shrink-0 border-b border-discord-divider bg-discord-background"
+        class="h-12 px-4 flex items-center gap-2 flex-shrink-0 border-b border-zam-divider bg-zam-background"
     >
         {#if isMobile}
             <button
                 onclick={onMenuOpen}
-                class="p-1.5 -ms-1 rounded text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover transition-colors flex-shrink-0"
+                class="p-1.5 -ms-1 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors flex-shrink-0"
                 title={t("common.openRoomList")}
                 aria-label={t("common.openRoomList")}
             >
@@ -350,22 +360,22 @@
                 </svg>
             </button>
         {/if}
-        <Volume2 size={20} class="text-discord-textMuted flex-shrink-0" />
-        <h2 class="font-semibold text-discord-textPrimary truncate">
+        <Volume2 size={20} class="text-zam-textMuted flex-shrink-0" />
+        <h2 class="font-semibold text-zam-textPrimary truncate">
             {roomName}
         </h2>
         {#if inThisCall}
             <CallEncryptionBadge roomId={room.roomId} showLabel={!isMobile} />
         {/if}
         {#if ringingOut}
-            <span class="text-sm text-discord-textMuted flex-shrink-0">
+            <span class="text-sm text-zam-textMuted flex-shrink-0">
                 {t("callView.ringing")}
             </span>
         {/if}
         <div class="flex-1"></div>
         <button
             onclick={showChatView}
-            class="p-1.5 rounded transition-colors text-discord-textMuted hover:text-discord-textPrimary hover:bg-discord-messageHover"
+            class="p-1.5 rounded transition-colors text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover"
             title={t("callView.showChat")}
             aria-label={t("callView.showChat")}
         >
@@ -385,7 +395,7 @@
     >
         {#if participants.length === 0 && screenTiles.length === 0}
             <div
-                class="flex-1 flex flex-col items-center justify-center gap-3 text-discord-textMuted"
+                class="flex-1 flex flex-col items-center justify-center gap-3 text-zam-textMuted"
             >
                 <Volume2 size={40} />
                 <p class="text-sm">{t("callView.noOneIsInThisCall")}</p>
@@ -445,7 +455,7 @@
                         out:scale={tileOut()}
                         class="relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-black cursor-pointer border-2 {tile.key ===
                         voiceCallState.focusedTileKey
-                            ? 'border-discord-accent'
+                            ? 'border-zam-accent'
                             : 'border-transparent'}"
                         onclick={() => focusTile(tile.key)}
                         oncontextmenu={(e) => {
@@ -508,11 +518,11 @@
                         animate:flip={tileFlip()}
                         in:scale={tileIn()}
                         out:scale={tileOut()}
-                        class="relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-discord-backgroundSecondary flex items-center justify-center cursor-pointer border-2 {speaking.has(
+                        class="relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-zam-backgroundSecondary flex items-center justify-center cursor-pointer border-2 {speaking.has(
                             p.userId,
                         ) ||
                         (cam && cam.key === voiceCallState.focusedTileKey)
-                            ? 'border-discord-accent'
+                            ? 'border-zam-accent'
                             : 'border-transparent'}"
                         onclick={cam ? () => focusTile(cam.key) : undefined}
                         oncontextmenu={(e) => {
@@ -574,6 +584,12 @@
                         >
                             <EllipsisVertical size={14} />
                         </button>
+                        {#each callTileDecorationItems(room.roomId, p.userId) as d (d.key)}
+                            <div
+                                class="absolute inset-0 pointer-events-none"
+                                use:pluginMount={d.render}
+                            ></div>
+                        {/each}
                     </div>
                 {/each}
             </div>
@@ -591,7 +607,7 @@
                         out:scale={tileOut()}
                         class="relative aspect-video rounded-lg overflow-hidden bg-black cursor-zoom-in border-2 {tile.key ===
                         voiceCallState.focusedTileKey
-                            ? 'border-discord-accent'
+                            ? 'border-zam-accent'
                             : 'border-transparent'}"
                         onclick={() => focusTile(tile.key)}
                         oncontextmenu={(e) => {
@@ -662,11 +678,11 @@
                         animate:flip={tileFlip()}
                         in:scale={tileIn()}
                         out:scale={tileOut()}
-                        class="relative aspect-video rounded-lg overflow-hidden bg-discord-backgroundSecondary flex items-center justify-center border-2 {speaking.has(
+                        class="relative aspect-video rounded-lg overflow-hidden bg-zam-backgroundSecondary flex items-center justify-center border-2 {speaking.has(
                             p.userId,
                         ) ||
                         (cam && cam.key === voiceCallState.focusedTileKey)
-                            ? 'border-discord-accent'
+                            ? 'border-zam-accent'
                             : 'border-transparent'} {cam
                             ? 'cursor-zoom-in'
                             : ''}"
@@ -708,7 +724,7 @@
                                     {#if status.micOff}
                                         <MicOff
                                             size={14}
-                                            class="text-discord-danger flex-shrink-0"
+                                            class="text-zam-danger flex-shrink-0"
                                             aria-hidden="true"
                                         />
                                         <span class="sr-only"
@@ -718,7 +734,7 @@
                                     {#if status.deafened}
                                         <HeadphoneOff
                                             size={14}
-                                            class="text-discord-danger flex-shrink-0"
+                                            class="text-zam-danger flex-shrink-0"
                                             aria-hidden="true"
                                         />
                                         <span class="sr-only"
@@ -728,7 +744,7 @@
                                     {#if status.locallyMuted}
                                         <VolumeX
                                             size={14}
-                                            class="text-discord-textMuted flex-shrink-0"
+                                            class="text-zam-textMuted flex-shrink-0"
                                             aria-hidden="true"
                                         />
                                         <span class="sr-only"
@@ -773,7 +789,7 @@
                                 {#if status.micOff}
                                     <MicOff
                                         size={14}
-                                        class="text-discord-danger flex-shrink-0"
+                                        class="text-zam-danger flex-shrink-0"
                                         aria-hidden="true"
                                     />
                                     <span class="sr-only"
@@ -783,7 +799,7 @@
                                 {#if status.deafened}
                                     <HeadphoneOff
                                         size={14}
-                                        class="text-discord-danger flex-shrink-0"
+                                        class="text-zam-danger flex-shrink-0"
                                         aria-hidden="true"
                                     />
                                     <span class="sr-only"
@@ -793,7 +809,7 @@
                                 {#if status.locallyMuted}
                                     <VolumeX
                                         size={14}
-                                        class="text-discord-textMuted flex-shrink-0"
+                                        class="text-zam-textMuted flex-shrink-0"
                                         aria-hidden="true"
                                     />
                                     <span class="sr-only"
@@ -847,30 +863,47 @@
                         >
                             <EllipsisVertical size={16} />
                         </button>
+                        {#each callTileDecorationItems(room.roomId, p.userId) as d (d.key)}
+                            <div
+                                class="absolute inset-0 pointer-events-none"
+                                use:pluginMount={d.render}
+                            ></div>
+                        {/each}
                     </div>
                 {/each}
             </div>
         {/if}
     </div>
 
+    <!-- Plugin panels (open ones only; each scrolls within its own cap) -->
+    {#each callPanelItems(room.roomId) as panel (panel.key)}
+        <div
+            class="flex-shrink-0 border-t border-zam-divider bg-zam-background max-h-[60%] overflow-auto"
+            role="region"
+            aria-label={panel.title}
+        >
+            <div class="w-full" use:pluginMount={panel.render}></div>
+        </div>
+    {/each}
+
     <!-- Controls -->
     <div class="flex-shrink-0 p-4 flex flex-col items-center gap-2">
         {#if voiceCallState.playbackBlocked && inThisCall}
             <button
                 onclick={() => void resumeVoicePlayback()}
-                class="px-3 py-1.5 rounded bg-discord-warning text-black text-xs font-semibold"
+                class="px-3 py-1.5 rounded bg-zam-warning text-black text-xs font-semibold"
             >
                 {t("callView.enableAudio")}
             </button>
         {/if}
         {#if voiceCallState.onHold && inThisCall}
             <div
-                class="flex items-center gap-2 px-3 py-1.5 rounded bg-discord-backgroundSecondary text-xs text-discord-textMuted"
+                class="flex items-center gap-2 px-3 py-1.5 rounded bg-zam-backgroundSecondary text-xs text-zam-textMuted"
             >
                 <span>{t("callView.onHold")}</span>
                 <button
                     onclick={resumeHeldCall}
-                    class="px-2 py-0.5 rounded bg-discord-accent text-white font-semibold"
+                    class="px-2 py-0.5 rounded bg-zam-accent text-white font-semibold"
                 >
                     {t("callView.resume")}
                 </button>
@@ -878,13 +911,13 @@
         {/if}
         {#if controlMode === "controls"}
             <div
-                class="flex items-center gap-2 px-2 py-2 rounded-full bg-discord-backgroundSecondary"
+                class="flex items-center gap-2 px-2 py-2 rounded-full bg-zam-backgroundSecondary"
             >
                 <button
                     onclick={toggleCallMute}
-                    class="p-3 rounded-full hover:bg-discord-messageHover {voiceCallState.micMuted
-                        ? 'text-discord-danger'
-                        : 'text-discord-textPrimary'}"
+                    class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.micMuted
+                        ? 'text-zam-danger'
+                        : 'text-zam-textPrimary'}"
                     title={voiceCallState.micMuted
                         ? t("callView.unmute")
                         : t("common.mute")}
@@ -898,9 +931,9 @@
                 </button>
                 <button
                     onclick={toggleCallDeafen}
-                    class="p-3 rounded-full hover:bg-discord-messageHover {voiceCallState.deafened
-                        ? 'text-discord-danger'
-                        : 'text-discord-textPrimary'}"
+                    class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.deafened
+                        ? 'text-zam-danger'
+                        : 'text-zam-textPrimary'}"
                     title={voiceCallState.deafened
                         ? t("callView.undeafen")
                         : t("callView.deafen")}
@@ -917,10 +950,10 @@
                          headset), through the system call stack. -->
                     <button
                         onclick={toggleSpeaker}
-                        class="p-3 rounded-full hover:bg-discord-messageHover {voiceCallState.audioRoute ===
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.audioRoute ===
                         'speaker'
-                            ? 'text-discord-accent'
-                            : 'text-discord-textPrimary'}"
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
                         title={voiceCallState.audioRoute === "speaker"
                             ? t("callView.speakerOff")
                             : t("callView.speakerOn")}
@@ -941,9 +974,9 @@
                 {#if !settingsState.cameraDisabled}
                     <button
                         onclick={() => void toggleCamera()}
-                        class="p-3 rounded-full hover:bg-discord-messageHover {voiceCallState.cameraOn
-                            ? 'text-discord-accent'
-                            : 'text-discord-textPrimary'}"
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.cameraOn
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
                         title={voiceCallState.cameraOn
                             ? t("common.turnOffCamera")
                             : t("common.turnOnCamera")}
@@ -959,9 +992,9 @@
                 {#if screenShareSupported}
                     <button
                         onclick={onShareBtnClick}
-                        class="p-3 rounded-full hover:bg-discord-messageHover {voiceCallState.screenSharing
-                            ? 'text-discord-accent'
-                            : 'text-discord-textPrimary'}"
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.screenSharing
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
                         title={voiceCallState.screenSharing
                             ? t("common.stopSharing")
                             : t("common.shareYourScreen")}
@@ -972,14 +1005,58 @@
                         <MonitorUp size={20} />
                     </button>
                 {/if}
+                {#if voiceCallState.screenSharing && voiceCallState.ownShareAudio}
+                    <button
+                        onclick={() => toggleShareAudioMute()}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.shareAudioMuted
+                            ? 'text-zam-textMuted'
+                            : 'text-zam-textPrimary'}"
+                        title={voiceCallState.shareAudioMuted
+                            ? t("callView.unmuteShareAudio")
+                            : t("callView.muteShareAudio")}
+                        aria-label={voiceCallState.shareAudioMuted
+                            ? t("callView.unmuteShareAudio")
+                            : t("callView.muteShareAudio")}
+                    >
+                        {#if voiceCallState.shareAudioMuted}<VolumeX
+                                size={20}
+                            />{:else}<Volume2 size={20} />{/if}
+                    </button>
+                {/if}
                 <SoundboardButton
                     {room}
-                    buttonClass="p-3 rounded-full hover:bg-discord-messageHover"
-                    idleClass="text-discord-textPrimary"
+                    buttonClass="p-3 rounded-full hover:bg-zam-messageHover"
+                    idleClass="text-zam-textPrimary"
                 />
+                {#each callControlItems(room.roomId) as c (c.key)}
+                    <button
+                        onclick={(e) => c.click(e.currentTarget)}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {c.active
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
+                        title={c.label}
+                        aria-label={c.label}
+                    >
+                        {#if c.icon}
+                            <svg
+                                class="w-5 h-5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <path d={c.icon} />
+                            </svg>
+                        {:else}
+                            <span
+                                class="w-5 h-5 flex items-center justify-center text-sm font-semibold leading-none"
+                                aria-hidden="true">{c.label.slice(0, 1)}</span
+                            >
+                        {/if}
+                    </button>
+                {/each}
                 <button
                     onclick={leaveCall}
-                    class="p-3 rounded-full bg-discord-danger hover:bg-discord-dangerHover text-white transition-colors"
+                    class="p-3 rounded-full bg-zam-danger hover:bg-zam-dangerHover text-white transition-colors"
                     title={t("callView.disconnect")}
                     aria-label={t("callView.disconnect")}
                 >
@@ -990,7 +1067,7 @@
             <button
                 onclick={() => joinCall(room.roomId)}
                 disabled={voiceCallState.joinPendingRoomId !== null}
-                class="flex items-center gap-2 px-6 py-2.5 rounded-full bg-discord-accent hover:bg-discord-accentHover text-white font-medium transition-colors disabled:opacity-60"
+                class="flex items-center gap-2 px-6 py-2.5 rounded-full bg-zam-accent hover:bg-zam-accentHover text-white font-medium transition-colors disabled:opacity-60"
             >
                 <Phone size={20} />
                 {joining ? t("common.joining") : t("callView.joinCall")}

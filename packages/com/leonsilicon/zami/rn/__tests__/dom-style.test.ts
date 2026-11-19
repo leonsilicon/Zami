@@ -1,19 +1,24 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  cascade,
   computeStyle,
+  domStyleSource,
+  domStyleVersion,
   parseColor,
   parseDeclarations,
   parseLength,
+  setDomStyleSource,
+  subscribeDomStyles,
   substituteVariables,
   variableNames,
   type StyleContext,
 } from "#dom-style";
 
 const THEME: Record<string, string> = {
-  "--discord-divider": "#41444e",
-  "--discord-accent-rgb": "88 101 242",
-  "--discord-text-primary": "#dcddde",
-  "--alias": "var(--discord-divider)",
+  "--zam-divider": "#41444e",
+  "--zam-accent-rgb": "88 101 242",
+  "--zam-text-primary": "#dcddde",
+  "--alias": "var(--zam-divider)",
 };
 const ctx: StyleContext = {
   variable: (name) => THEME[name],
@@ -48,9 +53,7 @@ describe("parseDeclarations", () => {
 
 describe("values", () => {
   test("var() with fallbacks and nesting", () => {
-    expect(substituteVariables("rgb(var(--discord-accent-rgb))", ctx.variable)).toBe(
-      "rgb(88 101 242)",
-    );
+    expect(substituteVariables("rgb(var(--zam-accent-rgb))", ctx.variable)).toBe("rgb(88 101 242)");
     expect(substituteVariables("var(--missing, var(--alias))", ctx.variable)).toBe("#41444e");
     expect(substituteVariables("var(--missing)", ctx.variable)).toBe("");
   });
@@ -86,7 +89,7 @@ describe("values", () => {
 describe("computeStyle", () => {
   test("the emoji-stealer popover's root", () => {
     const s = style(
-      "width:300px;max-width:calc(100vw - 16px);padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--discord-text-primary);font-size:14px;",
+      "width:300px;max-width:calc(100vw - 16px);padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--zam-text-primary);font-size:14px;",
     );
     expect(s.display).toBe("flex");
     expect(s.box).toMatchObject({
@@ -104,7 +107,7 @@ describe("computeStyle", () => {
 
   test("borders, radii and backgrounds", () => {
     const s = style(
-      "border:1px solid var(--discord-divider);border-radius:4px 8px;background:rgb(var(--discord-accent-rgb));",
+      "border:1px solid var(--zam-divider);border-radius:4px 8px;background:rgb(var(--zam-accent-rgb));",
     );
     expect(s.box).toMatchObject({
       borderWidth: 1,
@@ -187,7 +190,7 @@ describe("computeStyle", () => {
     expect(style("display:none").display).toBe("none");
     expect(style("display:inline flex").display).toBe("inline-flex");
     expect(style("opacity:0.6").box.opacity).toBe(0.6);
-    expect(style("box-shadow: inset 3px 0 0 rgb(var(--discord-accent-rgb))").box.boxShadow).toBe(
+    expect(style("box-shadow: inset 3px 0 0 rgb(var(--zam-accent-rgb))").box.boxShadow).toBe(
       "inset 3px 0 0 rgba(88, 101, 242, 1)",
     );
     expect(style("object-fit: contain").objectFit).toBe("contain");
@@ -198,5 +201,53 @@ describe("computeStyle", () => {
   test("an unresolvable value is dropped, not passed on", () => {
     expect(style("color: var(--missing); width: calc(100% - 4px)").box).toEqual({});
     expect(style("color: var(--missing)").text).toEqual({});
+  });
+});
+
+describe("stylesheets", () => {
+  test("rules go around the inline style: normal ones under it, important ones over it", () => {
+    const inline = parseDeclarations("color: red; margin-left: 4px");
+    expect(cascade(inline, undefined)).toBe(inline);
+    const merged = cascade(inline, {
+      normal: new Map([
+        ["color", "blue"],
+        ["padding", "2px"],
+      ]),
+      important: new Map([["margin", "0"]]),
+    });
+    // In the order they apply: the important `margin` after the inline `margin-left`.
+    expect([...merged]).toEqual([
+      ["padding", "2px"],
+      ["color", "red"],
+      ["margin-left", "4px"],
+      ["margin", "0"],
+    ]);
+    expect(computeStyle(merged, ctx).box).toMatchObject({ marginLeft: 0, paddingTop: 2 });
+  });
+
+  test("a source's changes, and a change of source, are changes of version", () => {
+    const seen: number[] = [];
+    const unsubscribe = subscribeDomStyles(() => seen.push(domStyleVersion()));
+    let notify = () => {};
+    let subscribed = 0;
+    const start = domStyleVersion();
+    setDomStyleSource({
+      subscribe(listener) {
+        subscribed++;
+        notify = listener;
+        return () => {
+          subscribed--;
+        };
+      },
+      match: () => undefined,
+      variables: () => [],
+    });
+    expect(domStyleSource()).not.toBeNull();
+    notify();
+    setDomStyleSource(null);
+    expect(subscribed).toBe(0);
+    expect(domStyleSource()).toBeNull();
+    expect(seen).toEqual([start + 1, start + 2, start + 3]);
+    unsubscribe();
   });
 });

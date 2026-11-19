@@ -7,7 +7,7 @@
 import type { TextStyle, ViewStyle } from "react-native";
 
 export interface StyleContext {
-  /** A CSS custom property's value (`--discord-divider`), or undefined. */
+  /** A CSS custom property's value (`--zam-divider`), or undefined. */
   variable: (name: string) => string | number | undefined;
   /** The parent's font size in px, for `em` and `%` font sizes. */
   parentFontSize: number;
@@ -953,3 +953,79 @@ export function computeStyle(
 }
 
 export { DEFAULT_ROOT_FONT_SIZE };
+
+// ---------------------------------------------------------------------------
+// Stylesheets
+// ---------------------------------------------------------------------------
+
+/**
+ * Stylesheet rules for the elements DomView shows (the user's custom CSS, plugins'
+ * `addStyles` and `<style>` elements). They live outside this package, which only draws:
+ * @-/com.leonsilicon.zami.plugins registers its sheets here.
+ */
+export interface DomStyleSource {
+  /** Calls `listener` after the rules change. */
+  subscribe: (listener: () => void) => () => void;
+  /**
+   * What the rules declare for `element`: `normal` goes under its inline style and
+   * `important` over it, each in the order to apply (a later declaration wins).
+   */
+  match: (
+    element: Element,
+  ) => { normal: ReadonlyMap<string, string>; important: ReadonlyMap<string, string> } | undefined;
+  /** The `--x` names the rules' values read. */
+  variables: () => readonly string[];
+}
+
+let styleSource: DomStyleSource | null = null;
+let unsubscribeSource: (() => void) | null = null;
+let styleVersion = 0;
+const styleListeners = new Set<() => void>();
+
+function stylesChanged(): void {
+  styleVersion++;
+  for (const listener of Array.from(styleListeners)) listener();
+}
+
+/** Sets where DomView gets stylesheet rules from (null: nowhere, as before one is set). */
+export function setDomStyleSource(source: DomStyleSource | null): void {
+  unsubscribeSource?.();
+  styleSource = source;
+  unsubscribeSource = source ? source.subscribe(stylesChanged) : null;
+  stylesChanged();
+}
+
+export function domStyleSource(): DomStyleSource | null {
+  return styleSource;
+}
+
+/** For `useSyncExternalStore`: a number that changes whenever the rules do. */
+export function domStyleVersion(): number {
+  return styleVersion;
+}
+
+export function subscribeDomStyles(listener: () => void): () => void {
+  styleListeners.add(listener);
+  return () => {
+    styleListeners.delete(listener);
+  };
+}
+
+/**
+ * An element's declarations with the stylesheets' around its inline ones. Each layer is
+ * added last in the map (the order `computeStyle` applies them in), so a shorthand in a
+ * later layer also wins over a longhand in an earlier one.
+ */
+export function cascade(
+  inline: ReadonlyMap<string, string>,
+  rules: ReturnType<DomStyleSource["match"]>,
+): Map<string, string> {
+  if (rules === undefined) return inline as Map<string, string>;
+  const out = new Map(rules.normal);
+  for (const layer of [inline, rules.important])
+    for (const [name, value] of layer) {
+      out.delete(name);
+      out.set(name, value);
+    }
+  return out;
+}

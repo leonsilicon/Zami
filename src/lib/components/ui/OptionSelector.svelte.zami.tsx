@@ -44,19 +44,17 @@ export default function OptionSelector<T extends string>({
                             option.disabled ? "opacity-40" : ""
                         } ${
                             selected
-                                ? "bg-discord-accent"
-                                : `bg-discord-backgroundTertiary ${
+                                ? "bg-zam-accent"
+                                : `bg-zam-backgroundTertiary ${
                                       option.disabled
                                           ? ""
-                                          : "hover:bg-discord-messageHover"
+                                          : "hover:bg-zam-messageHover"
                                   }`
                         }`}
                     >
                         <Text
                             className={`text-xs font-medium ${
-                                selected
-                                    ? "text-white"
-                                    : "text-discord-textMuted"
+                                selected ? "text-white" : "text-zam-textMuted"
                             }`}
                         >
                             {option.label}

@@ -201,12 +201,12 @@ export default function VoiceMessagePlayer({
     );
 
     return (
-        <View className="flex-row items-center gap-3 p-3 bg-discord-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
+        <View className="flex-row items-center gap-3 p-3 bg-zam-backgroundTertiary rounded-lg mt-1 max-w-sm w-full">
             <Pressable
                 accessibilityRole="button"
                 onPress={() => void toggle()}
                 disabled={loading}
-                className="w-8 h-8 rounded-full bg-discord-accent flex-shrink-0 flex items-center justify-center disabled:opacity-50"
+                className="w-8 h-8 rounded-full bg-zam-accent flex-shrink-0 flex items-center justify-center disabled:opacity-50"
             >
                 {loading ? (
                     <Spin className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -252,7 +252,7 @@ export default function VoiceMessagePlayer({
                             {waveform.map((bar, i) => (
                                 <View
                                     key={i}
-                                    className="flex-1 min-w-[2px] rounded-full bg-discord-divider"
+                                    className="flex-1 min-w-[2px] rounded-full bg-zam-divider"
                                     style={{
                                         height: `${Math.max(8, (bar / 1024) * 100)}%`,
                                     }}
@@ -275,7 +275,7 @@ export default function VoiceMessagePlayer({
                                 {waveform.map((bar, i) => (
                                     <View
                                         key={i}
-                                        className="flex-1 min-w-[2px] rounded-full bg-discord-accent"
+                                        className="flex-1 min-w-[2px] rounded-full bg-zam-accent"
                                         style={{
                                             height: `${Math.max(8, (bar / 1024) * 100)}%`,
                                         }}
@@ -286,7 +286,7 @@ export default function VoiceMessagePlayer({
                     </Pressable>
                 ) : (
                     <Text
-                        className="text-discord-textPrimary text-xs font-medium truncate"
+                        className="text-zam-textPrimary text-xs font-medium truncate"
                         numberOfLines={1}
                     >
                         {t("voiceMessagePlayer.voiceMessage")}
@@ -294,7 +294,7 @@ export default function VoiceMessagePlayer({
                 )}
             </View>
 
-            <Text className="text-discord-textMuted text-xs tabular-nums flex-shrink-0 w-9 text-end">
+            <Text className="text-zam-textMuted text-xs tabular-nums flex-shrink-0 w-9 text-end">
                 {timeLabel}
             </Text>
         </View>
