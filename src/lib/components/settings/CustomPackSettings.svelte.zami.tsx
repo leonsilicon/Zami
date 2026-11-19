@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import {
@@ -30,6 +30,8 @@ import {
 } from "$lib/matrix/client";
 import { X } from "lucide-svelte";
 import { roomsState } from "$lib/stores/rooms.svelte";
+import { shortcodeFromFileName } from "$lib/utils/emoteShortcode";
+import TelegramImport from "./TelegramImport.svelte";
 
 type PackKind = "emotes" | "emojis" | "stickers";
 interface Props {
@@ -54,6 +56,16 @@ export default function CustomPackSettings({ kind }: Props) {
     const [error, setError] = useState("");
     const [asEmoji, setAsEmoji] = useState(true);
     const [asSticker, setAsSticker] = useState(false);
+    // A picked file waits here until the user confirms with Add.
+    // Zami: the preview is the picked file's own URI, so there's no object
+    // URL to revoke (upstream's releaseStaged and unmount effect).
+    const [staged, setStaged] = useState<{
+        file: File;
+        previewUrl: string;
+    } | null>(null);
+    // The shortcode last filled in from a file name; replaced on the next pick
+    // only while the user has not typed their own.
+    const autoShortcode = useRef("");
 
     const singular =
         kind === "emotes"
@@ -87,7 +99,12 @@ export default function CustomPackSettings({ kind }: Props) {
         ];
     }
 
-    async function upload() {
+    function releaseStaged(entry: { previewUrl: string }) {
+        setStaged((current) => (current === entry ? null : current));
+    }
+
+    // Picking a file only stages it; nothing is uploaded until Add.
+    async function stageFile() {
         // Zami: the file input's change event → expo-document-picker.
         const picked = await DocumentPicker.getDocumentAsync({
             type: "image/*",
@@ -95,6 +112,27 @@ export default function CustomPackSettings({ kind }: Props) {
         });
         const asset = picked.assets?.[0];
         if (!asset) return;
+        const file = await pickedFile(asset);
+        setError("");
+        const suggested = shortcodeFromFileName(file.name);
+        if (shortcode === "" || shortcode === autoShortcode.current) {
+            setShortcode(suggested);
+        }
+        autoShortcode.current = suggested;
+        setStaged({ file, previewUrl: asset.uri });
+    }
+
+    function cancelStaged() {
+        if (!staged) return;
+        if (shortcode === autoShortcode.current) setShortcode("");
+        autoShortcode.current = "";
+        setError("");
+        releaseStaged(staged);
+    }
+
+    async function addStaged() {
+        const entry = staged;
+        if (!entry) return;
         let nextError = validateEmojiShortcode(shortcode) ?? "";
         const selectedUsage = usage(asEmoji, asSticker);
         if (kind === "emotes" && selectedUsage.length === 0) {
@@ -106,7 +144,7 @@ export default function CustomPackSettings({ kind }: Props) {
         }
         setUploading(true);
         try {
-            const mxcUrl = await uploadContent(await pickedFile(asset));
+            const mxcUrl = await uploadContent(entry.file);
             const normalized =
                 kind === "emotes"
                     ? await addUserEmote(shortcode, mxcUrl, selectedUsage)
@@ -131,6 +169,8 @@ export default function CustomPackSettings({ kind }: Props) {
                 );
             }
             setShortcode("");
+            autoShortcode.current = "";
+            releaseStaged(entry);
             roomsState.roomsTick++;
         } catch (uploadError) {
             setError(
@@ -265,7 +305,7 @@ export default function CustomPackSettings({ kind }: Props) {
                     <Pressable
                         accessibilityRole="button"
                         onPress={() => {
-                            upload();
+                            void stageFile();
                         }}
                         disabled={uploading}
                         className={`cursor-pointer px-3 py-2 rounded bg-zam-accent ${
@@ -275,11 +315,57 @@ export default function CustomPackSettings({ kind }: Props) {
                         <Text className="text-white text-sm font-semibold text-center">
                             {uploading
                                 ? t("common.uploading")
-                                : t("common.uploadImage")}
+                                : staged
+                                  ? t("customPackSettings.chooseAnother")
+                                  : t("common.uploadImage")}
                         </Text>
                     </Pressable>
                 </View>
+                {staged && (
+                    <View className="flex-row items-center gap-3 p-2 rounded bg-zam-backgroundTertiary">
+                        <View className="w-12 h-12 rounded bg-zam-backgroundSecondary flex-shrink-0 overflow-hidden flex-row items-center justify-center">
+                            <Image
+                                source={mediaSource(staged.previewUrl)}
+                                accessibilityLabel={t(
+                                    "customPackSettings.stagedPreview",
+                                )}
+                                contentFit="contain"
+                                className="w-full h-full max-w-full max-h-full"
+                            />
+                        </View>
+                        <Text
+                            numberOfLines={1}
+                            className="flex-1 min-w-0 text-sm text-zam-textPrimary truncate"
+                        >
+                            {staged.file.name}
+                        </Text>
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={cancelStaged}
+                            disabled={uploading}
+                            accessibilityState={{ disabled: uploading }}
+                            className="px-3 py-1.5 rounded hover:bg-zam-messageHover active:bg-zam-messageHover disabled:opacity-50"
+                        >
+                            <Text className="text-sm text-zam-textMuted">
+                                {t("common.cancel")}
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => void addStaged()}
+                            disabled={uploading}
+                            accessibilityState={{ disabled: uploading }}
+                            className="px-3 py-1.5 rounded bg-zam-accent disabled:opacity-50"
+                        >
+                            <Text className="text-white text-sm font-semibold">
+                                {t("common.add")}
+                            </Text>
+                        </Pressable>
+                    </View>
+                )}
             </View>
+
+            {kind === "stickers" && <TelegramImport onImported={load} />}
 
             {error ? (
                 <Text className="text-sm text-zam-danger">{error}</Text>

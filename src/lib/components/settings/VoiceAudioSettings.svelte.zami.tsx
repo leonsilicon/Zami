@@ -1175,6 +1175,11 @@ export default function VoiceAudioSettings() {
                         label={t("voiceAudioSettings.adaptiveStream")}
                     />
                 </View>
+                {/* Zami: not ported: the share smoothing select
+                    (setShareSmoothingMs + refreshShareSmoothing). It sets
+                    the receiver's playoutDelayHint, which
+                    react-native-webrtc's RTCRtpReceiver doesn't have, so
+                    the choice would change nothing here. */}
                 {!cameraDisabled ? (
                     <Pressable
                         accessibilityRole="button"

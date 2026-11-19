@@ -153,22 +153,47 @@ export default function SoundboardPopover({
                     <View className="flex-row flex-wrap gap-1.5">
                         {/* Zami: `title` (the sound's description) is its
                             accessibility hint. */}
-                        {pack.sounds.map((sound) => (
-                            <Pressable
-                                key={sound.name}
-                                accessibilityRole="button"
-                                accessibilityHint={sound.body}
-                                onPress={() => void play(sound)}
-                                className="max-w-full px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-accent active:bg-zam-accent transition-colors"
-                            >
-                                <Text
-                                    numberOfLines={1}
-                                    className="truncate text-sm text-zam-textPrimary"
+                        {pack.sounds.map((sound) =>
+                            sound.emoji ? (
+                                <Pressable
+                                    key={sound.name}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={sound.name}
+                                    accessibilityHint={sound.body}
+                                    onPress={() => void play(sound)}
+                                    className="w-16 max-w-full items-center gap-0.5 px-1 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-accent active:bg-zam-accent transition-colors"
                                 >
-                                    {sound.name}
-                                </Text>
-                            </Pressable>
-                        ))}
+                                    <Text
+                                        importantForAccessibility="no"
+                                        className="text-3xl leading-none text-zam-textPrimary"
+                                    >
+                                        {sound.emoji}
+                                    </Text>
+                                    <Text
+                                        importantForAccessibility="no"
+                                        numberOfLines={1}
+                                        className="max-w-full truncate text-[11px] leading-tight text-zam-textPrimary"
+                                    >
+                                        {sound.name}
+                                    </Text>
+                                </Pressable>
+                            ) : (
+                                <Pressable
+                                    key={sound.name}
+                                    accessibilityRole="button"
+                                    accessibilityHint={sound.body}
+                                    onPress={() => void play(sound)}
+                                    className="max-w-full px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-accent active:bg-zam-accent transition-colors"
+                                >
+                                    <Text
+                                        numberOfLines={1}
+                                        className="truncate text-sm text-zam-textPrimary"
+                                    >
+                                        {sound.name}
+                                    </Text>
+                                </Pressable>
+                            ),
+                        )}
                     </View>
                 </View>
             ))}

@@ -853,6 +853,10 @@ export default function CallStatsPanel({ onClose }: Props) {
                     className="shrink"
                     contentContainerClassName="px-5 py-4 gap-4"
                 >
+                    {/* Zami: not ported: the share smoothing slider
+                        (setShareSmoothingMs + refreshShareSmoothing). It
+                        sets the receiver's playoutDelayHint, which
+                        react-native-webrtc's RTCRtpReceiver doesn't have. */}
                     {connections === null ? (
                         <Text className="text-sm text-zam-textMuted">
                             {t("callStats.loading")}
