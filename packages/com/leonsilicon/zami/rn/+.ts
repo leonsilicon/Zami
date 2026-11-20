@@ -27,7 +27,7 @@ export {
   type ImportModuleOptions,
   type ModuleNamespace,
 } from "#es-module";
-export { Html, openLink, type HtmlProps } from "#html";
+export { Html, openLink, type CodeBlockCollapse, type HtmlProps } from "#html";
 export type { HtmlElement } from "#html-tree";
 export { Image, mediaSource, setMediaHeaders } from "#image";
 export { lazyComponent } from "#lazy";

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PixelRatio, Pressable, Text, View } from "react-native";
-import { Image, Portal, mediaSource } from "@-/com.leonsilicon.zami.rn";
+import { Image, mediaSource } from "@-/com.leonsilicon.zami.rn";
 import { t } from "$lib/i18n";
 import {
     Download,
@@ -34,8 +34,6 @@ import {
 } from "$lib/utils/galleryLayout";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import Lightbox from "$lib/components/ui/Lightbox.svelte";
-import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
-import type { DownloadProgress } from "$lib/utils/downloadProgress";
 
 interface Props {
     /** The gallery's valid items, from galleryItems(content). */
@@ -158,9 +156,6 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
     const [prefetchedFull, prefetchedFullRef, setPrefetchedFull] =
         useLatestState<Record<string, string>>({});
     const [prefetchPending] = useState(() => new Set<string>());
-    const [viewerDecrypting, setViewerDecrypting] = useState(false);
-    const [viewerProgress, setViewerProgress] =
-        useState<DownloadProgress | null>(null);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
     // Bumped on teardown (a plain let, never reactive) so a decrypt still in
@@ -180,7 +175,6 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
         setDecryptedThumbs({});
         setDecryptedFull({});
         setPrefetchedFull({});
-        setViewerDecrypting(false);
     }
     useEffect(
         () => () => releaseDecryptedBlobs(),
@@ -263,19 +257,12 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
             setPrefetchedFull(rest);
             return;
         }
+        // The lightbox is up already: its tile stand-in shows until this lands.
         const gen = blobGen.current;
-        let cancelled = false;
-        setViewerDecrypting(true);
-        setViewerProgress(null);
         fetchDecryptedAttachmentBlob(
             media.encryptedFile,
             media.mimetype ?? undefined,
-            {
-                expectedSize: media.size,
-                onProgress: (p) => {
-                    if (!cancelled) setViewerProgress(p);
-                },
-            },
+            { expectedSize: media.size },
         )
             .then((decrypted) => {
                 if (gen !== blobGen.current) {
@@ -286,18 +273,12 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
                     ...decryptedFullRef.current,
                     [key]: decrypted,
                 });
-                if (!cancelled) setViewerDecrypting(false);
             })
             .catch(() => {
-                if (cancelled || gen !== blobGen.current) return;
-                setViewerDecrypting(false);
+                if (gen !== blobGen.current) return;
                 setViewerIndex(null);
                 showErrorToast(t("roomMediaPanel.couldNotLoadThisMedia"));
             });
-        return () => {
-            cancelled = true;
-            setViewerDecrypting(false);
-        };
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream untracks the entry and decryptedFull.
     }, [viewerKey]);
 
@@ -305,8 +286,9 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
         const entry = viewerEntry;
         if (!entry) return null;
         const media = entry.media;
+        // "" while an encrypted image decrypts: the lightbox shows its tile then.
         if (media.encrypted && media.kind !== "video")
-            return decryptedFull[entry.key] ?? null;
+            return decryptedFull[entry.key] ?? "";
         return mxcToHttp(media.url);
     })();
 
@@ -622,25 +604,7 @@ export default function GalleryBody({ items, eventId, sender, ts }: Props) {
             </View>
 
             {viewerEntry ? (
-                viewerDecrypting ? (
-                    <Portal>
-                        <View
-                            className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-                            role="dialog"
-                            accessibilityViewIsModal
-                            accessibilityLabel={t(
-                                "roomMediaPanel.decryptingMedia",
-                            )}
-                        >
-                            <View className="max-w-sm w-full shadow-lg">
-                                <MediaProgress
-                                    label={t("roomMediaPanel.decryptingMedia2")}
-                                    progress={viewerProgress}
-                                />
-                            </View>
-                        </View>
-                    </Portal>
-                ) : viewerSrc ? (
+                viewerSrc !== null ? (
                     <Lightbox
                         src={viewerSrc}
                         alt={viewerEntry.media.name}

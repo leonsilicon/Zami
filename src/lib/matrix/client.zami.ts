@@ -12828,6 +12828,19 @@ export function getCallParticipantCounts(): Map<string, number> {
     return counts;
 }
 
+/** Whether we are joined to a room and who is in its call, for deciding a
+ *  rejoin prompt after a restart. Null when the room is unknown. */
+export function getRoomRejoinState(
+    roomId: string,
+): { joined: boolean; memberships: VoiceMembership[] } | null {
+    const room = getRoom(roomId);
+    if (!room) return null;
+    return {
+        joined: room.getMyMembership() === "join",
+        memberships: getRoomCallMemberships(room),
+    };
+}
+
 /** Fold call summaries from a set of ALREADY renderable-filtered events, keyed
  *  by the anchor event that renders each call's card. Liveness comes from the
  *  room's current MatrixRTC memberships, so a finished call reads as "answered"

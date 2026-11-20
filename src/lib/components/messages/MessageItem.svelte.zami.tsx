@@ -40,6 +40,7 @@ import { useResolveClassNames } from "uniwind";
 import {
     DomMount,
     Html,
+    type CodeBlockCollapse,
     Image,
     Portal,
     Pulse,
@@ -92,6 +93,7 @@ import {
 } from "$lib/utils/decryptedImageCache";
 // Zami: the media cache on disk (see the encrypted image effect).
 import { cachedDecryptedAttachment } from "$lib/matrix/media";
+import { thumbnailPrefixLength } from "$lib/utils/thumbnailPrefix";
 import type { DownloadProgress } from "$lib/utils/downloadProgress";
 import LocationBody from "$lib/components/messages/LocationBody.svelte";
 import VerificationRequestMessage from "$lib/components/messages/VerificationRequestMessage.svelte";
@@ -303,6 +305,11 @@ import { siblingUploadIndices } from "$lib/utils/uploadSiblings";
 import { motionOK } from "$lib/utils/motionPreference";
 import { audioPlaybackMode, audioStatusLabel } from "$lib/utils/audioPlayback";
 import { formatCallDuration } from "$lib/utils/callDuration";
+import {
+    codeBlockCapPx,
+    codeBlockKey,
+    codeBlockOverflows,
+} from "$lib/utils/codeBlockCollapse";
 
 import type { ReadReceiptInfo } from "$lib/matrix/client";
 
@@ -310,8 +317,8 @@ import type { ReadReceiptInfo } from "$lib/matrix/client";
 // itself), `use:rovingToolbar` and the row's keyboard focus (no hardware-keyboard
 // navigation), `use:authedVideoSrc` and `use:rememberVolume` on the `<audio>`, and
 // `use:frameSink` (no canvas). `use:longPress`, `use:swipePan`,
-// `use:matrixLinks` and `use:bodyImageGallery` (on Html's image presses) are
-// translated below.
+// `use:matrixLinks`, `use:bodyImageGallery` (on Html's image presses) and
+// `use:codeBlocks` (Html's `codeBlocks`) are translated below.
 
 type EncryptedFile = {
     url: string;
@@ -1926,18 +1933,28 @@ function MessageItem({
         // Up to this size the original is the tile, as upstream has it.
         const originalTileMaxBytes = 2 * 1024 * 1024;
         const senderThumb = cached ? null : videoPoster(content);
+        // A prefix thumbnail (utils/thumbnailPrefix.ts): the tile is the
+        // decrypted prefix, and the full image is fetched only once the viewer
+        // asks for it, whatever the file's size.
+        // Zami: not ported: the resume from where the prefix ends
+        // (fetchDecryptedAttachmentFromPrefix, and loadImageProgressively's
+        // `prefix`): the native media cache downloads and verifies the whole
+        // file, so the prefix's bytes come down again with it.
+        const prefixed =
+            !cached && thumbnailPrefixLength(content?.info) !== null;
         const standIn =
             senderThumb?.kind === "encrypted" &&
-            mime !== "image/gif" &&
-            mime !== "image/webp" &&
-            !(
-                typeof info?.size === "number" &&
-                info.size <= originalTileMaxBytes
-            ) &&
-            Math.max(
-                info?.thumbnail_info?.w ?? 0,
-                info?.thumbnail_info?.h ?? 0,
-            ) >= 256
+            (prefixed ||
+                (mime !== "image/gif" &&
+                    mime !== "image/webp" &&
+                    !(
+                        typeof info?.size === "number" &&
+                        info.size <= originalTileMaxBytes
+                    ) &&
+                    Math.max(
+                        info?.thumbnail_info?.w ?? 0,
+                        info?.thumbnail_info?.h ?? 0,
+                    ) >= 256))
                 ? senderThumb
                 : null;
         const httpUrl = mxcToHttp(file.url);
@@ -2075,9 +2092,18 @@ function MessageItem({
     // shown as a stand-in until the real image loads: behind the server's
     // thumbnail in the tile, and behind the full image in the lightbox. The
     // poster helper is not video-specific: it reads the same thumbnail fields.
+    // An image with a prefix thumbnail (utils/thumbnailPrefix.ts) is its own
+    // stand-in, so its sender thumbnail is not fetched a second time.
+    const prefixedImage =
+        msgtype === "m.image" &&
+        !!content?.file &&
+        thumbnailPrefixLength(content?.info) !== null;
     const senderThumbSrc = useMemo(
-        () => (msgtype === "m.image" ? videoPoster(content) : null),
-        [msgtype, content],
+        () =>
+            msgtype === "m.image" && !prefixedImage
+                ? videoPoster(content)
+                : null,
+        [msgtype, content, prefixedImage],
     );
     const [encryptedSenderThumbUrl, setEncryptedSenderThumbUrl] = useState<
         string | null
@@ -2736,6 +2762,16 @@ function MessageItem({
         ? "text-sm text-white leading-relaxed [&_a]:text-white [&_a]:underline"
         : "text-sm text-zam-textPrimary leading-relaxed";
 
+    // Zami: `use:codeBlocks` → Html's own collapse of tall code blocks, at
+    // the same cap (Uniwind's rem is 16px) and with the same per-block keys.
+    const codeBlocks: CodeBlockCollapse = {
+        maxHeight: codeBlockCapPx(16),
+        overflows: codeBlockOverflows,
+        keyOf: (index) => codeBlockKey(eventId ?? "", index),
+        label: (expanded) =>
+            expanded ? t("codeBlock.showLess") : t("codeBlock.showMore"),
+    };
+
     // Zami: the body with what upstream sets inline after it (the edited mark,
     // the receipts' spacer). After text they wrap on as a row; after blocks
     // (a row would shrink them to their content) they go beneath. The one
@@ -2760,6 +2796,7 @@ function MessageItem({
                     resolveMxc={mxcToHttp}
                     onLinkPress={matrixLinks}
                     onImagePress={onBodyImagePress}
+                    codeBlocks={codeBlocks}
                 />
                 {isEdited ? (
                     <Text className="text-xs text-zam-textMuted ms-1 leading-relaxed">

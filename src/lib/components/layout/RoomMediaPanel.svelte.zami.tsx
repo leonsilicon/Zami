@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import {
+    FlatList,
+    Pressable,
+    Text,
+    View,
+    type FlatListProps,
+} from "react-native";
 import {
     Image,
     Portal,
@@ -35,8 +41,6 @@ import { galleryPositionLabel } from "$lib/utils/mediaGallery";
 import { interfaceState } from "$lib/stores/interface.svelte";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
 import Lightbox from "$lib/components/ui/Lightbox.svelte";
-import MediaProgress from "$lib/components/ui/MediaProgress.svelte";
-import type { DownloadProgress } from "$lib/utils/downloadProgress";
 
 interface Props {
     room: Room;
@@ -96,9 +100,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
     const [prefetchedFull, prefetchedFullRef, setPrefetchedFull] =
         useLatestState<Record<string, string>>({});
     const [prefetchPending] = useState(() => new Set<string>());
-    const [viewerDecrypting, setViewerDecrypting] = useState(false);
-    const [viewerProgress, setViewerProgress] =
-        useState<DownloadProgress | null>(null);
+    // Encrypted tiles that have come near the viewport: only these decrypt.
+    const [nearIds, nearIdsRef, setNearIds] = useLatestState<
+        Record<string, boolean>
+    >({});
 
     const split = splitMediaItems(items);
     const visible = tab === "media" ? split.visual : split.files;
@@ -302,7 +307,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         setDecryptedThumbs({});
         setDecryptedFull({});
         setPrefetchedFull({});
-        setViewerDecrypting(false);
+        setNearIds({});
     }
     useEffect(
         () => () => releaseDecryptedBlobs(),
@@ -310,17 +315,54 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         [],
     );
 
-    // Decrypt each encrypted tile once: an image's own file, a video's
-    // thumbnail_file (never the video itself; see mediaTileSource). Re-runs on
-    // every "Load more", so it skips anything already decrypted or in flight.
+    /** Marks encrypted tiles as near the viewport, which lets them decrypt. Once
+     *  near they stay marked: a tile is a small copy, not the full file.
+     *  Zami: an IntersectionObserver with a 300px margin → the grid's viewable
+     *  items, and two rows either side of them. Stable, as FlatList requires. */
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
+    const onViewableItemsChanged = useRef<
+        NonNullable<FlatListProps<RoomMediaItem>["onViewableItemsChanged"]>
+    >(({ viewableItems }) => {
+        const indices = viewableItems
+            .map((v) => v.index)
+            .filter((i): i is number => i !== null);
+        if (indices.length === 0) return;
+        const margin = 2 * COLUMNS;
+        const list = visibleRef.current;
+        const from = Math.max(0, Math.min(...indices) - margin);
+        const to = Math.min(list.length - 1, Math.max(...indices) + margin);
+        let next: Record<string, boolean> | null = null;
+        for (let i = from; i <= to; i++) {
+            const id = mediaItemKey(list[i]!);
+            if (nearIdsRef.current[id]) continue;
+            next ??= { ...nearIdsRef.current };
+            next[id] = true;
+        }
+        if (next) setNearIds(next);
+    }).current;
+
+    // Decrypt each encrypted tile once, and only once it is near the viewport:
+    // an image's thumbnail_file when the sender sent one, else its own file, a
+    // video's thumbnail_file (never the video itself; see mediaTileSource).
+    // Re-runs as tiles scroll in and on "Load more"; skips anything already
+    // decrypted or in flight.
+    // Zami: not ported: cutting a tile-sized copy (createTileImage) from a
+    // prefix thumbnail or a full image: expo-image decodes the file at the
+    // tile's size, as the media cache keeps it.
     useEffect(() => {
         const wanted = split.visual
+            .filter((m) => !!nearIds[mediaItemKey(m)] && !!m.encrypted)
             .map((m) => ({ id: mediaItemKey(m), source: mediaTileSource(m) }))
             .filter((x) => x.source?.kind === "encrypted");
         const gen = blobGen.current;
         for (const { id, source } of wanted) {
             if (source?.kind !== "encrypted") continue;
-            if (decryptedThumbsRef.current[id] || thumbPending.has(id))
+            if (
+                decryptedThumbsRef.current[id] ||
+                thumbPending.has(id) ||
+                thumbFailed[id]
+            )
                 continue;
             thumbPending.add(id);
             fetchDecryptedAttachmentBlob(
@@ -345,13 +387,14 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     if (gen === blobGen.current) thumbPending.delete(id);
                 });
         }
-        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream tracks the visual items only.
-    }, [items]);
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream tracks the visual items and the near ones.
+    }, [items, nearIds]);
 
-    // Decrypt full media when the viewer opens on an encrypted item. The
-    // result is kept in decryptedFull (released with the panel) even if the
-    // user has stepped on, but only the current item's decrypt may clear the
-    // spinner.
+    // Decrypt the full image when the viewer opens on an encrypted image. Until
+    // it lands the viewer shows the tile as its stand-in (see viewer()).
+    // Zami: not ported: the shared decryptedBlobCache, and the resume from a
+    // prefix thumbnail (fetchDecryptedAttachmentFromPrefix): the native media
+    // cache keeps the decrypted file for the next view, and downloads it whole.
     const viewerItem = viewerIndex === null ? undefined : gallery[viewerIndex];
     useEffect(() => {
         if (viewerIndex === null) return;
@@ -372,18 +415,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
             return;
         }
         const gen = blobGen.current;
-        let cancelled = false;
-        setViewerDecrypting(true);
-        setViewerProgress(null);
         fetchDecryptedAttachmentBlob(
             item.encryptedFile,
             item.mimetype ?? undefined,
-            {
-                expectedSize: item.size,
-                onProgress: (p) => {
-                    if (!cancelled) setViewerProgress(p);
-                },
-            },
+            { expectedSize: item.size },
         )
             .then((decrypted) => {
                 if (gen !== blobGen.current) {
@@ -394,15 +429,10 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     ...decryptedFullRef.current,
                     [id]: decrypted,
                 });
-                if (!cancelled) setViewerDecrypting(false);
             })
             .catch(() => {
-                if (!cancelled) setViewerDecrypting(false);
+                /* the stand-in stays up; nothing else to show */
             });
-        return () => {
-            cancelled = true;
-            setViewerDecrypting(false);
-        };
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- upstream untracks decryptedFull.
     }, [viewerIndex, viewerItem]);
 
@@ -605,10 +635,11 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
         const item = gallery[viewerIndex];
         const view = mediaViewerItem(item, {
             // An encrypted item resolves only once decrypted: its mxc holds
-            // ciphertext, which the viewer would download and fail to show.
+            // ciphertext, which the viewer would download and fail to show. Until
+            // then "" (not null, which would drop the viewer): the tile stands in.
             full: (mxc) =>
                 item.encrypted && item.kind !== "video"
-                    ? (decryptedFull[mediaItemKey(item)] ?? null)
+                    ? (decryptedFull[mediaItemKey(item)] ?? "")
                     : mxcToHttp(mxc),
             // "scale" rather than the default crop: a poster must match the video's
             // own aspect ratio or the player letterboxes a distorted still.
@@ -617,24 +648,8 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                     ? decryptedThumbs[mediaItemKey(item)]
                     : mxcToHttp(mxc, 800, 600, "scale"),
         });
-        if (viewerDecrypting)
-            return (
-                <Portal>
-                    <View
-                        className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-                        role="dialog"
-                        accessibilityViewIsModal
-                        accessibilityLabel={t("roomMediaPanel.decryptingMedia")}
-                    >
-                        <View className="max-w-sm w-full shadow-lg">
-                            <MediaProgress
-                                label={t("roomMediaPanel.decryptingMedia2")}
-                                progress={viewerProgress}
-                            />
-                        </View>
-                    </View>
-                </Portal>
-            );
+        // Shown at once: an encrypted image's src is "" until its full copy
+        // has decrypted, and the tile stands in behind it (placeholders).
         if (view)
             return (
                 <Lightbox
@@ -814,6 +829,7 @@ export default function RoomMediaPanel({ room, onClose }: Props) {
                             <View className="px-2">{fileRow(item)}</View>
                         )
                     }
+                    onViewableItemsChanged={onViewableItemsChanged}
                     onEndReached={onEndReached}
                     onEndReachedThreshold={0}
                     ListEmptyComponent={
