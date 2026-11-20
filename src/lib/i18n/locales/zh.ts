@@ -262,6 +262,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callParticipantMenu.couldNotOpenADirectMessage": "无法打开私信",
     "callParticipantMenu.couldNotKick": "无法移出 {name}",
     "callParticipantMenu.couldNotBan": "无法封禁 {name}",
+    "callParticipantMenu.disconnectFromVoice": "断开语音连接",
+    "callParticipantMenu.disconnecting": "正在断开…",
+    "callParticipantMenu.confirmDisconnect": "确认将 {name} 断开语音连接？",
+    "callParticipantMenu.couldNotDisconnect": "无法断开 {name}",
+    "callKick.notPermitted": "你无法将此成员断开语音连接",
+    "callKick.removedFromVoice": "{name} 将你移出了语音频道",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -630,6 +636,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "不发送图库",
     "debugSettings.disableGallerySendHint":
         "一起选择的附件通常会作为一条带有一个说明的图库消息发出（MSC4274，以 dm.filament.gallery 发送）。开启后，每个附件单独作为一条消息发送。其他人发送的图库仍会显示。",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "你的主服务器不支持粘性事件。",
     "debugSettings.stickyCallMembership": "粘性通话成员身份",
     "debugSettings.stickyCallMembershipHint":
         "使用粘性 m.rtc.member 事件 (MSC4354) 而不是 m.call.member 状态事件加入通话。只读取状态事件的客户端（包括 1.51 之前的 Zam）看不到你在通话中。从下一次通话起生效。",
@@ -706,6 +714,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "尚无记录。重启、失败的请求和时间线重置会显示在这里。",
     "debugSettings.refresh": "刷新",
     "debugSettings.copied": "已复制",
+    "debugSettings.startupTiming": "启动耗时",
+    "debugSettings.startupTimingHint":
+        "从页面加载到每个启动步骤的耗时。可复制后分享。",
+    "debugSettings.startupTimingEmpty": "尚未记录启动步骤。",
+    "debugSettings.startupTimingRow": "+{dt} ms（{at} ms 时）",
+    "debugSettings.copyTiming": "复制耗时",
     "debugSettings.useSlidingSync": "使用滑动同步",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "实验性。在不断扩大的窗口中加载房间。会重新加载应用以生效。",
@@ -780,6 +794,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "自定义",
     "emojiPicker.standard": "标准",
     "emojiPicker.myEmojis2": "我的表情",
+    "emojiPicker.recentlyUsed": "最近使用",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "忽略",
@@ -941,6 +956,22 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresenceCard.openFailed": "无法获取 OpenID 令牌。",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked": "此设备上的收藏已锁定。请先解锁再修改。",
+    "favourites.saveFailed": "无法保存收藏，更改已撤销。",
+    "favourites.lockedHint":
+        "此设备上的收藏已锁定。输入恢复密钥或验证此设备即可查看和修改。",
+    "favourites.unlock": "解锁",
+    "privateData.locked": "此设备上的私密数据已锁定。请先解锁加密。",
+    "privateData.keySaveFailed":
+        "无法将私密数据密钥保存到账户的安全存储中，下次解锁时会重试。",
+    "settingsSearch.encryptFavouriteGifs": "加密收藏的 GIF",
+    "privateData.toggleLabel": "加密收藏的 GIF",
+    "privateData.toggleHelp":
+        "对家庭服务器隐藏你收藏的 GIF。其他设备需要恢复密钥或已验证的会话才能读取，旧版 Zam 将看不到这些收藏。",
+    "privateData.offWarning": "关闭后，家庭服务器将能再次读取你收藏的 GIF。",
+    "privateData.turnOff": "关闭加密",
+    "privateData.enableFailed": "无法加密收藏的 GIF，未做任何更改。",
+    "privateData.disableFailed": "无法关闭收藏 GIF 的加密，未做任何更改。",
     "gifPicker.searchFavourites": "搜索收藏…",
     "gifPicker.searchKlipy": "搜索 KLIPY…",
     "gifPicker.searchFavourites2": "搜索收藏",
@@ -1538,12 +1569,32 @@ const messages: Partial<Record<MessageKey, string>> = {
         "从你发送的照片和视频中去除 EXIF、GPS 位置、相机信息和其他隐藏的元数据。画面不变，并保留旋转信息，使照片仍然正向显示。",
     "messagesMediaSettings.stripMetadataWarning":
         "警告：关闭后，你发送的文件可能泄露你的个人信息，包括拍摄地点。",
+    "messagesMediaSettings.hideRecentEmoji": "隐藏最近使用的表情区域",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "不在表情选择器顶部显示最近使用的表情。",
     "messagesMediaSettings.randomizeFileNames": "随机化文件名",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "以由字母和数字组成的随机名称上传文件，而不是使用真实文件名。文件扩展名会保留，包括 .tar.gz 这类扩展名。",
     "messagesMediaSettings.sendGifsAsAnimatedWebp": "将 GIF 作为动画 WebP 发送",
     "messagesMediaSettings.reencodeGifsYouSend":
         "将你发送的 GIF 重新编码为无损动画 WebP，通常体积更小，并且可以边下载边播放。画面不变。如果某个 GIF 转换后不会变小，则按原样发送。",
+    "messagesMediaSettings.discordImportTitle": "从 Discord 导入收藏",
+    "messagesMediaSettings.discordImportDescription":
+        "复制此电脑上 Discord 桌面应用中收藏的 GIF。上传到 Discord 的 GIF 无法导入。",
+    "messagesMediaSettings.discordImportButton": "导入",
+    "messagesMediaSettings.discordImportBusy": "正在检查链接...",
+    "messagesMediaSettings.discordImportChecking":
+        "正在检查链接... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, other {已导入 # 个 GIF。}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "已跳过 {discord} 个上传到 Discord 的 GIF 和 {broken} 个失效链接。",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, other {所有 # 个 GIF 都已在你的收藏中。}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "在此电脑上找不到 Discord 桌面应用的数据。",
+    "messagesMediaSettings.discordImportNoneImportable": "没有可以导入的 GIF。",
+    "messagesMediaSettings.discordImportFailed": "无法从 Discord 导入收藏。",
     "messagesMediaSettings.defaultTab": "默认标签页",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "GIF 选择器打开时显示的标签页。",
@@ -3040,6 +3091,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "录制语音消息",
     "composerActionsMenu.shareLocation": "共享位置",
     "composerActionsMenu.createThread": "创建消息列",
+    "composerActionsMenu.insertTimestamp": "插入时间戳",
+    "timestampPicker.title": "插入时间戳",
+    "timestampPicker.dateAndTime": "日期和时间",
+    "timestampPicker.format": "格式",
+    "timestampPicker.insert": "插入",
+    "timestampPicker.cancel": "取消",
+    "timestampPicker.styleShortTime": "短时间",
+    "timestampPicker.styleLongTime": "长时间",
+    "timestampPicker.styleShortDate": "短日期",
+    "timestampPicker.styleLongDate": "长日期",
+    "timestampPicker.styleShortDateTime": "短日期和时间",
+    "timestampPicker.styleLongDateTime": "长日期和时间",
+    "timestampPicker.styleRelative": "相对时间",
     "composerActionsMenu.inviteToGame": "邀请加入游戏",
     "gameInvite.title": "邀请加入游戏",
     "gameInvite.game": "游戏",
@@ -3840,6 +3904,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "移除上传内容中的位置和其他元数据",
     "settingsSearch.sendGifsAsAnimatedWebp": "将 GIF 作为动画 WebP 发送",
+    "settingsSearch.hideRecentEmoji": "隐藏最近使用的表情区域",
     "settingsSearch.midiSoundBank": "MIDI 音色库",
     "settingsSearch.holdToOpenMessageMenu": "长按打开消息菜单",
     "settingsSearch.checkSpelling": "拼写检查",
@@ -3986,6 +4051,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "打开发行页面",
     "updateStatus.flatpakManualUpdate":
         "有可用更新{versionSuffix}。请通过你的软件中心或使用 flatpak update 安装",
+    "updateStatus.flatpakNeedsPermissions":
+        "有可用更新{versionSuffix}。它需要新的权限，Flatpak 只能通过软件中心或 flatpak update 授予",
+    "updateStatus.flatpakUpdateDeclined":
+        "有可用更新{versionSuffix}。Flatpak 自动更新已被拒绝，请通过软件中心或使用 flatpak update 安装",
+    "updateStatus.flatpakNoPortal":
+        "有可用更新{versionSuffix}。此 Flatpak 版本无法让应用自行更新，请通过软件中心或使用 flatpak update 安装",
     "updateStatus.packageManagerUpdate":
         "有可用更新{versionSuffix}。请使用 {manager} 更新",
     "updateStatus.updateCheckFailed": "检查更新失败",

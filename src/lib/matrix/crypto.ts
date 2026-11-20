@@ -14,6 +14,12 @@
 
 import { t, type MessageKey } from "$lib/i18n";
 import { clearDecryptedImageCache } from "$lib/utils/decryptedImageCache";
+import { bootMark } from "$lib/utils/bootTiming";
+import {
+    ownKeysCheckMode,
+    type OwnKeysCheckMode,
+    type OwnKeysVerdict,
+} from "$lib/utils/ownDeviceKeysCheck";
 import { decryptedBlobs } from "$lib/utils/decryptedBlobCache";
 import {
     ClientEvent,
@@ -426,6 +432,7 @@ export async function initCrypto(
     cryptoInitError = null;
     setSessionCryptoStatus(null);
     console.info(`[matrix] rust-crypto init starting for device ${deviceId}`);
+    bootMark("crypto-start");
     detachKeyBackfill?.();
     detachKeyBackfill = null;
     detachFileTransfer?.();
@@ -447,7 +454,9 @@ export async function initCrypto(
                 "crypto store is still held by a push-notification decrypt",
             );
         }
+        bootMark("crypto-lock");
         await trackEngineWork();
+        bootMark("crypto-wasm");
         const emitter = client as unknown as {
             listeners?(event: string): ((...args: unknown[]) => void)[];
         };
@@ -473,6 +482,7 @@ export async function initCrypto(
                 );
             }
         }
+        bootMark("crypto-ready");
         engineClient = client;
         engineHandlers = RUST_CRYPTO_CLIENT_EVENTS.flatMap((e) =>
             handlersOf(e)
@@ -507,6 +517,7 @@ export async function initCrypto(
         detachFileTransfer = attachFileTransfer(client);
         if (!(await installRekeyRepair(cryptoApi, { userId, deviceId })))
             console.warn("[matrix] can't watch for re-keyed sessions");
+        bootMark("rekey-repair-done");
     } catch (err) {
         cryptoInitError = describeError(err);
         console.error(
@@ -1878,6 +1889,66 @@ export async function ownDeviceKeysReplaced(
 }
 
 /**
+ * Local only, no network: whether this boot can run the own-device check in
+ * the background (see ownKeysCheckMode). Blocking when crypto is down, since
+ * the check is then a no-op anyway.
+ */
+export async function ownDeviceKeysCheckMode(
+    client: MatrixClient,
+): Promise<OwnKeysCheckMode> {
+    const crypto = client.getCrypto();
+    const userId = client.getUserId();
+    const deviceId = client.getDeviceId();
+    if (!cryptoAvailable || !crypto || !userId || !deviceId) return "blocking";
+    const ours = await crypto.getOwnDeviceKeys();
+    return ownKeysCheckMode(
+        readScoped(ownDeviceKeyName(deviceId), userId),
+        ours.ed25519,
+    );
+}
+
+/**
+ * Background form of ownDeviceKeysReplaced, for a routine boot only (call when
+ * ownDeviceKeysCheckMode said "background").
+ *
+ * It holds every outgoing crypto request (the SDK's outgoing loop, and direct
+ * calls such as cross-signing uploads) until the verdict is "safe". Those
+ * requests are the only way this device publishes keys or sends to-device
+ * messages, so a replaced device never uploads or sends anything. Incoming sync
+ * is not held. A "replaced" verdict keeps the hold in place forever: the
+ * caller signs the device out. "unknown" (an unexpected failure) holds too,
+ * which fails closed. Never rejects.
+ */
+export function deferOwnDeviceKeysCheck(
+    client: MatrixClient,
+): Promise<OwnKeysVerdict> {
+    const verdict: Promise<OwnKeysVerdict> = ownDeviceKeysReplaced(client).then(
+        (replaced) => (replaced ? "replaced" : "safe"),
+        (err) => {
+            console.error(
+                "[matrix] own-device keys check failed; holding outgoing crypto requests",
+                err,
+            );
+            return "unknown";
+        },
+    );
+    const processor = (client.getCrypto() as RustKeysQueryHooks | undefined)
+        ?.outgoingRequestProcessor;
+    if (processor) {
+        const send = processor.makeOutgoingRequest.bind(processor);
+        processor.makeOutgoingRequest = async (request: unknown) => {
+            if ((await verdict) !== "safe") {
+                // Never settles: nothing is sent, and nothing is marked sent,
+                // so the SDK keeps the request for later.
+                return new Promise<never>(() => {});
+            }
+            return send(request);
+        };
+    }
+    return verdict;
+}
+
+/**
  * Every session of `userId` that this session's crypto knows, with its trust.
  * For someone we share an encrypted room with, these are exactly the sessions
  * our messages are encrypted for: one missing here gets no keys from us. With
@@ -2448,6 +2519,7 @@ export async function setupRecovery(
     });
 
     bumpSecurityTick();
+    notifySecretStorageReady();
     return {
         recoveryKey: encoded,
         hasPassphrase: generated.keyInfo?.passphrase != null,
@@ -2625,6 +2697,87 @@ export async function getSecurityStatus(): Promise<SecurityStatus> {
     }
 }
 
+// ─── Private account data key (secret storage) ───────────────────────────────
+//
+// The per-account key that encrypts private account data (favourites, see
+// privateAccountData.svelte.ts) lives in 4S under this name, so the server only ever
+// holds it encrypted by the recovery key.
+
+export const PRIVATE_KEY_SECRET_NAME = "com.zam.private_account_data_key";
+// The SDK types secret names as the keys of its own event map, which this app
+// does not extend. The name is an ordinary secret-storage key, so the cast is
+// only to get past that type.
+const SECRET_NAME = PRIVATE_KEY_SECRET_NAME as never;
+
+const secretStorageReadyListeners = new Set<() => void>();
+
+/**
+ * Run `callback` each time secret storage becomes readable in this session
+ * (recovery key or passphrase unlock, or recovery set up). Returns an
+ * unsubscribe function.
+ */
+export function onSecretStorageReady(callback: () => void): () => void {
+    secretStorageReadyListeners.add(callback);
+    return () => secretStorageReadyListeners.delete(callback);
+}
+
+function notifySecretStorageReady(): void {
+    for (const listener of [...secretStorageReadyListeners]) {
+        try {
+            listener();
+        } catch (err) {
+            console.warn("[matrix] secret storage listener failed", err);
+        }
+    }
+}
+
+/**
+ * Whether this account has a default secret-storage key at all. Reads account
+ * data only, so it works before unlock. Treats an error as "yes": a caller
+ * that wrongly concludes there is no secret storage would mint a key that
+ * then never reaches the other devices.
+ */
+export async function hasSecretStorage(): Promise<boolean> {
+    const client = getClient();
+    if (!client) return false;
+    try {
+        return (await client.secretStorage.getKey()) !== null;
+    } catch {
+        return true;
+    }
+}
+
+/**
+ * The private account data key as 4S holds it. `absent` when never stored,
+ * `unreadable` when a copy exists but this session cannot decrypt it (it was
+ * written under an older secret storage key), or when the read fails.
+ */
+export async function readPrivateKeySecret(): Promise<
+    | { state: "absent" }
+    | { state: "value"; value: string }
+    | { state: "unreadable" }
+> {
+    const client = getClient();
+    if (!client) return { state: "unreadable" };
+    try {
+        const stored = await client.secretStorage.isStored(SECRET_NAME);
+        if (!stored) return { state: "absent" };
+        const value = await client.secretStorage.get(SECRET_NAME);
+        return typeof value === "string"
+            ? { state: "value", value }
+            : { state: "unreadable" };
+    } catch {
+        return { state: "unreadable" };
+    }
+}
+
+/** Store the private account data key in 4S. Throws without an unlocked key. */
+export async function storePrivateKeySecret(value: string): Promise<void> {
+    const client = getClient();
+    if (!client) throw new Error(t("client.notLoggedIn"));
+    await client.secretStorage.store(SECRET_NAME, value);
+}
+
 // ─── Layer 3: key-backup restore & recovery on another session ───────────────
 //
 // The "recover" side of E2EE. On a session that lacks the keys, the user pastes
@@ -2784,6 +2937,7 @@ async function completeUnlock(
     // Cache the validated key so the cryptoCallbacks resolve secret-storage
     // reads (backup key, cross-signing keys) without re-prompting.
     secretStorageKeys.set(keyId, decoded);
+    notifySecretStorageReady();
 
     // Publish this device's cross-signature first so the session becomes
     // trusted even if the restore below fails or is abandoned part way: the

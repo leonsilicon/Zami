@@ -275,6 +275,14 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Não foi possível abrir uma mensagem direta",
     "callParticipantMenu.couldNotKick": "Não foi possível expulsar {name}",
     "callParticipantMenu.couldNotBan": "Não foi possível banir {name}",
+    "callParticipantMenu.disconnectFromVoice": "Desconectar da voz",
+    "callParticipantMenu.disconnecting": "Desconectando…",
+    "callParticipantMenu.confirmDisconnect":
+        "Confirmar a desconexão de {name} da voz?",
+    "callParticipantMenu.couldNotDisconnect":
+        "Não foi possível desconectar {name}",
+    "callKick.notPermitted": "Você não pode desconectar este membro da voz",
+    "callKick.removedFromVoice": "{name} removeu você do canal de voz",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -628,6 +636,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "Não enviar galerias",
     "debugSettings.disableGallerySendHint":
         "Anexos escolhidos juntos normalmente saem como uma única mensagem de galeria com uma única legenda (MSC4274, enviada como dm.filament.gallery). Ativado, cada um sai como sua própria mensagem. Galerias de outras pessoas continuam aparecendo.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Seu servidor doméstico não oferece suporte a eventos sticky.",
     "debugSettings.stickyCallMembership": "Participação em chamadas sticky",
     "debugSettings.stickyCallMembershipHint":
         "Entrar nas chamadas com um evento sticky m.rtc.member (MSC4354) em vez de um evento de estado m.call.member. Clientes que só leem eventos de estado, incluindo o Zam anterior à 1.51, não verão você na chamada. Vale a partir da sua próxima chamada.",
@@ -710,6 +720,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Nada registrado ainda. Reinícios, requisições com falha e redefinições da linha do tempo aparecem aqui.",
     "debugSettings.refresh": "Atualizar",
     "debugSettings.copied": "Copiado",
+    "debugSettings.startupTiming": "Tempo de inicialização",
+    "debugSettings.startupTimingHint":
+        "Tempo desde o carregamento da página até cada etapa de inicialização. Copie para compartilhar.",
+    "debugSettings.startupTimingEmpty":
+        "Nenhuma etapa de inicialização registrada ainda.",
+    "debugSettings.startupTimingRow": "+{dt} ms (em {at} ms)",
+    "debugSettings.copyTiming": "Copiar tempos",
     "debugSettings.useSlidingSync": "Usar sliding sync",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Experimental. Carrega salas em uma janela crescente. Recarrega o aplicativo para aplicar.",
@@ -787,6 +804,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "Personalizados",
     "emojiPicker.standard": "Padrão",
     "emojiPicker.myEmojis2": "Meus emojis",
+    "emojiPicker.recentlyUsed": "Usados recentemente",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Dispensar",
@@ -961,6 +979,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresenceCard.openFailed": "Não foi possível obter um token OpenID.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Os favoritos estão bloqueados neste dispositivo. Desbloqueie-os antes de alterá-los.",
+    "favourites.saveFailed":
+        "Não foi possível guardar os seus favoritos. A alteração foi desfeita.",
+    "favourites.lockedHint":
+        "Os favoritos estão bloqueados neste dispositivo. Introduza a sua chave de recuperação ou verifique este dispositivo para os ver e alterar.",
+    "favourites.unlock": "Desbloquear",
+    "privateData.locked":
+        "Os dados privados estão bloqueados neste dispositivo. Desbloqueie primeiro a encriptação.",
+    "privateData.keySaveFailed":
+        "Não foi possível guardar a chave de dados privados no armazenamento secreto da sua conta. Será tentado de novo na próxima vez que desbloquear.",
+    "settingsSearch.encryptFavouriteGifs": "Encriptar GIFs favoritos",
+    "privateData.toggleLabel": "Encriptar GIFs favoritos",
+    "privateData.toggleHelp":
+        "Oculta os seus GIFs favoritos do servidor doméstico. Outros dispositivos precisam da sua chave de recuperação ou de uma sessão verificada para os ler, e as versões antigas do Zam não os vão ver.",
+    "privateData.offWarning":
+        "Ao desativar, os seus GIFs favoritos voltam a ficar legíveis pelo servidor doméstico.",
+    "privateData.turnOff": "Desativar encriptação",
+    "privateData.enableFailed":
+        "Não foi possível encriptar os seus GIFs favoritos. Nada foi alterado.",
+    "privateData.disableFailed":
+        "Não foi possível desativar a encriptação dos seus GIFs favoritos. Nada foi alterado.",
     "gifPicker.searchFavourites": "Pesquisar favoritos…",
     "gifPicker.searchKlipy": "Pesquisar no KLIPY…",
     "gifPicker.searchFavourites2": "Pesquisar favoritos",
@@ -1620,6 +1660,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Remove EXIF, localização GPS, detalhes da câmera e outros metadados ocultos das fotos e vídeos que você envia. A imagem não muda, e a rotação é mantida para que as fotos continuem na posição correta.",
     "messagesMediaSettings.stripMetadataWarning":
         "Aviso: com isto desativado, os arquivos que você envia podem vazar suas informações pessoais, inclusive o local onde foram feitos.",
+    "messagesMediaSettings.hideRecentEmoji":
+        "Ocultar a seção de emojis usados recentemente",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Não mostrar os emojis usados por último no topo do seletor de emojis.",
     "messagesMediaSettings.randomizeFileNames": "Aleatorizar nomes de arquivo",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "Envia os arquivos com um nome aleatório formado por letras e números em vez do nome real. A extensão do arquivo é mantida, inclusive as como .tar.gz.",
@@ -1627,6 +1671,25 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Enviar GIFs como WebP animado",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Recodifica os GIFs que você envia como WebP animado sem perdas, que costuma ser menor e pode ser reproduzido durante o download. A imagem não muda. Um GIF que não ficaria menor é enviado como está.",
+    "messagesMediaSettings.discordImportTitle": "Importar favoritos do Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Copia os GIFs marcados como favoritos no aplicativo de desktop do Discord neste computador. GIFs enviados ao Discord não podem ser importados.",
+    "messagesMediaSettings.discordImportButton": "Importar",
+    "messagesMediaSettings.discordImportBusy": "Verificando links...",
+    "messagesMediaSettings.discordImportChecking":
+        "Verificando links... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {# GIF importado.} other {# GIFs importados.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "{discord} enviados ao Discord e {broken} links quebrados foram ignorados.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {Esse GIF já estava nos seus favoritos.} other {Todos os # GIFs já estavam nos seus favoritos.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Não foram encontrados os dados do aplicativo de desktop do Discord neste computador.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "Nenhum GIF pôde ser importado.",
+    "messagesMediaSettings.discordImportFailed":
+        "Não foi possível importar os favoritos do Discord.",
     "messagesMediaSettings.defaultTab": "Aba padrão",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Em qual aba o seletor de GIFs abre.",
@@ -3295,6 +3358,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Gravar mensagem de voz",
     "composerActionsMenu.shareLocation": "Compartilhar localização",
     "composerActionsMenu.createThread": "Criar tópico",
+    "composerActionsMenu.insertTimestamp": "Inserir data e hora",
+    "timestampPicker.title": "Inserir data e hora",
+    "timestampPicker.dateAndTime": "Data e hora",
+    "timestampPicker.format": "Formato",
+    "timestampPicker.insert": "Inserir",
+    "timestampPicker.cancel": "Cancelar",
+    "timestampPicker.styleShortTime": "Hora curta",
+    "timestampPicker.styleLongTime": "Hora longa",
+    "timestampPicker.styleShortDate": "Data curta",
+    "timestampPicker.styleLongDate": "Data longa",
+    "timestampPicker.styleShortDateTime": "Data e hora curtas",
+    "timestampPicker.styleLongDateTime": "Data e hora longas",
+    "timestampPicker.styleRelative": "Relativa",
     "composerActionsMenu.inviteToGame": "Convidar para o jogo",
     "gameInvite.title": "Convidar para o jogo",
     "gameInvite.game": "Jogo",
@@ -4218,6 +4294,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "Remover localização e outros metadados dos envios",
     "settingsSearch.sendGifsAsAnimatedWebp": "Enviar GIFs como WebP animado",
+    "settingsSearch.hideRecentEmoji":
+        "Ocultar a seção de emojis usados recentemente",
     "settingsSearch.midiSoundBank": "Banco de sons MIDI",
     "settingsSearch.holdToOpenMessageMenu":
         "Pressionar e segurar para abrir o menu da mensagem",
@@ -4379,6 +4457,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Abrir página da versão",
     "updateStatus.flatpakManualUpdate":
         "Atualização disponível{versionSuffix}. Instale-a pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Atualização disponível{versionSuffix}. Ela precisa de novas permissões, que o Flatpak só concede pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Atualização disponível{versionSuffix}. As atualizações automáticas do Flatpak foram recusadas; instale-a pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Atualização disponível{versionSuffix}. Esta versão do Flatpak não consegue atualizar apps sozinha; instale-a pela sua central de programas ou com flatpak update",
     "updateStatus.packageManagerUpdate":
         "Atualização disponível{versionSuffix}. Atualize com {manager}",
     "updateStatus.updateCheckFailed": "Falha ao verificar atualizações",

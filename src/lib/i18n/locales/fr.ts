@@ -268,6 +268,15 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Impossible d'ouvrir un message direct",
     "callParticipantMenu.couldNotKick": "Impossible d'expulser {name}",
     "callParticipantMenu.couldNotBan": "Impossible de bannir {name}",
+    "callParticipantMenu.disconnectFromVoice": "Déconnecter du vocal",
+    "callParticipantMenu.disconnecting": "Déconnexion…",
+    "callParticipantMenu.confirmDisconnect":
+        "Confirmer la déconnexion de {name} du vocal ?",
+    "callParticipantMenu.couldNotDisconnect":
+        "Impossible de déconnecter {name}",
+    "callKick.notPermitted":
+        "Vous ne pouvez pas déconnecter ce membre du vocal",
+    "callKick.removedFromVoice": "{name} vous a retiré du salon vocal",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -608,6 +617,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "Ne pas envoyer de galeries",
     "debugSettings.disableGallerySendHint":
         "Les pièces jointes choisies ensemble partent normalement en un seul message galerie avec une seule légende (MSC4274, envoyé en dm.filament.gallery). Activé, chacune part dans son propre message. Les galeries des autres restent affichées.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Votre serveur domestique ne prend pas en charge les événements sticky.",
     "debugSettings.stickyCallMembership": "Appartenance aux appels en sticky",
     "debugSettings.stickyCallMembershipHint":
         "Rejoindre les appels avec un événement sticky m.rtc.member (MSC4354) au lieu d'un événement d'état m.call.member. Les clients qui ne lisent que les événements d'état, dont Zam avant 1.51, ne vous verront pas dans l'appel. S'applique dès votre prochain appel.",
@@ -692,6 +703,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Rien n'est encore journalisé. Les redémarrages, les requêtes échouées et les réinitialisations de fil apparaissent ici.",
     "debugSettings.refresh": "Actualiser",
     "debugSettings.copied": "Copié",
+    "debugSettings.startupTiming": "Temps de démarrage",
+    "debugSettings.startupTimingHint":
+        "Temps entre le chargement de la page et chaque étape de démarrage. Copiez pour partager.",
+    "debugSettings.startupTimingEmpty":
+        "Aucune étape de démarrage enregistrée pour l'instant.",
+    "debugSettings.startupTimingRow": "+{dt} ms (à {at} ms)",
+    "debugSettings.copyTiming": "Copier les temps",
     "debugSettings.useSlidingSync": "Utiliser la synchronisation glissante",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Expérimental. Charge les salons dans une fenêtre croissante. Recharge l'application pour s'appliquer.",
@@ -770,6 +788,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "Personnalisés",
     "emojiPicker.standard": "Standard",
     "emojiPicker.myEmojis2": "Mes émojis",
+    "emojiPicker.recentlyUsed": "Récemment utilisés",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Ignorer",
@@ -857,6 +876,28 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aucun paramètre général n'est disponible sur cette plateforme.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Les favoris sont verrouillés sur cet appareil. Déverrouillez-les avant de les modifier.",
+    "favourites.saveFailed":
+        "Impossible d'enregistrer vos favoris. La modification a été annulée.",
+    "favourites.lockedHint":
+        "Les favoris sont verrouillés sur cet appareil. Saisissez votre clé de récupération ou vérifiez cet appareil pour les voir et les modifier.",
+    "favourites.unlock": "Déverrouiller",
+    "privateData.locked":
+        "Les données privées sont verrouillées sur cet appareil. Déverrouillez d'abord le chiffrement.",
+    "privateData.keySaveFailed":
+        "Impossible d'enregistrer la clé des données privées dans le stockage secret de votre compte. Une nouvelle tentative aura lieu au prochain déverrouillage.",
+    "settingsSearch.encryptFavouriteGifs": "Chiffrer les GIF favoris",
+    "privateData.toggleLabel": "Chiffrer les GIF favoris",
+    "privateData.toggleHelp":
+        "Masque vos GIF favoris au serveur d'accueil. Les autres appareils ont besoin de votre clé de récupération ou d'une session vérifiée pour les lire, et les anciennes versions de Zam ne les verront pas.",
+    "privateData.offWarning":
+        "En désactivant cette option, vos GIF favoris redeviendront lisibles par le serveur d'accueil.",
+    "privateData.turnOff": "Désactiver le chiffrement",
+    "privateData.enableFailed":
+        "Impossible de chiffrer vos GIF favoris. Rien n'a été modifié.",
+    "privateData.disableFailed":
+        "Impossible de désactiver le chiffrement de vos GIF favoris. Rien n'a été modifié.",
     "gifPicker.searchFavourites": "Rechercher dans les favoris…",
     "gifPicker.searchKlipy": "Rechercher sur KLIPY…",
     "gifPicker.searchFavourites2": "Rechercher dans les favoris",
@@ -1479,6 +1520,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Supprime l'EXIF, la position GPS, les détails de l'appareil et les autres métadonnées cachées des photos et vidéos que vous envoyez. L'image reste inchangée et la rotation est conservée pour que les photos s'affichent à l'endroit.",
     "messagesMediaSettings.stripMetadataWarning":
         "Avertissement : si cette option est désactivée, les fichiers que vous envoyez peuvent divulguer vos informations personnelles, y compris le lieu où ils ont été pris.",
+    "messagesMediaSettings.hideRecentEmoji":
+        "Masquer la section des émojis récemment utilisés",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Ne pas afficher les émojis utilisés en dernier en haut du sélecteur d'émojis.",
     "messagesMediaSettings.randomizeFileNames":
         "Rendre les noms de fichiers aléatoires",
     "messagesMediaSettings.randomizeFileNamesDescription":
@@ -1487,6 +1532,26 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Envoyer les GIF en WebP animé",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Ré-encode les GIF que vous envoyez en WebP animé sans perte, généralement plus léger et lisible pendant le téléchargement. L'image reste identique. Un GIF qui ne deviendrait pas plus léger est envoyé tel quel.",
+    "messagesMediaSettings.discordImportTitle":
+        "Importer les favoris depuis Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Copie les GIF ajoutés aux favoris dans l'application de bureau Discord de cet ordinateur. Les GIF envoyés sur Discord ne peuvent pas être importés.",
+    "messagesMediaSettings.discordImportButton": "Importer",
+    "messagesMediaSettings.discordImportBusy": "Vérification des liens...",
+    "messagesMediaSettings.discordImportChecking":
+        "Vérification des liens... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {# GIF importé.} other {# GIF importés.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "{discord} envoyés sur Discord et {broken} liens cassés ignorés.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {Ce GIF était déjà dans vos favoris.} other {Les # GIF étaient déjà dans vos favoris.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Impossible de trouver les données de l'application de bureau Discord sur cet ordinateur.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "Aucun GIF n'a pu être importé.",
+    "messagesMediaSettings.discordImportFailed":
+        "Impossible d'importer les favoris depuis Discord.",
     "messagesMediaSettings.defaultTab": "Onglet par défaut",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "L'onglet sur lequel s'ouvre le sélecteur de GIF.",
@@ -3266,6 +3331,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Enregistrer un message vocal",
     "composerActionsMenu.shareLocation": "Partager la position",
     "composerActionsMenu.createThread": "Créer un fil",
+    "composerActionsMenu.insertTimestamp": "Insérer un horodatage",
+    "timestampPicker.title": "Insérer un horodatage",
+    "timestampPicker.dateAndTime": "Date et heure",
+    "timestampPicker.format": "Format",
+    "timestampPicker.insert": "Insérer",
+    "timestampPicker.cancel": "Annuler",
+    "timestampPicker.styleShortTime": "Heure courte",
+    "timestampPicker.styleLongTime": "Heure longue",
+    "timestampPicker.styleShortDate": "Date courte",
+    "timestampPicker.styleLongDate": "Date longue",
+    "timestampPicker.styleShortDateTime": "Date et heure courtes",
+    "timestampPicker.styleLongDateTime": "Date et heure longues",
+    "timestampPicker.styleRelative": "Relative",
     "composerActionsMenu.inviteToGame": "Inviter à jouer",
     "gameInvite.title": "Inviter à jouer",
     "gameInvite.game": "Jeu",
@@ -4190,6 +4268,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "Supprimer la position et les autres métadonnées des envois",
     "settingsSearch.sendGifsAsAnimatedWebp": "Envoyer les GIF en WebP animé",
+    "settingsSearch.hideRecentEmoji":
+        "Masquer la section des émojis récemment utilisés",
     "settingsSearch.midiSoundBank": "Banque de sons MIDI",
     "settingsSearch.holdToOpenMessageMenu":
         "Maintenir pour ouvrir le menu du message",
@@ -4354,6 +4434,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Ouvrir la page de la version",
     "updateStatus.flatpakManualUpdate":
         "Mise à jour disponible{versionSuffix}. Installez-la depuis votre logithèque ou avec flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Mise à jour disponible{versionSuffix}. Elle demande de nouvelles autorisations, que Flatpak n'accorde que via votre logithèque ou flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Mise à jour disponible{versionSuffix}. Les mises à jour automatiques Flatpak ont été refusées ; installez-la depuis votre logithèque ou avec flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Mise à jour disponible{versionSuffix}. Cette version de Flatpak ne peut pas mettre à jour les applis elle-même ; installez-la depuis votre logithèque ou avec flatpak update",
     "updateStatus.packageManagerUpdate":
         "Mise à jour disponible{versionSuffix}. Mettez-la à jour avec {manager}",
     "updateStatus.updateCheckFailed": "Échec de la recherche de mises à jour",

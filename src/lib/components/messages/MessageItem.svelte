@@ -1,5 +1,6 @@
 <script module lang="ts">
     import { createLruMemo } from "$lib/utils/lruMemo";
+    import { isPendingSendStatus } from "$lib/utils/pendingSend";
 
     // Module scope is deliberate: a room switch unmounts every MessageItem and
     // re-mounts them, so an instance-scoped cache would die before it could
@@ -11,7 +12,7 @@
 </script>
 
 <script lang="ts">
-    import { t } from "$lib/i18n";
+    import { t, getLocale } from "$lib/i18n";
     import type { MatrixEvent, Room } from "matrix-js-sdk";
     import Avatar from "$lib/components/ui/Avatar.svelte";
     import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
@@ -280,6 +281,8 @@
         type MessageMenuMode,
     } from "$lib/utils/messageGesture";
     import { spoilers } from "$lib/actions/spoilers";
+    import { relativeTimestamps } from "$lib/actions/relativeTimestamps";
+    import { renderInlineTimestampsHtml } from "$lib/utils/inlineTimestamp";
     import { codeBlocks } from "$lib/actions/codeBlocks";
     import { rovingToolbar } from "$lib/actions/rovingToolbar";
     import {
@@ -894,6 +897,12 @@
     const isFailed = $derived.by(() => {
         void messagesState.timelineTick;
         return event.status === EventStatus.NOT_SENT;
+    });
+    // A local echo the server hasn't confirmed yet: its body is greyed out
+    // until it lands, so backing out of the app mid-send is noticeable.
+    const isPending = $derived.by(() => {
+        void messagesState.timelineTick;
+        return isPendingSendStatus(event.status);
     });
     let isResending = $state(false);
 
@@ -2520,11 +2529,17 @@
         // differently across an account switch. A NUL (U+0000) is a safe
         // separator (never present in a URL or in Matrix HTML).
         const base = getHomeserverBaseUrl() ?? "";
+        // Inline <t:...> timestamps (sanitized <time>) are localized here,
+        // outside the cache: relative ones depend on the current time.
         return renderMessageTimestamps(
-            highlightRoomMention(
-                sanitizeCache.get(`${base}\u0000${html}`, () =>
-                    sanitizeMatrixHtml(html, { resolveMxc: mxcToHttp }),
+            renderInlineTimestampsHtml(
+                highlightRoomMention(
+                    sanitizeCache.get(`${base}\u0000${html}`, () =>
+                        sanitizeMatrixHtml(html, { resolveMxc: mxcToHttp }),
+                    ),
                 ),
+                getLocale(),
+                Date.now(),
             ),
         );
     }
@@ -3134,11 +3149,13 @@
                 {#if hasCaption()}
                     <div
                         use:spoilers
+                        use:relativeTimestamps={formattedBody()}
                         use:matrixLinks
                         use:codeBlocks={{ key: eventId }}
                         use:bodyImageGallery={{ onOpen: openBodyGallery }}
                         dir="auto"
                         class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
+                        class:opacity-50={isPending}
                     >
                         {#if formattedBody()}
                             {@html withTwemoji(sanitize(formattedBody()!))}
@@ -3685,11 +3702,13 @@
                     >
                         <div
                             use:spoilers
+                            use:relativeTimestamps={formattedBody()}
                             use:matrixLinks
                             use:codeBlocks={{ key: eventId }}
                             use:bodyImageGallery={{ onOpen: openBodyGallery }}
                             dir="auto"
                             class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
+                            class:opacity-50={isPending}
                             class:emoji-only={emojiOnly}
                             class:italic={msgtype === "m.emote"}
                             class:opacity-70={msgtype === "m.notice"}
@@ -4485,8 +4504,10 @@
      the message as it looks in the timeline. -->
     <div
         use:spoilers
+        use:relativeTimestamps={formattedBody()}
         dir="auto"
         class="message-body text-sm text-zam-textPrimary leading-relaxed break-words"
+        class:opacity-50={isPending}
         class:emoji-only={emojiOnly}
         class:italic={msgtype === "m.emote"}
         class:opacity-70={msgtype === "m.notice"}

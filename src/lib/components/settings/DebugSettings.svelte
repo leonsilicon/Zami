@@ -16,6 +16,7 @@
         isAccountNotificationsDisabled,
         getSlidingSyncProgress,
         getSlidingSyncFallbackReason,
+        stickyEventsAdvertised,
     } from "$lib/matrix/client";
     import {
         checkGatewayHealth,
@@ -74,6 +75,7 @@
         groupThousands,
     } from "$lib/utils/fullIndexProgress";
     import { buildLogExport, saveLogExport } from "$lib/logExport";
+    import { bootTimeline } from "$lib/utils/bootTiming";
     import {
         canToggleWebViewDebugging,
         getWebViewDebugging,
@@ -111,6 +113,26 @@
             setTimeout(() => (syncLogCopied = false), 2000);
         } catch {
             /* clipboard denied: the log is still on screen to select */
+        }
+    }
+
+    // Startup timing: snapshot when the panel opens; Copy re-reads it.
+    let bootSteps = $state(bootTimeline());
+    let bootCopied = $state(false);
+    async function copyBootTiming() {
+        bootSteps = bootTimeline();
+        const text = bootSteps
+            .map(
+                (s) =>
+                    `${s.name} +${s.dt.toFixed(1)}ms (at ${s.t.toFixed(1)}ms)`,
+            )
+            .join("\n");
+        try {
+            await navigator.clipboard.writeText(text);
+            bootCopied = true;
+            setTimeout(() => (bootCopied = false), 2000);
+        } catch {
+            /* clipboard denied: the rows are still on screen */
         }
     }
 
@@ -160,6 +182,25 @@
     onMount(() => {
         if (prefetchOn) void refreshPrefetch();
     });
+
+    // Whether this homeserver advertises MSC4354 sticky events. null while the
+    // probe is pending, which leaves the toggle enabled.
+    let stickyAdvertised = $state<boolean | null>(null);
+    onMount(() => {
+        let live = true;
+        void stickyEventsAdvertised().then((ok) => {
+            if (live) stickyAdvertised = ok;
+        });
+        return () => {
+            live = false;
+        };
+    });
+    // Unsupported and off: nothing to switch on. Unsupported but still on
+    // (saved earlier, or on another homeserver) stays switchable so it can be
+    // turned off.
+    const stickyDisabled = $derived(
+        stickyAdvertised === false && !settingsState.stickyCallMembership,
+    );
 
     // Android background download of raw history pages. Read on demand (Refresh).
     const prefetchOn = historyPrefetchAvailable();
@@ -525,6 +566,47 @@
         <p
             class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
         >
+            {t("debugSettings.startupTiming")}
+        </p>
+        <div
+            class="flex flex-wrap items-center gap-3 py-2 border-b border-zam-divider"
+        >
+            <p class="flex-1 min-w-48 text-xs text-zam-textMuted">
+                {t("debugSettings.startupTimingHint")}
+            </p>
+            <button
+                onclick={copyBootTiming}
+                class="px-2.5 py-1 rounded text-xs font-semibold bg-zam-backgroundSecondary hover:bg-zam-messageHover text-zam-textPrimary"
+                >{bootCopied
+                    ? t("debugSettings.copied")
+                    : t("debugSettings.copyTiming")}</button
+            >
+        </div>
+        {#if bootSteps.length === 0}
+            <p class="py-2 text-xs text-zam-textMuted">
+                {t("debugSettings.startupTimingEmpty")}
+            </p>
+        {:else}
+            <ul class="py-1 font-mono text-xs text-zam-textPrimary">
+                {#each bootSteps as step, i (i)}
+                    <li class="flex items-baseline gap-3 py-0.5">
+                        <span class="flex-1 min-w-0 truncate">{step.name}</span>
+                        <span class="text-zam-textMuted tabular-nums">
+                            {t("debugSettings.startupTimingRow", {
+                                dt: step.dt.toFixed(1),
+                                at: step.t.toFixed(1),
+                            })}
+                        </span>
+                    </li>
+                {/each}
+            </ul>
+        {/if}
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2"
+        >
             {t("debugSettings.developer")}
         </p>
         <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
@@ -580,11 +662,17 @@
                 <p class="text-xs text-zam-textMuted">
                     {t("debugSettings.stickyCallMembershipHint")}
                 </p>
+                {#if stickyDisabled}
+                    <p class="text-xs text-zam-textMuted">
+                        {t("debugSettings.stickyCallMembershipUnsupported")}
+                    </p>
+                {/if}
             </div>
             <ToggleSwitch
                 checked={settingsState.stickyCallMembership}
                 onChange={setStickyCallMembership}
                 label={t("debugSettings.stickyCallMembership")}
+                disabled={stickyDisabled}
             />
         </div>
         <div class="flex items-center gap-3 py-2 border-b border-zam-divider">

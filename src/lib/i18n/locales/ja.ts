@@ -248,6 +248,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ダイレクトメッセージを開けませんでした",
     "callParticipantMenu.couldNotKick": "{name} をキックできませんでした",
     "callParticipantMenu.couldNotBan": "{name} をBANできませんでした",
+    "callParticipantMenu.disconnectFromVoice": "通話から切断",
+    "callParticipantMenu.disconnecting": "切断中…",
+    "callParticipantMenu.confirmDisconnect": "{name} を通話から切断しますか？",
+    "callParticipantMenu.couldNotDisconnect": "{name} を切断できませんでした",
+    "callKick.notPermitted": "このメンバーを通話から切断する権限がありません",
+    "callKick.removedFromVoice": "{name} により通話から退出させられました",
     "callEncryption.encrypted":
         "エンドツーエンド暗号化: この通話の参加者だけが映像と音声を見聞きできます。",
     "callEncryption.encryptedShort": "暗号化済み",
@@ -562,6 +568,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "ギャラリーを送信しない",
     "debugSettings.disableGallerySendHint":
         "一緒に選んだ添付ファイルは通常、キャプション1つのギャラリーメッセージ1件として送信されます（MSC4274、dm.filament.gallery として送信）。オンにすると、それぞれ別のメッセージとして送信します。他の人のギャラリーは引き続き表示されます。",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "お使いのホームサーバーはスティッキーイベントに対応していません。",
     "debugSettings.stickyCallMembership": "スティッキー通話メンバーシップ",
     "debugSettings.stickyCallMembershipHint":
         "通話に m.call.member ステートイベントの代わりに、スティッキーな m.rtc.member イベント (MSC4354) で参加します。ステートイベントしか読まないクライアント (1.51 より前の Zam を含む) には、通話中のあなたが見えません。次の通話から適用されます。",
@@ -643,6 +651,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "まだ記録はありません。再起動、失敗したリクエスト、タイムラインのリセットがここに表示されます。",
     "debugSettings.refresh": "更新",
     "debugSettings.copied": "コピーしました",
+    "debugSettings.startupTiming": "起動時間",
+    "debugSettings.startupTimingHint":
+        "ページ読み込みから各起動ステップまでの時間です。コピーして共有できます。",
+    "debugSettings.startupTimingEmpty":
+        "起動ステップはまだ記録されていません。",
+    "debugSettings.startupTimingRow": "+{dt} ms（{at} ms時点）",
+    "debugSettings.copyTiming": "時間をコピー",
     "debugSettings.useSlidingSync": "スライディング同期を使用",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "実験的。ルームを拡大していくウィンドウで読み込みます。適用するにはアプリを再読み込みします。",
@@ -718,6 +733,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "カスタム",
     "emojiPicker.standard": "標準",
     "emojiPicker.myEmojis2": "マイ絵文字",
+    "emojiPicker.recentlyUsed": "最近使った絵文字",
     "errorToasts.dismiss": "閉じる",
     "extendedProfileDebug.extendedProfile": "拡張プロフィール",
     "extendedProfileDebug.fetchFromServer": "サーバーから取得",
@@ -789,6 +805,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "generalSettings.runAtStartupFailed": "システムで許可されませんでした。",
     "generalSettings.noGeneralSettingsAreAvailableOn":
         "このプラットフォームで利用できる一般設定はありません。",
+    "favourites.locked":
+        "このデバイスではお気に入りがロックされています。変更するにはロックを解除してください。",
+    "favourites.saveFailed":
+        "お気に入りを保存できませんでした。変更は元に戻されました。",
+    "favourites.lockedHint":
+        "このデバイスではお気に入りがロックされています。リカバリーキーを入力するか、このデバイスを認証すると、表示と変更ができます。",
+    "favourites.unlock": "ロック解除",
+    "privateData.locked":
+        "このデバイスでは非公開データがロックされています。先に暗号化のロックを解除してください。",
+    "privateData.keySaveFailed":
+        "非公開データの鍵をアカウントのシークレットストレージに保存できませんでした。次回のロック解除時に再試行します。",
+    "settingsSearch.encryptFavouriteGifs": "お気に入りGIFを暗号化",
+    "privateData.toggleLabel": "お気に入りGIFを暗号化",
+    "privateData.toggleHelp":
+        "お気に入りのGIFをホームサーバーから見えないようにします。ほかの端末で読むにはリカバリーキーか検証済みのセッションが必要で、古いZamでは表示されません。",
+    "privateData.offWarning":
+        "オフにすると、お気に入りのGIFはホームサーバーから再び読めるようになります。",
+    "privateData.turnOff": "暗号化をオフにする",
+    "privateData.enableFailed":
+        "お気に入りGIFを暗号化できませんでした。変更はありません。",
+    "privateData.disableFailed":
+        "お気に入りGIFの暗号化をオフにできませんでした。変更はありません。",
     "gifPicker.searchFavourites": "お気に入りを検索…",
     "gifPicker.searchKlipy": "KLIPY を検索…",
     "gifPicker.searchFavourites2": "お気に入りを検索",
@@ -1384,6 +1422,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "送信する写真や動画からEXIF、GPS位置情報、カメラ情報などの隠れたメタデータを取り除きます。画質は変わらず、向きの情報は残るので写真は正しい向きで表示されます。",
     "messagesMediaSettings.stripMetadataWarning":
         "警告: これをオフにすると、送信するファイルから撮影場所などの個人情報が漏れる可能性があります。",
+    "messagesMediaSettings.hideRecentEmoji":
+        "最近使った絵文字のセクションを非表示",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "絵文字ピッカーの上部に、最近使った絵文字を表示しません。",
     "messagesMediaSettings.randomizeFileNames": "ファイル名をランダム化",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "実際の名前ではなく、英数字のランダムな名前でアップロードします。拡張子は .tar.gz のようなものも含めて保持されます。",
@@ -1391,6 +1433,26 @@ const messages: Partial<Record<MessageKey, string>> = {
         "GIFをアニメーションWebPで送信",
     "messagesMediaSettings.reencodeGifsYouSend":
         "送信するGIFを可逆圧縮のアニメーションWebPに再エンコードします。通常はより小さく、ダウンロード中に再生できます。画質は変わりません。小さくならないGIFはそのまま送信されます。",
+    "messagesMediaSettings.discordImportTitle":
+        "Discordからお気に入りをインポート",
+    "messagesMediaSettings.discordImportDescription":
+        "このコンピュータのDiscordデスクトップアプリでお気に入りに登録したGIFをコピーします。DiscordにアップロードされたGIFはインポートできません。",
+    "messagesMediaSettings.discordImportButton": "インポート",
+    "messagesMediaSettings.discordImportBusy": "リンクを確認しています...",
+    "messagesMediaSettings.discordImportChecking":
+        "リンクを確認しています... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, other {GIFを#件インポートしました。}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "Discordにアップロードされた{discord}件と、壊れたリンク{broken}件をスキップしました。",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, other {#件のGIFはすでにお気に入りに登録されています。}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "このコンピュータでDiscordデスクトップアプリのデータが見つかりませんでした。",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "インポートできるGIFはありませんでした。",
+    "messagesMediaSettings.discordImportFailed":
+        "Discordからお気に入りをインポートできませんでした。",
     "messagesMediaSettings.defaultTab": "既定のタブ",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "GIFピッカーが開くタブです。",
@@ -2889,6 +2951,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "ボイスメッセージを録音",
     "composerActionsMenu.shareLocation": "位置情報を共有",
     "composerActionsMenu.createThread": "スレッドを作成",
+    "composerActionsMenu.insertTimestamp": "タイムスタンプを挿入",
+    "timestampPicker.title": "タイムスタンプを挿入",
+    "timestampPicker.dateAndTime": "日時",
+    "timestampPicker.format": "形式",
+    "timestampPicker.insert": "挿入",
+    "timestampPicker.cancel": "キャンセル",
+    "timestampPicker.styleShortTime": "短い時刻",
+    "timestampPicker.styleLongTime": "長い時刻",
+    "timestampPicker.styleShortDate": "短い日付",
+    "timestampPicker.styleLongDate": "長い日付",
+    "timestampPicker.styleShortDateTime": "短い日付と時刻",
+    "timestampPicker.styleLongDateTime": "長い日付と時刻",
+    "timestampPicker.styleRelative": "相対時刻",
     "composerActionsMenu.inviteToGame": "ゲームに招待",
     "gameInvite.title": "ゲームに招待",
     "gameInvite.game": "ゲーム",
@@ -3635,6 +3710,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "アップロードから位置情報などのメタデータを削除",
     "settingsSearch.sendGifsAsAnimatedWebp": "GIFをアニメーションWebPで送信",
+    "settingsSearch.hideRecentEmoji": "最近使った絵文字のセクションを非表示",
     "settingsSearch.midiSoundBank": "MIDIサウンドバンク",
     "settingsSearch.holdToOpenMessageMenu": "長押しでメッセージメニューを開く",
     "settingsSearch.checkSpelling": "スペルチェック",
@@ -3769,6 +3845,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "リリースページを開く",
     "updateStatus.flatpakManualUpdate":
         "アップデートがあります{versionSuffix}。ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.flatpakNeedsPermissions":
+        "アップデートがあります{versionSuffix}。新しい権限が必要で、Flatpak はソフトウェアセンターか flatpak update でのみ許可します",
+    "updateStatus.flatpakUpdateDeclined":
+        "アップデートがあります{versionSuffix}。Flatpak の自動アップデートが拒否されたため、ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.flatpakNoPortal":
+        "アップデートがあります{versionSuffix}。この Flatpak のバージョンはアプリ自身による更新に対応していません。ソフトウェアセンターか flatpak update でインストールしてください",
     "updateStatus.packageManagerUpdate":
         "アップデートがあります{versionSuffix}。{manager}で更新してください",
     "updateStatus.updateCheckFailed": "アップデートの確認に失敗しました",

@@ -2,7 +2,9 @@
     import { localeInfo, t } from "$lib/i18n";
     import { onMount, untrack } from "svelte";
     import { motionOK } from "$lib/utils/motionPreference";
+    import { isSilentZamEvent } from "$lib/utils/silentZamEvents";
     import { targetCanScrollHoriz } from "$lib/utils/scrollHoriz";
+    import { bootMark } from "$lib/utils/bootTiming";
 
     import SpaceSidebar from "$lib/components/layout/SpaceSidebar.svelte";
     import RoomList from "$lib/components/layout/RoomList.svelte";
@@ -113,6 +115,8 @@
     } from "$lib/stores/composerDrafts.svelte";
     import { composerThreadKey } from "$lib/utils/threadContent";
     import { initFavourites } from "$lib/stores/favourites.svelte";
+    import { initPrivateAccountData } from "$lib/matrix/privateAccountData.svelte";
+    import { initRecentEmoji } from "$lib/stores/recentEmoji.svelte";
     import { initCustomizationSync } from "$lib/stores/customizationSync.svelte";
     import { initIgnoredUsers } from "$lib/stores/ignoredUsers.svelte";
     import { initPresence } from "$lib/stores/presence.svelte";
@@ -1717,6 +1721,7 @@
     });
 
     onMount(() => {
+        bootMark("shell-mounted");
         reloadAccountSettings();
 
         // One-time "What's New": pop up once on the first launch after the version
@@ -2167,6 +2172,9 @@
         // Web push notification taps (service worker) deep-link via postMessage.
         const onSwMessage = (e: MessageEvent) => {
             if (e.data?.type === "OPEN_ROOM" && e.data.roomId) {
+                // Tell the service worker this window took the tap; it tries
+                // the next window (or opens one) when no ack arrives.
+                e.ports?.[0]?.postMessage({ handled: true });
                 openRoomFromNotification(
                     e.data.roomId,
                     e.data.userId,
@@ -2235,6 +2243,8 @@
         // otherwise never re-derive the lists — catch up once.
         scheduleRefreshRooms();
         const unsubTimeline = onTimelineEvent((event, room, isLiveAppend) => {
+            // Commands (com.zam.call.kick) are not messages: no unread, no alert.
+            if (isSilentZamEvent(event.getType())) return;
             bumpUnreadTick();
             // Mid-timeline insertions (out-of-order/threaded events the SDK
             // slots into the middle of the timeline) are forwarded so the view
@@ -2268,6 +2278,7 @@
         // see them, because it gates on the cleartext type.
         const unsubDecryptedNotify = onDecryptedTimelineEvent(
             (event, room, meta) => {
+                if (isSilentZamEvent(event.getType())) return;
                 bumpUnreadTick();
                 const eventId = event.getId();
                 // The SDK caches push actions against the ciphertext envelope
@@ -2567,7 +2578,9 @@
                 // offline boot — cached values stay
             }
         })();
+        const unsubPrivateData = initPrivateAccountData();
         const unsubFavourites = initFavourites();
+        const unsubRecentEmoji = initRecentEmoji();
         const unsubCustomization = initCustomizationSync();
         const unsubIgnored = initIgnoredUsers();
         const unsubPresence = initPresence();
@@ -2664,6 +2677,7 @@
             ensureBackGuard();
         }
 
+        bootMark("shell-mount-done");
         return () => {
             // Deferred notifications must not land after teardown/logout.
             for (const t of pendingNotifyTimers) window.clearTimeout(t);
@@ -2695,6 +2709,8 @@
             unsubMarkedUnread();
             unsubReadConfirmed();
             unsubFavourites();
+            unsubPrivateData();
+            unsubRecentEmoji();
             unsubCustomization();
             unsubIgnored();
             unsubPresence();

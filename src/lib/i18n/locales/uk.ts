@@ -276,6 +276,15 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Не вдалося відкрити особисте повідомлення",
     "callParticipantMenu.couldNotKick": "Не вдалося виключити {name}",
     "callParticipantMenu.couldNotBan": "Не вдалося заблокувати {name}",
+    "callParticipantMenu.disconnectFromVoice":
+        "Відключити від голосового каналу",
+    "callParticipantMenu.disconnecting": "Відключення…",
+    "callParticipantMenu.confirmDisconnect":
+        "Підтвердити відключення {name} від голосового каналу?",
+    "callParticipantMenu.couldNotDisconnect": "Не вдалося відключити {name}",
+    "callKick.notPermitted":
+        "Ви не можете відключити цього учасника від голосового каналу",
+    "callKick.removedFromVoice": "{name} відключив вас від голосового каналу",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -657,6 +666,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "Не надсилати галереї",
     "debugSettings.disableGallerySendHint":
         "Вкладення, вибрані разом, зазвичай ідуть одним повідомленням-галереєю з одним підписом (MSC4274, надсилається як dm.filament.gallery). Якщо увімкнено, кожне йде окремим повідомленням. Галереї інших і далі показуються.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Ваш домашній сервер не підтримує sticky-події.",
     "debugSettings.stickyCallMembership": "Sticky-участь у дзвінках",
     "debugSettings.stickyCallMembershipHint":
         "Приєднуватися до дзвінків за допомогою sticky-події m.rtc.member (MSC4354) замість події стану m.call.member. Клієнти, які читають лише події стану, зокрема Zam до 1.51, не побачать вас у дзвінку. Діє з наступного дзвінка.",
@@ -738,6 +749,12 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Поки що нічого не записано. Тут з’являтимуться перезапуски, невдалі запити та скидання стрічки.",
     "debugSettings.refresh": "Оновити",
     "debugSettings.copied": "Скопійовано",
+    "debugSettings.startupTiming": "Час запуску",
+    "debugSettings.startupTimingHint":
+        "Час від завантаження сторінки до кожного кроку запуску. Скопіюйте, щоб поділитися.",
+    "debugSettings.startupTimingEmpty": "Кроки запуску ще не записано.",
+    "debugSettings.startupTimingRow": "+{dt} мс (о {at} мс)",
+    "debugSettings.copyTiming": "Копіювати час",
     "debugSettings.useSlidingSync": "Використовувати sliding sync",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Експериментально. Завантажує кімнати у вікні, що росте. Для застосування перезавантажує застосунок.",
@@ -816,6 +833,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "Власні",
     "emojiPicker.standard": "Стандартні",
     "emojiPicker.myEmojis2": "Мої емодзі",
+    "emojiPicker.recentlyUsed": "Нещодавно використані",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Закрити",
@@ -988,6 +1006,27 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresenceCard.openFailed": "Не вдалося отримати токен OpenID.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Обране заблоковано на цьому пристрої. Розблокуйте його, перш ніж змінювати.",
+    "favourites.saveFailed": "Не вдалося зберегти обране. Зміну скасовано.",
+    "favourites.lockedHint":
+        "Обране заблоковано на цьому пристрої. Введіть ключ відновлення або підтвердіть цей пристрій, щоб переглядати та змінювати його.",
+    "favourites.unlock": "Розблокувати",
+    "privateData.locked":
+        "Приватні дані заблоковані на цьому пристрої. Спочатку розблокуйте шифрування.",
+    "privateData.keySaveFailed":
+        "Не вдалося зберегти ключ приватних даних у секретному сховищі облікового запису. Спробуємо знову під час наступного розблокування.",
+    "settingsSearch.encryptFavouriteGifs": "Шифрувати вибрані GIF",
+    "privateData.toggleLabel": "Шифрувати вибрані GIF",
+    "privateData.toggleHelp":
+        "Приховує вибрані GIF від домашнього сервера. Іншим пристроям для читання потрібні ключ відновлення або підтверджена сесія, а старі версії Zam їх не побачать.",
+    "privateData.offWarning":
+        "Після вимкнення вибрані GIF знову стануть доступними для читання домашньому серверу.",
+    "privateData.turnOff": "Вимкнути шифрування",
+    "privateData.enableFailed":
+        "Не вдалося зашифрувати вибрані GIF. Нічого не змінено.",
+    "privateData.disableFailed":
+        "Не вдалося вимкнути шифрування вибраних GIF. Нічого не змінено.",
     "gifPicker.searchFavourites": "Пошук у вибраному…",
     "gifPicker.searchKlipy": "Пошук у KLIPY…",
     "gifPicker.searchFavourites2": "Пошук у вибраному",
@@ -1657,6 +1696,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Вилучати EXIF, GPS-координати, відомості про камеру й інші приховані метадані з фото та відео, які ви надсилаєте. Зображення не змінюється, а поворот зберігається, щоб фото й далі виглядали рівно.",
     "messagesMediaSettings.stripMetadataWarning":
         "Попередження: коли це вимкнено, файли, які ви надсилаєте, можуть розкрити вашу особисту інформацію, зокрема місце, де їх було зроблено.",
+    "messagesMediaSettings.hideRecentEmoji":
+        "Приховати розділ нещодавно використаних емодзі",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Не показувати останні використані емодзі на початку вікна вибору емодзі.",
     "messagesMediaSettings.randomizeFileNames": "Випадкові імена файлів",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "Вивантажувати файли під випадковою назвою з літер і цифр замість справжньої. Розширення файлу зберігається, зокрема такі, як .tar.gz.",
@@ -1664,6 +1707,25 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Надсилати GIF як анімований WebP",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Перекодовувати GIF, які ви надсилаєте, в анімований WebP без втрат, що зазвичай менший і може відтворюватися під час завантаження. Зображення не змінюється. GIF, який не зменшиться, надсилається як є.",
+    "messagesMediaSettings.discordImportTitle": "Імпорт обраного з Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Копіює GIF, додані до обраного в настільному застосунку Discord на цьому комп'ютері. GIF, завантажені в Discord, імпортувати не можна.",
+    "messagesMediaSettings.discordImportButton": "Імпортувати",
+    "messagesMediaSettings.discordImportBusy": "Перевірка посилань...",
+    "messagesMediaSettings.discordImportChecking":
+        "Перевірка посилань... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {Імпортовано # GIF.} other {Імпортовано # GIF.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "Пропущено {discord} завантажених у Discord і {broken} неробочих посилань.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {Цей GIF уже є в обраному.} other {Усі # GIF уже є в обраному.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Не вдалося знайти дані настільного застосунку Discord на цьому комп'ютері.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "Не вдалося імпортувати жодного GIF.",
+    "messagesMediaSettings.discordImportFailed":
+        "Не вдалося імпортувати обране з Discord.",
     "messagesMediaSettings.defaultTab": "Типова вкладка",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Яка вкладка відкривається у виборі GIF.",
@@ -3282,6 +3344,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Записати голосове повідомлення",
     "composerActionsMenu.shareLocation": "Поділитися місцезнаходженням",
     "composerActionsMenu.createThread": "Створити гілку",
+    "composerActionsMenu.insertTimestamp": "Вставити мітку часу",
+    "timestampPicker.title": "Вставити мітку часу",
+    "timestampPicker.dateAndTime": "Дата і час",
+    "timestampPicker.format": "Формат",
+    "timestampPicker.insert": "Вставити",
+    "timestampPicker.cancel": "Скасувати",
+    "timestampPicker.styleShortTime": "Короткий час",
+    "timestampPicker.styleLongTime": "Довгий час",
+    "timestampPicker.styleShortDate": "Коротка дата",
+    "timestampPicker.styleLongDate": "Довга дата",
+    "timestampPicker.styleShortDateTime": "Коротка дата і час",
+    "timestampPicker.styleLongDateTime": "Довга дата і час",
+    "timestampPicker.styleRelative": "Відносний",
     "composerActionsMenu.inviteToGame": "Запросити до гри",
     "gameInvite.title": "Запросити до гри",
     "gameInvite.game": "Гра",
@@ -4192,6 +4267,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "Вилучати місцезнаходження та інші метадані із вивантажень",
     "settingsSearch.sendGifsAsAnimatedWebp": "Надсилати GIF як анімований WebP",
+    "settingsSearch.hideRecentEmoji":
+        "Приховати розділ нещодавно використаних емодзі",
     "settingsSearch.midiSoundBank": "Банк звуків MIDI",
     "settingsSearch.holdToOpenMessageMenu":
         "Утримувати для відкриття меню повідомлення",
@@ -4351,6 +4428,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Відкрити сторінку випуску",
     "updateStatus.flatpakManualUpdate":
         "Доступне оновлення{versionSuffix}. Встановіть його з центру програм або командою flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Доступне оновлення{versionSuffix}. Йому потрібні нові дозволи, які Flatpak надає лише через центр програм або flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Доступне оновлення{versionSuffix}. Автооновлення Flatpak було відхилено; встановіть його з центру програм або командою flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Доступне оновлення{versionSuffix}. Ця версія Flatpak не вміє оновлювати програми сама; встановіть його з центру програм або командою flatpak update",
     "updateStatus.packageManagerUpdate":
         "Доступне оновлення{versionSuffix}. Оновіть через {manager}",
     "updateStatus.updateCheckFailed": "Не вдалося перевірити оновлення",

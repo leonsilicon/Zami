@@ -53,6 +53,10 @@ const { createAppAudio } = require("./appAudio.cjs");
 const { createNativeShare } = require("./nativeShare.cjs");
 const { resolveShareAudio } = require("./shareAudio.cjs");
 const { createFileLog } = require("./fileLog.cjs");
+const {
+    readDiscordFavouriteGifs,
+    discordFavouriteDirs,
+} = require("./discordFavourites.cjs");
 const { createUpdateGuard } = require("./updateGuard.cjs");
 const {
     createFlatpakShellUpdate,
@@ -635,7 +639,9 @@ async function checkBundleThenInstaller(manual) {
                 ? {
                       phase: "unsupported",
                       version: shellVersion,
-                      ...(IN_FLATPAK ? { manual: "flatpak" } : {}),
+                      ...(IN_FLATPAK
+                          ? { manual: "flatpak", manualReason: "no-portal" }
+                          : {}),
                       ...(IS_MANAGED
                           ? {
                                 manual: "package-manager",
@@ -1172,11 +1178,22 @@ const richPresence = createRichPresence({
     inFlatpak: IN_FLATPAK,
     // Discord's game list and app names, over net.fetch so the proxy applies.
     fetch: (url, init) => net.fetch(url, init),
-    // The macOS now-playing adapter (see mediaSession.cjs and
-    // scripts/build-mediaremote-adapter.mjs).
-    mediaDir: app.isPackaged
-        ? path.join(process.resourcesPath, "mediaremote")
-        : path.join(app.getAppPath(), "native", "mediaremote-adapter"),
+    // The now-playing helper: zam-media.exe on Windows
+    // (scripts/build-media-session.mjs), the MediaRemote adapter on macOS
+    // (scripts/build-mediaremote-adapter.mjs). See mediaSession.cjs.
+    mediaDir:
+        process.platform === "win32"
+            ? app.isPackaged
+                ? process.resourcesPath
+                : path.join(
+                      app.getAppPath(),
+                      "native",
+                      "media-session",
+                      "build",
+                  )
+            : app.isPackaged
+              ? path.join(process.resourcesPath, "mediaremote")
+              : path.join(app.getAppPath(), "native", "mediaremote-adapter"),
     // Steam game invites open their steam:// link (richPresence joinGame).
     openExternal: (url) => shell.openExternal(url),
     send: (event) => {
@@ -1281,6 +1298,16 @@ ipcMain.handle("rich-presence:join-game", (_e, req) =>
     richPresence.joinGame(req),
 );
 app.on("will-quit", () => richPresence.stop());
+
+// --- Discord favourite GIFs ----------------------------------------------
+
+// Read-only read of Discord's synced favourite GIFs (discordFavourites.cjs).
+// The renderer checks each link itself, so this makes no network requests.
+ipcMain.handle("discord-favourites:read", () =>
+    readDiscordFavouriteGifs({
+        dirs: discordFavouriteDirs(app.getPath("appData")),
+    }),
+);
 
 // --- Call priority -------------------------------------------------------
 
