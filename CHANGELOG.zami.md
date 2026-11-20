@@ -4,6 +4,71 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.66.17
+
+⚡ **Faster**
+
+- **Zam starts up faster**, most noticeably on phones and slow connections: it no longer waits for three server checks in a row before showing your chats.
+- **Less memory over a long session:** rooms you haven't looked at for a while keep only their newest messages in memory, and load the rest again when you scroll up.
+
+🐛 **Fixed**
+
+- **Telegram sticker imports freezing partway through.** A sticker that won't download now fails on its own instead of stopping the import.
+- **Imported Telegram stickers are named after their emoji** (for example `Pack_joy_3`) instead of just a number.
+
+🛠️ **Debug**
+
+- **Settings > Debug > Startup timing** shows how long each startup step took, with a copy button for bug reports.
+
+## v1.66.16
+
+✨ **New**
+
+- **Messages show greyed out until they're sent**, so you can tell when one hasn't reached the server yet.
+- **A loading bar on the "Restoring session" screen** while Zam starts up.
+
+🐛 **Fixed**
+
+- **Tapping a notification opening the room you were last in** instead of the message, when Zam was still starting up (Android) or the open window was still loading (web app).
+- **Accounts on different servers sharing the sticky call membership setting** (Debug). It's now per account, and Zam only uses it when your homeserver supports it.
+- **Calls after signing into another account in the same window** possibly using the previous server's TURN details.
+
+## v1.66.15
+
+✨ **New**
+
+- **Timestamps in everyone's local time:** write `<t:1700000000>` (or `<t:1700000000:R>` and the other Discord styles), or pick a date with "Insert timestamp" in the composer's + menu. Each reader sees it in their own time zone; other Matrix apps see it in UTC.
+- **Disconnect from voice:** moderators can remove someone from a voice channel without kicking them from the room, from the participant's menu in the call. Only works on people using Zam.
+- **Encrypted favourite GIFs (optional):** Settings > Messages & Media > GIFs can encrypt your favourites list so your homeserver can't read it. Off by default; your other devices need your recovery key or a verified session to read the list.
+
+🐛 **Fixed**
+
+- **Green and purple bands, and crashes, with videos in the attachment viewer and the composer's attachment preview.** Zam no longer keeps more videos decoding than your graphics card can handle.
+- **Importing favourite GIFs from Discord twice** adding duplicates.
+
+## v1.66.14
+
+🐛 **Fixed**
+
+- **The Telegram sticker import asking for a bot token** even though Zam's built-in sticker service is available. Packs now import with just a link again.
+- **Android: "Sync now" for the search index failing** with "MatrixClient has been stopped" after the app had been in the background.
+- **Flatpak: the update message** now says why an update has to go through your software center (it needs new permissions, you declined the prompt, or your Flatpak is too old), instead of looking like a broken updater.
+
+## v1.66.13
+
+✨ **New**
+
+- **Recently used emoji:** your 10 most recently used emoji (including custom ones) now show at the top of the emoji picker, with their own tab. The list follows you across devices. You can hide it in Settings > Messages & Media.
+- **Import favourite GIFs from Discord:** on desktop, Settings > Messages & Media can import the favourite GIFs from your Discord app, including Snap and Flatpak installs of Discord and Discord Canary. GIFs hosted on Discord itself can't be imported, because their links expire.
+
+🐛 **Fixed**
+
+- **Rooms whose last message has a reaction showing as unread again** after a restart.
+- **Android: notifications for messages you already read on another device** popping up when the phone came back on.
+- **Android: notifications showing an "N" avatar** when the message couldn't be loaded. They now use the room's name or Zam's icon.
+- **Android: notifications staying up** after you read everything on another device, on servers that send a "nothing unread" update.
+- **The Telegram sticker import** missing from Settings since stickers moved to the Emotes tab.
+
 ## v1.66.12
 
 ✨ **New**

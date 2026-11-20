@@ -720,9 +720,13 @@ export const PUSH_APP_ID = APP_ID;
 // event: invites naming the inviter and the room or space, with Accept and
 // Decline (the shell's __matrixInviteFromNotification), conversation
 // notifications with DM titles, avatars and pictures, Reply and Mark as read
-// (with the per-room receipt privacy), and the debug push log. An
-// event_id_only push doesn't say what its event is, so they need the
-// extension and background task above, which would fetch it.
+// (with the per-room receipt privacy), and the debug push log. Nor what
+// MatrixMessagingService does before it posts: skipping a push for a room
+// already read elsewhere (queued while the phone was off), staying silent for
+// a moderator's com.zam.call.kick, and taking down the account's notifications
+// on a badge-only push that says every room is read. An event_id_only push
+// doesn't say what its event is, so they need the extension and background
+// task above, which would fetch it.
 /** The alert the OS shows for a push: Expo message fields, for the gateway. */
 const ZAMI_EXPO_FIELDS: Record<string, unknown> = {
     body: GENERIC_NOTIFICATION_BODY,
@@ -911,10 +915,17 @@ function openRoomFromPushTap(response: Notifications.NotificationResponse) {
     openRoomWhenShellReady(roomId, text(data.zam_account), text(data.event_id));
 }
 
+// How many 250 ms polls a push tap makes while waiting for the shell's
+// __matrixOpenRoom: 720 is 3 minutes, as MainActivity's HOOK_WAIT_POLLS. The
+// hook only exists once the session is restored and the client started; on a
+// slow start that is well past the half a minute this used to wait, and the
+// tap was dropped, leaving the user on the last-viewed room.
+const SHELL_WAIT_POLLS = 720;
+
 /**
  * The shell defines __matrixOpenRoom once it's mounted (and it checks the push
  * is for an account signed in here); a push that launched the app is waited
- * for, up to half a minute.
+ * for, up to SHELL_WAIT_POLLS.
  */
 function openRoomWhenShellReady(
     roomId: string,
@@ -927,7 +938,7 @@ function openRoomWhenShellReady(
         open(roomId, userId, false, eventId);
         return;
     }
-    if (attempt < 120)
+    if (attempt < SHELL_WAIT_POLLS)
         setTimeout(
             () => openRoomWhenShellReady(roomId, userId, eventId, attempt + 1),
             250,

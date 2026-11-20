@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+    HISTORY_DEEP_IDLE_MS,
+    HISTORY_KEEP_VISIBLE,
+    HISTORY_KEEP_VISIBLE_DEEP,
     HISTORY_TRIM_IDLE_MS,
     historyTrimCut,
+    historyTrimPlan,
     mayCutHistory,
     mayTrimRoom,
 } from "./historyTrim";
@@ -56,6 +60,31 @@ describe("mayTrimRoom", () => {
     });
 });
 
+describe("historyTrimPlan", () => {
+    it("keeps a screenful for a room never opened this session", () => {
+        expect(historyTrimPlan(undefined, 0).keep).toBe(
+            HISTORY_KEEP_VISIBLE_DEEP,
+        );
+    });
+
+    it("keeps more for a room left recently", () => {
+        const left = 1_000_000;
+        expect(historyTrimPlan(left, left + HISTORY_TRIM_IDLE_MS).keep).toBe(
+            HISTORY_KEEP_VISIBLE,
+        );
+        expect(historyTrimPlan(left, left + HISTORY_DEEP_IDLE_MS).keep).toBe(
+            HISTORY_KEEP_VISIBLE_DEEP,
+        );
+    });
+
+    it("trims a typical opened room (~80 rendered events) once deep idle", () => {
+        const { keep, minDrop } = historyTrimPlan(undefined, 0);
+        const rendered = Array(80).fill(true);
+        expect(historyTrimCut(rendered)).toBeNull();
+        expect(historyTrimCut(rendered, keep, minDrop)).toBe(60);
+    });
+});
+
 // Zami: the sweep's cheap check before historyTrimCut.
 describe("mayCutHistory", () => {
     it("rules out only rooms historyTrimCut could never cut", () => {
@@ -66,5 +95,11 @@ describe("mayCutHistory", () => {
         expect(mayCutHistory(149)).toBe(false);
         expect(historyTrimCut(Array(150).fill(true))).toBe(50);
         expect(mayCutHistory(150)).toBe(true);
+    });
+
+    it("uses the keep and minDrop it is given", () => {
+        expect(mayCutHistory(39, 20, 20)).toBe(false);
+        expect(historyTrimCut(Array(40).fill(true), 20, 20)).toBe(20);
+        expect(mayCutHistory(40, 20, 20)).toBe(true);
     });
 });

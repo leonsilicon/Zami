@@ -307,6 +307,14 @@ function renderInline(node: HtmlNode, context: Context, key: number): ReactNode 
         </Text>
       );
     }
+    case "time":
+      // Zam's inline timestamp pill (inlineTimestamp's TIMESTAMP_PILL_CLASS), whose
+      // text MessageItem has already localized.
+      return (
+        <Text key={key} className={context.hidden ? undefined : "bg-zam-backgroundTertiary"}>
+          {renderInlines(node.children, context)}
+        </Text>
+      );
     default:
       return renderSpan(node, context, key);
   }

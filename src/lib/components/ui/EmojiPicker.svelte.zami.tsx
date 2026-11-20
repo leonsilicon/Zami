@@ -30,6 +30,7 @@ import {
     useStableCallback,
 } from "@-/com.leonsilicon.zami.incremental/react";
 import { Image, mediaSource, SvgIcon } from "@-/com.leonsilicon.zami.rn";
+import { Circle, Path } from "react-native-svg";
 import { sameObject, useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { t } from "$lib/i18n";
 import type { Room } from "matrix-js-sdk";
@@ -46,7 +47,10 @@ import { COMPOSER_PICKER_SIZE } from "$lib/utils/pickerSize";
 import { scrollBehavior } from "$lib/utils/motionPreference";
 import { nextActiveIndex } from "$lib/utils/listboxNavigation";
 import { anchoredActiveIndex } from "$lib/utils/listboxAnchor";
-import { emojiOptionKeys } from "$lib/utils/pickerOptionKeys";
+import {
+    emojiOptionKeys,
+    RECENT_SECTION_ID,
+} from "$lib/utils/pickerOptionKeys";
 import {
     buildGridLayout,
     rowAt,
@@ -54,7 +58,13 @@ import {
     type GridRow,
     type GridSection,
 } from "$lib/utils/virtualGrid";
-import { pickerThumbUrl } from "$lib/matrix/media";
+import { mxcToHttp, pickerThumbUrl } from "$lib/matrix/media";
+import {
+    recentEmojiState,
+    recordRecentEmoji,
+} from "$lib/stores/recentEmoji.svelte";
+import type { RecentEmoji } from "$lib/utils/recentEmoji";
+import { settingsState } from "$lib/stores/settings.svelte";
 
 interface Props {
     room?: Room | null;
@@ -129,6 +139,13 @@ function searchStandardFlatItems(): FlatItem[] {
     })));
 }
 const NO_PACKS: CustomEmojiPack[] = [];
+const NO_RECENT: RecentEmoji[] = [];
+
+// Name of each standard emoji, for the recent section's labels.
+// Zami: module-wide rather than per picker, as the emoji never change.
+const EMOJI_NAMES = new Map<string, string>(
+    ALL_EMOJIS.map((e) => [e.emoji, e.name] as const),
+);
 const NO_ITEMS: FlatItem[] = [];
 
 export default function EmojiPicker({
@@ -142,6 +159,25 @@ export default function EmojiPicker({
 }: Props) {
     const isTouchscreen = useRune(() => interfaceState.isTouchscreen);
     const windowSize = useWindowDimensions();
+
+    // The recent list is frozen for this picker's lifetime, so an entry does not
+    // move under the cursor when a sync lands. Taken on open; if the list was
+    // still empty then, taken the first time it has entries.
+    const recentItems = useRune(() => recentEmojiState.items);
+    const [recentFrozen, setRecentFrozen] = useState<RecentEmoji[]>(
+        () => recentEmojiState.items,
+    );
+    const recentLocked = useRef<boolean | null>(null);
+    recentLocked.current ??= recentFrozen.length > 0;
+    useEffect(() => {
+        if (recentLocked.current) return;
+        const items = recentItems;
+        if (items.length > 0) {
+            recentLocked.current = true;
+            setRecentFrozen(items);
+        }
+    }, [recentItems]);
+    const hideRecentEmoji = useRune(() => settingsState.hideRecentEmoji);
 
     const [search, setSearch] = useState("");
     const [activeTab, setActiveTab] = useState("");
@@ -222,8 +258,36 @@ export default function EmojiPicker({
     );
     const ownAvatarUrl = getOwnAvatarUrl();
 
+    // Recently used entries shown in the "Recently Used" section. Hidden when
+    // unicodeOnly (custom entries) or when empty.
+    const recentShown = useMemo((): RecentEmoji[] => {
+        if (hideRecentEmoji) return NO_RECENT;
+        return unicodeOnly
+            ? recentFrozen.filter((e) => e.kind === "unicode")
+            : recentFrozen;
+    }, [hideRecentEmoji, unicodeOnly, recentFrozen]);
+    // Live copy of each custom emoji by its mxc url, so a recent entry picks up
+    // the pack's current shortcode and http url when the pack still has it.
+    const customByMxc = useMemo(() => {
+        const out = new Map<string, CustomEmoji>();
+        for (const p of customPacks)
+            for (const e of p.emojis)
+                if (!out.has(e.mxcUrl)) out.set(e.mxcUrl, e);
+        return out;
+    }, [customPacks]);
+
     const tabs = useMemo(
         () => [
+            ...(recentShown.length > 0 && !search
+                ? [
+                      {
+                          id: RECENT_SECTION_ID,
+                          label: t("emojiPicker.recentlyUsed"),
+                          avatarUrl: undefined,
+                          isCustom: true as const,
+                      },
+                  ]
+                : []),
             ...customPacks.map((p) => ({
                 id: p.id,
                 label: p.name,
@@ -237,7 +301,7 @@ export default function EmojiPicker({
                 isCustom: false as const,
             })),
         ],
-        [customPacks],
+        [recentShown, search, customPacks],
     );
 
     useEffect(() => {
@@ -289,9 +353,41 @@ export default function EmojiPicker({
 
     // Zami: the browsing list on its own, so clearing a search gets the same
     // array (and rows) back rather than a new one.
+    const recentFlatItems = useMemo((): FlatItem[] => {
+        const items: FlatItem[] = [];
+        for (const r of recentShown) {
+            if (r.kind === "unicode") {
+                items.push({
+                    kind: "standard",
+                    sectionId: RECENT_SECTION_ID,
+                    data: {
+                        emoji: r.emoji,
+                        name: EMOJI_NAMES.get(r.emoji) ?? r.emoji,
+                    },
+                });
+            } else {
+                const live = customByMxc.get(r.url);
+                const emoji: CustomEmoji = live ?? {
+                    shortcode: r.shortcode,
+                    mxcUrl: r.url,
+                    url: mxcToHttp(r.url, EMOJI_THUMB_PX) ?? "",
+                };
+                items.push({
+                    kind: "custom",
+                    sectionId: RECENT_SECTION_ID,
+                    data: { ...emoji, packId: RECENT_SECTION_ID },
+                });
+            }
+        }
+        return items;
+    }, [recentShown, customByMxc]);
     const browseItems = useMemo(
-        (): FlatItem[] => [...customItems.browse, ...standardFlatItems()],
-        [customItems],
+        (): FlatItem[] => [
+            ...recentFlatItems,
+            ...customItems.browse,
+            ...standardFlatItems(),
+        ],
+        [recentFlatItems, customItems],
     );
     const flatItems = useMemo((): FlatItem[] => {
         if (search) {
@@ -312,6 +408,10 @@ export default function EmojiPicker({
             return offsets;
         }
         let offset = 0;
+        if (recentShown.length > 0) {
+            offsets.set(RECENT_SECTION_ID, 0);
+            offset = recentShown.length;
+        }
         for (const pack of customPacks) {
             offsets.set(pack.id, offset);
             offset += pack.emojis.length;
@@ -321,7 +421,7 @@ export default function EmojiPicker({
             offset += cat.emojis.length;
         }
         return offsets;
-    }, [search, searchCustom, customPacks]);
+    }, [search, searchCustom, recentShown, customPacks]);
 
     // The cursor, but only while the option it was placed on is still sitting
     // at that index (see upstream's comment on `activeIndex`: a list rewritten
@@ -371,6 +471,16 @@ export default function EmojiPicker({
             return out;
         }
         return [
+            ...(recentShown.length > 0
+                ? [
+                      {
+                          id: RECENT_SECTION_ID,
+                          label: t("emojiPicker.recentlyUsed"),
+                          start: at(RECENT_SECTION_ID),
+                          count: recentShown.length,
+                      },
+                  ]
+                : []),
             ...customPacks.map((p) => ({
                 id: p.id,
                 label: p.id === "user" ? t("emojiPicker.myEmojis2") : p.name,
@@ -384,7 +494,14 @@ export default function EmojiPicker({
                 count: c.emojis.length,
             })),
         ];
-    }, [search, searchCustom, searchStandard, customPacks, sectionOffsets]);
+    }, [
+        search,
+        searchCustom,
+        searchStandard,
+        recentShown,
+        customPacks,
+        sectionOffsets,
+    ]);
 
     const layout = useMemo(
         () =>
@@ -463,11 +580,17 @@ export default function EmojiPicker({
     // Zami: the same function across renders (calling the latest props), so
     // the memoized rows below don't re-render when the parent does.
     const pick = useStableCallback((emoji: string) => {
+        recordRecentEmoji({ kind: "unicode", emoji });
         onSelect(emoji);
         onClose();
     });
 
     const pickCustom = useStableCallback((emoji: CustomEmoji) => {
+        recordRecentEmoji({
+            kind: "custom",
+            shortcode: emoji.shortcode,
+            url: emoji.mxcUrl,
+        });
         if (onSelectCustom) {
             onSelectCustom(emoji);
         } else {
@@ -711,7 +834,19 @@ export default function EmojiPicker({
                             }`}
                         >
                             {tab.isCustom ? (
-                                tab.id === "user" && ownAvatarUrl ? (
+                                tab.id === RECENT_SECTION_ID ? (
+                                    <SvgIcon
+                                        className="w-5 h-5 text-zam-textPrimary"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    >
+                                        <Circle cx="12" cy="12" r="9" />
+                                        <Path d="M12 7v5l3 2" />
+                                    </SvgIcon>
+                                ) : tab.id === "user" && ownAvatarUrl ? (
                                     <Image
                                         source={mediaSource(ownAvatarUrl)}
                                         accessibilityLabel={t(

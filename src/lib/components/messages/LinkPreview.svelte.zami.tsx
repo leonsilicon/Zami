@@ -31,7 +31,6 @@ import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { zamiHost } from "@-/com.leonsilicon.zami.plugins/host";
 import { t } from "$lib/i18n";
 import {
-    getUrlPreview,
     getHomeserverBaseUrl,
     mxcToHttp,
     type UrlPreview,
@@ -50,11 +49,12 @@ import {
     allowsMediaAutoLoad,
     allowsThirdPartyEmbed,
 } from "$lib/utils/linkPreviewPolicy";
+import { isGifHostMediaUrl } from "$lib/utils/gifEmbed";
 import {
-    fetchGifEmbed,
-    isGifHostLink,
-    isGifHostMediaUrl,
-} from "$lib/utils/gifEmbed";
+    fetchLinkPreview,
+    homeserverPreviewUrl,
+    isGifSiteUrl,
+} from "$lib/utils/linkPreviewFetch";
 import { reservedMediaBox, safeDimension } from "$lib/utils/mediaDimensions";
 import { learnMediaSize, learnedMediaSize } from "$lib/utils/learnedMediaSize";
 import {
@@ -67,7 +67,6 @@ import { isInstagramUrl } from "$lib/utils/instagramUrl";
 import { linkPreviewFavourite } from "$lib/utils/linkPreviewFavourite";
 import { pluginRegistry } from "$lib/stores/plugins.svelte";
 import { resolveEmbed, mountEmbed } from "$lib/plugins/embeds";
-import { applyPreviewUrlTransforms } from "$lib/plugins/outgoingTransforms";
 import {
     parseYoutubeUrl,
     youtubeWatchUrl,
@@ -333,14 +332,9 @@ export default function LinkPreview({ url }: Props) {
             };
         }
 
-        // The homeserver's own preview endpoint — no third party is contacted,
-        // so this runs under every policy. Only its MEDIA is gated, below.
-        // Plugins may point the request elsewhere (a mirror the homeserver can
-        // reach); the link shown and opened stays the original.
-        const previewUrl = applyPreviewUrlTransforms(
-            currentUrl,
-            pluginRegistry.previewUrlTransforms.map((e) => e.value),
-        );
+        // The homeserver's own preview endpoint, shared with the Discord
+        // favourites import (utils/linkPreviewFetch). Only its MEDIA is gated.
+        const previewUrl = homeserverPreviewUrl(currentUrl);
         const cacheKey = `${allowEmbeds ? 1 : 0} ${currentUrl} ${previewUrl}`;
         const known = resolvedPreviews.get(cacheKey);
         if (known) {
@@ -349,51 +343,18 @@ export default function LinkPreview({ url }: Props) {
             setPending(false);
             return;
         }
-        getUrlPreview(previewUrl)
-            .then(async (data) => {
+        fetchLinkPreview(currentUrl, allowEmbeds)
+            .then((result) => {
                 if (cancelled) return;
-                // Zami: what upstream writes to `preview` and `gifHostHeld`
-                // and reads back below.
-                let nextPreview: UrlPreview | null = null;
-                let held = false;
-                // GIF sites turn away most homeservers' previewers, so go to
-                // the site when the homeserver came back without media. A
-                // server that can preview these keeps serving its own copy.
-                if (
-                    isGifHostLink(currentUrl) &&
-                    !data?.imageUrl &&
-                    !data?.videoUrl
-                ) {
-                    if (allowEmbeds) {
-                        const embed = await fetchGifEmbed(currentUrl).catch(
-                            () => null,
-                        );
-                        if (cancelled) return;
-                        if (embed) {
-                            setPreview(embed);
-                            rememberPreview(cacheKey, {
-                                preview: embed,
-                                tweet: null,
-                                gifHostHeld: false,
-                            });
-                            return;
-                        }
-                    } else {
-                        held = true;
-                        setGifHostHeld(true);
-                    }
-                }
-                if (data && (data.title || data.imageUrl || data.videoUrl)) {
-                    nextPreview = data;
-                    setPreview(data);
-                }
-                // getUrlPreview answers null for a failed request too, which
+                setPreview(result.preview);
+                setGifHostHeld(result.gifHostHeld);
+                // fetchLinkPreview answers null for a failed request too, which
                 // is worth asking again.
-                if (nextPreview || held) {
+                if (result.preview || result.gifHostHeld) {
                     rememberPreview(cacheKey, {
-                        preview: nextPreview,
+                        preview: result.preview,
                         tweet: null,
-                        gifHostHeld: held,
+                        gifHostHeld: result.gifHostHeld,
                     });
                 }
             })
@@ -450,17 +411,7 @@ export default function LinkPreview({ url }: Props) {
     // inline. Their previews expose the animation as a *video* URL, which we play
     // back gif-style (muted, looped, no controls) so it behaves like a real GIF.
     // Zami: declared before the frame effect below, which reads it.
-    const isGifSite = (() => {
-        try {
-            // Match on the registrable domain's second-level label so that
-            // e.g. `media.tenor.com` counts but `tenor.com.evil.example` does not.
-            const labels = new URL(url).hostname.split(".");
-            const sld = labels[labels.length - 2];
-            return sld === "tenor" || sld === "giphy" || sld === "klipy";
-        } catch {
-            return false;
-        }
-    })();
+    const isGifSite = isGifSiteUrl(url);
 
     // A video preview with no poster used to mount its <video> unplayed to
     // show the first frame, which holds a decoder and buffered frames in

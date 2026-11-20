@@ -2246,18 +2246,20 @@ describe("ownDeviceKeysReplaced", () => {
     it("matches a store holding the recorded key, without the network", async () => {
         localStorage.setItem(RECORD, "freshEd");
         const client = await withServerKeys("unreachable");
-        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(true);
+        expect(await mod.ownDeviceKeysCheckMode(client as never)).toBe(
+            "background",
+        );
         expect(client.downloadKeysForUsers).not.toHaveBeenCalled();
     });
 
     it("doesn't match a store with no record, or with another key", async () => {
         const client = await withServerKeys("unreachable");
-        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(
-            false,
+        expect(await mod.ownDeviceKeysCheckMode(client as never)).toBe(
+            "blocking",
         );
         localStorage.setItem(RECORD, "lostEd");
-        expect(await mod.ownDeviceKeyMatchesRecord(client as never)).toBe(
-            false,
+        expect(await mod.ownDeviceKeysCheckMode(client as never)).toBe(
+            "blocking",
         );
     });
 

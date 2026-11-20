@@ -267,6 +267,13 @@ export const en = {
         "Could not open a direct message",
     "callParticipantMenu.couldNotKick": "Could not kick {name}",
     "callParticipantMenu.couldNotBan": "Could not ban {name}",
+    "callParticipantMenu.disconnectFromVoice": "Disconnect from voice",
+    "callParticipantMenu.disconnecting": "Disconnecting…",
+    "callParticipantMenu.confirmDisconnect":
+        "Confirm disconnecting {name} from voice?",
+    "callParticipantMenu.couldNotDisconnect": "Could not disconnect {name}",
+    "callKick.notPermitted": "You cannot disconnect this member from voice",
+    "callKick.removedFromVoice": "{name} removed you from the voice channel",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -615,6 +622,8 @@ export const en = {
     "debugSettings.disableGallerySend": "Don't send galleries",
     "debugSettings.disableGallerySendHint":
         "Attachments picked together normally go as one gallery message with one caption (MSC4274, sent as dm.filament.gallery). On, each goes as its own message instead. Galleries from others are still shown.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Your homeserver doesn't support sticky events.",
     "debugSettings.stickyCallMembership": "Sticky call membership",
     "debugSettings.stickyCallMembershipHint":
         "Join calls with a sticky m.rtc.member event (MSC4354) instead of an m.call.member state event. Clients that only read state events, including Zam before 1.51, won't see you in the call. Applies from your next call.",
@@ -695,6 +704,12 @@ export const en = {
         "Nothing logged yet. Restarts, failed requests and timeline resets show up here.",
     "debugSettings.refresh": "Refresh",
     "debugSettings.copied": "Copied",
+    "debugSettings.startupTiming": "Startup timing",
+    "debugSettings.startupTimingHint":
+        "Time from page load to each startup step. Copy to share.",
+    "debugSettings.startupTimingEmpty": "No startup steps recorded yet.",
+    "debugSettings.startupTimingRow": "+{dt} ms (at {at} ms)",
+    "debugSettings.copyTiming": "Copy timing",
     "debugSettings.useSlidingSync": "Use sliding sync",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Experimental. Loads rooms in a growing window. Reloads the app to apply.",
@@ -772,6 +787,7 @@ export const en = {
     "emojiPicker.custom": "Custom",
     "emojiPicker.standard": "Standard",
     "emojiPicker.myEmojis2": "My Emojis",
+    "emojiPicker.recentlyUsed": "Recently Used",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Dismiss",
@@ -941,6 +957,28 @@ export const en = {
     "richPresenceCard.openFailed": "Couldn't get an OpenID token.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Favourites are locked on this device. Unlock them before changing them.",
+    "favourites.saveFailed":
+        "Could not save your favourites. Your change was undone.",
+    "favourites.lockedHint":
+        "Favourites are locked on this device. Enter your recovery key or verify this device to see and change them.",
+    "favourites.unlock": "Unlock",
+    "privateData.locked":
+        "Private data is locked on this device. Unlock encryption first.",
+    "privateData.keySaveFailed":
+        "Could not save the private data key to your account's secret storage. It will be retried the next time you unlock.",
+    "settingsSearch.encryptFavouriteGifs": "Encrypt favourite GIFs",
+    "privateData.toggleLabel": "Encrypt favourite GIFs",
+    "privateData.toggleHelp":
+        "Hides your favourite GIFs from the homeserver. Other devices need your recovery key or a verified session to read them, and older Zam versions won't see them.",
+    "privateData.offWarning":
+        "Turning this off makes your favourite GIFs readable by the homeserver again.",
+    "privateData.turnOff": "Turn off encryption",
+    "privateData.enableFailed":
+        "Could not encrypt your favourite GIFs. Nothing was changed.",
+    "privateData.disableFailed":
+        "Could not turn off encryption for your favourite GIFs. Nothing was changed.",
     "gifPicker.searchFavourites": "Search favourites…",
     "gifPicker.searchKlipy": "Search KLIPY…",
     "gifPicker.searchFavourites2": "Search favourites",
@@ -1572,6 +1610,9 @@ export const en = {
         "Strip EXIF, GPS location, camera details and other hidden metadata from photos and videos you send. The picture is unchanged, and the rotation is kept so photos still show upright.",
     "messagesMediaSettings.stripMetadataWarning":
         "Warning: with this off, files you send can leak your personal information, including the location where they were taken.",
+    "messagesMediaSettings.hideRecentEmoji": "Hide recently used emoji section",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Don't show the emoji you used last at the top of the emoji picker.",
     "messagesMediaSettings.randomizeFileNames": "Randomize file names",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "Upload files under a random name made of letters and numbers instead of their real name. The file extension is kept, including ones like .tar.gz.",
@@ -1579,6 +1620,26 @@ export const en = {
         "Send GIFs as animated WebP",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Re-encode GIFs you send as lossless animated WebP, which is usually smaller and can play while it downloads. The picture is unchanged. A GIF that would not get smaller is sent as it is.",
+    "messagesMediaSettings.discordImportTitle":
+        "Import favourites from Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Copies the GIFs favourited in the Discord desktop app on this computer. GIFs uploaded to Discord can't be imported.",
+    "messagesMediaSettings.discordImportButton": "Import",
+    "messagesMediaSettings.discordImportBusy": "Checking links...",
+    "messagesMediaSettings.discordImportChecking":
+        "Checking links... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {Imported # GIF.} other {Imported # GIFs.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "Skipped {discord} uploaded to Discord and {broken} broken links.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {The GIF was already in your favourites.} other {All # GIFs were already in your favourites.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Couldn't find the Discord desktop app's data on this computer.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "No GIFs could be imported.",
+    "messagesMediaSettings.discordImportFailed":
+        "Couldn't import favourites from Discord.",
     "messagesMediaSettings.defaultTab": "Default tab",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Which tab the GIF picker opens on.",
@@ -3179,6 +3240,19 @@ export const en = {
     "composerActionsMenu.recordVoiceMessage": "Record voice message",
     "composerActionsMenu.shareLocation": "Share location",
     "composerActionsMenu.createThread": "Create thread",
+    "composerActionsMenu.insertTimestamp": "Insert timestamp",
+    "timestampPicker.title": "Insert a timestamp",
+    "timestampPicker.dateAndTime": "Date and time",
+    "timestampPicker.format": "Format",
+    "timestampPicker.insert": "Insert",
+    "timestampPicker.cancel": "Cancel",
+    "timestampPicker.styleShortTime": "Short time",
+    "timestampPicker.styleLongTime": "Long time",
+    "timestampPicker.styleShortDate": "Short date",
+    "timestampPicker.styleLongDate": "Long date",
+    "timestampPicker.styleShortDateTime": "Short date and time",
+    "timestampPicker.styleLongDateTime": "Long date and time",
+    "timestampPicker.styleRelative": "Relative",
     "composerActionsMenu.inviteToGame": "Invite to game",
     "gameInvite.title": "Invite to game",
     "gameInvite.game": "Game",
@@ -4078,6 +4152,7 @@ export const en = {
     "settingsSearch.removeLocationAndMetadata":
         "Remove location and other metadata from uploads",
     "settingsSearch.sendGifsAsAnimatedWebp": "Send GIFs as animated WebP",
+    "settingsSearch.hideRecentEmoji": "Hide recently used emoji section",
     "settingsSearch.midiSoundBank": "MIDI sound bank",
     "settingsSearch.holdToOpenMessageMenu": "Hold to open message menu",
     "settingsSearch.checkSpelling": "Check spelling",
@@ -4232,6 +4307,12 @@ export const en = {
     "updateStatus.openReleasePage": "Open release page",
     "updateStatus.flatpakManualUpdate":
         "Update available{versionSuffix}. Install it from your software center or with flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Update available{versionSuffix}. It needs new permissions, which Flatpak only grants through your software center or flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Update available{versionSuffix}. Automatic Flatpak updates were declined, so install it from your software center or with flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Update available{versionSuffix}. This Flatpak version can't update apps itself; install it from your software center or with flatpak update",
     "updateStatus.packageManagerUpdate":
         "Update available{versionSuffix}. Update it with {manager}",
     "updateStatus.updateCheckFailed": "Update check failed",

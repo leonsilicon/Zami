@@ -365,7 +365,7 @@ export default function CustomPackSettings({ kind }: Props) {
                 )}
             </View>
 
-            {kind === "stickers" && <TelegramImport onImported={load} />}
+            {kind !== "emojis" && <TelegramImport onImported={load} />}
 
             {error ? (
                 <Text className="text-sm text-zam-danger">{error}</Text>

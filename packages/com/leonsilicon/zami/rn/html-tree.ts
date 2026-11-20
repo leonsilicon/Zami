@@ -90,6 +90,8 @@ const ALLOWED_TAGS = new Set([
   "img",
   "details",
   "summary",
+  // Zam's inline timestamp (inlineTimestamp.zami.ts).
+  "time",
 ]);
 
 // Its ALLOWED_ATTR (the outer gate) narrowed by PER_TAG_ATTRS, as DOMPurify applies both:
@@ -102,6 +104,7 @@ const PER_TAG_ATTRS: Record<string, ReadonlySet<string>> = {
   div: new Set(["data-mx-maths"]),
   code: new Set(["class"]),
   ol: new Set(["start"]),
+  time: new Set(["datetime", "data-zam-ts-style"]),
 };
 
 const HREF_SCHEME = /^(?:https?|ftp|mailto|magnet|matrix):/i;

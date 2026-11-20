@@ -33,6 +33,8 @@ import {
     getMemberName,
     kickUser,
     banUser,
+    disconnectFromVoice,
+    canDisconnectFromVoiceInRoom,
     createDirectMessage,
     hasExistingDirectMessage,
     retryRoomFollowUp,
@@ -113,15 +115,19 @@ export default function CallParticipantMenu({
         // admin Kick/Ban entries that only fail server-side. Mirrors
         // UserProfileCard's `!!member` guard; `menuGates` has no such concept,
         // so the check belongs here at the call site.
-        if (!member) return { canKick: false, canBan: false };
+        if (!member)
+            return { canKick: false, canBan: false, canDisconnect: false };
         const pl = getRoomPowerLevels(room);
-        return menuGates({
-            isSelf,
-            myLevel: getMyPowerRank(room),
-            targetLevel: getUserPowerRank(room, userId),
-            kickLevel: pl.kick,
-            banLevel: pl.ban,
-        });
+        return {
+            ...menuGates({
+                isSelf,
+                myLevel: getMyPowerRank(room),
+                targetLevel: getUserPowerRank(room, userId),
+                kickLevel: pl.kick,
+                banLevel: pl.ban,
+            }),
+            canDisconnect: canDisconnectFromVoiceInRoom(room, userId),
+        };
     }, [room, userId, isSelf]);
     const audio = useRune(() => participantAudioFor(userId), [userId]);
     // Read when the menu opens (or is retargeted): a second slider only
@@ -202,12 +208,14 @@ export default function CallParticipantMenu({
     // SDK store (up to 15s), so an unguarded second click would run the action
     // twice: two concurrent createDirectMessage calls can both miss the
     // existing-DM check and leave the user with two DM rooms for one contact.
-    type MenuAction = "message" | "block" | "kick" | "ban";
+    type MenuAction = "message" | "block" | "kick" | "ban" | "disconnect";
     const [pending, setPending] = useState<MenuAction | null>(null);
     const pendingRef = useRef<MenuAction | null>(null);
     // Which moderation action is armed for confirmation — mirrors
     // UserProfileCard's `confirming` flow (UX-07).
-    const [confirming, setConfirming] = useState<"kick" | "ban" | null>(null);
+    const [confirming, setConfirming] = useState<
+        "kick" | "ban" | "disconnect" | null
+    >(null);
 
     // Reset confirming state when the open menu is retargeted to a different
     // participant (the host can swap userId without remounting), so an armed
@@ -332,6 +340,18 @@ export default function CallParticipantMenu({
             "kick",
             () => kickUser(room.roomId, userId),
             () => t("callParticipantMenu.couldNotKick", { name }),
+        )();
+    }
+    // Removes them from this voice call only; the room membership stays.
+    async function onDisconnect() {
+        if (confirming !== "disconnect") {
+            setConfirming("disconnect");
+            return;
+        }
+        await act(
+            "disconnect",
+            () => disconnectFromVoice(room.roomId, userId),
+            () => t("callParticipantMenu.couldNotDisconnect", { name }),
         )();
     }
     async function onBan() {
@@ -747,8 +767,33 @@ export default function CallParticipantMenu({
                         </Text>
                     </Pressable>
 
-                    {(gates.canKick || gates.canBan) && (
+                    {(gates.canDisconnect || gates.canKick || gates.canBan) && (
                         <View className="w-full h-px bg-zam-divider my-1" />
+                    )}
+                    {gates.canDisconnect && (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={() => void onDisconnect()}
+                            disabled={pending !== null}
+                            accessibilityState={{ disabled: pending !== null }}
+                            className="w-full px-3 py-1.5 hover:bg-zam-danger active:bg-zam-danger transition-colors disabled:opacity-50"
+                        >
+                            <Text
+                                numberOfLines={1}
+                                className="text-sm text-zam-danger hover:text-white truncate"
+                            >
+                                {pending === "disconnect"
+                                    ? t("callParticipantMenu.disconnecting")
+                                    : confirming === "disconnect"
+                                      ? t(
+                                            "callParticipantMenu.confirmDisconnect",
+                                            { name },
+                                        )
+                                      : t(
+                                            "callParticipantMenu.disconnectFromVoice",
+                                        )}
+                            </Text>
+                        </Pressable>
                     )}
                     {gates.canKick && (
                         <Pressable

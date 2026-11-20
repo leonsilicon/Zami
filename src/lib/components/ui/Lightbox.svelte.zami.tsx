@@ -62,6 +62,7 @@ import {
 } from "$lib/matrix/client";
 import { isSameOrigin } from "$lib/utils/mxcUri";
 import { rememberVolume } from "$lib/actions/rememberVolume";
+import { holdVideoDecoders } from "$lib/stores/videoDecoderHold";
 import { isSvg, safeMediaBlob } from "$lib/utils/attachmentMime";
 import { STREAM_ENCRYPTED_MIN_BYTES } from "$lib/matrix/videoStream";
 import type { EncryptedFileInfo } from "$lib/utils/decryptAttachment";
@@ -373,6 +374,11 @@ export default function Lightbox({
             openLink(src);
         }
     }
+
+    // This viewer covers the whole timeline, so the timeline's own videos drop
+    // their decoders while it is mounted (see stores/videoDecoderHold). The
+    // parent mounts it only while open, so the effect's teardown is the close.
+    useEffect(() => holdVideoDecoders(), []);
 
     // ── Zoom & pan ──────────────────────────────────────────────────────────
     // Zami: the transform lives in Reanimated shared values, and the gestures
@@ -1773,6 +1779,8 @@ function AuthedVideo({
             loop={loop}
             autoplay
             use={rememberVolume}
+            // Zami: no `use:releaseDecoder`: the Video's expo-video player is
+            // released when it unmounts.
             className={className}
             style={style}
             onResize={onLoadedMetadata}

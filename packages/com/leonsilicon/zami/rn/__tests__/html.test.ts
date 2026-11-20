@@ -60,6 +60,14 @@ describe("parseHtml keeps the Matrix spec's tags", () => {
     expect(clean(input)).toBe(input);
   });
 
+  test("Zam's inline timestamp, with only its own attributes", () => {
+    expect(
+      clean(
+        '<time datetime="2026-11-20T10:00:00.000Z" data-zam-ts-style="R" title="t" class="x">in 1 hour</time>',
+      ),
+    ).toBe('<time datetime="2026-11-20T10:00:00.000Z" data-zam-ts-style="R">in 1 hour</time>');
+  });
+
   test("unwraps other elements and keeps their content", () => {
     expect(clean("<small>sub</small><marquee>x</marquee><form><b>y</b><input></form>")).toBe(
       "subx<b>y</b>",

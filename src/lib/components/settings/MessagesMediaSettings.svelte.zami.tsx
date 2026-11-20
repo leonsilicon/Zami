@@ -1,7 +1,7 @@
-import { pickedFile } from "@-/com.leonsilicon.zami.rn";
+import { pickedFile, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as DocumentPicker from "expo-document-picker";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { t } from "$lib/i18n";
 import OptionSelector from "$lib/components/ui/OptionSelector.svelte";
@@ -19,6 +19,7 @@ import {
     setStripMetadata,
     setRandomizeFileNames,
     setGifsAsWebp,
+    setHideRecentEmoji,
     setLightboxFitToScreen,
     setGifDefaultTab,
     setMidiSoundBank,
@@ -39,6 +40,22 @@ import {
     validateCustomSoundBankFile,
 } from "$lib/utils/customSoundBank";
 import { formatMediaSize } from "$lib/utils/roomMedia";
+import {
+    importFavouriteGifs,
+    setFavouritesEncrypted,
+} from "$lib/stores/favourites.svelte";
+import { privateModeState } from "$lib/matrix/privateAccountData.svelte";
+import { Loader2 } from "lucide-svelte";
+import { showErrorToast } from "$lib/stores/toasts.svelte";
+import { fetchLinkPreview, isGifSiteUrl } from "$lib/utils/linkPreviewFetch";
+import {
+    discordItemToFavourite,
+    discordItemsToFavourites,
+    mapWithLimit,
+    usableDiscordItems,
+    type DiscordFavouriteItem,
+} from "$lib/utils/discordFavourites";
+import { allowsThirdPartyEmbed } from "$lib/utils/linkPreviewPolicy";
 
 const gifTabOptions: Array<{ value: GifTab; label: string }> = [
     { value: "gifs", label: "GIFs" },
@@ -72,6 +89,7 @@ export default function MessagesMediaSettings() {
     const stripMetadata = useRune(() => settingsState.stripMetadata);
     const randomizeFileNames = useRune(() => settingsState.randomizeFileNames);
     const gifsAsWebp = useRune(() => settingsState.gifsAsWebp);
+    const hideRecentEmoji = useRune(() => settingsState.hideRecentEmoji);
     const gifDefaultTab = useRune(() => settingsState.gifDefaultTab);
     const midiSoundBank = useRune(() => settingsState.midiSoundBank);
 
@@ -88,6 +106,137 @@ export default function MessagesMediaSettings() {
     const [customBankLoaded, setCustomBankLoaded] = useState(false);
     const [bankUploadBusy, setBankUploadBusy] = useState(false);
     const [bankUploadError, setBankUploadError] = useState<string | null>(null);
+
+    // Discord favourites import: only where the desktop app provides the bridge.
+    // Zami: `window.desktop` is never set on React Native, so this row stays hidden,
+    // as in Zam's browser build.
+    const discordImportAvailable =
+        typeof window !== "undefined" && !!window.desktop?.discordFavourites;
+    const [discordBusy, setDiscordBusy] = useState(false);
+
+    // Encrypted favourites are account state, shown live from the server. Turning
+    // them off is two-step: the list becomes readable by the homeserver again.
+    const [confirmingEncryptionOff, setConfirmingEncryptionOff] =
+        useState(false);
+    const encryptedOn = useRune(() => privateModeState.mode === "encrypted");
+    const encryptionBusy = useRune(
+        () => privateModeState.switching || privateModeState.mode === "unknown",
+    );
+    async function setEncryption(enable: boolean) {
+        setConfirmingEncryptionOff(false);
+        await setFavouritesEncrypted(enable);
+    }
+    function onEncryptionToggle(checked: boolean) {
+        if (checked) void setEncryption(true);
+        else setConfirmingEncryptionOff(true);
+    }
+    const [discordProgress, setDiscordProgress] = useState<{
+        done: number;
+        total: number;
+    } | null>(null);
+    const [discordOutcome, setDiscordOutcome] = useState<string | null>(null);
+    const discordMounted = useRef(true);
+    useEffect(
+        () => () => {
+            discordMounted.current = false;
+        },
+        [],
+    );
+
+    // Checks each Discord link the way the chat previews it, then imports the
+    // ones with media. The UI writes are skipped once the row is gone.
+    async function importDiscordFavourites() {
+        const bridge = window.desktop?.discordFavourites;
+        if (!bridge || discordBusy) return;
+        setDiscordBusy(true);
+        setDiscordOutcome(null);
+        setDiscordProgress(null);
+        const setOutcome = (msg: string) => {
+            if (discordMounted.current) setDiscordOutcome(msg);
+        };
+        try {
+            const result = await bridge.read();
+            if (!result.found) {
+                setOutcome(t("messagesMediaSettings.discordImportNotFound"));
+                return;
+            }
+            const items: DiscordFavouriteItem[] = usableDiscordItems(
+                result.items,
+            );
+            const total = items.length;
+            const allowEmbeds = allowsThirdPartyEmbed(
+                settingsState.linkPreviewMedia,
+            );
+            if (discordMounted.current) setDiscordProgress({ done: 0, total });
+            let done = 0;
+            const built = await mapWithLimit(
+                items,
+                4,
+                async (item) => {
+                    try {
+                        const { preview } = await fetchLinkPreview(
+                            item.url,
+                            allowEmbeds,
+                        );
+                        return discordItemToFavourite(
+                            item,
+                            preview,
+                            isGifSiteUrl(item.url),
+                        );
+                    } catch {
+                        return null;
+                    }
+                },
+                () => {
+                    done++;
+                    if (discordMounted.current)
+                        setDiscordProgress({ done, total });
+                },
+            );
+            const entries = built.filter(
+                (e): e is NonNullable<typeof e> => e !== null,
+            );
+            const broken =
+                result.invalid +
+                (result.items.length - items.length) +
+                (total - entries.length);
+            const favourites = discordItemsToFavourites(entries, Date.now());
+            if (favourites.length === 0) {
+                setOutcome(
+                    t("messagesMediaSettings.discordImportNoneImportable"),
+                );
+                return;
+            }
+            const added = await importFavouriteGifs(favourites);
+            if (added === 0) {
+                setOutcome(
+                    t("messagesMediaSettings.discordImportAllPresent", {
+                        count: favourites.length,
+                    }),
+                );
+                return;
+            }
+            let msg = t("messagesMediaSettings.discordImportSuccess", {
+                added,
+            });
+            if (result.skippedDiscord + broken > 0)
+                msg +=
+                    " " +
+                    t("messagesMediaSettings.discordImportSkipped", {
+                        discord: result.skippedDiscord,
+                        broken,
+                    });
+            setOutcome(msg);
+        } catch (err) {
+            console.error("Discord favourites import failed:", err);
+            showErrorToast(t("messagesMediaSettings.discordImportFailed"));
+        } finally {
+            if (discordMounted.current) {
+                setDiscordBusy(false);
+                setDiscordProgress(null);
+            }
+        }
+    }
 
     useEffect(() => {
         if (systemBankSupported)
@@ -444,6 +593,23 @@ export default function MessagesMediaSettings() {
                         )}
                     />
                 </View>
+                <View className="flex-row items-center gap-3 py-2">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("messagesMediaSettings.hideRecentEmoji")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t(
+                                "messagesMediaSettings.hideRecentEmojiDescription",
+                            )}
+                        </Text>
+                    </View>
+                    <ToggleSwitch
+                        checked={hideRecentEmoji}
+                        onChange={setHideRecentEmoji}
+                        label={t("messagesMediaSettings.hideRecentEmoji")}
+                    />
+                </View>
             </View>
 
             <View>
@@ -468,6 +634,125 @@ export default function MessagesMediaSettings() {
                         ariaLabel={t("messagesMediaSettings.defaultGifTab")}
                     />
                 </View>
+                <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+                    <View className="flex-1 min-w-0">
+                        <Text className="text-sm text-zam-textPrimary">
+                            {t("privateData.toggleLabel")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("privateData.toggleHelp")}
+                        </Text>
+                        {confirmingEncryptionOff ? (
+                            <Text
+                                className="text-xs text-zam-textPrimary mt-1"
+                                accessibilityRole="alert"
+                            >
+                                {t("privateData.offWarning")}
+                            </Text>
+                        ) : null}
+                    </View>
+                    {confirmingEncryptionOff ? (
+                        <View className="flex-row items-center gap-2 shrink-0">
+                            <Pressable
+                                accessibilityRole="button"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover transition-colors"
+                                onPress={() =>
+                                    setConfirmingEncryptionOff(false)
+                                }
+                            >
+                                <Text className="text-sm text-zam-textPrimary">
+                                    {t("common.cancel")}
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                accessibilityRole="button"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
+                                onPress={() => void setEncryption(false)}
+                                disabled={encryptionBusy}
+                            >
+                                <Text className="text-sm text-zam-textPrimary">
+                                    {t("privateData.turnOff")}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    ) : (
+                        <View className="flex-row items-center gap-2 shrink-0">
+                            {encryptionBusy ? (
+                                <Spin>
+                                    <Loader2
+                                        size={16}
+                                        className="text-zam-accent"
+                                    />
+                                </Spin>
+                            ) : null}
+                            {/* Zami: `pointer-events-none` → pointerEvents="none". */}
+                            <View
+                                className={encryptionBusy ? "opacity-50" : ""}
+                                pointerEvents={encryptionBusy ? "none" : "auto"}
+                                accessibilityState={{
+                                    disabled: encryptionBusy,
+                                }}
+                            >
+                                <ToggleSwitch
+                                    checked={encryptedOn}
+                                    onChange={onEncryptionToggle}
+                                    label={t("privateData.toggleLabel")}
+                                />
+                            </View>
+                        </View>
+                    )}
+                </View>
+                {discordImportAvailable ? (
+                    <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <View className="flex-1 min-w-0">
+                            <Text className="text-sm text-zam-textPrimary">
+                                {t("messagesMediaSettings.discordImportTitle")}
+                            </Text>
+                            <Text className="text-xs text-zam-textMuted">
+                                {t(
+                                    "messagesMediaSettings.discordImportDescription",
+                                )}
+                            </Text>
+                            {discordBusy && discordProgress ? (
+                                <Text
+                                    className="text-xs text-zam-textMuted"
+                                    accessibilityLiveRegion="polite"
+                                >
+                                    {t(
+                                        "messagesMediaSettings.discordImportChecking",
+                                        {
+                                            done: discordProgress.done,
+                                            total: discordProgress.total,
+                                        },
+                                    )}
+                                </Text>
+                            ) : discordOutcome ? (
+                                <Text
+                                    className="text-xs text-zam-textMuted"
+                                    accessibilityLiveRegion="polite"
+                                >
+                                    {discordOutcome}
+                                </Text>
+                            ) : null}
+                        </View>
+                        <Pressable
+                            accessibilityRole="button"
+                            className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
+                            onPress={() => void importDiscordFavourites()}
+                            disabled={discordBusy}
+                        >
+                            <Text className="text-sm text-zam-textPrimary">
+                                {discordBusy
+                                    ? t(
+                                          "messagesMediaSettings.discordImportBusy",
+                                      )
+                                    : t(
+                                          "messagesMediaSettings.discordImportButton",
+                                      )}
+                            </Text>
+                        </Pressable>
+                    </View>
+                ) : null}
             </View>
 
             <View>

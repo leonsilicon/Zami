@@ -57,6 +57,7 @@ import {
     relationsRevision,
 } from "@-/com.leonsilicon.zami.event-revision";
 import { createLruMemo } from "$lib/utils/lruMemo";
+import { isPendingSendStatus } from "$lib/utils/pendingSend";
 
 // Module scope is deliberate: a room switch unmounts every MessageItem and
 // re-mounts them, so an instance-scoped cache would die before it could
@@ -65,8 +66,10 @@ import { createLruMemo } from "$lib/utils/lruMemo";
 // cache hit can never return output computed under different conditions.
 const sanitizeCache = createLruMemo<string>(500);
 const twemojiCache = createLruMemo<string>(500);
+// Zami: actions/relativeTimestamps' refresh interval.
+const RELATIVE_TIMESTAMP_TICK_MS = 30_000;
 
-import { t } from "$lib/i18n";
+import { t, getLocale } from "$lib/i18n";
 import type { MatrixEvent, Room } from "matrix-js-sdk";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
@@ -310,6 +313,7 @@ import {
     codeBlockKey,
     codeBlockOverflows,
 } from "$lib/utils/codeBlockCollapse";
+import { renderInlineTimestampsHtml } from "$lib/utils/inlineTimestamp";
 
 import type { ReadReceiptInfo } from "$lib/matrix/client";
 
@@ -1011,6 +1015,9 @@ function MessageItem({
     // Zami: the status is read once, for this and the shield's key below.
     const eventStatus = event.status;
     const isFailed = eventStatus === EventStatus.NOT_SENT;
+    // A local echo the server hasn't confirmed yet: its body is greyed out
+    // until it lands, so backing out of the app mid-send is noticeable.
+    const isPending = isPendingSendStatus(eventStatus);
     const [isResending, setIsResending] = useState(false);
 
     async function retrySend() {
@@ -2651,23 +2658,43 @@ function MessageItem({
         // differently across an account switch. A NUL (U+0000) is a safe
         // separator (never present in a URL or in Matrix HTML).
         const base = getHomeserverBaseUrl() ?? "";
+        // Inline <t:...> timestamps (sanitized <time>) are localized here,
+        // outside the cache: relative ones depend on the current time.
         return renderMessageTimestamps(
-            highlightRoomMention(
-                sanitizeCache.get(`${base}\u0000${html}`, () =>
-                    sanitizeMatrixHtml(html, { resolveMxc: mxcToHttp }),
+            renderInlineTimestampsHtml(
+                highlightRoomMention(
+                    sanitizeCache.get(`${base}\u0000${html}`, () =>
+                        sanitizeMatrixHtml(html, { resolveMxc: mxcToHttp }),
+                    ),
                 ),
+                getLocale(),
+                Date.now(),
             ),
         );
     }
 
     // Zami: the `{@html}` body, built as upstream builds it, once per content.
+    // Zami: `use:relativeTimestamps`: a body with a relative inline timestamp
+    // is rebuilt on the action's 30 s tick, so "5 minutes ago" stays current.
+    const [relativeTick, setRelativeTick] = useState(0);
     const bodyHtml = useMemo(() => {
         const formatted = formattedBody();
         return formatted
             ? withTwemoji(sanitize(formatted))
             : withTwemoji(plainToHtml(body()));
-        // Zami: withTwemoji and sanitize read only their argument.
-    }, [formattedBody, body]);
+        // Zami: withTwemoji and sanitize read only their argument (and the
+        // clock, for relative timestamps: relativeTick).
+        // oxlint-disable-next-line react-hooks/exhaustive-deps -- relativeTick re-reads the clock.
+    }, [formattedBody, body, relativeTick]);
+    const hasRelativeTimestamp = bodyHtml.includes("data-zam-ts-rel");
+    useEffect(() => {
+        if (!hasRelativeTimestamp) return;
+        const timer = setInterval(
+            () => setRelativeTick((n) => n + 1),
+            RELATIVE_TIMESTAMP_TICK_MS,
+        );
+        return () => clearInterval(timer);
+    }, [hasRelativeTimestamp]);
 
     async function navigateToMatrixTarget(
         target: Exclude<MatrixLinkTarget, { kind: "user" }>,
@@ -2784,11 +2811,11 @@ function MessageItem({
         const trailing = isEdited || spacerWidth > 0;
         return (
             <View
-                className={
+                className={`${
                     trailing && !BLOCK_HTML.test(html)
                         ? "flex-row flex-wrap items-end"
                         : ""
-                }
+                }${isPending ? " opacity-50" : ""}`}
             >
                 <Html
                     html={html}
@@ -3632,7 +3659,11 @@ function MessageItem({
                 ? `<span>* ${escapeHtml(emoteActor)} </span>${bodyHtml}`
                 : bodyHtml;
         return (
-            <View className="flex-row flex-wrap items-end">
+            <View
+                className={`flex-row flex-wrap items-end${
+                    isPending ? " opacity-50" : ""
+                }`}
+            >
                 <Html
                     html={html}
                     className={`text-sm text-zam-textPrimary leading-relaxed${
