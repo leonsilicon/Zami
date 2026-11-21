@@ -18,6 +18,7 @@ packages/com/leonsilicon/zami/
   paths/  dev/  maestro/  push-gateway/
 apps/zami/                             the Expo app
 apps/push-gateway/                     zami-push.leonsilicon.com, the Matrix push gateway
+apps/upstream-sync/                    relays Zam fork pushes to the upstream sync workflow
 apps/site/                             zami.leonsilicon.com
 ```
 
@@ -101,11 +102,13 @@ vpx _maestro          # the Maestro flows (apps/zami/.maestro) on an iOS simulat
 
 ## Syncing upstream
 
-The `Zami upstream sync` workflow checks upstream's `master` every six hours. You can
-also run it from the Actions tab. When the upstream commit changes, the workflow checks
-Zami's codemods and builds the web app before pushing a commit that updates the submodule
-pin on `trunk`. If a codemod stops applying, the workflow log identifies it and the pin
-stays on the last buildable revision.
+[Forkkeeper](https://github.com/bocklabs/forkkeeper) syncs `master` on
+[`leonsilicon/Zam`](https://github.com/leonsilicon/Zam) with upstream. A signed push webhook
+from that fork starts the `Zami upstream sync` workflow through the
+[webhook Worker](apps/upstream-sync/README.md). You can also run it from the Actions tab.
+The workflow checks the official Zam remote, validates Zami's codemods and builds the web
+app before updating the submodule pin on `trunk`. If a codemod stops applying, the workflow
+log identifies it and the pin stays on the last buildable revision.
 
 To try the latest upstream commit locally, stage its pin before running the checks:
 

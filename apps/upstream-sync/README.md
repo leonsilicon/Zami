@@ -1,13 +1,14 @@
 # Zami upstream sync webhook
 
-Pull syncs the `master` branch of `leonsilicon/Zam` with upstream Zam. GitHub sends the
-fork's push webhook to `https://zami-upstream-sync.leonsilicon.com/github`. The Worker
+[Forkkeeper](https://github.com/bocklabs/forkkeeper) syncs the `master` branch of
+`leonsilicon/Zam` with upstream Zam. GitHub sends the fork's push webhook to
+`https://zami-upstream-sync.leonsilicon.com/github`. The Worker
 verifies the signature and dispatches `zami-upstream-sync.yml` on Zami's `trunk`. The
 workflow checks the official Zam remote, runs the codemods and builds the web app
 before advancing the submodule pin.
 
-The Worker uses a private GitHub App installed only on `leonsilicon/Zami` with Actions
-write permission. It requests an installation token for each dispatch.
+The Worker uses the private Zami Upstream Dispatch GitHub App installed only on
+`leonsilicon/Zami` with Actions write permission. It requests an installation token for each dispatch.
 
 Deploy with `vpx wrangler deploy` from this directory after configuring these Worker
 secrets:
