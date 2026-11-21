@@ -1,0 +1,25 @@
+{
+  "name": "@-/com.leonsilicon.zami.web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "`vpx _web`: builds upstream Zam's web app, unmodified, for the Zami app to show in its WebView.",
+  "bin": {
+    "_web": "./_web.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches": "workspace:*",
+    "@-/com.leonsilicon.zami.paths": "workspace:*",
+    "@-/com.leonsilicon.zami.plugins": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

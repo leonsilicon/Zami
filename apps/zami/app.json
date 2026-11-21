@@ -15,62 +15,27 @@
       "appleTeamId": "M76P5G9HXK",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Zami uses the camera for video calls, sign-in QR codes and photos you send.",
+        "NSMicrophoneUsageDescription": "Zami uses the microphone for voice messages and calls.",
+        "NSLocationWhenInUseUsageDescription": "Zami shares your location only when you choose to send it.",
+        "NSPhotoLibraryAddUsageDescription": "Zami saves the images and videos you choose to your photo library.",
+        "UIBackgroundModes": ["audio", "remote-notification"]
       }
     },
     "android": {
       "package": "com.leonsilicon.zami",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
-    "plugins": [
-      "expo-sqlite",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Zami uses the camera to scan sign-in QR codes and for video calls.",
-          "microphonePermission": "Zami uses the microphone for voice messages and calls.",
-          "recordAudioAndroid": true
-        }
-      ],
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "Zami uses the microphone for voice messages and calls."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Zami lets you send photos and videos from your library.",
-          "cameraPermission": "Zami uses the camera to take photos to send."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Zami shares your location only when you choose to send it."
-        }
-      ],
-      "expo-notifications",
-      "expo-video",
-      "expo-localization",
-      "@livekit/react-native-expo-plugin",
-      [
-        "@config-plugins/react-native-webrtc",
-        {
-          "cameraPermission": "Zami uses the camera for video calls.",
-          "microphonePermission": "Zami uses the microphone for voice messages and calls."
-        }
-      ],
-      [
-        "react-native-audio-api",
-        {
-          "iosBackgroundMode": true,
-          "enableFFmpeg": true,
-          "iosMicrophonePermission": "Zami uses the microphone for voice messages and calls."
-        }
-      ],
-      "expo-font"
-    ],
+    "plugins": ["expo-sqlite", "expo-notifications", "expo-web-browser"],
     "extra": {
       "eas": {
         "projectId": "0e15223a-ea96-4bfc-9411-7879f30a8e35"

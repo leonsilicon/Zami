@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../../tsconfig.json",
+  "include": ["*.ts", "codemods/**/*.ts", "__tests__/*.ts"]
+}

@@ -1,0 +1,5 @@
+{
+  // Node tooling, type-checked like Zami's other tooling packages.
+  "extends": "../../../../tsconfig.json",
+  "include": ["*.ts", "__tests__/*.ts"]
+}

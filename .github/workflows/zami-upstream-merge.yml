@@ -1,7 +1,7 @@
 # Merges the upstream sync's pull request (zami-upstream-sync.yml) by itself once it's
 # verified, with no one's approval:
-#  - the sync run found that Claude finished and `_zami check` passed, and named the commit
-#    it checked in a hidden marker in the description (`<!-- zami-automerge: <sha> -->`;
+#  - the sync run found that every codemod applied and the web app built, and named the
+#    commit it checked in a hidden marker in the description (`<!-- zami-automerge: <sha> -->`;
 #    a run that didn't get that far sets `hold`);
 #  - the pull request's head contains that commit (commits pushed on top of it, say a
 #    person's fix, merge the same way);
@@ -53,7 +53,7 @@ jobs:
           fi
           verified=$(jq -r '.body // ""' <<< "$pr" | sed -n 's/.*<!-- zami-automerge: \([0-9a-f]\{40\}\) -->.*/\1/p' | head -n 1)
           if [ -z "$verified" ]; then
-            echo "#$number isn't marked ready: Claude didn't finish, or \`_zami check\` failed."
+            echo "#$number isn't marked ready: the codemods or the web build failed."
             exit 0
           fi
           status=$(gh api "repos/$GH_REPO/compare/$verified...$head" -q .status)

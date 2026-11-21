@@ -1,0 +1,13 @@
+{
+  // The shell runs in React Native; apps/zami checks it with React Native's types. This
+  // checks the parts that don't touch React Native, and the tests, under Node.
+  "extends": "../../../../tsconfig.json",
+  "include": [
+    "bootstrap.ts",
+    "bridge.ts",
+    "protocol.ts",
+    "config-plugin.ts",
+    "+config-plugin.ts",
+    "__tests__/*.ts"
+  ]
+}

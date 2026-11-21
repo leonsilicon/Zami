@@ -1,0 +1,4 @@
+{
+  "source": "packages/com/github/az4521/Zam",
+  "bundles": ["src/lib/push.ts"]
+}

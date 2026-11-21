@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.leonsilicon.zami.shell'
+version = '0.0.0'
+
+android {
+  namespace "com.leonsilicon.zami.shell"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.0"
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  // RNCWebViewClient.RequestInterceptor, the hook patches/react-native-webview adds.
+  implementation project(':react-native-webview')
+}

@@ -1,6 +1,6 @@
-# Zami's checks. `_zami check` enforces the porting invariants: no upstream file is ever
-# modified, every copy-type upstream file has its Zami version, and no Zami file is stale
-# or left with merge conflicts.
+# Zami's checks, and the invariants of how it carries upstream Zam: Zam's tree
+# (packages/com/github/az4521/Zam) is exactly the upstream commit last merged into it, and
+# every codemod that changes Zam or an npm package still applies.
 name: Zami CI
 
 on:
@@ -11,6 +11,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  ZAM: packages/com/github/az4521/Zam
 
 jobs:
   check:
@@ -25,12 +28,19 @@ jobs:
           node-version: "26"
           run-install: true
           cache: true
-      - name: Format, lint and types (Zami's own code and the Zami files in Zam's tree)
+      - name: Zam's tree is upstream's, unmodified
+        run: |
+          merged=$(git merge-base HEAD upstream/master)
+          if [ "$(git rev-parse "$merged^{tree}")" != "$(git rev-parse "HEAD:$ZAM")" ]; then
+            echo "::error::$ZAM differs from upstream ${merged:0:10}, the commit last merged into it. Change Zam with a codemod (packages/com/leonsilicon/zami/configs/patches), never in place:"
+            git diff --stat "$merged" "HEAD:$ZAM" | tail -n 40
+            exit 1
+          fi
+      - name: Format, lint and types (Zami's own code)
         run: vp check
       - run: vp run typecheck
-      - name: Tests (Zami's tooling, then upstream Zam's tests against the Zami files)
-        run: vp run test
+      - run: vp run test
+      - name: The codemods still apply
+        run: vpx _patches check
       - name: Bundle the app (iOS and Android)
         run: vp run bundle
-      - name: Porting invariants
-        run: vpx _zami check

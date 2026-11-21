@@ -5,7 +5,7 @@ import { configFor } from "./app.config.ts";
 
 const { expo } = JSON.parse(readFileSync(new URL("./app.json", import.meta.url), "utf8"));
 
-test("production and staging use the approved opaque 1024px app icon", () => {
+void test("production and staging use the approved opaque 1024px app icon", () => {
   assert.equal(expo.icon, "./assets/icon.png");
   const png = readFileSync(new URL(expo.icon, import.meta.url));
   assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");

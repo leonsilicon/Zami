@@ -1,6 +1,7 @@
 // app.json, for the variant in ZAMI_VARIANT: "production" (the default), the app "Zami", or
 // "staging", "(S) Zami", a separate app that installs next to it (built nightly from
 // trunk; see .github/workflows/zami-staging.yml).
+import { withZamiShell } from "@-/com.leonsilicon.zami.shell/config-plugin";
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 export type Variant = "production" | "staging";
@@ -16,14 +17,16 @@ export function configFor(config: ExpoConfig, variant: Variant): ExpoConfig {
   return {
     ...config,
     name: "(S) Zami",
-    // Its own deep-link scheme. The OAuth redirect scheme stays: Matrix Authentication
-    // Service only accepts the reverse of the client_uri's host, and the sign-in
-    // session takes the redirect itself, so it never reaches the other app.
+    // Its own deep-link scheme. The sign-in redirect scheme stays: the sign-in session
+    // takes the redirect itself, so it never reaches the other app.
     scheme: ["zami-staging", "com.leonsilicon.zami"],
     ios: { ...config.ios, bundleIdentifier: "com.leonsilicon.zami.staging" },
     android: { ...config.android, package: "com.leonsilicon.zami.staging" },
   };
 }
 
-export default ({ config }: ConfigContext): ExpoConfig =>
-  configFor(config as ExpoConfig, variantFrom(process.env.ZAMI_VARIANT));
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const app = configFor(config as ExpoConfig, variantFrom(process.env.ZAMI_VARIANT));
+  // The shell's: each native build bundles Zam's web app.
+  return withZamiShell(app);
+};
