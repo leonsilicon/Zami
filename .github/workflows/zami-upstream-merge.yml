@@ -14,7 +14,7 @@ on:
   workflow_run:
     workflows: [Zami CI, Zami Maestro]
     types: [completed]
-    branches: [zami/upstream-sync]
+    branches: [zami/upstream-subtree-sync]
   workflow_dispatch:
 
 permissions:
@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BRANCH: zami/upstream-sync
+  BRANCH: zami/upstream-subtree-sync
   GH_REPO: ${{ github.repository }}
 
 jobs:

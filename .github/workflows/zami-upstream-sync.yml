@@ -1,6 +1,6 @@
 # Keeps Zami in step with upstream Zam (https://github.com/az4521/Zam):
 #  1. merges new upstream commits into packages/com/github/az4521/Zam (a subtree merge) on
-#     the `zami/upstream-sync` branch. Zami never edits that tree, so the merge is clean; if
+#     the `zami/upstream-subtree-sync` branch. Zami never edits that tree, so the merge is clean; if
 #     upstream rewrites its history, upstream's version of its files wins;
 #  2. checks that every codemod still applies to the merged tree (`_patches check`) and
 #     that Zam's web app builds with them (`_web build`);
@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BRANCH: zami/upstream-sync
+  BRANCH: zami/upstream-subtree-sync
   ZAM: packages/com/github/az4521/Zam
   # Adding the `upstream` remote would otherwise make gh act on Zam's own repository.
   GH_REPO: ${{ github.repository }}
