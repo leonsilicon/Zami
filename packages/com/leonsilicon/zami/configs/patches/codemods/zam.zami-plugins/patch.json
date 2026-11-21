@@ -1,4 +1,9 @@
 {
   "source": "repos/com/github/az4521/Zam",
-  "bundles": ["src/hooks.client.ts", "src/lib/plugins/hostApi.ts"]
+  "bundles": [
+    "src/hooks.client.ts",
+    "src/lib/plugins/hostApi.ts",
+    "src/lib/plugins/loader.ts",
+    "src/lib/plugins/pluginBoot.ts"
+  ]
 }
