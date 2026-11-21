@@ -7,8 +7,11 @@ codemods (below). The shell gives it what Zam's Android app gets from Capacitor 
 callbacks, push notifications, native storage), so Zam takes the paths it takes in a native
 app.
 
+Zami's source lives in `apps/` and `packages/` and uses ordinary filenames.
+
 ```
-packages/com/github/az4521/Zam/        upstream Zam, as upstream has it (never edited)
+repos/com/github/az4521/Zam/           pristine upstream Zam submodule
+packages/com/github/az4521/Zam/        importable workspace package for pinned Zam source
 packages/com/leonsilicon/zami/
   configs/patches/                     Zami's changes to code it doesn't own, as jssg codemods
   web/                                 builds Zam's web app (`vpx _web`)
@@ -17,17 +20,19 @@ packages/com/leonsilicon/zami/
   paths/  dev/  maestro/  push-gateway/
 apps/zami/                             the Expo app
 apps/push-gateway/                     zami-push.leonsilicon.com, the Matrix push gateway
+apps/upstream-sync/                    relays Zam fork pushes to the upstream sync workflow
 apps/site/                             zami.leonsilicon.com
 ```
 
 ## How it works
 
-1. **Zam, unmodified.** `packages/com/github/az4521/Zam` is upstream's tree, merged as a
-   subtree (below). Nothing in it is ever edited, formatted or linted.
+1. **Zam's source.** `repos/com/github/az4521/Zam` is a submodule pinned to an upstream
+   commit. Zami tooling imports `@-/com.github.az4521.zam` to read that commit. The submodule
+   stays pristine.
 2. **The web app.** `vpx _web build` exports that tree to a cache directory, applies Zami's
-   codemods for it, installs Zam's dependencies from its own lockfile (`npm ci`) and builds
-   it with its own Vite config. The native builds run it (incrementally) and bundle the
-   result as `zami-web/`.
+   codemods and installs Zam's dependencies from its lockfile (`npm ci`). It builds with
+   `vite.webview.config.ts`, a generated config that adds Zami's plugin to Zam's Vite
+   config. Native builds run this incrementally and bundle the result as `zami-web/`.
 3. **The shell.** The app is one WebView. Its native module serves the bundled web app at an
    origin of its own (`zami://localhost` on iOS, `https://localhost` on Android, like Zam's
    Capacitor app): a secure context with its own storage, with no local server. Before any
@@ -73,7 +78,7 @@ Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami'
 ## Setup and running
 
 ```sh
-git remote add upstream https://github.com/az4521/Zam.git   # once per clone
+git submodule update --init --recursive
 vp install
 vpx _dev              # iOS simulator: build the web app and the app if needed, install, launch, serve JS
 vpx _dev android      # Android emulator or device
@@ -99,16 +104,21 @@ vpx _maestro          # the Maestro flows (apps/zami/.maestro) on an iOS simulat
 
 ## Syncing upstream
 
-Upstream Zam is merged into its directory as a subtree:
+[Forkkeeper](https://github.com/bocklabs/forkkeeper) syncs `master` on
+[`leonsilicon/Zam`](https://github.com/leonsilicon/Zam) with upstream. A signed push webhook
+from that fork starts the `Zami upstream sync` workflow through the
+[webhook Worker](apps/upstream-sync/README.md). You can also run it from the Actions tab.
+The workflow checks the official Zam remote, validates Zami's codemods and builds the web
+app before updating the submodule pin on `trunk`. If a codemod stops applying, the workflow
+log identifies it and the pin stays on the last buildable revision.
+
+To try the latest upstream commit locally, stage its pin before running the checks:
 
 ```sh
-git fetch upstream
-git merge -X subtree=packages/com/github/az4521/Zam upstream/master
+git submodule update --init --remote --checkout -- repos/com/github/az4521/Zam
+git add -- repos/com/github/az4521/Zam
 vpx _patches check && vpx _web build
 ```
-
-The scheduled workflow `.github/workflows/zami-upstream-sync.yml` does this and opens a pull
-request. A codemod that no longer applies fails the check; fix the codemod, not Zam's file.
 
 ## Releases
 

@@ -1,23 +1,8 @@
-# Keeps Zami in step with upstream Zam (https://github.com/az4521/Zam):
-#  1. merges new upstream commits into packages/com/github/az4521/Zam (a subtree merge) on
-#     the `zami/upstream-subtree-sync` branch. Zami never edits that tree, so the merge is clean; if
-#     upstream rewrites its history, upstream's version of its files wins;
-#  2. checks that every codemod still applies to the merged tree (`_patches check`) and
-#     that Zam's web app builds with them (`_web build`);
-#  3. if a codemod no longer applies (upstream changed what it looks for), Claude updates
-#     the codemod, never Zam's file;
-#  4. opens or updates a pull request, which zami-ci.yml and zami-maestro.yml check, and
-#     zami-upstream-merge.yml merges once they pass, if the codemods applied.
-#
-# Secrets: ZAMI_BOT_TOKEN (fine-grained PAT on this repo: Contents, Pull requests,
-# Workflows and Actions read/write; GITHUB_TOKEN can't push upstream's workflow-file
-# changes or trigger CI on the PR it opens), and CLAUDE_CODE_OAUTH_TOKEN (from
-# `claude setup-token`) or ANTHROPIC_API_KEY.
+# Check upstream Zam after a fork webhook or manual dispatch and bump the verified pin.
+# ZAMI_BOT_TOKEN lets the push trigger trunk's normal workflows.
 name: Zami upstream sync
 
 on:
-  schedule:
-    - cron: "23 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,148 +13,64 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BRANCH: zami/upstream-subtree-sync
-  ZAM: packages/com/github/az4521/Zam
-  # Adding the `upstream` remote would otherwise make gh act on Zam's own repository.
-  GH_REPO: ${{ github.repository }}
+  ZAM: repos/com/github/az4521/Zam
 
 jobs:
-  sync:
+  check:
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
+    outputs:
+      commit: ${{ steps.upstream.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          token: ${{ secrets.ZAMI_BOT_TOKEN }}
-
-      - name: Merge upstream Zam
-        id: merge
+          persist-credentials: false
+      - name: Find and check out a new Zam commit
+        id: upstream
         run: |
+          set -euo pipefail
+          current=$(git rev-parse "HEAD:$ZAM")
+          url=$(git config --file .gitmodules --get submodule.Zam.url)
+          branch=$(git config --file .gitmodules --get submodule.Zam.branch)
+          latest=$(git ls-remote --exit-code "$url" "refs/heads/$branch" | cut -f1)
+          if [[ "$latest" == "$current" ]]; then
+            echo "Zam is already at ${current:0:10}."
+            exit 0
+          fi
+          git update-index --cacheinfo "160000,$latest,$ZAM"
+          git submodule update --init --depth 1 -- "$ZAM"
+          echo "Checking Zam ${current:0:10} → ${latest:0:10}."
+          echo "commit=$latest" >> "$GITHUB_OUTPUT"
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        if: steps.upstream.outputs.commit != ''
+        with:
+          node-version: "26"
+          run-install: true
+          cache: true
+      - name: Check codemods and build Zam
+        if: steps.upstream.outputs.commit != ''
+        run: |
+          vpx _patches check
+          vpx _web build
+
+  bump:
+    needs: check
+    if: needs.check.outputs.commit != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Use a fresh checkout with write credentials after upstream's build scripts have run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.ZAMI_BOT_TOKEN }}
+      - name: Commit and push the verified submodule pin
+        env:
+          ZAM_COMMIT: ${{ needs.check.outputs.commit }}
+        run: |
+          set -euo pipefail
           git config user.name "zami-bot"
           git config user.email "zami-bot@users.noreply.github.com"
-          git remote add upstream https://github.com/az4521/Zam.git
-          git fetch --no-tags upstream master
-          # Continue an open sync PR's branch, so commits pushed to it aren't lost.
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
-            git fetch origin "$BRANCH"
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-            git merge --no-edit origin/trunk
-          else
-            git checkout -B "$BRANCH" origin/trunk
-          fi
-          latest=$(git rev-parse upstream/master)
-          echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          if git merge-base --is-ancestor "$latest" HEAD; then
-            echo "Already merged upstream ${latest:0:10}."
-            echo "merged=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! git merge --no-ff --no-edit -X subtree="$ZAM" -m "Merge upstream Zam ${latest:0:10}" upstream/master; then
-            # Zami never edits Zam's tree, so it conflicts only when upstream rewrote history
-            # it had already published. Upstream's version is the right one by definition.
-            git diff --name-only --diff-filter=U | while read -r path; do
-              case "$path" in
-                "$ZAM"/*) ;;
-                *) echo "::error::$path, outside Zam's tree, conflicts with upstream"; exit 1 ;;
-              esac
-              if git cat-file -e "upstream/master:${path#"$ZAM"/}" 2>/dev/null; then
-                git show "upstream/master:${path#"$ZAM"/}" > "$path"
-                git add "$path"
-              else
-                git rm -q "$path"
-              fi
-            done
-            git commit --no-edit
-          fi
-          echo "merged=true" >> "$GITHUB_OUTPUT"
-
-      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
-        if: steps.merge.outputs.merged == 'true'
-
-      - name: Check the codemods
-        id: check
-        if: steps.merge.outputs.merged == 'true'
-        run: |
-          vp install
-          mkdir -p node_modules/.cache/zami
-          if vpx _patches check > node_modules/.cache/zami/patches.txt 2>&1; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          fi
-          cat node_modules/.cache/zami/patches.txt
-
-      - name: Fix the codemods with Claude
-        id: claude
-        if: steps.check.outputs.ok == 'false'
-        timeout-minutes: 30
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.ZAMI_BOT_TOKEN }}
-          prompt: >-
-            Upstream Zam was just merged into packages/com/github/az4521/Zam, and some of Zami's
-            codemods no longer apply: `vpx _patches check` printed
-            node_modules/.cache/zami/patches.txt. Read packages/com/leonsilicon/zami/configs/patches/README.md,
-            then update each failing codemod (codemod.ts and patch.json) so it makes the same change
-            to upstream's new code. Never edit anything under packages/com/github/az4521/Zam. For an
-            npm codemod, run `vpx _patches generate <name>` after fixing it. Finish when
-            `vpx _patches check` passes, and say what you changed and why.
-          claude_args: >-
-            --model claude-opus-5-5
-            --max-turns 60
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
-            --disallowedTools "Bash(git commit:*),Bash(git push:*),Bash(git checkout:*),Bash(git reset:*),Bash(git merge:*),Bash(git restore:*)"
-
-      - name: Check again and build the web app
-        id: verify
-        if: steps.merge.outputs.merged == 'true'
-        run: |
-          if git status --porcelain -- "$ZAM" | grep -q .; then
-            echo "::error::Zam's tree was edited; change it with a codemod instead"
-            git checkout -- "$ZAM"
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if vpx _patches check > node_modules/.cache/zami/patches.txt 2>&1 && vpx _web build > node_modules/.cache/zami/web.txt 2>&1; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          fi
-          cat node_modules/.cache/zami/patches.txt
-          tail -n 40 node_modules/.cache/zami/web.txt || true
-
-      - name: Push and open the pull request
-        if: steps.merge.outputs.merged == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.ZAMI_BOT_TOKEN }}
-          LATEST: ${{ steps.merge.outputs.latest }}
-          OK: ${{ steps.verify.outputs.ok }}
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "Update the codemods for upstream Zam ${LATEST:0:10}"
-          fi
-          git push origin "HEAD:$BRANCH"
-          number=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
-          {
-            if [ "$OK" = "true" ]; then
-              printf '<!-- zami-automerge: %s -->\n**Auto-merge:** on. This merges itself once Zami CI and Zami Maestro pass; mark it as a draft to stop that.\n\n' "$(git rev-parse HEAD)"
-            else
-              printf '<!-- zami-automerge: hold -->\n**Auto-merge:** held, because the codemods or the web build failed (below).\n\n'
-            fi
-            printf 'Merges upstream Zam %s into `%s`.\n\n## Upstream commits\n\n' "${LATEST:0:10}" "$ZAM"
-            git log --no-merges --format='- %s (%h)' "HEAD^1..upstream/master" | head -n 60
-            printf '\n## `_patches check`\n\n```\n'
-            cat node_modules/.cache/zami/patches.txt
-            printf '```\n'
-          } > "$RUNNER_TEMP/body.md"
-          if [ -n "$number" ]; then
-            # Not `gh pr edit`: it also reads the PR's reviewers and projects, which needs the
-            # read:org scope this token doesn't have.
-            gh api -X PATCH "repos/$GH_REPO/pulls/$number" -f title="Sync with upstream Zam ${LATEST:0:10}" -F body=@"$RUNNER_TEMP/body.md" > /dev/null
-          else
-            gh pr create --base trunk --head "$BRANCH" --title "Sync with upstream Zam ${LATEST:0:10}" --body-file "$RUNNER_TEMP/body.md"
-          fi
+          git update-index --cacheinfo "160000,$ZAM_COMMIT,$ZAM"
+          git commit -m "Bump Zam to ${ZAM_COMMIT:0:10}"
+          git push origin "HEAD:$GITHUB_REF"

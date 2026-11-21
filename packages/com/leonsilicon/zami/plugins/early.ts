@@ -2,9 +2,8 @@
 // drawn after it, and Zam loads plugins once its app shell is up, which is too late for a
 // patch of the shell. So a plugin that patches a component is marked to load early, and
 // from the next launch on it's loaded in Zam's `init` hook, which SvelteKit awaits before it
-// starts the app (the `zam.zami-plugins` codemod). It's loaded with Zam's own loader, which
-// Zam's own boot then skips it in. `zam.zami.app.loadEarly(false)` opts a plugin out.
-import { addLayer } from "#layers";
+// starts the app (the `zam.zami-plugins` codemod). Both boot paths share the same startup
+// runner. `zam.zami.app.loadEarly(false)` opts a plugin out.
 import { importModule } from "#registry";
 
 const PREFERENCES_KEY = "zami_plugins_early";
@@ -60,8 +59,7 @@ interface Loadable {
 }
 
 interface PluginLoader {
-  enable(plugin: Loadable): Promise<boolean>;
-  bootLoad(plugins: Loadable[]): Promise<void>;
+  enable: (plugin: Loadable, onError?: (error: unknown) => void) => Promise<boolean>;
   isLoaded(pluginId: string): boolean;
 }
 
@@ -74,26 +72,15 @@ interface PersistedPlugin {
   path?: string;
 }
 
-let bootSkipsLoaded = false;
-
 async function loadEarlyPlugins(): Promise<void> {
-  const boot = await importModule("$lib/plugins/pluginBoot");
-  const loader = boot.loader as PluginLoader;
-  // Zam's own boot (initPlugins) loads every enabled plugin: not the ones loaded here again.
-  if (!bootSkipsLoaded) {
-    bootSkipsLoaded = true;
-    addLayer(
-      loader,
-      "bootLoad",
-      (below) => (plugins: Loadable[]) =>
-        (below as PluginLoader["bootLoad"]).call(
-          loader,
-          plugins.filter((plugin) => !loader.isLoaded(plugin.manifest.id)),
-        ),
-    );
-  }
   const ids = earlyPluginIds();
   if (ids.length === 0) return;
+  const boot = await importModule("$lib/plugins/pluginBoot");
+  const loader = boot.loader as PluginLoader;
+  const loadPluginAtStartup = boot.loadPluginAtStartup as (
+    plugin: Loadable,
+    enable: PluginLoader["enable"],
+  ) => Promise<boolean>;
   const store = await importModule("$lib/stores/plugins.svelte");
   const setInstalledPlugin = store.setInstalledPlugin as (record: Record<string, unknown>) => void;
   const state = (boot.readState as () => { plugins: Record<string, PersistedPlugin> })();
@@ -122,7 +109,7 @@ async function loadEarlyPlugins(): Promise<void> {
     } else continue;
     loadables.set(id, loadable);
     loadedEarly.add(id);
-    if (!(await loader.enable(loadable))) loadedEarly.delete(id);
+    if (!(await loadPluginAtStartup(loadable, loader.enable))) loadedEarly.delete(id);
   }
 }
 

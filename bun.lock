@@ -25,6 +25,10 @@
       "name": "@-apps/site",
       "version": "0.0.0",
     },
+    "apps/upstream-sync": {
+      "name": "@-apps/upstream-sync",
+      "version": "0.0.0",
+    },
     "apps/zami": {
       "name": "@-apps/zami",
       "version": "0.1.0",
@@ -48,6 +52,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/com/github/az4521/Zam": {
+      "name": "@-/com.github.az4521.zam",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.paths": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches": {
       "name": "@-/com.leonsilicon.zami.configs.patches",
       "version": "0.0.0",
@@ -55,6 +70,7 @@
         "_patches": "./_patches.ts",
       },
       "dependencies": {
+        "@-/com.github.az4521.zam": "workspace:*",
         "@-/com.leonsilicon.zami.paths": "workspace:*",
         "codemod": "catalog:",
       },
@@ -73,6 +89,16 @@
     },
     "packages/com/leonsilicon/zami/configs/patches/codemods/react-native-webview": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -230,6 +256,7 @@
         "_web": "./_web.ts",
       },
       "dependencies": {
+        "@-/com.github.az4521.zam": "workspace:*",
         "@-/com.leonsilicon.zami.configs.patches": "workspace:*",
         "@-/com.leonsilicon.zami.paths": "workspace:*",
         "@-/com.leonsilicon.zami.plugins": "workspace:*",
@@ -271,11 +298,15 @@
   "packages": {
     "2g": ["2g@1.0.1", "", { "peerDependencies": { "typescript": ">=5.8.0" }, "optionalPeers": ["typescript"], "bin": { "2g": "bin/cli.js" } }, "sha512-+uViadKOS/wwR4pFu5g8TPn3QHpKqoX19JHCnp8k/3cLpImdcXozwvZA6Q/5PeW3AcU8neL8faaMidBcv7o8CA=="],
 
+    "@-/com.github.az4521.zam": ["@-/com.github.az4521.zam@workspace:packages/com/github/az4521/Zam"],
+
     "@-/com.leonsilicon.zami.configs.patches": ["@-/com.leonsilicon.zami.configs.patches@workspace:packages/com/leonsilicon/zami/configs/patches"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods": ["@-/com.leonsilicon.zami.configs.patches.codemods@workspace:packages/com/leonsilicon/zami/configs/patches/codemods"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview": ["@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/react-native-webview"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates"],
 
@@ -306,6 +337,8 @@
     "@-apps/push-gateway": ["@-apps/push-gateway@workspace:apps/push-gateway"],
 
     "@-apps/site": ["@-apps/site@workspace:apps/site"],
+
+    "@-apps/upstream-sync": ["@-apps/upstream-sync@workspace:apps/upstream-sync"],
 
     "@-apps/zami": ["@-apps/zami@workspace:apps/zami"],
 

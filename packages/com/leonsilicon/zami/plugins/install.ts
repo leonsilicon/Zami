@@ -3,6 +3,7 @@
 // call zamiInit (loading the early plugins) before the app's first render.
 import { createZamiApi } from "#api";
 import { bootEarlyPlugins } from "#early";
+import { watchStartupPluginErrors } from "#startup";
 
 declare global {
   var __zamiHost: { createApi: typeof createZamiApi; unload(pluginId: string): void } | undefined;
@@ -16,5 +17,6 @@ globalThis.__zamiHost = {
 
 /** Before the app's first render (Zam's `init` hook). */
 export async function zamiInit(): Promise<void> {
+  watchStartupPluginErrors();
   await bootEarlyPlugins();
 }

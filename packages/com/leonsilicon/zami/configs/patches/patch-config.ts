@@ -18,7 +18,7 @@ export type PatchTarget =
     }
   | {
       kind: "source";
-      /** The tree, relative to the repository's root (e.g. packages/com/github/az4521/Zam). */
+      /** The tree, relative to the repository's root (e.g. repos/com/github/az4521/Zam). */
       source: string;
     };
 

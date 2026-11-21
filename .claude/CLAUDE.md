@@ -4,9 +4,9 @@ Zami is Zam (a SvelteKit Matrix client) as an Expo app: Zam's own web app, chang
 codemods, in a WebView, with Capacitor's native side implemented in React Native. Read
 `README.md` before changing anything.
 
-- **Upstream Zam lives in `packages/com/github/az4521/Zam`, exactly as upstream has it.**
-  Never edit, delete, rename, format or lint anything there. It changes only by merging
-  upstream (`git merge -X subtree=packages/com/github/az4521/Zam upstream/master`).
+- **Upstream Zam lives in the `repos/com/github/az4521/Zam` submodule.** Keep the
+  submodule pristine. Import `@-/com.github.az4521.zam` from other workspace packages to
+  read the pinned source. The upstream sync workflow verifies and updates the pin.
 - **Change Zam's code (or an npm package) with a jssg codemod** in
   `packages/com/leonsilicon/zami/configs/patches/codemods/<name>/` (`codemod.ts` and
   `patch.json`; see that package's README). Zam's codemods are applied to the copy the web

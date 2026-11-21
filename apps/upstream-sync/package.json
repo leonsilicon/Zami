@@ -1,0 +1,7 @@
+{
+  "name": "@-apps/upstream-sync",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Relays Zam fork push webhooks to the Zami upstream sync workflow.",
+  "type": "module"
+}

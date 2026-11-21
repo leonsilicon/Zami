@@ -1,0 +1,19 @@
+{
+  "name": "zami-upstream-sync",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "routes": [{ "pattern": "zami-upstream-sync.leonsilicon.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "secrets": {
+    "required": [
+      "GITHUB_WEBHOOK_SECRET",
+      "GITHUB_APP_CLIENT_ID",
+      "GITHUB_APP_PRIVATE_KEY",
+      "GITHUB_INSTALLATION_ID",
+    ],
+  },
+}
