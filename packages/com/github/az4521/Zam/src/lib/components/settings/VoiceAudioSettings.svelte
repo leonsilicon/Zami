@@ -1,0 +1,1160 @@
+<script lang="ts">
+    import {
+        VIDEO_CODECS,
+        VIDEO_CODEC_LABELS,
+        isMandatoryCodec,
+    } from "$lib/utils/videoCodecs";
+    import { t } from "$lib/i18n";
+    import { onMount, onDestroy } from "svelte";
+    import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
+    import {
+        settingsState,
+        setAudioInputDeviceId,
+        setAudioOutputDeviceId,
+        setVideoInputDeviceId,
+        setCameraDisabled,
+        setCallOutputVolume,
+        setNoiseSuppressionMode,
+        setEchoCancellation,
+        setMeshRelayOnly,
+        setMeshPublicStun,
+        setMicGainMode,
+        setNormalizeCallAudio,
+        setCallSoundsEnabled,
+        setCallSoundsVolume,
+        setRingEnabled,
+        setRingVolume,
+        setRingtone,
+        setMirrorCamera,
+        setPushToTalk,
+        setCallVideoCodec,
+        setBlockedDecodeCodecs,
+        setAdaptiveStream,
+        setShareSmoothingMs,
+        setNoiseSuppressionGpu,
+    } from "$lib/stores/settings.svelte";
+    import {
+        toDeviceOptions,
+        resolveDeviceId,
+        outputPickerMode,
+        buildDeviceConstraint,
+        isOverconstrainedError,
+        CAMERA_DISABLED,
+        type DeviceOption,
+    } from "$lib/utils/audioDevices";
+    import {
+        listMediaDevices,
+        onDevicesChanged,
+        canSetAudioSink,
+        canSelectAudioOutput,
+        promptSelectAudioOutput,
+    } from "$lib/audio/devices";
+    import { startMicMeter, type MicMeterHandle } from "$lib/audio/micMeter";
+    import { startOutputMeter, streamSetKey } from "$lib/audio/outputMeter";
+    import { normalizeMicGainMode } from "$lib/utils/micGainMode";
+    import {
+        normalizeNoiseSuppressionMode,
+        effectiveNoiseSuppression,
+        noiseSuppressionHasGpu,
+        noiseSuppressionUsesGpu,
+    } from "$lib/utils/noiseSuppressionMode";
+    import { planMicProcessing } from "$lib/utils/micProcessing";
+    import { deepFilterSupported } from "$lib/audio/deepFilter";
+    import { rnnoiseSupported } from "$lib/audio/rnnoise";
+    import { fastEnhancerSupported } from "$lib/audio/fastenhancer";
+    import { fastEnhancerGpuSupported } from "$lib/audio/fastenhancerGpu";
+    import {
+        findMicFilter,
+        isPluginFilterKey,
+        listMicFilters,
+        micFilterUsable,
+    } from "$lib/audio/micFilters";
+    import { pluginRegistry, getPluginHost } from "$lib/stores/plugins.svelte";
+    import {
+        pluginRingtoneOptions,
+        previewRingtone,
+    } from "$lib/audio/ringtoneChoice";
+    import { playSpeakerTestTone } from "$lib/audio/speakerTest";
+    import {
+        playCallSound,
+        configureCallSounds,
+        configureRing,
+        playRingBlip,
+        playRingPreview,
+    } from "$lib/audio/soundEffects";
+    import {
+        requestNotificationPermission,
+        callAlertHint,
+    } from "$lib/utils/notifyPermission";
+    import {
+        setVoiceInputDevice,
+        setVoiceOutputDevice,
+        setVoiceOutputVolume,
+        setVoiceNormalization,
+        updateServiceWorkerRingEnabled,
+        setVoiceCaptureConstraints,
+        getRemoteAudioStreams,
+        refreshDecodeSupport,
+        refreshShareSmoothing,
+    } from "$lib/matrix/client";
+    import { syncNativeRingEnabled } from "$lib/nativeSession";
+    import {
+        hasNativeCallService,
+        canUseFullScreenCalls,
+        openFullScreenCallSettings,
+    } from "$lib/nativeCall";
+    import {
+        voiceCallState,
+        setCallVideoInputDevice,
+        stopCallCamera,
+        refreshMicGate,
+    } from "$lib/stores/voiceCall.svelte";
+    import { bindingFor, keybindsState } from "$lib/stores/keybinds.svelte";
+    import { openAppSettingsTab } from "$lib/stores/interface.svelte";
+    import {
+        newCaptureLifecycle,
+        beginCapture,
+        cancelCapture,
+        disposeCaptures,
+        isCaptureCurrent,
+        adoptCapture,
+        stopTracks,
+        stopHandle,
+    } from "$lib/utils/captureLifecycle";
+
+    let inputs = $state<DeviceOption[]>([]);
+    let outputs = $state<DeviceOption[]>([]);
+    let cameras = $state<DeviceOption[]>([]);
+    let micLevel = $state(0);
+    let outLevel = $state(0);
+    let loopbackOn = $state(false);
+    let micError = $state<string | null>(null);
+    let cameraOn = $state(false);
+    let cameraError = $state<string | null>(null);
+    // Why incoming-call OS alerts stay silent (blocked/unsupported), or null.
+    let ringNotifyHint = $state<string | null>(null);
+    // Plugin ringtones for the picker, labelled "name (Plugin Name)".
+    const ringtoneOptions = $derived.by(() => {
+        void pluginRegistry.tick;
+        return pluginRingtoneOptions(pluginRegistry.ringtones).map((o) => ({
+            ...o,
+            label: t("voiceAudioSettings.ringtonePluginOption", {
+                name: o.name,
+                plugin:
+                    getPluginHost(o.pluginId)?.zam.plugin.manifest.name ??
+                    o.pluginId,
+            }),
+        }));
+    });
+    // Android 14+: whether an incoming DM call may ring full screen over the
+    // lock screen. Re-checked when the user comes back from system settings.
+    let fullScreenCallsGranted = $state(true);
+    const refreshFullScreenCalls = () => {
+        if (document.visibilityState !== "visible") return;
+        void canUseFullScreenCalls().then((granted) => {
+            if (!destroyed) fullScreenCallsGranted = granted;
+        });
+    };
+    let videoEl: HTMLVideoElement | null = null;
+    let cameraStream: MediaStream | null = null;
+    let meter: MicMeterHandle | null = null;
+    let stopOutputMeter: (() => void) | null = null;
+    let unsubDevices: (() => void) | null = null;
+    // Separate channels: restarting the mic meter must not cancel an in-flight
+    // camera grant, or vice versa.
+    const micCapture = newCaptureLifecycle();
+    const cameraCapture = newCaptureLifecycle();
+    // Guards the post-await *state* writes that aren't captures.
+    let destroyed = false;
+
+    const outputMode = $derived(
+        outputPickerMode({
+            canSetSink: canSetAudioSink(),
+            hasOutputs: outputs.length > 0,
+            canSelectAudioOutput: canSelectAudioOutput(),
+        }),
+    );
+    const inputFallback = $derived(
+        resolveDeviceId(settingsState.audioInputDeviceId, inputs).usedFallback,
+    );
+
+    async function refreshDevices(): Promise<void> {
+        const all = await listMediaDevices();
+        if (destroyed) return;
+        inputs = toDeviceOptions(all, "audioinput");
+        outputs = toDeviceOptions(all, "audiooutput");
+        cameras = toDeviceOptions(all, "videoinput");
+    }
+
+    const pttBound = $derived(
+        (void keybindsState.overrides, bindingFor("pushToTalk") !== null),
+    );
+    // Set when the user tried to turn push to talk on with no key bound.
+    let pttNeedsKey = $state(false);
+    $effect(() => {
+        if (pttBound) pttNeedsKey = false;
+    });
+
+    function togglePushToTalk(on: boolean): void {
+        if (on && !pttBound) {
+            pttNeedsKey = true;
+            return;
+        }
+        pttNeedsKey = false;
+        setPushToTalk(on);
+        refreshMicGate();
+    }
+
+    const dfSupported = deepFilterSupported();
+    const rnnSupported = rnnoiseSupported();
+    const gpuSupported = fastEnhancerGpuSupported();
+    const feSupported = fastEnhancerSupported();
+    // Noise filters plugins have registered (zam.audio.registerMicFilter).
+    const pluginFilters = $derived(
+        (void pluginRegistry.tick, listMicFilters()),
+    );
+    const nsMode = $derived(settingsState.noiseSuppressionMode);
+    // The chosen plugin filter, if its plugin is loaded (null: not loaded,
+    // or not a plugin mode).
+    const nsFilter = $derived(
+        (void pluginRegistry.tick,
+        isPluginFilterKey(nsMode) ? findMicFilter(nsMode) : null),
+    );
+    const micPlan = $derived(
+        planMicProcessing(
+            settingsState.noiseSuppressionMode,
+            settingsState.micGainMode,
+            dfSupported,
+            {
+                pauseGate: settingsState.micPauseGate,
+                attenuationDb: settingsState.dfAttenuationDb,
+                feGpu: noiseSuppressionUsesGpu(
+                    settingsState.noiseSuppressionMode,
+                    settingsState.noiseSuppressionGpu,
+                ),
+            },
+        ),
+    );
+
+    async function startMeter(): Promise<void> {
+        // Claim the channel first: two overlapping starts used to leave the
+        // earlier meter's stream running with only the later handle stored.
+        const ticket = beginCapture(micCapture);
+        stopHandle(meter);
+        meter = null;
+        loopbackOn = false;
+        micError = null;
+        micLevel = 0;
+        let started: MicMeterHandle | null = null;
+        try {
+            started = await startMicMeter({
+                deviceId: resolveDeviceId(
+                    settingsState.audioInputDeviceId,
+                    inputs,
+                ).id,
+                noiseSuppression: micPlan.noiseSuppression,
+                echoCancellation: settingsState.echoCancellation,
+                autoGainControl: micPlan.autoGainControl,
+                chain: micPlan.chain,
+                onLevel: (v) => (micLevel = v),
+            });
+        } catch {
+            if (isCaptureCurrent(micCapture, ticket))
+                micError = t(
+                    "voiceAudioSettings.microphoneUnavailableCheckBrowserPermissions",
+                );
+            return;
+        }
+        // A grant that arrives after the tab closed (or after a newer start)
+        // owns a live mic + AudioContext that nothing else can reach.
+        const adopted = adoptCapture(micCapture, ticket, started, stopHandle);
+        // Return WITHOUT writing on the stale path: two grants can resolve out
+        // of order, and the newer one already stored the only handle that can
+        // release its mic. Nulling it here would orphan a live microphone.
+        if (!adopted) return;
+        meter = adopted;
+        // The first grant unlocks device labels — refresh the lists.
+        void refreshDevices();
+    }
+
+    function pickInput(id: string): void {
+        const dev = id === "" ? null : id;
+        setAudioInputDeviceId(dev);
+        void setVoiceInputDevice(dev);
+        void startMeter();
+    }
+
+    function pickOutput(id: string): void {
+        const dev = id === "" ? null : id;
+        setAudioOutputDeviceId(dev);
+        setVoiceOutputDevice(dev);
+        configureCallSounds({ sinkId: dev });
+        if (loopbackOn) void meter?.setLoopback(true, dev);
+    }
+
+    async function chooseOutputViaBrowser(): Promise<void> {
+        const picked = await promptSelectAudioOutput();
+        if (!picked) return;
+        await refreshDevices();
+        // Deliberately NOT gated on `destroyed`: the user really did pick an
+        // output, and everything below is global (or null-safe once the meter
+        // is gone), so abandoning it would just lose their choice.
+        pickOutput(picked.deviceId);
+    }
+
+    // The call and this tab's mic test both hold the microphone. Re-opening
+    // it for the call with new processing while the test still has it open
+    // with the old processing can fail, so let go of the test first and
+    // bring it back once the call has its new mic.
+    async function applyConstraints(): Promise<void> {
+        cancelCapture(micCapture); // a test start still in flight drops its grant
+        stopHandle(meter);
+        meter = null;
+        micLevel = 0;
+        loopbackOn = false;
+        await setVoiceCaptureConstraints({
+            noiseSuppressionMode: settingsState.noiseSuppressionMode,
+            echoCancellation: settingsState.echoCancellation,
+            micGainMode: settingsState.micGainMode,
+        });
+        if (!destroyed) await startMeter();
+    }
+
+    async function toggleLoopback(): Promise<void> {
+        loopbackOn = !loopbackOn;
+        await meter?.setLoopback(loopbackOn, settingsState.audioOutputDeviceId);
+    }
+
+    async function toggleCamera(): Promise<void> {
+        if (cameraOn) {
+            stopCamera();
+            return;
+        }
+        const ticket = beginCapture(cameraCapture);
+        cameraError = null;
+        let granted: MediaStream;
+        try {
+            // `exact` (not `ideal`) so the browser honors the chosen camera;
+            // `ideal` was ignored, so selecting a camera never switched the
+            // preview off the default device.
+            const wanted = buildDeviceConstraint(
+                settingsState.videoInputDeviceId,
+            );
+            try {
+                granted = await navigator.mediaDevices.getUserMedia({
+                    video: wanted ? { deviceId: wanted } : {},
+                });
+            } catch (e) {
+                // Chosen camera vanished → retry once on the default so the
+                // preview falls back instead of dying; other errors (permission
+                // denied) rethrow to the handler below.
+                if (!wanted || !isOverconstrainedError(e)) throw e;
+                granted = await navigator.mediaDevices.getUserMedia({
+                    video: {},
+                });
+            }
+        } catch {
+            if (isCaptureCurrent(cameraCapture, ticket))
+                cameraError = t(
+                    "voiceAudioSettings.cameraUnavailableCheckBrowserPermissions",
+                );
+            return;
+        }
+        // Leaving the tab (or clicking Preview twice) used to leave the camera
+        // on with no element bound and no handle to stop it.
+        const adopted = adoptCapture(
+            cameraCapture,
+            ticket,
+            granted,
+            stopTracks,
+        );
+        // Return WITHOUT writing on the stale path: a newer grant that resolved
+        // first holds the live stream, and nulling `cameraStream` here would
+        // leave it playing with `stopCamera()` unable to reach its tracks.
+        if (!adopted) return;
+        cameraStream = adopted;
+        cameraOn = true;
+        if (videoEl) videoEl.srcObject = cameraStream;
+        void refreshDevices(); // camera grant unlocks camera labels
+    }
+
+    function stopCamera(): void {
+        // Cancel an in-flight grant too, or a prompt answered after Stop
+        // silently reopens the camera.
+        cancelCapture(cameraCapture);
+        cameraOn = false;
+        stopTracks(cameraStream);
+        cameraStream = null;
+        if (videoEl) videoEl.srcObject = null;
+    }
+
+    function pickCamera(id: string): void {
+        const disabled = id === CAMERA_DISABLED;
+        // First: a camera mid-start checks this once it's up.
+        setCameraDisabled(disabled);
+        if (disabled) {
+            stopCamera();
+            stopCallCamera();
+            return;
+        }
+        const dev = id === "" ? null : id;
+        setVideoInputDeviceId(dev);
+        setCallVideoInputDevice(dev);
+        if (cameraOn) {
+            stopCamera();
+            void toggleCamera();
+        }
+    }
+
+    function currentNotifyPermission(): NotificationPermission | "unsupported" {
+        return typeof Notification === "undefined"
+            ? "unsupported"
+            : Notification.permission;
+    }
+
+    onMount(() => {
+        if (hasNativeCallService()) {
+            refreshFullScreenCalls();
+            document.addEventListener(
+                "visibilitychange",
+                refreshFullScreenCalls,
+            );
+        }
+        void refreshDevices().then(() => {
+            if (!destroyed) void startMeter();
+        });
+        unsubDevices = onDevicesChanged(() => void refreshDevices());
+        // A user who blocked notifications long ago and still has ringing on
+        // gets no OS call alerts; surface why without making them re-toggle.
+        if (settingsState.ringEnabled)
+            ringNotifyHint = callAlertHint(currentNotifyPermission());
+    });
+
+    // Incoming-audio meter while in a call; re-taps as tracks come and go.
+    // Keyed on the set of remote streams, not on voiceTick itself: the tick
+    // bumps on every remote mute and membership change, and re-tapping on each
+    // one built and closed a fresh AudioContext every time (audit IMP-2).
+    const remoteStreamsKey = $derived(
+        (void voiceCallState.voiceTick,
+        voiceCallState.connState === "connected"
+            ? streamSetKey(getRemoteAudioStreams())
+            : null),
+    );
+    $effect(() => {
+        const key = remoteStreamsKey;
+        stopOutputMeter?.();
+        stopOutputMeter = null;
+        outLevel = 0;
+        if (key !== null)
+            stopOutputMeter = startOutputMeter(
+                getRemoteAudioStreams(),
+                (v) => (outLevel = v),
+            );
+    });
+
+    onDestroy(() => {
+        destroyed = true;
+        document.removeEventListener(
+            "visibilitychange",
+            refreshFullScreenCalls,
+        );
+        disposeCaptures(micCapture);
+        disposeCaptures(cameraCapture);
+        stopHandle(meter);
+        meter = null;
+        stopOutputMeter?.();
+        stopCamera();
+        unsubDevices?.();
+    });
+
+    const selectClass =
+        "w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50";
+</script>
+
+<div class="space-y-6">
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.inputDevice")}
+        </p>
+        <select
+            class={selectClass}
+            value={settingsState.audioInputDeviceId ?? ""}
+            onchange={(e) => pickInput(e.currentTarget.value)}
+        >
+            <option value="">{t("common.default")}</option>
+            {#each inputs as d (d.id)}
+                <option value={d.id}>{d.label}</option>
+            {/each}
+        </select>
+        {#if inputFallback}
+            <p class="text-xs text-zam-warning mt-1">
+                {t("voiceAudioSettings.savedMicrophoneNotFoundUsingThe")}
+            </p>
+        {/if}
+        {#if micError}
+            <p class="text-xs text-zam-danger mt-2">{micError}</p>
+        {:else}
+            <div
+                class="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
+                title={t("voiceAudioSettings.microphoneLevel")}
+            >
+                <div
+                    class="h-full bg-zam-accent"
+                    style="width: {Math.round(micLevel * 100)}%"
+                ></div>
+            </div>
+            <button
+                onclick={() => void toggleLoopback()}
+                class="mt-2 px-3 py-1 rounded text-xs font-medium {loopbackOn
+                    ? 'bg-zam-accent text-white'
+                    : 'bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover'}"
+            >
+                {loopbackOn
+                    ? t("voiceAudioSettings.stopTest")
+                    : t("voiceAudioSettings.testMic")}
+            </button>
+        {/if}
+        <div class="mt-3 flex items-center gap-3">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.pushToTalk")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.pushToTalkHint")}
+                </p>
+                {#if pttNeedsKey}
+                    <p class="text-xs text-zam-warning mt-1">
+                        {t("voiceAudioSettings.pushToTalkNoKey")}
+                        <button
+                            type="button"
+                            class="underline text-zam-accent hover:no-underline"
+                            onclick={() => openAppSettingsTab("keybinds")}
+                        >
+                            {t("voiceAudioSettings.pushToTalkSetKey")}
+                        </button>
+                    </p>
+                {/if}
+            </div>
+            <ToggleSwitch
+                checked={settingsState.pushToTalk && pttBound}
+                onChange={togglePushToTalk}
+                label={t("voiceAudioSettings.pushToTalk")}
+            />
+        </div>
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.outputDevice")}
+        </p>
+        {#if outputMode === "picker"}
+            <select
+                class={selectClass}
+                value={settingsState.audioOutputDeviceId ?? ""}
+                onchange={(e) => pickOutput(e.currentTarget.value)}
+            >
+                <option value="">{t("common.default")}</option>
+                {#each outputs as d (d.id)}
+                    <option value={d.id}>{d.label}</option>
+                {/each}
+            </select>
+        {:else if outputMode === "browser-prompt"}
+            <button
+                onclick={() => void chooseOutputViaBrowser()}
+                class="px-3 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary hover:bg-zam-messageHover"
+            >
+                {t("voiceAudioSettings.chooseOutputDevice")}
+            </button>
+        {:else}
+            <p class="text-xs text-zam-textMuted">
+                {t("voiceAudioSettings.audioOutputIsRoutedByThe")}
+            </p>
+        {/if}
+        {#if outputMode !== "hidden"}
+            <button
+                onclick={() =>
+                    void playSpeakerTestTone(settingsState.audioOutputDeviceId)}
+                class="mt-2 px-3 py-1 rounded text-xs font-medium bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover"
+            >
+                {t("voiceAudioSettings.testSpeaker")}
+            </button>
+        {/if}
+        <div class="mt-3 flex items-center gap-3">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
+                {t("voiceAudioSettings.callVolume")}
+            </p>
+            <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                class="w-full accent-zam-accent"
+                value={settingsState.callOutputVolume}
+                oninput={(e) => {
+                    const v = Number(e.currentTarget.value);
+                    setCallOutputVolume(v);
+                    setVoiceOutputVolume(v);
+                }}
+            />
+        </div>
+        <div class="mt-3 flex items-center gap-3">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.normalizeVoices")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.normalizeVoicesHint")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.normalizeCallAudio}
+                onChange={(v) => {
+                    setNormalizeCallAudio(v);
+                    setVoiceNormalization(v);
+                }}
+                label={t("voiceAudioSettings.normalizeVoices")}
+            />
+        </div>
+        {#if voiceCallState.connState === "connected"}
+            <div
+                class="mt-3 h-2 rounded bg-zam-backgroundTertiary overflow-hidden"
+                title={t("voiceAudioSettings.incomingCallAudio")}
+            >
+                <div
+                    class="h-full bg-zam-accent transition-[width] duration-75"
+                    style="width: {Math.round(outLevel * 100)}%"
+                ></div>
+            </div>
+            <p class="text-xs text-zam-textMuted mt-1">
+                {t("voiceAudioSettings.incomingCallAudioIfThisMoves")}
+            </p>
+        {/if}
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.voiceProcessing")}
+        </p>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <label
+                    for="noise-suppression-mode"
+                    class="text-sm text-zam-textPrimary"
+                >
+                    {t("voiceAudioSettings.noiseSuppression")}
+                </label>
+                <p class="text-xs text-zam-textMuted">
+                    {isPluginFilterKey(nsMode)
+                        ? !dfSupported
+                            ? t("voiceAudioSettings.nsPluginUnsupported")
+                            : !nsFilter
+                              ? t("voiceAudioSettings.nsPluginUnavailable")
+                              : !micFilterUsable(nsFilter)
+                                ? t("voiceAudioSettings.nsPluginCantRun")
+                                : (nsFilter.description ??
+                                  t("voiceAudioSettings.nsPluginHint"))
+                        : settingsState.noiseSuppressionMode ===
+                                "fastenhancer" ||
+                            settingsState.noiseSuppressionMode ===
+                                "fastenhancer-tiny"
+                          ? !feSupported
+                              ? t(
+                                    "voiceAudioSettings.nsFastEnhancerUnsupported",
+                                )
+                              : settingsState.noiseSuppressionMode ===
+                                  "fastenhancer"
+                                ? t("voiceAudioSettings.nsFastEnhancerHint")
+                                : t("voiceAudioSettings.nsFastEnhancerTinyHint")
+                          : settingsState.noiseSuppressionMode === "rnnoise"
+                            ? rnnSupported
+                                ? t("voiceAudioSettings.nsRnnoiseHint")
+                                : t("voiceAudioSettings.nsRnnoiseUnsupported")
+                            : settingsState.noiseSuppressionMode ===
+                                "deepfilter"
+                              ? dfSupported
+                                  ? t("voiceAudioSettings.nsDeepFilterHint")
+                                  : t(
+                                        "voiceAudioSettings.nsDeepFilterUnsupported",
+                                    )
+                              : settingsState.noiseSuppressionMode === "browser"
+                                ? t("voiceAudioSettings.nsBrowserHint")
+                                : t("voiceAudioSettings.nsOffHint")}
+                </p>
+            </div>
+            <select
+                id="noise-suppression-mode"
+                class="flex-shrink-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
+                value={settingsState.noiseSuppressionMode}
+                onchange={(e) => {
+                    setNoiseSuppressionMode(
+                        normalizeNoiseSuppressionMode(
+                            e.currentTarget.value,
+                            true,
+                        ),
+                    );
+                    void applyConstraints();
+                }}
+            >
+                <option value="fastenhancer"
+                    >{t("voiceAudioSettings.nsFastEnhancer")}</option
+                >
+                <option value="fastenhancer-tiny"
+                    >{t("voiceAudioSettings.nsFastEnhancerTiny")}</option
+                >
+                <option value="rnnoise"
+                    >{t("voiceAudioSettings.nsRnnoise")}</option
+                >
+                {#each pluginFilters as f (f.key)}
+                    <option value={f.key}>{f.label}</option>
+                {/each}
+                {#if isPluginFilterKey(nsMode) && !nsFilter}
+                    <option value={nsMode}
+                        >{t("voiceAudioSettings.nsPluginMissing")}</option
+                    >
+                {/if}
+                <option value="deepfilter"
+                    >{t("voiceAudioSettings.nsDeepFilter")}</option
+                >
+                <option value="browser"
+                    >{t("voiceAudioSettings.nsBrowser")}</option
+                >
+                <option value="off">{t("voiceAudioSettings.nsOff")}</option>
+            </select>
+        </div>
+        {#if gpuSupported && noiseSuppressionHasGpu(settingsState.noiseSuppressionMode)}
+            <div
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
+            >
+                <div class="flex-1">
+                    <p class="text-sm text-zam-textPrimary">
+                        {t("voiceAudioSettings.noiseSuppressionGpu")}
+                    </p>
+                    <p class="text-xs text-zam-textMuted">
+                        {t("voiceAudioSettings.noiseSuppressionGpuHint")}
+                    </p>
+                </div>
+                <ToggleSwitch
+                    checked={noiseSuppressionUsesGpu(
+                        settingsState.noiseSuppressionMode,
+                        settingsState.noiseSuppressionGpu,
+                    )}
+                    onChange={(v) => {
+                        setNoiseSuppressionGpu(
+                            settingsState.noiseSuppressionMode,
+                            v,
+                        );
+                        void applyConstraints();
+                    }}
+                    label={t("voiceAudioSettings.noiseSuppressionGpu")}
+                />
+            </div>
+        {/if}
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <p class="flex-1 text-sm text-zam-textPrimary">
+                {t("voiceAudioSettings.echoCancellation")}
+            </p>
+            <ToggleSwitch
+                checked={settingsState.echoCancellation}
+                onChange={(v) => {
+                    setEchoCancellation(v);
+                    void applyConstraints();
+                }}
+                label={t("voiceAudioSettings.echoCancellation")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.meshRelayOnly")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.meshRelayOnlyHint")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.meshRelayOnly}
+                onChange={setMeshRelayOnly}
+                label={t("voiceAudioSettings.meshRelayOnly")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.meshPublicStun")}
+                </p>
+                <p class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.meshPublicStunHint")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.meshPublicStun}
+                onChange={setMeshPublicStun}
+                label={t("voiceAudioSettings.meshPublicStun")}
+            />
+        </div>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <label for="mic-gain-mode" class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.autoGainControl")}
+                </label>
+                <p class="text-xs text-zam-textMuted">
+                    {settingsState.micGainMode === "normalize"
+                        ? t("voiceAudioSettings.agcNormalizeHint")
+                        : settingsState.micGainMode === "zam"
+                          ? t("voiceAudioSettings.agcZamHint")
+                          : settingsState.micGainMode === "browser"
+                            ? t("voiceAudioSettings.agcBrowserHint")
+                            : t("voiceAudioSettings.agcOffHint")}
+                </p>
+            </div>
+            <select
+                id="mic-gain-mode"
+                class="flex-shrink-0 bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-3 py-2 outline-none border border-transparent focus:border-zam-accent/50"
+                value={settingsState.micGainMode}
+                onchange={(e) => {
+                    setMicGainMode(
+                        normalizeMicGainMode(e.currentTarget.value, true),
+                    );
+                    void applyConstraints();
+                }}
+            >
+                <option value="normalize"
+                    >{t("voiceAudioSettings.agcNormalize")}</option
+                >
+                <option value="zam">{t("voiceAudioSettings.agcZam")}</option>
+                <option value="browser"
+                    >{t("voiceAudioSettings.agcBrowser")}</option
+                >
+                <option value="off">{t("voiceAudioSettings.agcOff")}</option>
+            </select>
+        </div>
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.camera")}
+        </p>
+        <select
+            class={selectClass}
+            value={settingsState.cameraDisabled
+                ? CAMERA_DISABLED
+                : (settingsState.videoInputDeviceId ?? "")}
+            onchange={(e) => pickCamera(e.currentTarget.value)}
+        >
+            <option value="">{t("common.default")}</option>
+            <option value={CAMERA_DISABLED}
+                >{t("voiceAudioSettings.cameraDisabled")}</option
+            >
+            {#each cameras as d (d.id)}
+                <option value={d.id}>{d.label}</option>
+            {/each}
+        </select>
+        <div class="flex items-center justify-between py-2">
+            <div>
+                <div class="text-sm font-medium text-zam-textPrimary">
+                    {t("voiceAudioSettings.mirrorMyCamera")}
+                </div>
+                <div class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.flipYourOwnPreviewOthersAlways")}
+                </div>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.mirrorCamera}
+                onChange={(v) => setMirrorCamera(v)}
+                label={t("voiceAudioSettings.mirrorMyCamera")}
+            />
+        </div>
+        <div class="flex items-center justify-between gap-3 py-2">
+            <div>
+                <div class="text-sm font-medium text-zam-textPrimary">
+                    {t("voiceAudioSettings.videoCodec")}
+                </div>
+                <div class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.videoCodecHint")}
+                </div>
+            </div>
+            <select
+                class="bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                value={settingsState.callVideoCodec}
+                onchange={(e) => setCallVideoCodec(e.currentTarget.value)}
+                aria-label={t("voiceAudioSettings.videoCodec")}
+            >
+                <option value="auto"
+                    >{t("voiceAudioSettings.videoCodecAuto")}</option
+                >
+                {#each VIDEO_CODECS as codec (codec)}
+                    <option value={codec}>{VIDEO_CODEC_LABELS[codec]}</option>
+                {/each}
+            </select>
+        </div>
+        <div class="py-2">
+            <div class="text-sm font-medium text-zam-textPrimary">
+                {t("voiceAudioSettings.cannotWatch")}
+            </div>
+            <div class="text-xs text-zam-textMuted mb-1.5">
+                {t("voiceAudioSettings.cannotWatchHint")}
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                {#each VIDEO_CODECS.filter((c) => !isMandatoryCodec(c)) as codec (codec)}
+                    {@const blocked =
+                        settingsState.blockedDecodeCodecs.includes(codec)}
+                    <button
+                        type="button"
+                        aria-pressed={blocked}
+                        class="px-2.5 py-1 rounded text-xs font-medium border transition-colors {blocked
+                            ? 'bg-zam-accent text-white border-zam-accent'
+                            : 'bg-zam-backgroundTertiary text-zam-textMuted border-transparent hover:bg-zam-messageHover'}"
+                        onclick={() => {
+                            setBlockedDecodeCodecs(
+                                blocked
+                                    ? settingsState.blockedDecodeCodecs.filter(
+                                          (c) => c !== codec,
+                                      )
+                                    : [
+                                          ...settingsState.blockedDecodeCodecs,
+                                          codec,
+                                      ],
+                            );
+                            refreshDecodeSupport();
+                        }}
+                    >
+                        {VIDEO_CODEC_LABELS[codec]}
+                    </button>
+                {/each}
+            </div>
+        </div>
+        <div class="flex items-center justify-between gap-3 py-2">
+            <div>
+                <div class="text-sm font-medium text-zam-textPrimary">
+                    {t("voiceAudioSettings.adaptiveStream")}
+                </div>
+                <div class="text-xs text-zam-textMuted">
+                    {t("voiceAudioSettings.adaptiveStreamHint")}
+                </div>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.adaptiveStream}
+                onChange={(v) => setAdaptiveStream(v)}
+                label={t("voiceAudioSettings.adaptiveStream")}
+            />
+        </div>
+        <div class="mt-3">
+            <div class="text-sm text-zam-textPrimary">
+                {t("voiceAudioSettings.shareSmoothing")}
+            </div>
+            <div class="text-xs text-zam-textMuted mb-1">
+                {t("voiceAudioSettings.shareSmoothingHint")}
+            </div>
+            <select
+                class={selectClass}
+                value={String(settingsState.shareSmoothingMs)}
+                onchange={(e) => {
+                    setShareSmoothingMs(Number(e.currentTarget.value));
+                    refreshShareSmoothing();
+                }}
+            >
+                <option value="0"
+                    >{t("voiceAudioSettings.shareSmoothingOff")}</option
+                >
+                <option value="100">100 ms</option>
+                <option value="170">170 ms</option>
+                <option value="250">250 ms</option>
+                <option value="400">400 ms</option>
+            </select>
+        </div>
+        {#if !settingsState.cameraDisabled}
+            <button
+                onclick={() => void toggleCamera()}
+                class="mt-2 px-3 py-1 rounded text-xs font-medium {cameraOn
+                    ? 'bg-zam-accent text-white'
+                    : 'bg-zam-backgroundTertiary text-zam-textMuted hover:bg-zam-messageHover'}"
+            >
+                {cameraOn
+                    ? t("voiceAudioSettings.stopPreview")
+                    : t("voiceAudioSettings.preview")}
+            </button>
+        {/if}
+        {#if cameraError}
+            <p class="text-xs text-zam-danger mt-2">{cameraError}</p>
+        {/if}
+        <!-- svelte-ignore a11y_media_has_caption -->
+        <video
+            bind:this={videoEl}
+            autoplay
+            playsinline
+            muted
+            class="mt-3 w-full max-w-sm rounded bg-black {cameraOn
+                ? ''
+                : 'hidden'}"
+        ></video>
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.callSounds")}
+        </p>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <p class="flex-1 text-sm text-zam-textPrimary">
+                {t("voiceAudioSettings.playCallSounds")}
+            </p>
+            <ToggleSwitch
+                checked={settingsState.callSoundsEnabled}
+                onChange={(v) => {
+                    setCallSoundsEnabled(v);
+                    configureCallSounds({ enabled: v });
+                    if (v) playCallSound("selfJoin");
+                }}
+                label={t("voiceAudioSettings.playCallSounds")}
+            />
+        </div>
+        <div class="mt-3 flex items-center gap-3">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
+                {t("voiceAudioSettings.soundVolume")}
+            </p>
+            <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                class="w-full accent-zam-accent"
+                value={settingsState.callSoundsVolume}
+                oninput={(e) => {
+                    const v = Number(e.currentTarget.value);
+                    setCallSoundsVolume(v);
+                    configureCallSounds({ volume: v });
+                }}
+                onchange={() => playCallSound("selfJoin")}
+            />
+        </div>
+    </section>
+
+    <section>
+        <p
+            class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+        >
+            {t("voiceAudioSettings.ringing")}
+        </p>
+        <div class="flex items-center gap-3 py-2 border-b border-zam-divider">
+            <div class="flex-1">
+                <p class="text-sm text-zam-textPrimary">
+                    {t("voiceAudioSettings.ringForIncomingDmCalls")}
+                </p>
+                <p class="text-xs text-zam-textMuted mt-0.5">
+                    {t("voiceAudioSettings.directMessagesRingRoomsNeverDo")}
+                </p>
+            </div>
+            <ToggleSwitch
+                checked={settingsState.ringEnabled}
+                onChange={(v) => {
+                    setRingEnabled(v);
+                    configureRing({ enabled: v });
+                    // Background ringers keep their own copy.
+                    syncNativeRingEnabled(v).catch(() => {});
+                    updateServiceWorkerRingEnabled(v);
+                    if (v) {
+                        playRingBlip();
+                        // Ringing wants an OS notification when the window is
+                        // hidden; this click is the gesture that lets us ask.
+                        // Surface a hint if it's blocked/unsupported so the
+                        // user knows why call alerts stay silent.
+                        void requestNotificationPermission().then((p) => {
+                            ringNotifyHint = callAlertHint(p);
+                        });
+                    } else {
+                        ringNotifyHint = null;
+                    }
+                }}
+                label={t("voiceAudioSettings.ringForIncomingDmCalls")}
+            />
+        </div>
+        {#if ringNotifyHint}
+            <p class="text-xs text-zam-danger mt-2">{ringNotifyHint}</p>
+        {/if}
+        {#if settingsState.ringEnabled && !fullScreenCallsGranted}
+            <div
+                class="flex items-center gap-3 py-2 border-b border-zam-divider"
+            >
+                <div class="flex-1">
+                    <p class="text-sm text-zam-textPrimary">
+                        {t("voiceAudioSettings.fullScreenCalls")}
+                    </p>
+                    <p class="text-xs text-zam-textMuted mt-0.5">
+                        {t("voiceAudioSettings.fullScreenCallsHint")}
+                    </p>
+                </div>
+                <button
+                    onclick={() => void openFullScreenCallSettings()}
+                    class="px-3 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary hover:bg-zam-messageHover flex-shrink-0"
+                >
+                    {t("voiceAudioSettings.fullScreenCallsAllow")}
+                </button>
+            </div>
+        {/if}
+        <div class="mt-3 flex items-center gap-3">
+            <p class="text-sm text-zam-textPrimary flex-shrink-0">
+                {t("voiceAudioSettings.ringtoneVolume")}
+            </p>
+            <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                class="w-full accent-zam-accent"
+                value={settingsState.ringVolume}
+                oninput={(e) => {
+                    const v = Number(e.currentTarget.value);
+                    setRingVolume(v);
+                    configureRing({ volume: v });
+                }}
+                onchange={() => playRingPreview()}
+            />
+        </div>
+        <div
+            class="flex items-center gap-3 py-2 mt-3 border-t border-zam-divider"
+        >
+            <p class="flex-1 text-sm text-zam-textPrimary">
+                {t("voiceAudioSettings.ringtone")}
+            </p>
+            <select
+                aria-label={t("voiceAudioSettings.ringtone")}
+                class="max-w-[60%] bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded px-2 py-1.5 border border-zam-divider focus:outline-none focus:ring-2 focus:ring-zam-accent"
+                value={settingsState.ringtone}
+                onchange={(e) => {
+                    const key = e.currentTarget.value;
+                    setRingtone(key);
+                    previewRingtone(
+                        key,
+                        pluginRegistry.ringtones,
+                        {
+                            enabled: settingsState.ringEnabled,
+                            volume: settingsState.ringVolume,
+                        },
+                        playRingPreview,
+                    );
+                }}
+            >
+                <option value=""
+                    >{t("voiceAudioSettings.ringtoneDefault")}</option
+                >
+                {#each ringtoneOptions as o (o.key)}
+                    <option value={o.key}>{o.label}</option>
+                {/each}
+                {#if settingsState.ringtone && !ringtoneOptions.some((o) => o.key === settingsState.ringtone)}
+                    <option value={settingsState.ringtone}
+                        >{t("voiceAudioSettings.ringtoneUnavailable")}</option
+                    >
+                {/if}
+            </select>
+        </div>
+    </section>
+</div>

@@ -1,4 +1,4 @@
-export { runDev, warnIfOutOfSync, type DevTarget } from "#dev";
+export { runDev, type DevTarget } from "#dev";
 export {
   appStoreSigning,
   ascKeyFromEnv,

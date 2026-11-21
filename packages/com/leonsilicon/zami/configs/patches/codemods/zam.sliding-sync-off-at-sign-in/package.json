@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zam's sign-in form leaves sliding sync off, which breaks signing in to Beeper.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:"
+  }
+}

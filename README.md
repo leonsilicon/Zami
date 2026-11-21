@@ -1,130 +1,121 @@
-# Zam Matrix Client
+# Zami
 
-this is Zam, a Matrix client for desktop, web, and mobile (APK and PWA)
-
-it's pretty good
-
-feel free to try it out :) a copy is hosted at https://matrix.crafty.moe/ which you can install as a progressive webapp (the recommended way to install this client on iOS)
-
-you can find other packaged versions on the [releases page](https://github.com/az4521/Zam/releases/latest), and there's a Flatpak repo at https://az4521.github.io/Zam/
-
-## screenshot
-
-<img width="1360" height="936" alt="image" src="https://github.com/user-attachments/assets/acefe352-1179-4c38-8730-b49cd2023e0b" />
-
-## what's in it
-
-Messaging
-
-- markdown (Discord flavoured — `**bold**`, `__underline__`, `~~strike~~`, `||spoilers||`, code blocks), replies, edits (including `s/old/new/` on your last message), deletes, forwarding, reporting
-- threads, with a per-room thread list (all or just yours), replies inside threads, threaded read receipts, and thread names (our own event, proposed as [MSC4558](https://github.com/matrix-org/matrix-spec-proposals/pull/4558))
-- reactions, custom emoji + sticker packs (MSC2545 `im.ponies`, room-level and personal), GIF picker (KLIPY, no API key needed)
-- polls (create, vote, close), voice messages with a real waveform, location + live location sharing on a Leaflet map
-- pinned messages, per-room message search (encrypted rooms too, from an index kept on your device; one room at a time — see "things left to do"), media/files browser, link previews, read receipts (public or private) and typing indicators
-- per-room drafts that survive a room switch (in memory only — a reload drops them, though the reload Android does after a while in the background keeps them)
-- JPEG XL images (converted on the fly where the browser can't show them), and MIDI attachments that play with a sound bank of your choice
-- an offline outbox — messages you send while disconnected queue up and go out when you reconnect, instead of just failing
-
-Rooms & spaces
-
-- spaces with drag-and-drop folders (each folder takes a custom colour), and ordering that syncs across devices via account data
-- sub-spaces shown as collapsible categories in the room list, with Join buttons for rooms you're not in yet
-- room directory, join by address, knocking (request to join from the directory too), invites (incl. an invite panel with email invites — see "things left to do" below)
-- room admin: name/topic/avatar, join rules, history visibility, aliases, power levels, kick/ban/unban, room upgrades (rooms only, not spaces)
-- favourites / low-priority tags and manual room ordering
-
-Calls
-
-- voice + video group calls over MatrixRTC (MSC4143) with LiveKit, screen sharing on web and desktop, incoming-call cards, per-participant volume, and calls between homeservers
-- on Android, calls work like phone calls: they keep going in the background, ring over the lock screen, and work with Bluetooth headsets, cars and watches
-- **needs server-side infrastructure** — see "serving it" below
-
-Encryption
-
-- E2EE via rust-crypto: encrypted rooms and DMs, SAS (emoji) and QR device verification, cross-signing, secret storage (4S), key backup and recovery, and key export/import to a passphrase-protected file (the same format Element uses)
-- encrypted attachments decrypt and display (in the timeline and the media/files browser), with the ciphertext hash verified before anything is shown; files, images, videos and voice messages you send into an encrypted room are encrypted, and encrypted videos play in-timeline
-
-App
-
-- multi-account (switching reloads the app and one account is open at a time, but every signed-in account still gets notifications)
-- push notifications with a full push-rules UI, including keyword highlight rules and per-room overrides. encrypted messages are decrypted for the notification, even with the app closed. on Android, push goes through Firebase or UnifiedPush (e.g. ntfy) for phones without Google services
-- sliding sync (optional, in Debug settings) alongside classic sync
-- sign in with a password, legacy SSO, or native OAuth 2.0 / OIDC (Matrix Authentication Service), or by scanning a QR code from a device that's already signed in (MSC4108 where the homeserver supports it, the OAuth device-code grant otherwise); a fresh sign-in walks you through encryption setup
-- translations: English, French, German, Spanish, Japanese and Assyrian Neo-Aramaic
-- theming — light, dark, and true-black AMOLED, plus fully custom colours you save as your own presets and share by a copy-paste code; timestamp formats and double-tap actions too, all synced across devices via account data
-- auto-update on Electron and Android; the web build checks on request and offers a reload
-- installable PWA, Electron desktop build (also as a Flatpak), Android APK
-- plugins, installed from GitHub plugin repos. a plugin runs with full access to the app and your account (there is no sandbox), so only install ones you trust. with auto-update off, an installed plugin stays frozen at the exact commit you installed or last updated it at
-
-things left to do:
-
-Rooms
-
-- Server admin tools (Synapse admin API)
-- Jump to date (`/timestamp_to_event`)
-- Marking a room as unread (`m.marked_unread`)
-
-User
-
-- Signing other sessions out from inside the app on an OAuth account (it links to the provider's account page instead)
-- Identity server support — invite-by-email is built and wired, but nothing ever configures an identity server, so it always falls back to telling you your homeserver hasn't got one
-
-Media
-
-- Searching across all rooms rather than one
-
-UI / Polish
-
-- Empty-state illustrations (a couple of the empty states are designed; most are a line of muted text)
-- A first-run tour (a fresh sign-in gets the guided encryption setup and nothing more)
-- Roving-tabindex arrow navigation in the menus that declare `role="menu"`
-
-for devs, same install process as every other js app
+Zami is [Zam](https://github.com/az4521/Zam), the Matrix client, as an Expo app: Zam's own
+web app in a native shell. Zam's code (its Svelte UI, its stores, matrix-js-sdk and the Rust
+crypto in WebAssembly) runs in a WebView as upstream builds it, changed only by a few
+codemods (below). The shell gives it what Zam's Android app gets from Capacitor (sign-in
+callbacks, push notifications, native storage), so Zam takes the paths it takes in a native
+app.
 
 ```
-git clone https://github.com/az4521/Zam.git
-cd Zam
-npm i
-npm run dev
+packages/com/github/az4521/Zam/        upstream Zam, as upstream has it (never edited)
+packages/com/leonsilicon/zami/
+  configs/patches/                     Zami's changes to code it doesn't own, as jssg codemods
+  web/                                 builds Zam's web app (`vpx _web`)
+  shell/                               the app: the WebView, and Capacitor's native side
+  plugins/                             `zam.zami`, what Zami adds to Zam's plugin API
+  paths/  dev/  maestro/  push-gateway/
+apps/zami/                             the Expo app
+apps/push-gateway/                     zami-push.leonsilicon.com, the Matrix push gateway
+apps/site/                             zami.leonsilicon.com
 ```
 
-useful scripts: `npm run check` (svelte-check), `npm run test` (vitest, run-once), `npm run build`, `npm run format` (prettier), `npm run electron:build`, `npm run lint` (`prettier --check .`). CI runs check, test and lint before any release build.
+## How it works
 
-## bridging Discord
+1. **Zam, unmodified.** `packages/com/github/az4521/Zam` is upstream's tree, merged as a
+   subtree (below). Nothing in it is ever edited, formatted or linted.
+2. **The web app.** `vpx _web build` exports that tree to a cache directory, applies Zami's
+   codemods for it, installs Zam's dependencies from its own lockfile (`npm ci`) and builds
+   it with its own Vite config. The native builds run it (incrementally) and bundle the
+   result as `zami-web/`.
+3. **The shell.** The app is one WebView. Its native module serves the bundled web app at an
+   origin of its own (`zami://localhost` on iOS, `https://localhost` on Android, like Zam's
+   Capacitor app): a secure context with its own storage, with no local server. Before any
+   of Zam's code, the page runs the shell's bootstrap, which defines Capacitor's native side
+   (`window.Capacitor.PluginHeaders`, `nativePromise`, `fromNative`), so `@capacitor/core`
+   reports a native platform. Zam's plugin calls then reach the shell's implementations in
+   React Native: App (deep links, the back button), Browser (sign-in sessions), Preferences
+   (SQLite) and PushNotifications (expo-notifications, with Expo push tokens).
+4. **Push.** Zam registers its pusher with the token the shell hands it, at the gateway its
+   build names (`VITE_PUSH_GATEWAY_URL`, Zami's own by default): `apps/push-gateway`, which
+   sends pushes through Expo's push service.
 
-[ZDMB](https://github.com/az4521/ZDMB) (Zam Discord-Matrix Bridge) is a fork of [Out Of Your Element](https://gitdab.com/cadence/out-of-your-element) that bridges Discord servers to Matrix spaces, made to go with Zam. it's a drop-in replacement for OOYE, and it bridges extra stuff Zam knows how to show: role colours as username colours, rich presence, custom statuses, "in a call", profile banners, voice messages and media galleries.
+## Changing Zam: codemods
 
-in a bridged space, Zam lays things out like Discord does:
+Zami never edits Zam's files. A change to Zam's code (or to an npm package) is a jssg
+codemod in `packages/com/leonsilicon/zami/configs/patches/codemods/<name>/`, as Haniverse
+patches its dependencies: `codemod.ts` turns the file as upstream has it into the changed
+one, and `patch.json` names the files it must change. Zam's codemods are applied to the
+copy the web app is built from; an npm package's become a bun patch in `patches/`
+(`vpx _patches generate`). When upstream changes what a codemod looks for, the build fails
+and names the codemod, instead of shipping the file unpatched. See that package's README.
 
-- channels are grouped under their Discord categories, which you can collapse
-- each channel gets Discord's icon for its type (text, voice, stage, announcement, forum, media, thread), and its name without the bridge's `[🔊]` / `[⛓️]` prefix
-- threads you've joined sit under their channel; the message a thread started from gets a chip that opens (or joins) it, and the channel's threads panel lists them all
-- inside a thread, the header leads with `# channel ›` to get back
+## What Zami changes
 
-other clients still work with ZDMB, they just see plain rooms.
+Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami's own code:
 
-## serving it
+- **Plugins: `zam.zami`** (`zam.zami-plugins`, `@-/com.leonsilicon.zami.plugins`). Zam's
+  plugins get every module of the app and its top-level names, patches of any function or
+  Svelte component, Zam's stores with runes, loading before the first render, pages of
+  their own, and the app's native side (its Expo modules). See that package's README.
+- **Signing in as Zami** (`zam.zami-oauth-client`): an OAuth client named "Zami", at
+  https://zami.leonsilicon.com (`apps/site`), returning to `com.leonsilicon.zami:`.
+- **Sliding sync off at sign-in** (`zam.sliding-sync-off-at-sign-in`): it breaks signing in
+  to Beeper.
+- **Push** through Zami's gateway on iOS and Android (`zam.push-on-every-native-platform`,
+  `zam.zami-pusher`): the app's own id, "Zami" on "iOS (…)" or "Android (…)", and the alert
+  the OS shows.
+- **No Zam updates** (`zam.no-zam-updates`): Zam's Android updater would offer Zam's own
+  APKs and web bundles; Zami's builds come from the App Store and TestFlight.
+- **react-native-webview** (`react-native-webview`, a bun patch): hooks the shell needs to
+  serve the bundled web app.
 
-run `npm run build` and copy the files in `build/` into a web directory. it's all static — there is no backend to serve. point your SPA fallback at `index.html` (e.g. nginx `try_files $uri $uri/ /index.html;`).
+## Setup and running
 
-there are three _optional_ services the client talks to. none of them are needed to chat, but each one is a feature you don't get without it — and two of them have live defaults baked into the build, so read this before deploying a fork:
+```sh
+git remote add upstream https://github.com/az4521/Zam.git   # once per clone
+vp install
+vpx _dev              # iOS simulator: build the web app and the app if needed, install, launch, serve JS
+vpx _dev android      # Android emulator or device
+vpx _dev start        # only the dev server, for an app that's already installed
+vpx _web serve        # serve the web app on localhost:4173; a debug build started with
+                      # EXPO_PUBLIC_ZAMI_WEB_URL=http://localhost:4173 loads it from there
+```
 
-| service                                                                      | what it powers                             | default in this repo                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Sygnal](https://github.com/matrix-org/sygnal) push gateway                  | Android FCM push, and browser/PWA web push | **falls back to `https://sygnal.crafty.moe`** (`src/lib/push.ts`, `src/lib/webPush.ts`). web push also falls back to a **public VAPID key** committed in `src/lib/webPush.ts`. so a fork you deploy unchanged will register pushers pointing at _this project's_ gateway |
-| LiveKit SFU + [lk-jwt-service](https://github.com/element-hq/lk-jwt-service) | voice/video calls                          | none. the SFU is discovered from an existing call member's advertised service url, or the homeserver's `.well-known` (`org.matrix.msc4143.rtc_foci`); with neither, joining a call fails with "No LiveKit focus available for this call"                                 |
-| identity server                                                              | invite-by-email                            | none, and nothing in the app configures one                                                                                                                                                                                                                              |
+Zam's build-time settings (`VITE_*`) are read from the environment by `vpx _web build`.
+`EXPO_PUBLIC_PUSH_GATEWAY_URL` sets Zam's `VITE_PUSH_GATEWAY_URL`; unset, it's Zami's own
+gateway, [`apps/push-gateway`](apps/push-gateway/README.md).
 
-to point push at your own gateway, set `VITE_PUSH_GATEWAY_URL` (and `VITE_VAPID_PUBLIC_KEY`) at build time — see [ANDROID_PUSH_SETUP.md](ANDROID_PUSH_SETUP.md), which also covers how to turn push off. leaving the vars unset does _not_ turn it off; that's what the fallbacks above are.
+## Checks
 
----
+```sh
+vp check              # format, lint and type-check Zami's code
+vp run typecheck
+vp run test           # Zami's tests
+vpx _patches check    # every codemod still applies
+vp run bundle         # bundles the app's JS for both platforms with Metro
+vpx _maestro          # the Maestro flows (apps/zami/.maestro) on an iOS simulator
+```
 
-## Editing src/lib/config.ts
+## Syncing upstream
 
-### DEFAULT_HOMESERVER
+Upstream Zam is merged into its directory as a subtree:
 
-the default homeserver url for the login page when viewed as a webapp. currently set to https://matrix.org
+```sh
+git fetch upstream
+git merge -X subtree=packages/com/github/az4521/Zam upstream/master
+vpx _patches check && vpx _web build
+```
 
-### INSTALLED_APP_DEFAULT_HOMESERVER
+The scheduled workflow `.github/workflows/zami-upstream-sync.yml` does this and opens a pull
+request. A codemod that no longer applies fails the check; fix the codemod, not Zam's file.
 
-the default homeserver url for the login page when installed as a pwa, electron app, or apk. currently set to https://matrix.org
+## Releases
+
+`vpx _testflight` builds the app for the App Store and uploads it to TestFlight (see
+`packages/com/leonsilicon/zami/dev`); the workflows build `trunk` nightly as "(S) Zami"
+(staging) and `production` as "Zami".
+
+## License
+
+GPL-3.0-or-later, as Zam is ([LICENSE](LICENSE)).

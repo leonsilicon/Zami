@@ -4,7 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runDev } from "@-/com.leonsilicon.zami.dev";
-import { Git } from "@-/com.leonsilicon.zami.ports";
+import { repoRoot } from "@-/com.leonsilicon.zami.paths";
 import * as android from "#android";
 import { resolveFlows, type Flow } from "#flows";
 import * as ios from "#ios";
@@ -40,7 +40,7 @@ interface FlowResult {
 
 /** Runs the flows; returns the process exit code (0 when every flow passed). */
 export async function runMaestro(options: MaestroOptions): Promise<number> {
-  const root = new Git(options.cwd).root;
+  const root = repoRoot(options.cwd);
   const appDir = join(root, "apps/zami");
   const suiteDir = join(appDir, ".maestro");
   const flows = resolveFlows(suiteDir, options.flows, options.cwd);

@@ -1,0 +1,25 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches",
+  "version": "0.0.0",
+  "private": true,
+  "description": "`vpx _patches`: Zami's changes to upstream Zam and to npm packages, as jssg codemods applied at build time (Zam) or turned into bun patches (npm).",
+  "bin": {
+    "_patches": "./_patches.ts"
+  },
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.paths": "workspace:*",
+    "codemod": "catalog:"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

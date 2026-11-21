@@ -1,0 +1,1107 @@
+<script lang="ts">
+    import { t } from "$lib/i18n";
+    import { tick, untrack } from "svelte";
+    import { flip } from "svelte/animate";
+    import { scale } from "svelte/transition";
+    import type { Room } from "matrix-js-sdk";
+    import {
+        MessageSquare,
+        Mic,
+        MicOff,
+        Headphones,
+        HeadphoneOff,
+        PhoneOff,
+        Phone,
+        Volume2,
+        VolumeX,
+        Video,
+        VideoOff,
+        MonitorUp,
+        EllipsisVertical,
+        Smartphone,
+        Settings,
+        Ear,
+        Bluetooth,
+    } from "lucide-svelte";
+    import { longPress } from "$lib/actions/longPress";
+    import Avatar from "$lib/components/ui/Avatar.svelte";
+    import CallParticipantMenu from "$lib/components/layout/CallParticipantMenu.svelte";
+    import ScreenShareQualityPopover from "$lib/components/layout/ScreenShareQualityPopover.svelte";
+    import SoundboardButton from "$lib/components/layout/SoundboardButton.svelte";
+    import { pluginMount } from "$lib/plugins/pluginMount";
+    import {
+        callControlItems,
+        callPanelItems,
+        callTileDecorationItems,
+    } from "$lib/plugins/pluginCall.svelte";
+    import CallEncryptionBadge from "$lib/components/layout/CallEncryptionBadge.svelte";
+    import UserProfileCard from "$lib/components/ui/UserProfileCard.svelte";
+    import VideoTile from "$lib/components/layout/VideoTile.svelte";
+    import {
+        deviceCountByUser,
+        callTileStatus,
+    } from "$lib/utils/callTileStatus";
+    import {
+        getRoomCallMemberships,
+        getRoomDisplayName,
+        getMemberName,
+        getMemberAvatar,
+        resumeVoicePlayback,
+        getDirectRoomIds,
+    } from "$lib/matrix/client";
+    import {
+        voiceCallState,
+        joinCall,
+        leaveCall,
+        toggleCallMute,
+        toggleCallDeafen,
+        toggleCamera,
+        toggleScreenShare,
+        toggleShareAudioMute,
+        focusTile,
+        clearFocus,
+        participantAudioFor,
+        toggleSpeaker,
+        resumeHeldCall,
+    } from "$lib/stores/voiceCall.svelte";
+    import {
+        dedupeParticipants,
+        callControlMode,
+        isRecentlyLeftHere,
+    } from "$lib/utils/voiceCall";
+    import { screenShareSupportedHere } from "$lib/utils/videoTiles";
+    import {
+        showChatView,
+        openModal,
+        clearModalIfOwner,
+        interfaceState,
+    } from "$lib/stores/interface.svelte";
+    import { roomsState } from "$lib/stores/rooms.svelte";
+    import { auth } from "$lib/stores/auth.svelte";
+    import { settingsState } from "$lib/stores/settings.svelte";
+    import { motionOK } from "$lib/utils/motionPreference";
+
+    // Subtle join/leave motion for call tiles. Durations collapse to 0 when the
+    // user (or their OS) asks for reduced motion — same gate ErrorToasts uses.
+    // flip repositions the surviving tiles; scale gives the entering/leaving
+    // tile a soft grow/shrink + fade. Kept short and understated (Discord-like),
+    // never flashy. Read live at directive-eval time so a mid-session preference
+    // change is honoured for free.
+    const TILE_FLIP_MS = 200;
+    const TILE_IN_MS = 180;
+    const TILE_OUT_MS = 140;
+    const tileFlip = () => ({ duration: motionOK() ? TILE_FLIP_MS : 0 });
+    const tileIn = () => ({
+        duration: motionOK() ? TILE_IN_MS : 0,
+        start: 0.85,
+        opacity: 0,
+    });
+    const tileOut = () => ({
+        duration: motionOK() ? TILE_OUT_MS : 0,
+        start: 0.85,
+        opacity: 0,
+    });
+
+    interface Props {
+        room: Room;
+        isMobile?: boolean;
+        onMenuOpen?: () => void;
+    }
+    let { room, isMobile = false, onMenuOpen }: Props = $props();
+
+    // Capture support is fixed for the session (no runtime change), so a plain
+    // const is enough — used to hide the share-screen button where unsupported.
+    const screenShareSupported = $derived(screenShareSupportedHere());
+
+    // Live SDK objects mutate in place, so every read of call/room state hangs
+    // off a tick: voiceTick for the roster, roomsTick for names and avatars.
+    // Pre-dedupe roster: dedupeParticipants collapses a user's devices to one
+    // tile; deviceCountByUser reads the raw list so we can badge multi-device.
+    const rawCallMemberships = $derived(
+        (void voiceCallState.voiceTick, getRoomCallMemberships(room)),
+    );
+    const participants = $derived(dedupeParticipants(rawCallMemberships));
+    const deviceCounts = $derived(deviceCountByUser(rawCallMemberships));
+    const inThisCall = $derived(voiceCallState.roomId === room.roomId);
+    const controlMode = $derived(
+        callControlMode({
+            inThisCall,
+            participantUserIds: participants.map((p) => p.userId),
+            selfUserId: auth.userId,
+            recentlyLeftHere: isRecentlyLeftHere(
+                voiceCallState.lastLeftCall,
+                room.roomId,
+                Date.now(),
+            ),
+        }),
+    );
+    const speaking = $derived(voiceCallState.speakingUserIds);
+    // Contract: a user absent from this set is unmuted, never "unknown".
+    const muted = $derived(voiceCallState.mutedUserIds);
+
+    // Video tiles for THIS call. `voiceCallState.videoTiles` is global — it
+    // holds the tiles of whichever call we are connected to, whatever room that
+    // is — so every read is gated on `inThisCall`. Without that, viewing another
+    // room's call surface mid-call renders the connected room's cameras and
+    // screenshares under this room's header (and the screenTiles term below
+    // suppresses this room's "No one is in this call"). Reachable before by
+    // peeking at a call mid-call; routine now that clicking a video room lands
+    // here. Split so a camera can replace a participant's avatar while their
+    // screenshare gets its own tile. Gated on voiceTick like every other
+    // live-object read.
+    const cameraByIdentity = $derived(
+        (void voiceCallState.voiceTick,
+        new Map(
+            inThisCall
+                ? voiceCallState.videoTiles
+                      .filter((t) => t.source === "camera")
+                      .map((t) => [t.identity, t])
+                : [],
+        )),
+    );
+    const screenTiles = $derived(
+        (void voiceCallState.voiceTick,
+        inThisCall
+            ? voiceCallState.videoTiles.filter(
+                  (t) => t.source === "screenshare",
+              )
+            : []),
+    );
+    const focusedTile = $derived(
+        (void voiceCallState.voiceTick,
+        (inThisCall
+            ? voiceCallState.videoTiles.find(
+                  (t) => t.key === voiceCallState.focusedTileKey,
+              )
+            : undefined) ?? null),
+    );
+
+    function tileLabel(
+        identity: string,
+        source: "camera" | "screenshare",
+    ): string {
+        const userId = identity.slice(0, identity.lastIndexOf(":"));
+        if (userId === auth.userId)
+            return source === "screenshare"
+                ? t("callView.yourScreen")
+                : t("callView.you");
+        const name = getMemberName(room, userId);
+        return source === "screenshare"
+            ? t("callView.sScreen", { name })
+            : name;
+    }
+    function isLocalIdentity(identity: string): boolean {
+        return identity.slice(0, identity.lastIndexOf(":")) === auth.userId;
+    }
+
+    // A tile's primary action lives on its wrapper <div> (click, contextmenu,
+    // long-press). The keyboard/AT affordance is a real, empty <button>
+    // stretched over the tile — a real button so Enter *and* Space activate it
+    // natively (Space on a focused button never scrolls the page) and so we add
+    // no keydown handler that could shadow the window-level Escape that clears
+    // the spotlight.
+    //
+    // `pointer-events-none` is load-bearing, not decoration: VideoTile renders
+    // its own Fullscreen <button> at bottom-right (and a <video>), so an overlay
+    // that took part in hit-testing would sit on top of it and silently swallow
+    // fullscreen, click-to-spotlight, right-click and long-press. Keeping it out
+    // of hit-testing leaves every pointer gesture byte-identical to before;
+    // keyboard and assistive-tech activation dispatch the click straight at the
+    // button, which needs no hit-test. The ring is white (never the accent —
+    // that colour already means "speaking/spotlighted" on these tiles) over a
+    // 40% scrim so it still reads 3:1 against an all-white shared screen.
+    const TILE_OVERLAY_BTN =
+        "absolute inset-0 z-10 pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white focus-visible:bg-black/40";
+    // The per-participant menu trigger: always visible (never hover-gated, or a
+    // keyboard user could never reach it) and never gated on pointer type — a
+    // visible affordance beats a long-press gesture nobody can discover. It
+    // passes `interfaceState.isTouchscreen` as the menu's `touch` flag, not a
+    // hardcoded false: the same device must not get a positioned popover (with
+    // an <input type="range"> in it) from a tap on this button and a BottomSheet
+    // from a long-press on the tile behind it. No
+    // aria-haspopup: CallParticipantMenu renders a focus-trapped <div> of
+    // buttons (a BottomSheet on touch) with neither role="menu" nor
+    // role="dialog", and a popup role we cannot honour is worse than none.
+    const TILE_MENU_BTN =
+        "absolute z-20 rounded bg-black/60 text-white opacity-70 hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
+
+    // focusTile() is a toggle, so the label has to say which way it goes.
+    function spotlightLabel(key: string, label: string): string {
+        return voiceCallState.focusedTileKey === key
+            ? t("callView.exitSpotlightFor", { label })
+            : t("callView.spotlight", { label });
+    }
+
+    // Spotlighting and un-spotlighting both flip `{#if focusedTile}`, which
+    // tears down the entire tile subtree — including whichever overlay button
+    // was just activated. Focus would fall back to <body>, dumping a keyboard
+    // user at the top of the document and making them Tab through the whole
+    // sidebar to get back into the call. Land them on the tiles container
+    // instead: `tabindex="-1"` keeps it out of the tab order (it is a landing
+    // spot, not a stop) while still accepting focus, and Tab from there
+    // continues into the freshly rendered tiles.
+    //
+    // Both paths funnel through here so the five call sites cannot drift.
+    // Only the overlay buttons call these: the wrapper <div>s own the pointer
+    // (the overlays are `pointer-events-none`), so a mouse click never takes
+    // this path and never moves focus.
+    let tilesEl = $state<HTMLDivElement | undefined>();
+    async function keepFocusInTiles(): Promise<void> {
+        await tick();
+        tilesEl?.focus();
+    }
+    function spotlightTile(key: string): void {
+        focusTile(key);
+        void keepFocusInTiles();
+    }
+    function backToGrid(): void {
+        clearFocus();
+        void keepFocusInTiles();
+    }
+
+    function onKeydown(e: KeyboardEvent): void {
+        if (e.key === "Escape" && voiceCallState.focusedTileKey) {
+            e.stopPropagation();
+            clearFocus();
+        }
+    }
+    const roomName = $derived(
+        (void roomsState.roomsTick, getRoomDisplayName(room)),
+    );
+    const joining = $derived(voiceCallState.joinPendingRoomId === room.roomId);
+    // roomsTick, not voiceTick: m.direct is account data that lands on a sync,
+    // and the roster is frozen for the whole ring — see the tick split above
+    // and ActiveCallBanner.svelte.
+    const isDm = $derived(
+        (void roomsState.roomsTick, getDirectRoomIds().has(room.roomId)),
+    );
+    // A DM call with nobody else in it yet: we are ringing them. Derived, not
+    // stored — it stays until they join or we hang up, because a decline is
+    // invisible to the caller without MSC4310. The `=== auth.userId` check
+    // keeps "Ringing…" off the screen of a peer whose own membership has not
+    // propagated yet.
+    const ringingOut = $derived(
+        inThisCall &&
+            participants.length === 1 &&
+            participants[0].userId === auth.userId &&
+            isDm,
+    );
+
+    let participantMenu = $state<{
+        userId: string;
+        x: number;
+        y: number;
+        touch: boolean;
+    } | null>(null);
+    // Plain let: read only from event handlers, never from markup or an effect.
+    let participantMenuToken = 0;
+
+    // Release the shared modal slot if this row is destroyed while still
+    // owning it (e.g. the room changes under an open picker) — otherwise the
+    // slot strands and swallows the next Escape.
+    $effect(() => () => clearModalIfOwner(participantMenuToken));
+
+    // Sharing starts straight away: the picker asks what to share, and the
+    // quality is changed live (the gear on your share tile). A quality step
+    // before the picker was a second dialog in a row for every share.
+    let sharePopover = $state<{ x: number; y: number } | null>(null);
+    function onShareBtnClick(): void {
+        void toggleScreenShare();
+    }
+    function openLiveQuality(e: MouseEvent): void {
+        e.stopPropagation();
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        sharePopover = { x: r.left, y: r.top };
+    }
+
+    // The browser's own "Stop sharing" control ends the share without touching
+    // our popover, so it would strand open. Close it when the share goes away.
+    // untrack() keeps the effect's only dependency the screenSharing flag —
+    // writing sharePopover here never retriggers it.
+    $effect(() => {
+        if (voiceCallState.screenSharing) return;
+        untrack(() => {
+            sharePopover = null;
+        });
+    });
+
+    function openParticipantMenu(
+        userId: string,
+        x: number,
+        y: number,
+        touch: boolean,
+    ) {
+        participantMenuToken = openModal(
+            "call-participant-menu",
+            () => (participantMenu = null),
+        );
+        participantMenu = { userId, x, y, touch };
+    }
+</script>
+
+<svelte:window onkeydown={onKeydown} />
+
+<div
+    data-zam-region="call"
+    class="flex-1 flex flex-col min-w-0 bg-zam-backgroundTertiary"
+>
+    <!-- Header -->
+    <div
+        class="h-12 px-4 flex items-center gap-2 flex-shrink-0 border-b border-zam-divider bg-zam-background"
+    >
+        {#if isMobile}
+            <button
+                onclick={onMenuOpen}
+                class="p-1.5 -ms-1 rounded text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover transition-colors flex-shrink-0"
+                title={t("common.openRoomList")}
+                aria-label={t("common.openRoomList")}
+            >
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z" />
+                </svg>
+            </button>
+        {/if}
+        <Volume2 size={20} class="text-zam-textMuted flex-shrink-0" />
+        <h2 class="font-semibold text-zam-textPrimary truncate">
+            {roomName}
+        </h2>
+        {#if inThisCall}
+            <CallEncryptionBadge roomId={room.roomId} showLabel={!isMobile} />
+        {/if}
+        {#if ringingOut}
+            <span class="text-sm text-zam-textMuted flex-shrink-0">
+                {t("callView.ringing")}
+            </span>
+        {/if}
+        <div class="flex-1"></div>
+        <button
+            onclick={showChatView}
+            class="p-1.5 rounded transition-colors text-zam-textMuted hover:text-zam-textPrimary hover:bg-zam-messageHover"
+            title={t("callView.showChat")}
+            aria-label={t("callView.showChat")}
+        >
+            <MessageSquare size={20} />
+        </button>
+    </div>
+
+    <!-- Tiles -->
+    <!-- `tabindex="-1"`, not "0": this is the focus landing spot for a
+         spotlight toggle that unmounts the button doing the toggling (see
+         keepFocusInTiles above), NOT a new tab stop — it adds nothing to the
+         tab order and traps nothing. -->
+    <div
+        bind:this={tilesEl}
+        tabindex="-1"
+        class="flex-1 min-h-0 p-4 flex flex-col gap-3"
+    >
+        {#if participants.length === 0 && screenTiles.length === 0}
+            <div
+                class="flex-1 flex flex-col items-center justify-center gap-3 text-zam-textMuted"
+            >
+                <Volume2 size={40} />
+                <p class="text-sm">{t("callView.noOneIsInThisCall")}</p>
+            </div>
+        {:else if focusedTile}
+            <!-- Spotlight: the focused stream fills the view -->
+            <!-- The wrapper keeps click-anywhere-to-go-back for the pointer, so
+                 both ignores below stay live; the keyboard path is the overlay
+                 button (and Escape, handled on <svelte:window> above). -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <div
+                class="relative flex-1 min-h-0 rounded-lg overflow-hidden cursor-zoom-out"
+                onclick={clearFocus}
+                oncontextmenu={(e) => {
+                    e.preventDefault();
+                    openParticipantMenu(
+                        focusedTile.userId,
+                        e.clientX,
+                        e.clientY,
+                        false,
+                    );
+                }}
+                use:longPress={{
+                    onTrigger: (x, y) =>
+                        openParticipantMenu(focusedTile.userId, x, y, true),
+                }}
+                title={t("callView.backToGrid")}
+            >
+                <VideoTile
+                    tile={focusedTile}
+                    label={tileLabel(focusedTile.identity, focusedTile.source)}
+                    mirror={focusedTile.source === "camera" &&
+                        isLocalIdentity(focusedTile.identity) &&
+                        settingsState.mirrorCamera}
+                />
+                <button
+                    type="button"
+                    class={TILE_OVERLAY_BTN}
+                    aria-label={t("callView.backToGrid")}
+                    onclick={(e) => {
+                        e.stopPropagation();
+                        backToGrid();
+                    }}
+                ></button>
+            </div>
+            <!-- Filmstrip: everyone else, small, along the bottom -->
+            <div
+                class="flex-shrink-0 flex gap-2 justify-center overflow-x-auto py-1"
+            >
+                {#each screenTiles as tile (tile.key)}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div
+                        animate:flip={tileFlip()}
+                        in:scale={tileIn()}
+                        out:scale={tileOut()}
+                        class="relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-black cursor-pointer border-2 {tile.key ===
+                        voiceCallState.focusedTileKey
+                            ? 'border-zam-accent'
+                            : 'border-transparent'}"
+                        onclick={() => focusTile(tile.key)}
+                        oncontextmenu={(e) => {
+                            e.preventDefault();
+                            openParticipantMenu(
+                                tile.userId,
+                                e.clientX,
+                                e.clientY,
+                                false,
+                            );
+                        }}
+                        use:longPress={{
+                            onTrigger: (x, y) =>
+                                openParticipantMenu(tile.userId, x, y, true),
+                        }}
+                        title={tileLabel(tile.identity, tile.source)}
+                    >
+                        <VideoTile
+                            {tile}
+                            label={tileLabel(tile.identity, tile.source)}
+                            compact
+                        />
+                        {#if isLocalIdentity(tile.identity)}
+                            <button
+                                type="button"
+                                class="{TILE_MENU_BTN} top-0.5 start-0.5 p-1"
+                                title={t("callView.screenShareQuality")}
+                                aria-label={t("callView.screenShareQuality")}
+                                onclick={openLiveQuality}
+                            >
+                                <Settings size={14} />
+                            </button>
+                        {/if}
+                        <button
+                            type="button"
+                            class={TILE_OVERLAY_BTN}
+                            aria-label={spotlightLabel(
+                                tile.key,
+                                tileLabel(tile.identity, tile.source),
+                            )}
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                spotlightTile(tile.key);
+                            }}
+                        ></button>
+                    </div>
+                {/each}
+                {#each participants as p (p.userId)}
+                    {@const identity = `${p.userId}:${p.deviceId}`}
+                    {@const cam = cameraByIdentity.get(identity)}
+                    {@const name =
+                        (void roomsState.roomsTick,
+                        getMemberName(room, p.userId))}
+                    {@const avatar =
+                        (void roomsState.roomsTick,
+                        getMemberAvatar(room, p.userId))}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div
+                        animate:flip={tileFlip()}
+                        in:scale={tileIn()}
+                        out:scale={tileOut()}
+                        class="relative h-20 aspect-video flex-shrink-0 rounded-md overflow-hidden bg-zam-backgroundSecondary flex items-center justify-center cursor-pointer border-2 {speaking.has(
+                            p.userId,
+                        ) ||
+                        (cam && cam.key === voiceCallState.focusedTileKey)
+                            ? 'border-zam-accent'
+                            : 'border-transparent'}"
+                        onclick={cam ? () => focusTile(cam.key) : undefined}
+                        oncontextmenu={(e) => {
+                            e.preventDefault();
+                            openParticipantMenu(
+                                p.userId,
+                                e.clientX,
+                                e.clientY,
+                                false,
+                            );
+                        }}
+                        use:longPress={{
+                            onTrigger: (x, y) =>
+                                openParticipantMenu(p.userId, x, y, true),
+                        }}
+                        title={name}
+                    >
+                        {#if cam}
+                            <VideoTile
+                                tile={cam}
+                                label={name}
+                                compact
+                                mirror={isLocalIdentity(identity) &&
+                                    settingsState.mirrorCamera}
+                            />
+                            <button
+                                type="button"
+                                class={TILE_OVERLAY_BTN}
+                                aria-label={spotlightLabel(cam.key, name)}
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    spotlightTile(cam.key);
+                                }}
+                            ></button>
+                        {:else}
+                            <Avatar
+                                src={avatar}
+                                {name}
+                                id={p.userId}
+                                size={36}
+                            />
+                        {/if}
+                        <button
+                            type="button"
+                            class="{TILE_MENU_BTN} top-0.5 end-0.5 p-1"
+                            title={t("callView.optionsFor", { name })}
+                            aria-label={t("callView.optionsFor", { name })}
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                const r =
+                                    e.currentTarget.getBoundingClientRect();
+                                openParticipantMenu(
+                                    p.userId,
+                                    r.right,
+                                    r.bottom,
+                                    interfaceState.isTouchscreen,
+                                );
+                            }}
+                        >
+                            <EllipsisVertical size={14} />
+                        </button>
+                        {#each callTileDecorationItems(room.roomId, p.userId) as d (d.key)}
+                            <div
+                                class="absolute inset-0 pointer-events-none"
+                                use:pluginMount={d.render}
+                            ></div>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
+        {:else}
+            <div
+                class="grid gap-3 overflow-y-auto"
+                style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
+            >
+                {#each screenTiles as tile (tile.key)}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div
+                        animate:flip={tileFlip()}
+                        in:scale={tileIn()}
+                        out:scale={tileOut()}
+                        class="relative aspect-video rounded-lg overflow-hidden bg-black cursor-zoom-in border-2 {tile.key ===
+                        voiceCallState.focusedTileKey
+                            ? 'border-zam-accent'
+                            : 'border-transparent'}"
+                        onclick={() => focusTile(tile.key)}
+                        oncontextmenu={(e) => {
+                            e.preventDefault();
+                            openParticipantMenu(
+                                tile.userId,
+                                e.clientX,
+                                e.clientY,
+                                false,
+                            );
+                        }}
+                        use:longPress={{
+                            onTrigger: (x, y) =>
+                                openParticipantMenu(tile.userId, x, y, true),
+                        }}
+                    >
+                        <VideoTile
+                            {tile}
+                            label={tileLabel(tile.identity, tile.source)}
+                        />
+                        {#if isLocalIdentity(tile.identity)}
+                            <button
+                                type="button"
+                                class="{TILE_MENU_BTN} top-0.5 start-0.5 p-1"
+                                title={t("callView.screenShareQuality")}
+                                aria-label={t("callView.screenShareQuality")}
+                                onclick={openLiveQuality}
+                            >
+                                <Settings size={14} />
+                            </button>
+                        {/if}
+                        <button
+                            type="button"
+                            class={TILE_OVERLAY_BTN}
+                            aria-label={spotlightLabel(
+                                tile.key,
+                                tileLabel(tile.identity, tile.source),
+                            )}
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                spotlightTile(tile.key);
+                            }}
+                        ></button>
+                    </div>
+                {/each}
+
+                {#each participants as p (p.userId)}
+                    {@const identity = `${p.userId}:${p.deviceId}`}
+                    {@const cam = cameraByIdentity.get(identity)}
+                    {@const name =
+                        (void roomsState.roomsTick,
+                        getMemberName(room, p.userId))}
+                    {@const avatar =
+                        (void roomsState.roomsTick,
+                        getMemberAvatar(room, p.userId))}
+                    {@const status = callTileStatus({
+                        isOwn: isLocalIdentity(identity),
+                        remoteMuted: muted.has(p.userId),
+                        speaking: speaking.has(p.userId),
+                        locallyMuted: participantAudioFor(p.userId).muted,
+                        selfMicMuted: voiceCallState.micMuted,
+                        selfDeafened: voiceCallState.deafened,
+                        deviceCount: deviceCounts.get(p.userId) ?? 1,
+                    })}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <div
+                        animate:flip={tileFlip()}
+                        in:scale={tileIn()}
+                        out:scale={tileOut()}
+                        class="relative aspect-video rounded-lg overflow-hidden bg-zam-backgroundSecondary flex items-center justify-center border-2 {speaking.has(
+                            p.userId,
+                        ) ||
+                        (cam && cam.key === voiceCallState.focusedTileKey)
+                            ? 'border-zam-accent'
+                            : 'border-transparent'} {cam
+                            ? 'cursor-zoom-in'
+                            : ''}"
+                        onclick={cam ? () => focusTile(cam.key) : undefined}
+                        oncontextmenu={(e) => {
+                            e.preventDefault();
+                            openParticipantMenu(
+                                p.userId,
+                                e.clientX,
+                                e.clientY,
+                                false,
+                            );
+                        }}
+                        use:longPress={{
+                            onTrigger: (x, y) =>
+                                openParticipantMenu(p.userId, x, y, true),
+                        }}
+                    >
+                        {#if cam}
+                            <VideoTile
+                                tile={cam}
+                                label={name}
+                                mirror={isLocalIdentity(identity) &&
+                                    settingsState.mirrorCamera}
+                            />
+                            <button
+                                type="button"
+                                class={TILE_OVERLAY_BTN}
+                                aria-label={spotlightLabel(cam.key, name)}
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    spotlightTile(cam.key);
+                                }}
+                            ></button>
+                            {#if status.micOff || status.deafened || status.locallyMuted || status.multiDevice}
+                                <div
+                                    class="absolute top-2 start-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60"
+                                >
+                                    {#if status.micOff}
+                                        <MicOff
+                                            size={14}
+                                            class="text-zam-danger flex-shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        <span class="sr-only"
+                                            >{t("callView.muted")}</span
+                                        >
+                                    {/if}
+                                    {#if status.deafened}
+                                        <HeadphoneOff
+                                            size={14}
+                                            class="text-zam-danger flex-shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        <span class="sr-only"
+                                            >{t("callView.deafened")}</span
+                                        >
+                                    {/if}
+                                    {#if status.locallyMuted}
+                                        <VolumeX
+                                            size={14}
+                                            class="text-zam-textMuted flex-shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        <span class="sr-only"
+                                            >{t("callView.mutedForYou")}</span
+                                        >
+                                    {/if}
+                                    {#if status.multiDevice}
+                                        <span
+                                            class="flex items-center gap-0.5 text-[10px] leading-none text-white flex-shrink-0"
+                                            title={t(
+                                                "callView.joinedFromMultipleDevices",
+                                            )}
+                                        >
+                                            <Smartphone
+                                                size={12}
+                                                aria-hidden="true"
+                                            /><span class="sr-only"
+                                                >{t("callView.devices", {
+                                                    value:
+                                                        deviceCounts.get(
+                                                            p.userId,
+                                                        ) ?? 1,
+                                                })}</span
+                                            ><span aria-hidden="true"
+                                                >{deviceCounts.get(p.userId) ??
+                                                    1}</span
+                                            >
+                                        </span>
+                                    {/if}
+                                </div>
+                            {/if}
+                        {:else}
+                            <Avatar
+                                src={avatar}
+                                {name}
+                                id={p.userId}
+                                size={80}
+                            />
+                            <div
+                                class="absolute bottom-2 start-2 flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/60 max-w-[calc(100%-1rem)]"
+                            >
+                                {#if status.micOff}
+                                    <MicOff
+                                        size={14}
+                                        class="text-zam-danger flex-shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="sr-only"
+                                        >{t("callView.muted")}</span
+                                    >
+                                {/if}
+                                {#if status.deafened}
+                                    <HeadphoneOff
+                                        size={14}
+                                        class="text-zam-danger flex-shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="sr-only"
+                                        >{t("callView.deafened")}</span
+                                    >
+                                {/if}
+                                {#if status.locallyMuted}
+                                    <VolumeX
+                                        size={14}
+                                        class="text-zam-textMuted flex-shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="sr-only"
+                                        >{t("callView.mutedForYou")}</span
+                                    >
+                                {/if}
+                                {#if status.multiDevice}
+                                    <span
+                                        class="flex items-center gap-0.5 text-[10px] leading-none text-white flex-shrink-0"
+                                        title={t(
+                                            "callView.joinedFromMultipleDevices",
+                                        )}
+                                    >
+                                        <Smartphone
+                                            size={12}
+                                            aria-hidden="true"
+                                        /><span class="sr-only"
+                                            >{t("callView.devices", {
+                                                value:
+                                                    deviceCounts.get(
+                                                        p.userId,
+                                                    ) ?? 1,
+                                            })}</span
+                                        ><span aria-hidden="true"
+                                            >{deviceCounts.get(p.userId) ??
+                                                1}</span
+                                        >
+                                    </span>
+                                {/if}
+                                <span class="text-xs text-white truncate"
+                                    >{name}</span
+                                >
+                            </div>
+                        {/if}
+                        <button
+                            type="button"
+                            class="{TILE_MENU_BTN} top-2 end-2 p-1.5"
+                            title={t("callView.optionsFor", { name })}
+                            aria-label={t("callView.optionsFor", { name })}
+                            onclick={(e) => {
+                                e.stopPropagation();
+                                const r =
+                                    e.currentTarget.getBoundingClientRect();
+                                openParticipantMenu(
+                                    p.userId,
+                                    r.right,
+                                    r.bottom,
+                                    interfaceState.isTouchscreen,
+                                );
+                            }}
+                        >
+                            <EllipsisVertical size={16} />
+                        </button>
+                        {#each callTileDecorationItems(room.roomId, p.userId) as d (d.key)}
+                            <div
+                                class="absolute inset-0 pointer-events-none"
+                                use:pluginMount={d.render}
+                            ></div>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
+        {/if}
+    </div>
+
+    <!-- Plugin panels (open ones only; each scrolls within its own cap) -->
+    {#each callPanelItems(room.roomId) as panel (panel.key)}
+        <div
+            class="flex-shrink-0 border-t border-zam-divider bg-zam-background max-h-[60%] overflow-auto"
+            role="region"
+            aria-label={panel.title}
+        >
+            <div class="w-full" use:pluginMount={panel.render}></div>
+        </div>
+    {/each}
+
+    <!-- Controls -->
+    <div class="flex-shrink-0 p-4 flex flex-col items-center gap-2">
+        {#if voiceCallState.playbackBlocked && inThisCall}
+            <button
+                onclick={() => void resumeVoicePlayback()}
+                class="px-3 py-1.5 rounded bg-zam-warning text-black text-xs font-semibold"
+            >
+                {t("callView.enableAudio")}
+            </button>
+        {/if}
+        {#if voiceCallState.onHold && inThisCall}
+            <div
+                class="flex items-center gap-2 px-3 py-1.5 rounded bg-zam-backgroundSecondary text-xs text-zam-textMuted"
+            >
+                <span>{t("callView.onHold")}</span>
+                <button
+                    onclick={resumeHeldCall}
+                    class="px-2 py-0.5 rounded bg-zam-accent text-white font-semibold"
+                >
+                    {t("callView.resume")}
+                </button>
+            </div>
+        {/if}
+        {#if controlMode === "controls"}
+            <div
+                class="flex items-center gap-2 px-2 py-2 rounded-full bg-zam-backgroundSecondary"
+            >
+                <button
+                    onclick={toggleCallMute}
+                    class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.micMuted
+                        ? 'text-zam-danger'
+                        : 'text-zam-textPrimary'}"
+                    title={voiceCallState.micMuted
+                        ? t("callView.unmute")
+                        : t("common.mute")}
+                    aria-label={voiceCallState.micMuted
+                        ? t("callView.unmute")
+                        : t("common.mute")}
+                >
+                    {#if voiceCallState.micMuted}<MicOff size={20} />{:else}<Mic
+                            size={20}
+                        />{/if}
+                </button>
+                <button
+                    onclick={toggleCallDeafen}
+                    class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.deafened
+                        ? 'text-zam-danger'
+                        : 'text-zam-textPrimary'}"
+                    title={voiceCallState.deafened
+                        ? t("callView.undeafen")
+                        : t("callView.deafen")}
+                    aria-label={voiceCallState.deafened
+                        ? t("callView.undeafen")
+                        : t("callView.deafen")}
+                >
+                    {#if voiceCallState.deafened}<HeadphoneOff
+                            size={20}
+                        />{:else}<Headphones size={20} />{/if}
+                </button>
+                {#if voiceCallState.audioRoute && voiceCallState.availableAudioRoutes.includes("speaker")}
+                    <!-- Android: speaker vs. the private route (earpiece or
+                         headset), through the system call stack. -->
+                    <button
+                        onclick={toggleSpeaker}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.audioRoute ===
+                        'speaker'
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
+                        title={voiceCallState.audioRoute === "speaker"
+                            ? t("callView.speakerOff")
+                            : t("callView.speakerOn")}
+                        aria-label={voiceCallState.audioRoute === "speaker"
+                            ? t("callView.speakerOff")
+                            : t("callView.speakerOn")}
+                        aria-pressed={voiceCallState.audioRoute === "speaker"}
+                    >
+                        {#if voiceCallState.audioRoute === "speaker"}<Volume2
+                                size={20}
+                            />{:else if voiceCallState.audioRoute === "bluetooth"}<Bluetooth
+                                size={20}
+                            />{:else if voiceCallState.audioRoute === "wired"}<Headphones
+                                size={20}
+                            />{:else}<Ear size={20} />{/if}
+                    </button>
+                {/if}
+                {#if !settingsState.cameraDisabled}
+                    <button
+                        onclick={() => void toggleCamera()}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.cameraOn
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
+                        title={voiceCallState.cameraOn
+                            ? t("common.turnOffCamera")
+                            : t("common.turnOnCamera")}
+                        aria-label={voiceCallState.cameraOn
+                            ? t("common.turnOffCamera")
+                            : t("common.turnOnCamera")}
+                    >
+                        {#if voiceCallState.cameraOn}<Video
+                                size={20}
+                            />{:else}<VideoOff size={20} />{/if}
+                    </button>
+                {/if}
+                {#if screenShareSupported}
+                    <button
+                        onclick={onShareBtnClick}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.screenSharing
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
+                        title={voiceCallState.screenSharing
+                            ? t("common.stopSharing")
+                            : t("common.shareYourScreen")}
+                        aria-label={voiceCallState.screenSharing
+                            ? t("common.stopSharing")
+                            : t("common.shareYourScreen")}
+                    >
+                        <MonitorUp size={20} />
+                    </button>
+                {/if}
+                {#if voiceCallState.screenSharing && voiceCallState.ownShareAudio}
+                    <button
+                        onclick={() => toggleShareAudioMute()}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {voiceCallState.shareAudioMuted
+                            ? 'text-zam-textMuted'
+                            : 'text-zam-textPrimary'}"
+                        title={voiceCallState.shareAudioMuted
+                            ? t("callView.unmuteShareAudio")
+                            : t("callView.muteShareAudio")}
+                        aria-label={voiceCallState.shareAudioMuted
+                            ? t("callView.unmuteShareAudio")
+                            : t("callView.muteShareAudio")}
+                    >
+                        {#if voiceCallState.shareAudioMuted}<VolumeX
+                                size={20}
+                            />{:else}<Volume2 size={20} />{/if}
+                    </button>
+                {/if}
+                <SoundboardButton
+                    {room}
+                    buttonClass="p-3 rounded-full hover:bg-zam-messageHover"
+                    idleClass="text-zam-textPrimary"
+                />
+                {#each callControlItems(room.roomId) as c (c.key)}
+                    <button
+                        onclick={(e) => c.click(e.currentTarget)}
+                        class="p-3 rounded-full hover:bg-zam-messageHover {c.active
+                            ? 'text-zam-accent'
+                            : 'text-zam-textPrimary'}"
+                        title={c.label}
+                        aria-label={c.label}
+                    >
+                        {#if c.icon}
+                            <svg
+                                class="w-5 h-5"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                            >
+                                <path d={c.icon} />
+                            </svg>
+                        {:else}
+                            <span
+                                class="w-5 h-5 flex items-center justify-center text-sm font-semibold leading-none"
+                                aria-hidden="true">{c.label.slice(0, 1)}</span
+                            >
+                        {/if}
+                    </button>
+                {/each}
+                <button
+                    onclick={leaveCall}
+                    class="p-3 rounded-full bg-zam-danger hover:bg-zam-dangerHover text-white transition-colors"
+                    title={t("callView.disconnect")}
+                    aria-label={t("callView.disconnect")}
+                >
+                    <PhoneOff size={20} />
+                </button>
+            </div>
+        {:else if controlMode === "join"}
+            <button
+                onclick={() => joinCall(room.roomId)}
+                disabled={voiceCallState.joinPendingRoomId !== null}
+                class="flex items-center gap-2 px-6 py-2.5 rounded-full bg-zam-accent hover:bg-zam-accentHover text-white font-medium transition-colors disabled:opacity-60"
+            >
+                <Phone size={20} />
+                {joining ? t("common.joining") : t("callView.joinCall")}
+            </button>
+        {/if}
+    </div>
+</div>
+
+<!-- CallParticipantMenu brings its own Portal + backdrop — don't wrap it. -->
+{#if participantMenu}
+    <CallParticipantMenu
+        {room}
+        userId={participantMenu.userId}
+        x={participantMenu.x}
+        y={participantMenu.y}
+        touch={participantMenu.touch}
+        onClose={() => {
+            participantMenu = null;
+            clearModalIfOwner(participantMenuToken);
+        }}
+    />
+{/if}
+{#if sharePopover}
+    <ScreenShareQualityPopover
+        x={sharePopover.x}
+        y={sharePopover.y}
+        touch={interfaceState.isTouchscreen}
+        onClose={() => (sharePopover = null)}
+    />
+{/if}
+
+<!-- The profile card lives in MessageArea too, but AppShell renders CallView
+     INSTEAD of MessageArea during a call (mutually exclusive), so without this
+     mount the "Profile" entry in a call-tile menu opens a card nothing renders.
+     Only one of the two is ever mounted, so there is never a double instance. -->
+<UserProfileCard {room} />

@@ -1,0 +1,16 @@
+{
+  "name": "@-/com.leonsilicon.zami.paths",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Where things are in the Zami repository: its root, upstream Zam's tree and the Expo app.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

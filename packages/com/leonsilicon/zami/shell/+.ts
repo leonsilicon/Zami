@@ -1,0 +1,1 @@
+export { ZamiShell } from "#shell";

@@ -1,0 +1,2773 @@
+# Changelog
+
+Human-readable release notes. The `## v<version>` section for the released version is pulled into
+the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
+commit list is appended below it.
+
+## v1.66.10
+
+🐛 **Fixed**
+
+- **Screen shares jumping back a frame or two, over and over:** on computers whose graphics card encodes H.264 or HEVC, shares were sent in a layered form that made viewers' pictures skip backwards several times a second, at any bitrate. Shares are now sent without it.
+- **Push to talk looking like a mute:** letting go of the push-to-talk key muted the mic the same way the mute button does, so everyone else saw a muted mic and heard their mute and unmute sounds. Now it just looks like you stopped talking. The mute button still mutes.
+- **A Windows capture-helper share at a high bitrate climbing and crashing over and over:** after the connection gives way once, the share now levels off just below that point instead of repeatedly climbing back into it.
+
+✨ **New**
+
+- **Middle-click autoscroll** now works on Linux and macOS too, not just Windows.
+
+## v1.66.9
+
+🐛 **Fixed**
+
+- **Encrypted screen shares from the Windows capture helper freezing for seconds at a time:** about half of the share's keyframes were thrown away by viewers before they could be decrypted, so every bit of packet loss or quality change froze the picture until one got through. Keyframes now reach viewers intact.
+- **Shares stuttering for viewers on slower connections:** shares are sent as two layers again (the Windows capture helper included), and a viewer whose connection can't carry the full picture moves to the smaller one and stays there, instead of being flipped back and forth.
+
+✨ **Changed**
+
+- **Screen shares default to 8 Mbps.** The upload measurement can only lower it. More than 8 Mbps can still be picked by hand, with a warning that slower viewers may stutter; saved picks above 8 Mbps are reset to 8 once.
+
+## v1.66.8
+
+🐛 **Fixed**
+
+- **A share frozen for a viewer on a slower connection:** when a viewer's connection couldn't carry a share's full bitrate, the call server kept sending it anyway and the viewer's picture froze for good. Viewers now tell the sharer how much actually reaches them, and the share drops to a bitrate that fits within a few seconds, then stays there for a while before trying higher again.
+
+## v1.66.7
+
+🐛 **Fixed**
+
+- **Memory growing over a long call:** every screen share, camera toggle and codec switch left its video sender behind for the rest of the call, holding its memory. Encrypted calls switch codec whenever someone joins or leaves, so busy calls grew fastest. Old senders are now cleaned up.
+- **A Windows window share turning grey for viewers after a graphics crash** in unencrypted calls (common while a game fills the video memory): the share now keeps going after the call reconnects.
+
+## v1.66.6
+
+🐛 **Fixed**
+
+- **Windows window shares freezing, especially while streaming a game:** the native share's placeholder frames could stop reaching the encoder, so the share froze for viewers while the capture kept running in the background. This was most likely with the GPU busy, as it is in a game.
+- **Stutter at the start of a native share and on unsteady connections:** a native share now starts at a modest bitrate and follows the connection every half second instead of every two, and a timing bug that made viewers drop frames and ask for keyframes on a jittery link is gone.
+
+## v1.66.5
+
+🐛 **Fixed**
+
+- **Missing buttons and menus after startup:** permission-gated controls (space settings, pin and delete in the message menu, the call participant menu) stayed hidden when a room's power levels arrived after it was first shown. They now appear as soon as the power levels load.
+- **Join call button** for calls whose members joined from newer clients now shows up once those members load, without switching rooms.
+
+## v1.66.4
+
+🐛 **Fixed**
+
+- **Stuttering, freezing screen shares:** a share sent as one layer (every H.264 share, including the native Windows encoder) left the call server nothing lighter for a viewer whose connection couldn't keep up, so it kept pausing and resuming them. Viewers now tell the sharer when that happens, and the share lowers its bitrate until everyone can follow, then climbs back. The call stats panel says when your share is being held down.
+- **Stopping a native Windows share** could take the capture helper down, and a helper whose share had already fallen back to the browser kept encoding in the background, using more and more memory.
+- **A closed shared window** left a native share frozen on its last frame, and an encoder error froze it for good. The share now ends, or the encoder restarts.
+- **Share audio cutting out** while a share is busy: its buffer now grows a little after each dropout instead of starting over.
+- **Join call button missing** for a call in the first room you open after starting Zam.
+- **Your own speaking indicator** now lights up as you talk, instead of waiting for the server.
+- **"You's screen"** now reads "Your screen".
+- **Direct file transfer:** a resent part that differs from the first one starts that block over.
+
+## v1.66.3
+
+✨ **New**
+
+- **Telegram sticker import:** Settings > Emotes (stickers) can import a Telegram pack from a `t.me/addstickers/<name>` link. Animated stickers are converted to animated WebP in the app. Zam's own sticker service handles the Telegram side, so you do not need a bot token. If that service is unreachable you can paste your own.
+- **Add uploads in two steps:** choosing an emote, sticker or soundboard file now shows a preview first, so you can set the name (and an emoji for sounds) before pressing Add.
+- **Soundboard emoji:** sounds can have an emoji, shown big on their button in the soundboard.
+- **Polls notification rule:** one row in the notification rules list now controls poll start and end alerts, which used to ping like ordinary messages.
+- **Smoother screen shares:** incoming shares are held back by about 170 ms by default to hide jitter and rubber-banding, and the call stats panel has a slider to change it.
+
+🐛 **Fixed**
+
+- **Empty sticker picker:** with no sticker packs it now offers a button to the Emotes settings instead of a dead end.
+- **Sticker and emoji pickers:** a blurred preview shows while each full image loads.
+
+## v1.66.2
+
+✨ **New**
+
+- **Presence on servers without it:** on a homeserver that has presence turned off (matrix.org, for example), Settings > Account now has "Share my status through my profile". When it is on, Zam publishes your online, away or busy state in a profile field, and other Zam users see it in member lists and DMs. It is off by default, because anyone who can read your profile can see it. Invisible removes it.
+- **Role tags:** rooms can name, colour and give an icon to each power level (MSC3949). The member list groups people by tag, the timeline and profile card show the tag, and room settings has a Role tags editor.
+- **Message bubbles for everyone:** the bubble style can now apply to all messages, separately from the right-aligned layout.
+
+🐛 **Fixed**
+
+- **Slow file transfers:** a direct file transfer whose checks took a moment could sit still for about a minute. The receiver now keeps data that arrives during the check, so it carries on at once.
+
+## v1.66.1
+
+🐛 **Fixed**
+
+- **Flatpak restart after an update:** "Restart to apply" could close Zam without starting the new version, mostly on Wayland desktops such as sway and Hyprland. Zam now starts the update on your desktop with your display settings, and if that still doesn't work it stays open and asks you to quit and reopen it. This takes effect from the update after this one.
+
+## v1.66.0
+
+✨ **New**
+
+- **Edit in the main composer:** editing a message now opens it in the main message box under an "Editing message" bar, with mentions, emoji, autocomplete and markdown. Your unsent draft comes back when you save or press Esc. Works in rooms and threads.
+- **DMs look like DMs:** a direct message now starts with the other person's avatar and name and "This is the beginning of your direct message history", instead of a room's welcome header.
+- **Direct file transfer, version 2:** the protocol now matches the shared draft written with the Vommet project. Every 1 MiB block is checked as it arrives, so a damaged block is resent instead of failing the whole file at the end. LiveKit packets are signed. When the sender has no voice server, the two devices connect over a direct WebRTC channel, which goes only through TURN if you have relay-only on. Your other devices see "Accepted on another of your devices", and an offer that didn't come from the device it names can't be accepted. Older Zam versions can't send files to this one or receive from it, so update both sides.
+- **Plugins:** plugins can carry call audio and video over their own network (for example I2P or Tor), and can open raw TCP and UDP sockets to the servers their manifest lists, on desktop and Android.
+
+🐛 **Fixed**
+
+- **Mentions survive edits:** editing a message no longer turns its mentions into plain text.
+- **File transfers and other servers:** a file transfer only connects to the voice server the other person's homeserver advertises. Before, anyone in the room could point your device at a server of their choosing.
+- **Received file names:** file names are cleaned more strictly before saving, and an offer can stay open for at most a day after it was posted.
+
+## v1.65.9
+
+✨ **New**
+
+- **Screen shares are opt-in:** someone else's screen share no longer opens by itself. Click Watch on its tile to see it.
+- **See who's watching:** screen share tiles show how many people are watching, and hovering lists their names.
+- **Mute a screen share's sound:** remote share tiles have a mute button for the share's audio. While you share with system audio, you can mute your share's sound without stopping the share.
+
+🐛 **Fixed**
+
+- **Mute and deafen:** muting or deafening now really stops sending your microphone. Before, with Zam's audio processing on, others could still hear you and see your speaking ring light up.
+
+## v1.65.8
+
+✨ **New**
+
+- **YouTube video titles:** YouTube link previews now show the video's title and channel under the thumbnail.
+
+🐛 **Fixed**
+
+- **YouTube Shorts and youtu.be links:** Shorts links now get the YouTube player, in a vertical layout, instead of a plain link card. A timestamp in a youtu.be or YouTube link (`?t=1m30s`) now starts the video there.
+
+- **Rooms unread after a reload:** an encrypted room you had already read could show as unread again every time Zam started, and reading it again didn't clear it. It now stays read.
+
+## v1.65.6
+
+🐛 **Fixed**
+
+- **Tweet GIFs in the viewer:** opening a GIF from an embedded tweet no longer shows "Could not load this video". It now plays in the viewer and loops like it does on Twitter.
+
+## v1.65.5
+
+🐛 **Fixed**
+
+- **Screen share size:** native screen shares (Windows window shares and Android) now tell the call server and other clients their real picture size. They used to report a tiny 64x64 size, which every viewer, including Element Call, was given.
+
+## v1.65.4
+
+🐛 **Fixed**
+
+- **Screen share stutter:** native screen shares (Windows window shares and Android) no longer judder for viewers. Frames were being shown at uneven intervals even when they all arrived; they now play back at the pace they were captured.
+
+## v1.65.3
+
+✨ **New**
+
+- **View reactions:** "View reactions" in a message's menu (right-click, or ⋯ / long-press on mobile) shows who reacted with what. Each reaction has its own tab, every reactor appears with the time they reacted, and your own reaction has a remove button. It is a dialog on desktop and a bottom sheet on mobile.
+- **Invisible is properly invisible:** while your status is Invisible, read receipts are sent as private and typing notifications are not sent.
+
+🐛 **Fixed**
+
+- **X/Twitter GIFs:** clicking a GIF in a post embed now opens it in the viewer, like photos do.
+- **Servers without presence:** on a server that has presence turned off (such as matrix.org), the status picker is hidden instead of offering choices that do nothing.
+
+## v1.65.2
+
+🐛 **Fixed**
+
+- **Replies now ping the author:** a reply used to leave the author of the message out of the mention list, so they were never notified. The reply bar has a new `@ ON / @ OFF` toggle, like Discord, and Settings → Messages and media has a "Ping on reply" option for the default (on).
+
+## v1.65.1
+
+🐛 **Fixed**
+
+- **Theme variable names:** the theme CSS variables are now `--zam-*` instead of `--discord-*`. If you use custom CSS or a plugin that references the old names, update them (the Example Theme and Emoji Stealer plugins have new versions).
+
+## v1.65.0
+
+✨ **New**
+
+- **Smooth window sharing on Windows:** sharing a window from the Windows app now captures and encodes it outside the browser engine, on every frame the window draws, with your graphics card's encoder. Sharing a game no longer stutters while the game keeps the GPU busy. Your own preview shows exactly what others see. The "Windows capture helper" switch in the screen share quality options turns it off.
+- **Screen sharing from Android:** the Android app can now share your screen in calls, including on older Android System WebViews. A notification shows while you share, with a "Stop sharing" button.
+- **Separate interface scale and message text size:** the text-size setting is now two: interface scale (75-150%) for the whole app, and message text size (80-200%) for messages and the composer. Your old setting carries over to the interface scale.
+- **Build the full search index:** Settings → Debug has "Build full index now", with progress and a cancel button. On Android, the app fetches encrypted history in the background (on Wi-Fi, when the battery isn't low) so indexing has less to download when you open it.
+
+🐛 **Fixed**
+
+- **Search missing older messages on mobile:** history whose keys arrived later from key backup was never indexed, so search only found what you had scrolled through. Existing installs re-index their history once.
+- **Screen share bitrate slider:** a bad upload-speed estimate could let the slider go far above what your connection can carry. Unrealistic readings are now ignored, and a bad stored value is corrected.
+
+## v1.64.1
+
+✨ **New**
+
+- **Plugin debug tools:** plugins can add their own section to Settings → Debug, below Zam's debug tools (`zam.ui.addDebugSection`).
+
+🐛 **Fixed**
+
+- **Soundboard and other call data on desktop:** after the graphics process restarted, the desktop app ignored everything other people sent in a call besides audio and video, such as soundboard sounds. It now receives them again.
+- **Rich presence left behind on your profile:** what you're playing or listening to is now cleared when you close the app or sign out, and leftovers from a session that quit or crashed are cleared the next time you start.
+
+## v1.64.0
+
+✨ **New**
+
+- **Discord servers bridged with ZDMB look like Discord:** [ZDMB](https://github.com/az4521/ZDMB) (Zam Discord-Matrix Bridge) is a new fork of the Out Of Your Element bridge that tells Zam how a Discord server is laid out. The next three points are what Zam does with it.
+- **Discord categories:** in a ZDMB space, channels are grouped under their Discord categories, which you can collapse. A collapsed category keeps the channel you're in visible and shows a dot when a hidden channel has unread messages.
+- **Discord channel icons and names:** each bridged channel shows Discord's icon for its type (text, voice, stage, announcement, forum, media, thread, private thread) and its name without the bridge's `[🔊]` / `[⛓️]` prefix, including channels you haven't joined yet.
+- **Discord threads:** threads you've joined sit under their channel. The message a thread was started from gets a chip with the thread's name, member count and unread badge that opens it, joining it first if needed. The channel's Threads panel lists its threads, and inside a thread the header shows `# channel ›` to get back.
+- **Forwarded messages say where they're from:** forwarding a message now records who sent it, where and when (MSC4553). Forwards show the original under a "Forwarded from" label with a footer that opens the original, and notifications and previews show the original too. Apps without support see a "Forwarded from" line with a link and the original quoted.
+- **Animated thumbnails:** GIF, APNG and animated WebP/AVIF uploads get an animated thumbnail instead of a still one, so they keep moving in apps that show the thumbnail inline (any app in an encrypted room). Images marked as animated now load at full size so they don't freeze.
+- **Name colours in the member list:** members show their name colour once another part of the app has loaded it. Offline members' colours are dimmed.
+
+🐛 **Fixed**
+
+- **Swiping photos in X/Twitter previews:** stepping to the next photo in the viewer shows its thumbnail at the right size right away, instead of an empty box until the full photo loads.
+
+## v1.63.2
+
+✨ **New**
+
+- **Proxy settings on Android:** Settings → General → Network now works on Android too, with the same panel as desktop. The proxy also covers push notifications and quick replies. Android has no PAC files and no "only through the proxy" mode for calls.
+- **Calls in the server list:** servers, Home and folders show a speaker badge when someone is in a call in one of their rooms, and a LIVE badge when someone is screen sharing in your call. Hovering an icon shows a card with the name and who is in each call.
+- **Pan zoomed images past their edges:** in the image viewer, a zoomed image can now be dragged a little past its edges, so text at the edge is no longer stuck under the toolbar or caption.
+- **Message link pills** now end in a chevron and speech bubble, so a link to a message looks different from a link to a room.
+
+🐛 **Fixed**
+
+- **Edited messages showing up empty:** an edited message could show only "(edited)" with no text, mostly on Android. It now shows the original text until the edit can be decrypted, and edits that failed to decrypt while the app was in the background are retried when you come back.
+- **Rooms staying unread on a slow connection:** opening a room marks it read right away instead of waiting for the server, and clearing "Mark as unread" is instant too.
+- **Swiping a zoomed image:** the zoomed image now slides fully off the screen, and the next image comes in from off-screen instead of popping in.
+
+## v1.63.1
+
+✨ **New**
+
+- **Message link pills:** a pasted link to a message now shows as a small pill naming where the message is: `#room name` for a room, or the person's avatar and name for a DM. Hovering a pill highlights the matching preview card. Links you gave your own label are left as they are. Thanks to the community author of the Message Link Pill plugin, now built in and on by default (turn it off under Settings → Plugins).
+- **Favourite videos:** video messages can be starred like images and GIFs. Starred videos play as muted, looping tiles in the GIF picker's Favourites tab and send as videos.
+
+## v1.63.0
+
+✨ **New**
+
+- **Plugin ringtones:** plugins can now add their own ringtones, either a sound file or one they play themselves (for example through MIDI). Pick one under Settings → Voice & audio → Ringing, which now has a ringtone menu with a short preview. If the plugin is turned off or its ringtone fails to start, the built-in ringtone plays instead, so a call always rings.
+- **Smoother swiping in the image viewer:** letting go of a swipe now slides the current image fully off while the next one slides in, and a short swipe springs back, instead of the image swapping before the animation finished. The images on either side are loaded ahead of time (decrypted ahead in encrypted rooms), and the chat thumbnail shows while the full image loads.
+
+🐛 **Fixed**
+
+- **"New messages" bar:** it no longer spreads over the member list or thread panel, and shrinks to fit the chat when a side panel is open. The "Jump to present" button had the same problem.
+- **Custom reaction names:** hovering a custom (image) reaction shows its name, like `:blobcat:`, instead of an `mxc://` link. Custom reactions you send now carry their name for other apps too.
+- **Green and purple bands in X/Twitter previews:** GIFs in tweet previews only play while they are near the screen, so a chat full of them no longer runs out of video decoders.
+
+## v1.62.0
+
+✨ **New**
+
+- **Spoilered images:** tap an image waiting to be sent and turn on **Mark as spoiler**. Its filename gets a `SPOILER_` prefix, and it shows in the chat as a blank cover marked "Spoiler" until someone clicks it. Spoilers from Discord bridges and other apps that use the same filename prefix are covered too.
+- **Richer X/Twitter previews:** tweet links now show the full post text with line breaks and links, quoted posts, what a post replies to, polls, community notes, GIFs and like/repost counts. Links through FxTwitter mirrors (fxtwitter, fixupx, vxtwitter, fixvx) get the same card.
+
+## v1.61.4
+
+✨ **New**
+
+- **Images fit the screen by default:** the image viewer now opens images fitted to your screen. If you had switched **Fit images to the screen** off, it stays off.
+
+🐛 **Fixed**
+
+- **Search index sync between your devices:** a device whose search index had gaps from before index sync existed never got them filled from your other devices, because it thought those stretches were already indexed. Each sync now compares how many messages each device holds per day, and a device holding more sends that day. Sync also runs again when you return to the app after half an hour, not only when it starts. Both devices need this version.
+
+## v1.61.3
+
+✨ **New**
+
+- **Fit to screen in the image viewer:** a new button next to the zoom controls enlarges an image smaller than your screen to fill it. To have every image open that way, turn on **Fit images to the screen** in Settings → Messages and media (off by default).
+
+🐛 **Fixed**
+
+- **Zoom percentage is accurate:** the viewer now shows the image’s real scale, so a large image shrunk to fit your screen shows, say, 49% instead of 100%.
+- **Copy image copies the full image (desktop app):** right-click → Copy image on a photo in the chat now copies the original instead of the smaller preview shown in the timeline. Save image as also saves the original for encrypted photos and gallery photos.
+
+## v1.61.2
+
+✨ **New**
+
+- **Swipe between photos on mobile:** in the full-screen viewer, swipe left or right to move to the next or previous photo or video in a gallery or room. When you're zoomed in, a swipe pans the photo; once you've panned to its edge, swipe again to move on.
+
+## v1.61.1
+
+🐛 **Fixed**
+
+- **"Manage sessions" opens the right page again:** on accounts that sign in through an account provider, the link to manage your sessions now lands on the session list with providers that use the current Matrix names for it, instead of the provider's front page.
+- **Time zone uses the standard profile field:** your time zone is now saved under the name the Matrix spec defines, so other apps that follow the spec can show it. Time zones set by older versions still show.
+- **Better compatibility with newer servers and apps:** call clean-up after a crash, presence under sliding sync, notification previews, call summaries, location messages, live location and Element's space order now also understand the standard Matrix names, not only the older experimental ones.
+
+## v1.61.0
+
+✨ **New**
+
+- **Media galleries:** several photos, videos or files sent together now arrive as one message with one caption (MSC4274). Photos and videos are laid out in rows that fit your window, each keeping its own shape, and open full screen with arrows to step through them. Galleries sent from other apps that support them show the same way.
+- **Galleries are found everywhere:** they show in the room's media panel, match `has:image` and the other search filters, and their caption can be edited like any other.
+
+Apps that don't support galleries yet, such as Element, show only the caption. If that's a problem in your rooms, turn on **Settings → Debug → Don't send galleries** to send each file as its own message.
+
+## v1.60.23
+
+🐛 **Fixed**
+
+- **H.264 screen shares no longer freeze on busy content:** sharing something that changes a lot (a video, a game) as H.264 could freeze for several seconds at a time for viewers. H.264 shares are now sent as a single stream, so viewers get a steady picture. VP8, VP9 and HEVC shares are unchanged.
+
+## v1.60.22
+
+🐛 **Fixed**
+
+- **H.264 screen shares now play between different app versions:** a share sent as H.264 could show nothing at all to a viewer whose browser numbers H.264 differently from the sender's (for example the web app in an up-to-date Chrome watching the desktop app). Calls now use a separate connection for receiving, so the viewer always understands what it's sent.
+
+## v1.60.21
+
+🐛 **Fixed**
+
+- **H.264 screen shares froze in encrypted calls:** viewers saw only the first frame of a screen share sent as H.264, then nothing. It now plays normally. Shares sent as VP8, VP9 or HEVC were not affected.
+- **Screen shares no longer switch codec when the screen is still:** a share of a screen that wasn't changing was mistaken for a broken encoder after a few seconds and restarted on another codec, over and over.
+
+## v1.60.20
+
+✨ **New**
+
+- **Stop watching a screen share:** someone else's screen share now has a "Stop watching" button. It stops the video and its sound for the rest of the call, and the tile stays with a "Watch stream" button to start again.
+- **Mute just a screen share's sound:** right-click someone who is sharing sound and pick "Mute screen share". Their voice stays on.
+- **Picture-in-picture without the address (desktop):** the pop-out video is now Zam's own small always-on-top window instead of the system one, which showed the loopback address and port the app runs on. It follows the same stream as the floating video and shows its name; hover it for mute, camera, hang up, back to the call and close.
+
+🐛 **Fixed**
+
+- **Shared tabs and windows were black for viewers:** on computers whose graphics card encodes HEVC, sharing a browser tab or a window showed viewers a black screen. Shares are now trimmed by up to 3 pixels to a size the graphics card accepts, and if its encoder still won't start, Zam tries the next one, ending with software encoding.
+- **Soundboard sounds can come quickly again:** the shortest gap between one person's sounds is back down to 250 ms.
+
+## v1.60.19
+
+🐛 **Fixed**
+
+- **Read rooms open at the bottom again:** a room you had fully read could open scrolled far up, with no "New Messages" divider, whenever its newest activity was something not shown as a message (someone joining, a reaction, an edit). It now opens at the newest message.
+
+## v1.60.18
+
+🐛 **Fixed**
+
+- **Less memory after watching YouTube videos:** a YouTube video you played and then paused stayed loaded (over 50 MB each) until you scrolled far away from it. It now goes back to its thumbnail as soon as it's off screen or the window is hidden, and clicking it carries on where you left off.
+
+## v1.60.17
+
+🐛 **Fixed**
+
+- **Message box placeholder is centred for real:** in rooms where you can't send messages, the text still sat a few pixels below the icons beside it. The message box is now vertically centred, so the placeholder and the typing cursor line up with the icons.
+- **GIFs no longer stay blank after the window was hidden:** GIF-style videos in the timeline and the GIF picker that went black or white after the app sat in the background now reload when you come back.
+
+## v1.60.16
+
+🐛 **Fixed**
+
+- **The emoji picker scrolls smoothly again:** since 1.60.15 it stuttered every time a new row of emoji scrolled in. Emoji in the picker are now drawn from a few preloaded images instead of one image per emoji.
+- **No more "Return to live" banner after catching up:** when you opened a room at your unread messages and then marked it read, the bar at the top switched to "Viewing message context - Return to live". It now keeps the "Jump to present" button.
+
+## v1.60.15
+
+🐛 **Fixed**
+
+- **The emoji picker opens instantly:** it used to take seconds to open, especially with big custom emoji packs, because it built every emoji at once. The emoji and sticker pickers now only draw what's on screen.
+- **Custom emoji and stickers load faster and are kept on your device:** the pickers now load small previews instead of full-size images, and keep them so reopening a picker doesn't download them again. They're removed when you sign out.
+- **Less memory in the desktop app while it's behind other windows:** the app now frees graphics memory when its window is fully covered, not only when it's minimised.
+- **Message box placeholder lines up again:** in rooms where you can't send messages, the placeholder text sat a few pixels below the icons beside it.
+
+## v1.60.14
+
+✨ **New**
+
+- **Mark as unread:** mark a room unread from the room list's menu, or from a specific message so that message and everything after it show as new. On phones it's in the message's long-press menu, in the desktop app it's in the right-click menu, and in a desktop browser Alt+click a message. The room stays unread on all your devices (and shows as unread in other Matrix apps) until you read it, press Escape or click "Mark as read".
+
+🐛 **Fixed**
+
+- **Catching up now works after restarting the app:** the "New Messages" line and the unread bar only appeared for messages that arrived while the app was open. Rooms now open at where you stopped reading, without loading the whole gap first: newer messages load as you scroll down, and "Jump to present" takes you straight to the latest.
+
+## v1.60.13
+
+✨ **New**
+
+- **Catch up on rooms like in Discord:** opening a room with unread messages now starts at the "New Messages" line instead of just above it, and a bar at the top shows how many messages arrived and since when. Click the bar to jump back to where the new messages start, or "Mark as read" to dismiss it.
+- **The "New Messages" line stays put:** it no longer disappears as soon as you scroll to the bottom, so you can always find where you left off until you leave the room. Shift+PageUp jumps back to it.
+
+🐛 **Fixed**
+
+- **Less memory in encrypted rooms:** opening a busy encrypted room no longer checks the encryption status of hundreds of messages all at once, which permanently grew the app's memory use by tens of megabytes. Background search indexing also decrypts in smaller batches.
+
+## v1.60.12
+
+🐛 **Fixed**
+
+- **Member list no longer freezes the app in huge rooms:** opening the member list in a room with thousands of members (like Matrix HQ) used to lock up the client. It now opens instantly and scrolls smoothly, however big the room.
+- **Lighter presence updates:** online dots now only update and refresh for people you can actually see (direct messages, visible member list rows, an open profile card), instead of everyone the app has ever shown. Presence is no longer fetched for rows you scroll past quickly.
+- **Member list follows room switches:** switching rooms with the member list open now loads the new room's full member list and starts it at the top.
+
+## v1.60.11
+
+✨ **New**
+
+- **Accept and Decline on invite notifications:** an invite notification now has Accept and Decline buttons. Accept opens the app, joins and takes you into the room; Decline turns the invite down without opening anything.
+
+🐛 **Fixed**
+
+- **Invite notifications made sense of:** an invite used to arrive as "New message: You have a new message" with Reply and Mark as read buttons that couldn't work. It now names who invited you and to what: the person's name and picture for a direct message, or the room's or space's name and picture with who invited you. Tapping it opens your pending invites.
+- **Declined invites stay gone:** an invite you declined from an Android notification no longer lingers in your pending invites.
+- **Smoother scrolling back through history:** scrolling up through older messages no longer jumps, stutters or undoes your own scrolling as images, videos and link previews load, and touch scrolling on phones keeps its momentum. A history page loading mid-scroll no longer nudges the view.
+- **Page no longer freezes scrolling history in Chrome and the desktop app.**
+- **No gap above a room's first message,** and mouse-wheel scrolling is no longer swallowed while older messages load.
+- **Jumping to a replied-to message is instant** when it's far away, instead of a long scroll animation that kept restarting.
+
+## v1.60.10
+
+✨ **New**
+
+- **Choose how direct messages are sorted:** the menu on the Home header (with New DM and Join room by address) now has a "Sort DMs by" section: latest message (the default), unread first, online first, or name (A–Z). Favourite and Low priority direct messages keep the order you gave them.
+
+## v1.60.9
+
+✨ **New**
+
+- **Do Not Disturb shows as busy:** on homeservers that support it, turning on Do Not Disturb now shows you as busy (a red dot) instead of away. Other people who are busy now show the red Do Not Disturb dot too, where they used to look offline.
+- **Push notification log on Android:** the client log export (Settings > Debug Info) now ends with what the Android app did with each recent push: whether it showed a notification and, if not, why. It contains no message text. If notifications stop arriving, export your logs and send them along.
+
+⚡ **Improved**
+
+- **Direct messages sorted by latest message:** direct messages without a Favourite or Low priority tag are now listed newest first, by their latest message. Reactions, edits and other changes don't move them.
+- **Clearer unread direct messages:** the dot in the corner of a direct message's avatar always shows the person's status now. Unread messages show at the end of the row instead, as the mention count or a small dot (red when it notifies you).
+
+## v1.60.8
+
+✨ **New**
+
+- **Message preview in the long-press menu:** on mobile, the box at the top of the long-press menu now shows the message as it looks in the chat, with the sender's avatar, name, time and formatting, instead of plain text.
+
+⚡ **Improved**
+
+- **Direct-connection calls and file transfers use your homeserver's relay:** when your homeserver has a relay (TURN) server, peer-to-peer calls and file transfers now go through it by default, so the people you connect to don't see your IP address. If the relay can't reach someone, Zam connects to them directly instead, and the dialog that asks first tells you so.
+- **"Relay peer-to-peer calls" is now "Require a relay server for peer-to-peer calls":** with it on, Zam never connects directly and so never shows your IP address. If your homeserver has a relay server, you're no longer asked before connecting, since your address can't be seen.
+
+## v1.60.7
+
+🐛 **Fixed**
+
+- **Direct-connection calls after a reload:** reloading Zam during a call could leave a direct connection to someone, an Element Call user in particular, stuck for minutes, with neither of you hearing the other. It now reconnects right away. Rejoining a call with someone who uses Element Call no longer adds a 10-second delay either.
+
+## v1.60.6
+
+🐛 **Fixed**
+
+- **Screen share not shown on direct-connection calls:** a screen share started while a peer-to-peer connection was still being set up, after a mute in that time, could stay hidden from the other person until the next mute or unmute.
+- **Direct-connection calls follow the call spec more closely:** Zam now tells other apps that it can receive calls over direct connections, and in encrypted rooms it only connects directly to a device that really sent that person's call membership.
+
+## v1.60.5
+
+✨ **New**
+
+- **File transfers without a call server:** if your homeserver has no call server, sending a file directly now connects your device to the receiver's instead of failing. Both people are asked first, and are told their IP address is visible to the other (unless "Relay peer-to-peer calls" is on).
+
+## v1.60.4
+
+🐛 **Fixed**
+
+- **Notification replies sent twice on Android:** reopening the app could send the last reply you made from a notification again. Each reply is now sent once.
+- **Calls fell back to direct connections although the server has one:** if your homeserver's call server couldn't be looked up from its `.well-known`, Zam used peer-to-peer connections instead. It now asks the homeserver directly, so calls on matrix.org use its call server.
+- **People shown as muted on direct-connection calls:** a mute or unmute arriving just after a connection update could be overwritten by older information, leaving someone shown as muted (or unmuted) until they toggled their mic again.
+- **Opening a space:** clicking the space you're already in while on its home page now takes you back to the room you were last in.
+
+## v1.60.3
+
+🐛 **Fixed**
+
+- **Stretched pictures in Android notifications:** avatars are now cropped to a circle instead of being squashed into a square.
+
+## v1.60.2
+
+✨ **New**
+
+- **Do Not Disturb:** a new status in the account menu and Settings → Account. It silences notifications and calls on all your devices and shows you as idle to others.
+- **Pictures in Android notifications:** images and stickers show up in the notification itself, encrypted ones too (a GIF shows its first frame).
+- **Per-person notification settings on Android:** every person and room gets its own notification channel and share-sheet shortcut, so you can set sound, priority and bubbles for one conversation in the system settings.
+
+🔧 **Improved**
+
+- **Android notifications read like a chat:** a DM is titled with the other person instead of "New message" and no longer repeats their name in the text. Unread messages from a room stay in one notification, each with its author and avatar, instead of replacing each other.
+- **Image viewer on phones:** pinch, pan and double-tap work from the backdrop as well as the image, and a drag that ends on the backdrop no longer closes the viewer. Holding an image in a message opens the actions sheet.
+- **Smaller Flatpak updates:** Flatpak users now get updates as deltas against the last 12 releases.
+
+🐛 **Fixed**
+
+- **Notification Reply on Android:** replying (and Mark as read) from a notification now works when the app was closed, instead of being dropped while it started.
+- **Notifications that wouldn't go away:** an Android notification is now removed when you read the room, here or on another device.
+
+## v1.60.1
+
+✨ **New**
+
+- **Public STUN server, if you want it:** when your homeserver offers no relay or STUN server, direct calls usually can't get through home routers. Zam can now ask Cloudflare's STUN server for your public address instead, but only after you say yes (in the call prompt, or "Use a public STUN server" in Voice & Video). It learns your IP address, never the call.
+
+🔧 **Improved**
+
+- **Failed direct connections are explained:** if a direct connection to someone never comes up, you're told who and why, instead of them just staying silent.
+
+## v1.60.0
+
+✨ **New**
+
+- **Calls without a call server:** when your homeserver has no LiveKit server, calls now connect people directly (MSC4575 full mesh) instead of failing to send your audio and video. Everyone can still share one call: people with a call server keep using it, and connect directly only to whoever can't be reached any other way.
+- **Your IP address stays your choice:** a direct connection shows your IP address to the person at the other end, so Zam asks first, both when you join such a call and when someone who can only be reached directly joins yours.
+- **Relay peer-to-peer calls:** a new setting in Voice & Video sends direct connections through your homeserver's relay (TURN) server, so the others see the relay instead of your address.
+
+## v1.59.7
+
+🐛 **Fixed**
+
+- **F-Droid repository build:** the repository now builds on release (1.59.6 shipped without it). The Flatpak repository also no longer waits on it, so a failed F-Droid build can no longer hold back a Flatpak update.
+
+## v1.59.6
+
+✨ **New**
+
+- **F-Droid repository:** Zam now has its own F-Droid repo, published with each release. Add it in F-Droid, Droid-ify or Neo Store and updates come through the app, not from Zam itself.
+
+🔧 **Improved**
+
+- **No double updating on Android:** a copy installed from F-Droid, Droid-ify, Neo Store, Obtainium or Google Play no longer downloads its own APK; About tells you to update with that app.
+- **Package-managed desktop installs:** a Zam installed by a package manager that marks it leaves updates to the manager and just tells you a new version is out.
+
+## v1.59.5
+
+🐛 **Fixed**
+
+- **Download links in What's New:** the download table that release pages now show is hidden inside the app, where it only got in the way.
+
+## v1.59.4
+
+🔧 **Improved**
+
+- **Steps aside for games that fill your video memory:** a new switch in Settings > Debug > GPU ("Pause the GPU while a game runs", off by default) restarts Zam without hardware acceleration when the GPU keeps crashing while a game is running, then restarts it again with acceleration once the game has closed. It needs game detection turned on in Settings > General, and waits for the end of a call before restarting.
+- **Index sync diagnostics:** Settings > Debug has a new "Message index sync" section showing how many of your other sessions can trade search entries, what was asked and received, and a short log, with a "Sync now" button, so you can tell why a device's search isn't filling in.
+
+## v1.59.3
+
+🔧 **Improved**
+
+- **Easier downloads:** the release page now opens with a table of downloads per platform (Linux, Windows, macOS, Android, iOS), so you no longer have to pick the right file out of the update manifests and bundles.
+- **Sticky call membership (debug):** a new switch in Settings > Debug makes Zam join calls with the newer sticky membership event instead of a state event. It is off by default, and clients that only read state events will not see you in the call while it is on.
+
+🐛 **Fixed**
+
+- **Double or stale word on mobile send:** tapping send while the keyboard still held a word being typed or autocorrected could send it twice (Android) or send the uncorrected word (iOS). The keyboard's pending word is now committed before sending.
+
+## v1.59.2
+
+✨ **Added**
+
+- **Search stays complete on every device:** your Zam sessions now share their message search index with each other (encrypted, and only between your own verified sessions). A phone that was offline for days asks your other sessions for the messages it missed instead of re-downloading them from the server, and only fetches what none of them have. It follows the existing "index encrypted rooms" setting.
+- **Space order from Commet and Element:** the order and folders of your spaces are read from Commet's sidebar ordering (falling back to Element's), and saving mirrors the layout to Commet.
+- **Streamer mode hides your ID and server:** your Matrix ID and homeserver are swapped for random made-up ones, blurred, in the profile footer, account page and account switcher, so the blur can't be undone to reveal them.
+
+🐛 **Fixed**
+
+- **Search missed messages after being offline:** the index now notices the stretch it missed while the app was closed and fills it in, instead of marking a room as finished for good.
+
+## v1.59.1
+
+✨ **Added**
+
+- **Turn notifications off:** Settings > Notifications has a new "Notifications for this account" switch that silences every notification for the account on all your devices, and a "Notifications on this device" switch that stops pop-ups, sounds and push on just this device.
+
+🔧 **Improved**
+
+- **Big spaces open instantly:** the room list of a space, and of its nested sub-spaces, is now remembered between launches. It shows straight away and is refreshed quietly in the background (expanded sub-spaces every few minutes) instead of being fetched again, with a spinner, every time you open the space.
+
+🐛 **Fixed**
+
+- **Long replies overflowed the reply bar:** the quoted text no longer runs under the cancel button.
+
+## v1.59.0
+
+✨ **Added**
+
+- **Streamer mode:** a new switch in Settings > Privacy & Safety for when you are on a live stream. It blurs your account ID, email and phone numbers and the recovery key shown when you set up backup, and keeps message text out of notifications. It applies to this device only.
+- **GIF sources for plugins:** plugins can add their own tab to the GIF picker (`zam.gifs.registerProvider`) with search, trending and endless scrolling, instead of rewriting the built-in KLIPY requests.
+
+## v1.58.3
+
+🐛 **Fixed**
+
+- **Team Fortress 2 party invites now join:** the game publishes its party join command without an argument its own join handler requires, so the game rejected it with "Invalid rich presence join string". Zam adds the missing argument when you join a TF2 party from an invite, including invites sent earlier. The change is in the desktop app.
+
+## v1.58.2
+
+🐛 **Fixed**
+
+- **Joining a Steam game invite did nothing in a running game:** Join now opens the same link Steam's own Join Game button does, so it can join a party or lobby in a game that is already open (such as Team Fortress 2). New invites carry the sender's Steam ID, and a lobby when they are in one. Invites sent before this still use the old link.
+
+## v1.58.1
+
+🔧 **Improved**
+
+- **Game invites show the game's icon:** the card for a Steam game invite now shows the game's own icon instead of a controller. Invites without an icon, or whose icon cannot load, still show the controller.
+
+## v1.58.0
+
+✨ **New**
+
+- **Steam game invites:** while you are playing a Steam game that can be joined, "Invite to game" in the composer menu sends an invite to the room. Other clients see a `steam://` link; in Zam it shows as a card with a Join button that asks before launching the game with the invite's arguments. Joining needs the desktop app.
+
+## v1.57.6
+
+🔧 **Improved**
+
+- **Steam rich presence shows the game icon:** the picture on your profile is now the game's own icon instead of its wide store banner. If the large icon is unavailable it uses the small one, then the banner.
+
+## v1.57.5
+
+🐛 **Fixed**
+
+- **Steam rich presence showed nothing:** the game you were playing was looked up in the wrong place in Steam, so it never appeared. Games such as 64-bit Team Fortress 2, which game detection by executable name does not recognise, now show with their Steam status.
+
+## v1.57.4
+
+✨ **New**
+
+- **Plugins can add to the call screen:** `zam.call` gains `addControl` (a button in the call control bar), `addPanel` with `openPanel` and `closePanel` (an area between the tiles and the controls), and `addTileDecoration` (content over each participant's tile). The call screen is also a `call` region for `zam.dom`.
+
+## v1.57.3
+
+✨ **New**
+
+- **Steam rich presence:** your in-game status from Steam can now show on your profile (desktop app). A setting turns Steam's local debugging port on or off by adding or removing a flag file in the Steam folder, and offers to restart Steam when the port is closed. It also cleans up any leftover registry entry from earlier versions.
+- **Plugins can use the call and the MIDI synth:** new `zam.call` lets a plugin send and receive data packets and data tracks in the voice call you are in (private to copies of the same plugin), and `zam.midi` gives it Zam's MIDI sound bank for playing songs or live notes. Plugins ask for the `call` and `midi` capabilities.
+
+## v1.57.2
+
+🔧 **Improved**
+
+- **Link preview skeleton waits half a second:** the loading placeholder only appears if a preview takes longer than 500ms, so fast previews no longer flash it.
+- **Video previews with no size:** a video preview whose site gives no dimensions now sizes its thumbnail from the video's first frame instead of cropping it into 16:9.
+
+## v1.57.1
+
+🔧 **Improved**
+
+- **Compact message action bar on mobile:** the action bar buttons are back to their original size (the 44px touch targets were too big).
+- **Long-press preview text size:** the message text shown in the long-press menu now matches the size used in the chat log.
+
+## v1.57.0
+
+✨ **New**
+
+- **Long-press opens the full message menu:** holding a message on touch now opens a sheet with every action by its full name (react, reply, thread, forward, edit, copy, pin, copy link, view source, report, delete). The message text is shown large at the top so you can select part of it.
+- **Copy message text:** a new action that copies a message's text.
+- **Read receipts per room and space:** your read receipt setting is now a default that any room or space can override from its Notifications settings, so you can hide receipts in big rooms and keep them in small ones. A space's choice covers its rooms. Hidden receipts are still private receipts, so your unread state keeps syncing. Notification Mark as read actions follow it too.
+- **Message actions in the desktop right-click menu:** right-clicking a message now offers the same actions.
+
+🔧 **Improved**
+
+- **Bigger touch targets:** the message action bar buttons and the sheet's confirm buttons are now 44px tall on touch.
+
+## v1.56.2
+
+✨ **New**
+
+- **Right-click menu in the desktop app:** right-clicking now always opens a menu, like a regular browser. Plain areas offer Reload and Select all, selected text offers Copy and Select all, images gain Copy image address, and Inspect is at the bottom.
+- **Local plugin folders are watched:** plugin folders added to a picked repo folder are found automatically within a few seconds, without re-selecting the directory. They load disabled, like any first load. Pick the folder once more so it is remembered.
+
+## v1.56.1
+
+✨ **New**
+
+- **View source:** every message now has a View source action (the `</>` button on desktop, or the long-press menu on touch). It shows the event's JSON with a copy button. Encrypted messages show the decrypted event and the original encrypted one.
+- **Link previews in captions:** links in the caption of an image, video or file now get previews, like links in a normal message.
+
+🐛 **Fixed**
+
+- **GIFs sent as WebP couldn't be starred:** with "Send GIFs as animated WebP" on, sent GIFs had no star button. WebP images can now be favourited from the message and the image viewer.
+- **Favourite GIFs sent as "favourite.gif":** a favourite now keeps its original file name and is sent under it, with the extension matched to the file. This covers favourites from encrypted rooms and uploads you star from now on in unencrypted rooms.
+
+## v1.56.0
+
+✨ **New**
+
+- **A fuller plugin API:** plugins can now add room settings tabs, app settings pages, actions and sections on profile cards, actions in the room list menu, badges in the member list, and full-window overlays. They can also draw custom event types and message types themselves. `zam.dom` gives plugins stable hooks into parts of the app, and `zam.navigation` lets them open rooms and jump to messages. `zam.matrix` can now send events, read events, rooms, room state, account data, profiles and presence. It refuses the types Zam manages itself.
+- **Favourite GIFs are sent without uploading them again:** a favourite that was originally an image upload now points at the media already on the server, so it sends instantly and shows as starred in the chat. An encrypted favourite sent into an unencrypted room is still uploaded again, so its key never ends up in a plaintext message.
+
+🐛 **Fixed**
+
+- **"Unable to decrypt" flashing on startup:** in encrypted rooms, messages loaded from the cache briefly showed as undecryptable until decryption caught up. They now show a neutral placeholder while they decrypt, and the room you open first is decrypted before it appears.
+- **Plugin panels and events:** panels registered by plugins can now be opened (with `ui.openPanel`). The typing, member-join, message-sent, room-enter and notification events now fire, and message and reaction events now fire in encrypted rooms too.
+- **Favourite GIF tiles and names:** images starred from a message or the viewer now keep their size, so their tile in the picker doesn't jump when it loads. A favourite PNG or WebP is no longer sent named `favourite.gif`.
+
+## v1.55.4
+
+✨ **New**
+
+- **Read receipts glide:** when a read avatar moves from one message to the next, it now slides across instead of jumping, when motion is allowed.
+
+🐛 **Fixed**
+
+- **Mic restarts during lossy voice calls:** in unencrypted calls, audio redundancy no longer switches back off once the connection recovers. Turning it off restarted your mic stream, which briefly cut your voice for everyone else; it now stays on for the rest of the call after it first comes on. Encrypted calls still turn it off when the link is clean, since that costs nothing.
+- **Rejoining a call after a reload:** reloading the page used to leave this device in the call room until the membership expired, so the reloaded page thought it was already in the call. Reloading or closing the window now leaves properly.
+- **Favourite GIFs:** picking one now sends it as an actual image instead of a dead link. Favourites saved on another homeserver, from an old account or imported data, are fetched correctly too.
+- **Duplicate notifications on the iOS Home Screen app:** each message could show two notifications. It now shows one.
+- **Encryption setup offered on an account that already has it:** for a few seconds after switching accounts, Zam offered to set up encryption because the first sync had not finished. It now waits.
+- **MIDI playhead stopping short:** the playhead now reaches the end of the file when playback finishes.
+- **Zoomed SVG images:** zooming an SVG now redraws it sharp instead of enlarging a blurry bitmap, you can zoom out below the fitted size, and clicking empty space closes the viewer.
+- **Video stopping when made fullscreen:** a video no longer pauses or unloads the moment it goes fullscreen.
+
+## v1.55.3
+
+✨ **New**
+
+- **Four more languages:** Zam can now be shown in Russian (Русский), Ukrainian (Українська), Chinese (简体中文) and Brazilian Portuguese (Português (Brasil)). Pick one under Appearance > Language in settings; dates use that language's month and weekday names too. Browsers set to Traditional Chinese get Simplified Chinese, and Portugal Portuguese gets the Brazilian translation. The translations are machine-drafted and need review by native speakers.
+- **Full updates in the Flatpak:** desktop updates that change the app itself now install in the Flatpak too, through the Flatpak portal, and Zam restarts into the new version. Before, the Flatpak could only take web updates and pointed you to the release page for the rest. If the portal refuses an update (for example, it needs new permissions), Zam tells you to update from your software center or with `flatpak update`.
+
+🐛 **Fixed**
+
+- **Untranslated text in German, French, Spanish and Japanese:** the soundboard, QR code sign-in, identity change warnings, rich presence, custom CSS and several call and debug settings were still in English. They are now translated.
+
+## v1.55.2
+
+✨ **New**
+
+- **Rich presence for plugins:** plugins can now show what you're doing on your profile ("Playing ...", "Listening to ...") and read other people's rich presence, through the new `zam.presence` API (needs the `"presence"` capability). Each plugin is listed under Settings > Rich presence, where you can switch it off. This works in the web and Android apps too, not only on desktop.
+
+🐛 **Fixed**
+
+- **Read avatars jumping back after a reload:** someone's read avatar now stays on their own latest message after you reload, instead of moving back to an older one.
+
+## v1.55.1
+
+✨ **New**
+
+- **Load a whole folder of local plugins:** picking a folder that has no `manifest.json` of its own now loads every subfolder that does, each as its own local plugin. Reload re-reads just that plugin, and one plugin failing to load no longer stops the others.
+
+🐛 **Fixed**
+
+- **Voice calls on lossy connections:** audio redundancy is now sent only while someone in the call is losing packets, instead of always. On a clean connection that saves bandwidth; once anyone reports loss, everyone's mic sends redundancy until the link has been quiet for about 30 seconds. In unencrypted calls this switches RED on and off, which briefly restarts your mic stream when it changes.
+- **Unintelligible voices over ~5% packet loss in encrypted calls:** encrypted calls could not use RED at all and fell apart on bad connections. Zam now carries copies of the previous audio frames inside each packet while loss is reported, and rebuilds lost frames on the other end. In testing with 10% of frames dropped, concealed (guessed) audio fell from about 10% to under 1%, for roughly 20 kbps extra while it is active. Other clients in the call are unaffected, and a bad listening connection now also triggers it for the people they are listening to. This works in Chromium-based browsers and the desktop app.
+- **Icons:** the encryption setup badge no longer uses a lock emoji, and close, warning, expand/collapse and status controls across the app use matching icons instead of text symbols. "Copied" and "selected" labels show a check icon beside the text.
+
+## v1.55.0
+
+✨ **New**
+
+- **MIDI plays instantly:** MIDI files now stream through the built-in synthesizer as they play, instead of being converted to audio first, so playback starts at once with its own seek bar and volume. Playing another MIDI pauses the first and remembers where it was. Phones use lighter synth settings, so MIDI should play more smoothly on mobile.
+- **Lightbox zoom:** zoom images with the mouse wheel, the `+` / `-` keys (`0` resets), a double-click, or the new zoom buttons, up to 16×.
+- **Resizable Flash player:** Flash embeds open larger and have a resize grip in the corner (drag it, or use the arrow keys; double-click resets). Zam remembers the size you chose.
+
+🐛 **Fixed**
+
+- **MIDI files with an uppercase extension:** files like `SONG.MID` now embed and play, including ones already sent.
+- **Flash volume:** the volume you set in a Flash player is remembered for the next one.
+- **SVG images:** SVGs that only declare a viewBox or a tiny size no longer show up tiny in the timeline and viewer, and SVGs that use HTML entities such as `&nbsp;` now display instead of failing. Images that fail to load in the viewer are retried.
+
+## v1.54.17
+
+🐛 **Fixed**
+
+- **Green, sheared video on NVIDIA in the Flatpak:** on Linux with an NVIDIA GPU, 1080p video (and anything whose width isn't a multiple of 256) could play as a green band with diagonal smearing. Hardware-decoded frames are now laid out the way NVIDIA's Vulkan driver reads them. If a different NVIDIA driver misbehaves, `NVD_LINEAR_PITCH=256` restores the old layout.
+- **GIF picker crashes and green corruption:** the picker started every GIF result at once, which could use up the GPU's video decoders. Only the GIFs near the visible part of the picker play now.
+
+## v1.54.16
+
+🐛 **Fixed**
+
+- **iOS app after an update:** reopening Zam after a new version no longer gets stuck on "500 Internal Error". It now waits for the network, clears the old cached copy and reloads into the new version.
+- **Duplicate and own-message notifications on iOS:** notifications for messages you sent, and a second copy of the same notification, are now suppressed. Old leftover push registrations from this device are cleaned up.
+- **Windows updates:** "Restart to apply" now installs silently and reopens Zam. A version that failed to install is no longer re-applied automatically, and Zam keeps an update log.
+- **Windows portable build:** it no longer tries to install an update it cannot apply and points to the release page instead.
+- **Crashes when switching windows on Windows:** Zam now recovers a crashed window by reloading it and records what went wrong in a log file.
+
+## v1.54.15
+
+🐛 **Fixed**
+
+- **"Listening to" in the Flatpak:** the Flatpak could not see media players on the system, so what you were playing never showed in your presence. It now has permission to read media players over MPRIS.
+
+## v1.54.14
+
+🐛 **Fixed**
+
+- **Games run through Proton or Wine are detected:** on Linux (including the Flatpak), Steam games that run as Windows programs were never recognised by game scanning, so no activity showed. Zam now matches them and ignores Wine's own system programs.
+- **Games in folders with spaces are detected in the Flatpak:** native games under paths like `steamapps/common/Hollow Knight` are matched.
+- **Scanning recovers after a failed host check:** a slow first permission check no longer turns scanning off until Zam restarts.
+- **Steam icons for scanned games on Windows:** the game's own Steam icon is used, and a Discord icon that fails to load falls back to the program's icon.
+
+## v1.54.13
+
+🐛 **Fixed**
+
+- **Rooms and DMs coming back as unread:** encrypted rooms (including DMs) could show as unread again after you read them, because the server's unread count overwrote Zam's own count whenever the room appeared in a sync update. Zam now keeps its own count for encrypted rooms.
+- **Failed read receipts are retried:** if sending a read receipt failed, Zam still treated the room as read until the next reload, when it came back unread. It now retries the next time you read the room, and clears the room's notification dot once the receipt goes through.
+
+## v1.54.12
+
+🐛 **Fixed**
+
+- **Game icons for Steam games on Linux (Flatpak):** a Steam game such as Satisfactory, run through Proton, showed the default application icon in your rich presence. Zam can't see Steam's files from inside Flatpak, so it now reads the game's own Steam icon from the host, finding the game from its install folder or from the app id Steam records as running.
+
+## v1.54.11
+
+✨ **New**
+
+- **Mute and unmute sounds for others in a call:** you now hear the mute or unmute sound when someone else in the call mutes or unmutes their microphone.
+- **Soundboard rate limit setting:** a new "Soundboard interval" slider in Debug settings sets the shortest gap between one person's soundboard sounds. The default is now 1.5 seconds, up from 0.4.
+
+🐛 **Fixed**
+
+- **Voice messages on mobile:** tapping Record Voice Message closed the recorder immediately, before it asked for the microphone, so nothing was ever recorded. The recorder now stays open. It also starts more reliably on devices that reject the preferred audio format, and if it still fails the error now names the cause.
+- **Soundboard sounds that arrive late are dropped:** a sound that has not started within 3 seconds of arriving, for example while it downloads on a slow connection, no longer plays over a conversation that has moved on.
+- **Call audio:** microphone audio is now sent with the voice preset and redundancy instead of the music preset, which holds up better on lossy connections. Normalizing incoming voices boosts quiet speakers by at most +12 dB (down from +18 dB), raises them more slowly, and ignores quiet noise more strictly, so it no longer jumps too loud too quickly.
+
+## v1.54.10
+
+🐛 **Fixed**
+
+- **Voice message recording on Android:** if the microphone could not start recording, the mic indicator stayed on with nothing recorded and no message. Zam now shows an error and releases the mic, keeps recording even when the level meter cannot start, and no longer gets stuck before the preview when the waveform cannot be generated.
+
+## v1.54.9
+
+🐛 **Fixed**
+
+- **Volume is remembered between videos and audio:** the volume (and mute) you set on a video or audio player is now saved on your device and used by the next one, in messages, the fullscreen viewer and link-preview videos, instead of every player starting at full volume. GIF-style videos and voice messages are unchanged.
+- **DM previews show your message right away:** the line under a DM's name in the room list now updates the moment you send a message, instead of waiting for the server to accept it, so it no longer lags behind the chat.
+
+## v1.54.8
+
+✨ **New**
+
+- **Cover art for what you're listening to (desktop):** the track you share with "Report media playback" now shows its album cover on your profile where the player provides one (Windows media controls, Spotify and Linux players). When there's no cover it shows the player's own icon instead, and when there's no icon at all the empty grey square is gone and the text takes the full width.
+
+## v1.54.7
+
+✨ **New**
+
+- **Share what you're listening to (desktop):** a new "Report media playback" toggle in Rich Presence settings shows the track you're playing (title, artist, album and a progress bar) on your profile as "Listening to". It reads the system media controls on Windows and Linux (any player that reports to them, such as Spotify, browsers, VLC), and Spotify and Music on macOS. It's off by default and needs sharing to be on. Each player appears in the app list below with its own switch, so you can show Spotify but hide your browser, for example. Covers aren't shown yet. On macOS the first run asks for permission under Privacy & Security > Automation.
+
+🐛 **Fixed**
+
+- **Restart Discord automatically now works:** the setting added in 1.54.6 wasn't actually reaching the part of Zam that restarts Discord, so turning it on did nothing.
+
+## v1.54.6
+
+✨ **New**
+
+- **Restart Discord automatically (desktop):** a new toggle in Rich Presence settings, under the Discord apps option. When Zam starts and Discord is already running ahead of it (so apps report to Discord and Zam never sees them), Zam closes and reopens Discord once so apps report to Zam. This ends any call or stream you're in, so it's off by default. Not shown in a Flatpak until host access is granted.
+
+## v1.54.5
+
+🐛 **Fixed**
+
+- **Flatpak: game detection and Restart Discord work out of the box:** the Flatpak now asks for permission to run commands on the host, which it needs to list running games and to close and reopen Discord. You no longer have to run a `flatpak override` command first; update the Flatpak to get it.
+
+## v1.54.4
+
+✨ **New**
+
+- **Additional room creators (room v12):** when you create a room or upgrade one to v12 or later, you can pick extra creators in a collapsed "Additional creators" section. Creators have unlimited power in a v12 room.
+- **Creators stand out:** v12 room creators now show as "Creator" instead of "100" on profile cards and in room settings, get their own group above the admins in the member list, and can act on admins (nobody can act on a creator).
+
+🐛 **Fixed**
+
+- **Profile pictures load again on slow or mobile connections:** avatars and link-preview images are now fetched from the server already sized for where they are drawn (animated ones stay animated where the server supports it), instead of downloading the full-size original and shrinking it on your device. Images that fail to load are retried automatically a few times, and again when your connection comes back.
+- **No false "beginning of the chat":** a room whose history hasn't loaded yet shows a "Loading older messages" line instead of the start-of-chat banner, which now appears only once the room's start has really been reached.
+- **Long room names no longer grow the message box:** the "Message #room" hint stays on one line and is cut off with an ellipsis.
+- **Room v12 links and detection:** links to v12 rooms (whose ids have no server name) now list several servers that can help others join, creators are recognised before a room's full state has loaded, and room versions after 12 are treated as having creators too.
+- **Real game icons on Linux (desktop):** a game that Discord has no icon for no longer shows the stock executable icon. Zam now looks for the icon in the game's launcher (PNG or SVG), in Steam's library cache, and inside the game's Windows `.exe` (PNG or old bitmap icons), and shows no picture rather than a generic one when none is found.
+
+## v1.54.3
+
+✨ **New**
+
+- **Rich presence apps are on by default (desktop):** apps and games that report to Zam are now allowed on your profile when first seen, so you no longer have to switch each one on. Turn off the ones you don't want in Settings > Account > Rich presence.
+- **See how a game was found:** each app in the list says whether it came from Discord Rich Presence, the running-game scan, or both.
+
+🐛 **Fixed**
+
+- **Discord Rich Presence wins over game detection (desktop):** when a game reports its own activity, the entry guessed from the running process is dropped instead of being shown next to it, even if the two use different Discord app ids.
+- **Stray green dot:** removed the decorative dot at the end of the rich presence row above the account button, which did nothing.
+
+## v1.54.2
+
+✨ **New**
+
+- **Plugins can annotate messages and read attachments:** plugins can show their own text under a message (`zam.messages.annotate` / `refresh`, for example a transcript under a voice message), read a message's decrypted attachment with `zam.matrix.getMedia`, and see the message's `msgtype` in a message action's `when` and `onSelect`.
+
+🐛 **Fixed**
+
+- **Discord Rich Presence reaches Discord (desktop):** an app's activity is now passed on to the real Discord only after Discord has answered the handshake, so it no longer gets dropped. Apps that connect over WebSocket, such as browser-based ones, are passed on too.
+- **App names in activity cards (desktop):** apps that don't name their activity show the name registered with Discord again, instead of "Discord app", and a lookup that failed is retried.
+- **Restart Discord keeps its tray icon (Windows):** Discord's tray icon no longer goes missing after the restart; Zam clears the stale icon the old Discord leaves behind before it reopens it.
+- **Notification ping no longer ducks other apps (Windows):** the ping plays on its own audio context and closes it afterwards, so it no longer leaves an audio stream open that dipped the volume of other apps, such as a video, after a ping.
+
+## v1.54.1
+
+✨ **New**
+
+- **Discord keeps working next to Zam (desktop):** apps that report Discord Rich Presence now also reach a running Discord, so turning on Zam's Discord support no longer takes presence away from Discord itself. This works when Zam starts before Discord.
+- **Restart Discord:** if Discord started first and apps report to it instead of Zam, Settings > Account > Rich presence offers a Restart Discord button (after a confirmation) that lets Zam take its place and then reopens Discord. Works on Windows, macOS and Linux, and from the Flatpak once `org.freedesktop.Flatpak` is allowed.
+- **Pretend Discord is running:** some apps refuse to send Rich Presence unless a process named Discord exists. A new option starts an idle one, only while Discord itself isn't running.
+- **Richer activity cards:** the party size ("3 of 4") now shows after the state, streaming, watching and competing activities say so, and apps that don't name their activity show the name registered with Discord instead of "Discord app".
+
+## v1.54.0
+
+✨ **New**
+
+- **Timestamps in messages:** write `<t:UNIX>` (a Unix time in seconds) and everyone sees it as a date and time in their own time zone. Add a style such as `<t:UNIX:R>` for relative ("2 hours ago"), `:t` / `:T` for time, `:d` / `:D` for date, or `:f` / `:F` for date and time.
+- **Space home page:** clicking the space you are already in opens its home page with the space's name, topic and your rooms, so you can get back to it after picking a room.
+- **Warning before logging out your last device:** if it is your only signed-in session, Log Out now explains that its encryption keys will be lost and says whether your history is backed up, before it signs you out.
+- **Rich presence tab:** Settings > Account has a Rich presence tab (desktop only), and General moves to the top of the App group. Games with no icon in Discord's list now show the icon of their running program.
+- **Website and downloads (web):** the login page and About link to the Zam website, the app downloads and GitHub. They are hidden in the desktop and Android apps.
+
+## v1.53.2
+
+✨ **New**
+
+- **Custom CSS:** Settings > Appearance has a Custom CSS box whose rules apply live, after your theme. If a rule ever locks you out of the app, open it with `?nocustomcss` to load it without your custom CSS.
+- **Themes as plugins:** plugins can add their own stylesheet with `zam.ui.addStyles`, which is removed when the plugin unloads, so a theme can now ship as a plugin. An example theme plugin is available.
+
+🐛 **Fixed**
+
+- **Grey window after minimizing (desktop):** a window restored after being hidden or minimized for a while could come back as a blank grey page. The memory trim that caused it now only runs plain garbage collection.
+
+## v1.53.1
+
+✨ **New**
+
+- **See what you're sharing:** a card above your account row shows each game or app whose rich presence is being published to your profile, like Discord's.
+
+## v1.53.0
+
+✨ **New**
+
+- **Your own profile card:** it is the same card others see, with an Edit profile button and your sessions list. Clicking your avatar in the footer opens it.
+- **Registered games:** Settings > Rich presence now has a single list of detected games and apps, with an allow toggle, when each was last played, and games you add by hand by picking a running program. Games that match Discord's list are allowed by default, and allowing a blocked app publishes it right away.
+
+🔧 **Changed**
+
+- **Smaller download:** Discord's list of detectable games is no longer bundled. It is downloaded the first time game detection or Discord RPC is used, stored compressed in your user data folder, and refreshed weekly.
+
+## v1.52.6
+
+✨ **New**
+
+- **Rich presence (desktop):** show what you're doing, like the game you're playing or the music you're listening to, on your profile, and see it on other people's profile cards. It uses [MSC4544](https://github.com/matrix-org/matrix-spec-proposals/pull/4544), so Matrix apps can publish to it directly, and Zam also understands Discord Rich Presence, so apps and games that only talk to Discord work too. Zam can also detect running games on its own. Everything is off until you turn it on in Settings > General > Rich presence, and each app is blocked until you allow it. Game icons and cover art are fetched only from Discord and Spotify, shrunk, and uploaded once.
+- **Game detection in Flatpak:** a Flatpak can't see your other programs, so "Detect games" there needs a permission that you grant yourself. Turning it on shows the command to run.
+
+🐛 **Fixed**
+
+- **Less memory in the tray (desktop):** once the window has been hidden or minimized for a minute (and no call is running), Zam frees memory the app no longer needs, about 10 MB on top of what Chromium already releases.
+
+## v1.52.5
+
+🐛 **Fixed**
+
+- **Less memory from YouTube and tweet videos:** YouTube links and videos in tweets show a thumbnail until you press play, instead of loading a player for every one you scroll past. A played one that is paused and scrolled well away lets go of its memory and picks up where it left off when played again. "Pause videos when scrolled off screen" now pauses YouTube videos too.
+
+## v1.52.4
+
+🐛 **Fixed**
+
+- **Hover times clear of messages:** the time shown when hovering a message sent in a run no longer runs right up against the message.
+- **AM/PM in German:** 12-hour times say AM/PM instead of "vorm."/"nachm.".
+
+## v1.52.3
+
+✨ **New**
+
+- **Memory over time (desktop):** Settings > Debug > GPU can record the memory report every few seconds while you use the app, then show how each part grew or shrank, copy that as text, or save every sample as a CSV.
+
+🐛 **Fixed**
+
+- **Steadier scrolling past links and media:** link previews hold their space while they load, cards whose site gives no image size are all one size, and messages scrolled away and back keep their size instead of growing again as their previews and images reload.
+
+## v1.52.2
+
+🐛 **Fixed**
+
+- **Skia Graphite toggle on Linux (desktop):** the Settings > Debug > GPU switch did nothing on Linux; it now turns Graphite on there. The line under it now says whether Graphite is really in use, not just whether it was asked for.
+
+## v1.52.1
+
+⚡ **Improved**
+
+- **Less memory in the background:** once the desktop app has been minimised or hidden to the tray for a couple of minutes, with no call and no video playing, it lets go of the graphics memory that playing videos left behind (often over 100 MB). It comes back by itself the next time it's needed.
+
+## v1.52.0
+
+✨ **New**
+
+- **Latest message under each DM:** direct messages in the room list show the newest message, so you can see what was said without opening them.
+- **Request keys:** locked messages have a button to ask your other sessions for the key again.
+
+⚡ **Improved**
+
+- **Lighter long sessions:** scrolling far back in a room no longer keeps every message on screen in memory, rooms you have left for a while let go of older history (it loads again when you scroll up), and cached images are released once nothing shows them.
+- **Fewer background wake-ups:** timers that checked for work every few seconds now sleep until there is some.
+- **Smaller desktop app:** the desktop app no longer ships a second copy of its libraries (over 200 MB less), and emoji take far less disk space.
+- **Flash player updated:** Flash content now plays with Ruffle 0.7.1.
+
+🐛 **Fixed**
+
+- **Messages locked during verification:** messages sent while a session was being verified now unlock once it is verified, and failed messages show the usual locked placeholder instead of raw text.
+- **One ping for a burst:** catching up on many messages at once plays one notification sound instead of one very loud one.
+- **Safer Flash:** Flash content plays in a locked-down frame that cannot reach your account or the network.
+- **DM names:** a DM created before the other person joined no longer stays "Empty room" until a reload.
+- **Smaller Android app:** the Android app no longer carries the desktop emoji pack.
+
+## v1.51.1
+
+✨ **New**
+
+- **Swipe the emoji picker away:** on phones, the emoji, sticker and GIF picker slides up and down, and you can swipe it down to close it.
+- **Quick delete:** hold Shift while clicking delete on a message to delete it straight away, without the confirmation. Your own delete button now sits at the end of the message's buttons, in the same place as a moderator's.
+
+⚡ **Improved**
+
+- **Lighter animated images:** large animated GIFs and images are shrunk to the size they're shown at, so they use far less memory.
+
+🐛 **Fixed**
+
+- **Sheet animations:** profile cards now slide up like the other sheets, and sheets slide away instead of vanishing when you tap outside them.
+- **Swipe from anywhere:** you can swipe a sheet down from anywhere on the screen, not just on the sheet itself.
+
+## v1.51.0
+
+✨ **New**
+
+- **Swipe sheets away:** on phones, menus and other sheets that slide up from the bottom can be dragged down to close them, like in other apps.
+- **Profile cards on phones:** tapping someone's name or avatar slides their profile up from the bottom, and you can swipe it away.
+- **Full room description on phones:** tap the description under the room name to read all of it.
+- **Camera, photos or files:** on mobile web, the + menu now has separate Camera, Photos & videos and Files options, so you no longer have to pick from your phone's menu every time.
+- **Rooms in a space are open to the space:** a room you create inside a space can be joined by anyone in that space, without inviting each person.
+- **Leaving as the last member:** if you're the only person in a room or space, Zam warns you before you leave that no one will be able to join it afterwards.
+
+⚡ **Improved**
+
+- **Swipe to reply:** the reply icon fades in and grows as you swipe, and the message springs back when you let go.
+- **Sidebar:** joined and unjoined rooms now look the same size, "Browse rooms" lines up with the other headings, the sidebar says "Rooms" everywhere, and AMOLED mode has a thin line between the server list and the room list.
+
+🐛 **Fixed**
+
+- **Rooms you left in a space:** rooms you've left now show up under "Browse rooms" so you can join them again.
+- **New rooms in Browse rooms:** a room in a space that becomes open to the space shows up within a minute, instead of up to five.
+- **Changing someone's power level:** the member list now shows the new level as soon as it's saved.
+
+## v1.50.0
+
+✨ **New**
+
+- **Repaint (desktop):** if parts of the window show up as black or white boxes, or in the wrong place, choose **Repaint** from the tray menu or in Settings > GPU to draw the window again from scratch. This can happen after running out of video memory, for example with a game open on NVIDIA under Linux. Calls keep going.
+
+⚡ **Improved**
+
+- **Encrypted images when switching rooms:** images you've already seen in an encrypted room show straight away when you come back to it, instead of downloading and decrypting each one again. The full-size image is fetched again only when you open it.
+- **Less work while hidden (desktop):** Zam does less in the background while its window is hidden in the tray, and calls still ring promptly.
+
+🐛 **Fixed**
+
+- **Mic sound in calls:** your mic no longer goes through your system's voice isolation on top of Zam's own noise suppression, so calls now sound the same as the mic test in settings.
+
+## v1.49.0
+
+✨ **New**
+
+- **Sound packs in every call:** a room's sound pack can now be offered in your calls everywhere, not only in that room. Turn it on with **Use in every call** on the pack in the room's settings, under Emotes > Soundboard.
+
+⚡ **Improved**
+
+- **Soundboard follows the updated proposal:** sound packs now use the same name rules as emoji (letters, numbers, dashes and underscores). If you type a name with spaces, it's saved with underscores, and what you typed is kept as the sound's description. Your existing sounds and packs keep working as they are, names included, and older versions of Zam still hear the sounds you play.
+
+🐛 **Fixed**
+
+- **Adding sounds to room packs:** uploading a sound to a room or space pack could fail on many servers. It now works.
+- **Space sound packs:** packs from a room's spaces now show up in its calls without opening the space first.
+- **Sound packs shown as emoji:** image packs meant for something else, such as another app's sound packs, no longer show up as broken emoji or stickers. Changing a pack's emoji or sticker settings in Zam no longer removes what other apps use it for.
+
+## v1.48.1
+
+🐛 **Fixed**
+
+- **Direct file transfers between servers:** transfers no longer depend on the sender's server letting people from other servers send data through its voice server. Each side now only sends through its own server's voice server, the same way calls work, so transfers keep working on servers that follow the new Matrix rules for this.
+
+## v1.48.0
+
+✨ **New**
+
+- **GPU acceleration for noise suppression:** FastEnhancer can now run on your graphics card, which takes most of its work off the CPU (about 7% of a CPU core instead of 16% in testing). It's on by default and adds about 11 ms of delay. Turn it off with the new **GPU acceleration** switch under the noise suppression setting in Settings > Voice & Video. If your GPU can't keep up, or can't run it, Zam switches back to the CPU by itself.
+- **FastEnhancer Tiny:** a lighter noise suppression option between FastEnhancer and RNNoise. It uses about a third of FastEnhancer's CPU and still keeps your voice at a steady level. It runs on the CPU by default, where it's already as cheap as the GPU.
+
+⚡ **Improved**
+
+- **No CPU spent while muted or silent:** noise suppression now pauses after a quarter of a second of silence, including whenever you're muted, and starts again the moment you make a sound.
+
+🐛 **Fixed**
+
+- **No noise suppression on older browsers:** where FastEnhancer can't run, Zam now falls back to RNNoise as intended.
+
+## v1.47.1
+
+✨ **New**
+
+- **Adaptive video quality:** a new option under Settings > Voice & Video, off by default. When it's on, each video in a call is received at the size it's shown, and video that's off screen (or while Zam is minimised) is paused. This saves download bandwidth and decoding work. It applies the next time you join a call.
+
+🐛 **Fixed**
+
+- **Doubled line breaks when pasting:** text pasted from Windows apps no longer shows every line break twice, in the message box or when editing.
+- **GIF favourites order:** favourites in the GIF picker now stay in the order you saved them, left to right, instead of jumping between columns as they load.
+
+## v1.47.0
+
+✨ **New**
+
+- **Memory report:** Settings > Debug has a Memory report button. It shows what is using Zam's memory, including video memory, by process and by what holds it. Copy it into a bug report if Zam is using more memory than it should.
+
+⚡ **Improved**
+
+- **Much less video memory:** in a busy room, Zam now uses well under half the video memory it did (about 190 MB instead of 460 MB in testing).
+    - Profile pictures and room icons are now shrunk to the size they're shown at. A large profile picture used to take up to 30 MB every place it appeared. Animated ones still animate.
+    - Link preview images and images in encrypted rooms are shrunk the same way. Opening one still shows it at full size.
+    - Link previews of videos no longer keep the video loaded just to show its first frame.
+    - A video you've played and paused is unloaded once you scroll well past it. Press play again and it picks up where it stopped.
+
+## v1.46.4
+
+🐛 **Fixed**
+
+- **Memory use from GIFs:** GIFs embedded from Tenor, Giphy and Klipy now unload once you scroll well past them, and load again when you scroll back. Before, every GIF you had scrolled past stayed loaded until you left the room.
+
+⚡ **Improved**
+
+- **Video in calls:** your camera and screen share no longer upload video quality levels that nobody in the call is watching, which saves upload bandwidth and processing.
+
+## v1.46.3
+
+🐛 **Fixed**
+
+- **Calls when graphics crash:** running out of video memory (a game using it, say) no longer drops the call every time Zam's graphics restart, and Zam no longer ends up stuck without the GPU until a restart. The call keeps going. If you're sharing your camera or screen, it reconnects once after graphics have stayed up for a while, to get hardware encoding back.
+- **Favouriting embedded videos:** videos embedded from a link (Instagram and the like) can now be favourited, like images.
+
+## v1.46.2
+
+🐛 **Fixed**
+
+- **Sending while viewing older messages:** after jumping to an old message, sending a message or attachment no longer loads everything up to the present and scrolls you down. The view stays where you were reading.
+
+## v1.46.1
+
+🐛 **Fixed**
+
+- **Android notifications while Zam is open:** new messages no longer pop up a notification while you have Zam open on screen. Messages for another signed-in account still notify.
+
+## v1.46.0
+
+✨ **New**
+
+- **Message link previews:** a link to a specific message (matrix.to or matrix: link) now shows a card with the sender, room, time and text of that message. Click it to jump to the message. Links to rooms you can't read stay plain links.
+
+🐛 **Fixed**
+
+- **iOS after an update:** reopening Zam from the background after a new version came out no longer shows "500 Internal Error". It now reloads into the new version by itself.
+- **Replying from an older message:** sending while viewing a message you jumped to no longer scrolls you all the way to the bottom.
+
+## v1.45.0
+
+✨ **New**
+
+- **Japanese:** Zam can now be shown in Japanese (日本語). Pick it in Settings > Appearance > Display language. Thanks to tsubotan1985 for the translation.
+- **Rooms when you start offline:** if Zam starts with no connection, your rooms open and show their most recent messages saved on this device, instead of an empty pane. Encrypted rooms are decrypted from the keys on this device. Sending comes back on its own once the room has loaded.
+- **Bot commands:** a slash command Zam doesn't know, such as a bot's `/model` or `/status`, can now be sent. The first Enter warns you it's unknown, in case of a typo; press Enter again (or tap send again on mobile) to send it as a message.
+
+🐛 **Fixed**
+
+- **Japanese, Chinese and Korean input:** typing with an IME in the message box or when editing a message no longer drops the text being converted.
+- **Android keyboards:** tapping send while the keyboard is still underlining the word you're typing now sends that word too. Mention, emoji and command suggestions also keep up as you type instead of waiting for the end of each word.
+- **Connection indicator:** the Offline / Reconnecting pill now appears at the top of the chat, under the room header, instead of on top of your name in the bottom corner (or the + button on mobile).
+
+🔧 **Changed**
+
+- **Language list:** languages in the picker are in alphabetical order.
+
+## v1.44.0
+
+✨ **New**
+
+- **Login section in Settings > Account:** sign in another device from one you are already signed in on, without typing a username and password. Scan the new device's QR code, type the short code it shows, or (on servers that support it) show a QR code for the new device to scan.
+- **Sign in with a typed code:** no camera needed. The new device shows a code under its QR code; type it in Settings > Account > Login > Enter a code from the new device. If several new sessions signed in at once you pick the right one.
+- **Scan from the new device:** on servers that support the full QR protocol, the new device can scan a code shown by a signed-in one.
+- **Android:** sign-in and account approval pages open in an in-app browser instead of the external one, and you return to Zam when sign-in completes.
+
+🐛 **Fixed**
+
+- **QR sign-in:** verifying the new device is retried for up to 90 seconds while it finishes starting up, instead of failing straight away, and a verification that still cannot start no longer shows as a failed sign-in.
+- **QR sign-in:** the new device shows Logging in while the session starts, and a failure to start is reported instead of leaving a login form that looks stuck.
+
+## v1.43.5
+
+🐛 **Fixed**
+
+- **New spaces:** creating a space now switches you into it instead of leaving you in the space you were in.
+
+## v1.43.4
+
+✨ **New**
+
+- **QR sign-in button:** the button to sign in a new device by scanning its QR code is now at the top of Settings > Account, labelled Scan QR code to sign in a new device.
+- **Clearer room reordering:** the reorder toggle in the room list now uses an up/down arrows icon, and the actions menu uses the burger icon.
+
+🐛 **Fixed**
+
+- **QR sign-in:** a new device that signed in successfully is no longer reported as a failed sign-in when verification could not be started; you are told to verify it from Settings > Sessions instead.
+- **Permissions:** the reorder toggle is hidden in spaces where you cannot reorder rooms, and the emote and soundboard settings no longer show an add form you cannot use. The Add image form now matches the soundboard layout.
+
+## v1.43.3
+
+✨ **New**
+
+- **Easier new spaces:** creating a space now also makes a general text room and a Voice room in it, and anyone you invite to the space can join both without a separate invite for each. Untick Add a text room and a voice room in the Create a space dialog to start with an empty space.
+
+## v1.43.2
+
+🐛 **Fixed**
+
+- **Soundboard:** sounds played in an encrypted call are heard by everyone again. Since 1.43.0-era changes, other people's clients were dropping them, so only the sender heard the clip.
+- **Read receipts:** a reader whose read receipt lands on an event the timeline hides (a state change, an edit, a reaction) now shows under the message just above it instead of disappearing.
+
+## v1.43.1
+
+✨ **New**
+
+- **QR sign-in on more servers:** Sign in with QR code now also works on servers that do not support the full QR protocol, such as matrix.org. The new device shows a code, you scan it from Settings > Sessions > Link new device on a Zam you are signed in to, approve on your account's sign-in page, and then verify the two devices against each other. Servers that support the full protocol still sign in and verify in one step.
+
+## v1.43.0
+
+✨ **New**
+
+- **Sign in with QR code:** on servers that support it (such as matrix.org), the login screen has a Sign in with QR code button. Scan the code from Settings > Sessions > Link new device on a Zam you are already signed in to, type the number it shows, and approve. The new session signs in and gets your encryption keys, so it is verified straight away.
+
+## v1.42.12
+
+✨ **New**
+
+- **Message order hints toggle:** Settings > Debug has a new Message order hints switch. Turning it off stops Zam sending and obeying the order hints from 1.42.11, so messages show in the server's order exactly as in Element.
+
+## v1.42.11
+
+🐛 **Fixed**
+
+- **Message order:** Zam no longer re-sorts messages by timestamp, which could put an answer above its question when the other person's server clock was off. Messages now show in the order the server gives them, as in Element.
+- **Late messages:** your messages now carry a hint of what was at the bottom of your chat log when you sent them, and Zam puts a message that arrived late back below it. Other clients ignore the hint.
+
+## v1.42.10
+
+🔒 **Security**
+
+- **Fake soundboard sounds in encrypted calls:** in an encrypted call, a soundboard message that arrived unencrypted is now ignored. Such a message could be injected by the call server with any participant's name on it.
+
+## v1.42.9
+
+🐛 **Fixed**
+
+- **Notifications inbox in encrypted rooms:** messages from encrypted rooms all showed "Unable to decrypt" in the notifications inbox, even when you had the keys. They now show their real text, including the latest version of edited messages.
+
+## v1.42.8
+
+✨ **New**
+
+- **GIFs show up on more servers:** many homeservers can't preview KLIPY, GIPHY or Tenor links, so those GIFs appeared as plain links. Zam now loads them straight from the site when your server can't.
+
+🔧 **Changed**
+
+- **Link preview media now defaults to All:** YouTube players, X/Twitter cards and these GIFs now load without a click, which means those sites see your IP address and when you read the message. Images on ordinary link previews still come through your homeserver. If you already picked a setting, it stays; to go back, choose Homeserver only in Settings > Privacy & Safety, where the description now spells out what each option does.
+
+🐛 **Fixed**
+
+- **Messages in order on sliding sync:** opening a small room on some servers, including matrix.org, could put older messages below the newest one. Messages that arrive a little late from other servers now also settle into place right away instead of after a reload. A message that turns up much later stays at the bottom, so you still see it.
+
+## v1.42.7
+
+🐛 **Fixed**
+
+- **One tab per session:** opening the same account in a second tab could leave encryption keys out of step with the server and lose keys needed to read new messages. A second tab now waits and tells you the session is open elsewhere, then takes over when the first one closes. Different accounts can still run side by side in separate tabs.
+- **Safer encryption startup:** Zam now checks this device's encryption keys before it starts syncing. If that can't be confirmed, it stops and asks you to check your connection instead of uploading keys that could cause decryption problems. Once a device has passed this check, it starts offline as usual.
+- **Smoother call audio on Linux:** the desktop app and Flatpak now ask the system for realtime priority during calls, so your microphone keeps up when the computer is busy.
+
+## v1.42.6
+
+✨ **New**
+
+- **Thread names are private in encrypted rooms:** a thread's name is now encrypted like the messages around it, so your homeserver can't read it. Renaming a thread still doesn't notify anyone using Zam. Update to this version to see names set from now on; older versions won't show them, and names set before this update keep working.
+- **Choose who can name threads:** a new Name any thread setting on a room's Permissions tab sets the power level needed, 50 by default. People can always name threads they started.
+
+## v1.42.5
+
+✨ **New**
+
+- **Run at startup:** the desktop app can now start when you log in to your computer. Turn it on in Settings > General > Desktop. It works on Windows (including the portable version), Linux, the Flatpak and macOS. In the Flatpak, your desktop may ask you to allow it the first time.
+
+## v1.42.4
+
+✨ **New**
+
+- **Switch attachments to direct send:** the Edit attachment dialog has a Send directly toggle, so a file already in the composer can be sent directly, or a direct file turned back into a normal upload. It isn't available in threads.
+- **Video previews in the composer:** queued videos show a thumbnail instead of a file icon, and the Edit attachment dialog has a larger preview that plays them.
+
+## v1.42.3
+
+🐛 **Fixed**
+
+- **YouTube videos that said "This video is unavailable" now play in the desktop app:** music videos from big labels, for example, play the same as they do on Android. You no longer need the Fix YouTube Embeds plugin, and it has been removed from the plugin list.
+
+## v1.42.2
+
+🐛 **Fixed**
+
+- **Direct files now get a final check before sending, like other attachments:** "Send a file directly" puts the file in the composer's attachment tray with a Direct badge, where you can rename or remove it, and the offer only goes out when you press send. "Send directly" on the over-limit message works the same way. Text you type goes out as a normal message just before the offer.
+
+## v1.42.1
+
+✨ **New**
+
+- **Join a call without a microphone:** if your mic is unavailable because permission was refused, none is plugged in or it's in use elsewhere, you now join muted with a message saying why, instead of the join failing. You can listen and share your screen, and unmuting asks for the mic again.
+- **Disabled camera option:** pick "Disabled" in the camera list to stop a running camera and hide the camera buttons and preview. Keybinds and system controls can't turn it back on.
+
+🐛 **Fixed**
+
+- **Mute status:** people with no open mic now show as muted to everyone, including people who have no mic at all.
+
+## v1.42.0
+
+✨ **New**
+
+- **Send very large files directly:** choose "Send a file directly" from the composer's + menu, or "Send directly" when a file is over your server's upload limit. The file goes straight to the person who accepts it and is never stored on the server. It travels through your server's call service, end-to-end encrypted, and neither side sees the other's IP address. Both people need to be using Zam, and the sender needs to keep Zam open until the transfer finishes.
+- **Works across devices:** the file is saved straight to disk as it arrives, so it doesn't have to fit in memory, on desktop, Android and in the browser. The Android app keeps going in the background with a notification while a transfer runs. In Safari the file needs room in the browser's storage first, and takes up twice its size for a while.
+- **Every file is checked:** a file is only finished once its hash matches, and anything altered on the way is discarded. Withdrawing the offer, or deleting it, stops any transfer in progress.
+
+🔒 **Security**
+
+- **Soundboard sounds in encrypted calls are now encrypted:** the call server could previously read which sound was played.
+
+## v1.41.0
+
+✨ **New**
+
+- **Picture-in-picture for calls:** when you leave the call view, a stream keeps playing in a small floating video, so you can read the chat and still watch. Drag it to any edge of the window, click it to go back to the call, or close it with the X. It shows someone's screen share first, then whoever is talking, and you can pick a stream by spotlighting it.
+- **Pop a stream out of the app:** where your browser supports it, a new button on the floating video and on call tiles opens a window that floats over your other apps, and it stays open while you move around Zam. This isn't available in Firefox or the Android app, which still get the floating video.
+
+🐛 **Fixed**
+
+- **Less hiss on quiet voices:** voice normalization no longer boosts a quiet speaker enough to bring up their background noise during pauses.
+
+## v1.40.4
+
+✨ **New**
+
+- **Soundboard clips play while they download:** a sound you haven't heard before starts playing right away instead of after the whole file arrives. This works for MP3, WebM, Ogg (Opus and Vorbis), FLAC, WAV and MP4/M4A audio.
+- **Sounds are saved on your device:** once a soundboard clip has downloaded, it is kept (up to 64 MB) and every later play comes from your device, with no request to the server.
+- **M4A sounds are prepared for streaming when uploaded:** like videos sent in chat, their index is moved to the front so listeners can start playing them straight away. Sounds uploaded before this still wait for the full download the first time.
+
+## v1.40.3
+
+✨ **New**
+
+- **Soundboard button in the sidebar and the call banner:** the soundboard is now one click away from the call panel in the sidebar and from the call banner above a room's timeline, as well as from the call view, next to the other call buttons.
+
+🐛 **Fixed**
+
+- **Clicking the soundboard button again closes it:** it used to close and immediately reopen.
+
+## v1.40.2
+
+🐛 **Fixed**
+
+- **Soundboard clips and boosted voices no longer slow down with OBS open:** call audio that goes through the audio mixer (soundboard clips, voices boosted above 100%, and normalized voices) played through a hidden element that the browser stretches to absorb timing drift. With OBS or other heavy audio software running, that made the sound play slow and then speed up to catch up. It now plays directly to your speakers where the browser allows it.
+
+## v1.40.1
+
+✨ **New**
+
+- **Temporal layers for H.264 and HEVC video:** when your GPU encoder can produce them, camera and screen-share video in H.264 or HEVC is now sent with three temporal layers (L1T3), as VP9 and AV1 already were. Software encoders are left as they were.
+
+## v1.40.0
+
+✨ **New**
+
+- **Soundboard for calls:** a new button in the call controls opens a soundboard. Click a sound and everyone in the call hears it, along with you. Sounds work like custom emoji but with audio: add your own under Settings > Emotes, or add them to a room or space in its settings, where everyone in it can use them in calls. "Add to mine" copies a room's sound into your own pack. Sounds can be up to 15 seconds and 1 MB.
+- **Soundboard volume for each person:** every participant's menu in a call has a Soundboard Volume slider (0 to 500%), separate from their voice volume. Muting someone or deafening yourself silences their sounds too, and there's a slider for how loud your own sounds are to you.
+
+## v1.39.1
+
+🐛 **Fixed**
+
+- **Other accounts' pictures in the account switcher load reliably:** the pictures of your inactive accounts were requested as the account you were using, so those on a different homeserver came back unauthorised and showed initials instead. Each one is now fetched with its own account's sign-in, from its own homeserver only. The same goes for the account list on the sign-in screen.
+- **SVG images can no longer phone home when opened in a tab:** an SVG avatar or image could reference an outside image or stylesheet, which would reveal your IP to its sender if you opened it in its own tab. Zam now strips those references and keeps only the SVG's own drawing.
+
+## v1.39.0
+
+✨ **New**
+
+- **Web UI updates without a reinstall (desktop and Android):** Zam now downloads signed updates to its interface in the background and applies them when it starts, when you're idle, or when the app goes to the background, never during a call. Updates that change the app itself still come as an installer or APK. Settings > Automatic updates controls downloading and applying.
+- **Video codec info in Debug on web and Android:** Settings > Debug now lists which video codecs decode and encode on the GPU in the browser and the Android app too, not only on desktop.
+- **GPU H.264 profile fix (debug switch):** Settings > Debug has a switch for the fix below, so you can compare with it off.
+
+🐛 **Fixed**
+
+- **H.264 calls and screen shares now use the GPU encoder on Windows:** LiveKit answers with a H.264 profile Chromium encodes in software, which cost CPU and could drop frames. Zam now asks for the profile the GPU encoder takes, and turns on Chromium's Constrained Baseline GPU encoding on Windows.
+- **Away and invisible presence stick:** with sliding sync, every sync poll was resetting your chosen presence to online. Zam now sends the state you picked, and your own presence dot shows it.
+
+## v1.38.0
+
+✨ **New**
+
+- **A steadier noise filter, now the default:** the built-in noise removal for your microphone is now FastEnhancer, a small model that ships with Zam (nothing to download). DeepFilterNet3 and DPDFNet sometimes dipped your voice by 8 to 13 dB for a moment inside a word, which came across as your volume jumping around, most noticeably with automatic gain control on. FastEnhancer keeps your voice at an even level. Where your device can't run it, Zam uses RNNoise, which is also in the list. If you had picked DeepFilterNet3 or a plugin filter yourself, that choice stays; pick FastEnhancer under Settings > Voice & Audio > Noise suppression.
+- **Push to talk switch in voice settings:** turn push to talk on or off in Settings > Voice & Audio, with a link to the keybinds when no key is set yet.
+- **Randomize file names (off by default):** Settings > Messages & media can upload files under a random name instead of their real one. The file extension is kept.
+- **Right-click a screen share to set its volume.**
+- **H.264 encode test (desktop):** Settings > Debug > GPU can time H.264 encoding at a few sizes, to show whether it runs on the GPU.
+- **Ignore reported codec support (debug):** Settings > Debug can send the picked video codec even when others report they can't decode it, for testing codecs like HEVC.
+
+🐛 **Fixed**
+
+- **Call stats no longer show a stray "Other track" after a codec switch.**
+
+## v1.37.5
+
+⚡ **Improved**
+
+- **Location and metadata stripped from uploads:** photos and videos you send (and avatars, banners and emote images) no longer carry GPS location, camera details, XMP/IPTC data or comments. Works for JPEG, PNG, WebP, GIF, TIFF/DNG, HEIC/AVIF and MP4/MOV/M4A files, without re-encoding, and photos stay upright. On by default; turn it off in Settings > Messages & media (not recommended, as files you send could reveal where they were taken).
+
+## v1.37.4
+
+🐛 **Fixed**
+
+- **Video downloads no longer fail on big files:** saving a video could end in "Failed to download video" when the browser couldn't re-read the video it had just fetched. The download now goes ahead without that step.
+
+✨ **New**
+
+- **HEVC encoding in the GPU debug list (desktop):** Settings > Debug > GPU now probes HEVC and HEVC 10-bit encoding alongside H.264, VP8, VP9 and AV1.
+
+## v1.37.3
+
+🐛 **Fixed**
+
+- **Calls keep GPU video encoding after a graphics crash (desktop):** when Chromium's GPU process crashed during a call, your camera and screen share switched to software encoding for the rest of the session, while Settings > Debug still said hardware. The call now reconnects on its own to get the GPU back and tells you so. If graphics crash again straight away it offers a reload, and once Chromium has turned the GPU off it offers to restart Zam.
+- **NVIDIA hardware decoding stays on through unrelated crashes (Flatpak):** the automatic switch back from the Vulkan video path now only counts GPU crashes that happen while video is playing.
+
+## v1.37.2
+
+✨ **New**
+
+- **Automatic video codec:** Settings > Voice & Audio has an Automatic option for the video codec, now the default. It picks the best codec your GPU encodes that everyone in the call can play, and stays on H.264 when someone's support is unknown.
+- **Changelog since your last version:** after an update, What's New lists every release since the one you last saw, not just the newest.
+
+🐛 **Fixed**
+
+- **Skia Graphite can no longer lock you out (desktop):** if a launch with it on doesn't come up cleanly, or the GPU process crashes, it is switched off automatically and Settings > Debug says so. `--no-skia-graphite` (or `ZAM_NO_SKIA_GRAPHITE=1`) forces it off.
+- **Noise removal limit wording:** the hint now reads "The most the noise filter may take off".
+
+## v1.37.1
+
+✨ **New**
+
+- **Skia Graphite toggle (desktop):** Settings > Debug > GPU can switch Chromium to its newer Graphite renderer, for testing rendering problems. Off by default; applies after a restart.
+
+## v1.37.0
+
+✨ **New**
+
+- **Separate volume for shared audio:** when someone shares a screen or application with sound, their menu in a call now has a second slider, so you can set their share apart from their voice.
+- **Push to talk sounds:** a short click plays when you press and release push to talk during a call.
+- **Upload speed override:** the screen share quality panel has an Upload speed field. If the automatic measurement reads lower than your real connection, enter your own figure to raise the bitrate limit. The measurement also counts what is actually being sent now.
+- **Video I can't watch:** Settings > Voice & Audio lets you list video codecs your device can't show, so others send you H.264 instead.
+
+🐛 **Fixed**
+
+- **Black or missing video in calls:** devices announce only the video codecs they can really decode, and a stream that arrives but never decodes is now handled by asking for H.264. HEVC is no longer offered on the Flatpak's NVIDIA video decoding, where it showed black. AV1 is no longer sent in encrypted calls, which can't carry it.
+- **Screen share ending when switching codec:** if the switch failed to restart the share, it is now retried and restored with the previous codec.
+- **Signed out after an update (desktop):** the app waits for its saved local port to free up instead of switching to a new one, which signed you out.
+- **Clearer bitrate limit:** the screen share bitrate is now labelled as the maximum.
+- **Call media in DevTools:** call audio and video players get descriptive names in the Media panel.
+
+## v1.36.5
+
+🐛 **Fixed**
+
+- **Settings > Debug showed H.264 encoding as Software on NVIDIA (Linux):** the check asked for a variable bitrate that GPU encoding does not use. It now matches what calls send, so the list shows Hardware when the GPU encodes.
+
+## v1.36.4
+
+✨ **New**
+
+- **Power level on profiles:** a member's profile card now shows their exact power level in the room (for example 50 or 100, or a custom value), not just whether they are a moderator or admin.
+- **Send GIFs as animated WebP:** a new option in Settings > Messages & Media (off by default) converts GIFs to smaller animated WebP files when you send them.
+
+## v1.36.3
+
+🐛 **Fixed**
+
+- **Video download button on mobile:** the download button on videos in chat did nothing on phones. Videos now have their own download button that saves the original file.
+
+## v1.36.2
+
+🐛 **Fixed**
+
+- **Flash (SWF) files in encrypted rooms:** SWF files sent in encrypted rooms now play inline like they do in unencrypted rooms, instead of showing only as a file card.
+
+## v1.36.1
+
+✨ **New**
+
+- **Plugins for embedded pages (desktop):** plugins can now adjust the pages embedded in Zam, such as YouTube players, with the new "frames" permission. The first to use it is Fix YouTube Embeds in the plugin list, which makes YouTube videos that say "This video is unavailable" in Zam (music videos from big labels, for example) play.
+
+## v1.36.0
+
+✨ **New**
+
+- **Find the call view:** the call panel at the bottom of the sidebar now has an "Open call" button (with how many videos are on), and the call bar above a room's messages has an "Open" button. The room header's button for it is now an expand icon labelled "Open call view".
+- **Know when someone shares their screen:** if someone starts sharing while you're not looking at the call, a message tells you, with a Watch button that opens their share.
+- **Simpler screen sharing:** the share button goes straight to choosing what to share. On desktop the quality settings are in that same window, so sharing is one step instead of two. While you share, the sidebar shows "Sharing your screen" with Quality and Stop buttons.
+- **Video troubleshooting:** the connection stats window (the signal icon in the call panel) has a Video section that says, for each camera and screen share, whether it's working and if not, where it breaks: your capture stopped, the call server paused it because your connection is too slow, nothing is arriving, it can't be decrypted (often someone on an older Zam), or this device can't decode it. On desktop, a Proxy section shows whether the call goes through your proxy or direct.
+
+🐛 **Fixed**
+
+- **"Connect directly to call servers" still used the proxy (desktop):** joining the call and the connection to the call server still went through the proxy, so a slow or blocking proxy broke calls in that mode too. The whole call now skips the proxy, and everything else keeps using it.
+- **Sharing your screen showed you your own screen:** starting a share no longer puts your own screen in the spotlight. Other people's shares still are.
+
+## v1.35.0
+
+✨ **New**
+
+- **Guided encryption setup:** after you sign in, Zam walks you through encryption in one dialog instead of a small notice pointing at Settings. On a new account it sets up recovery in one step (no need to type your password again) and shows your recovery key with Copy and Download buttons. On a new device for an existing account, it lets you confirm it's you with another device or your recovery key. The "Verify" / "Set up" notice above your profile opens the same dialog.
+- **Clearer sign-up on matrix.org:** creating an account on matrix.org now says up front that it happens on matrix.org's own account page and brings you straight back signed in, with a "Create account on matrix.org" button.
+- **Sign-up checks as you go:** the form now checks whether your username is free and shows your full address (@name:server), asks you to confirm your password, and says up front when a server needs a registration token or isn't taking new accounts (with a link to create one on matrix.org instead). Sliding sync moved under "Advanced options".
+
+🐛 **Fixed**
+
+- **Signing up on servers that ask for extra steps:** servers that ask you to accept terms, confirm an email address, solve a captcha or pass any other sign-up step now walk you through it, instead of failing with "MatrixError: [401] Unknown message". A wrong registration token is asked for again.
+- **Readable sign-up errors:** a taken username, a weak password, closed sign-ups and similar problems are now explained in plain words.
+- **Encryption setup could replace your identity:** setting up encryption on a new device of an account that already uses encryption now verifies the device first, so devices you verified before stay trusted.
+
+## v1.34.0
+
+⚠️ **Update everyone at once**
+
+- Calls in encrypted rooms are now end-to-end encrypted. Someone still on an older Zam in the same call can't hear or see you until they update, though you can still hear and see them. Element Call users in encrypted rooms can now hear you, and you them.
+
+✨ **New**
+
+- **End-to-end encrypted calls:** calls in encrypted rooms are now encrypted end to end, the same way Element Call does it, so only the people in the call can hear and see it. A lock next to the room name in the call view, and next to the call status, shows whether the call is encrypted. If someone's app sends audio and video without encryption, it says who.
+- **Pick your video codec in the call:** the screen-share quality menu now has a video codec choice for your camera and screen share: AV1, HEVC, VP9, H.264 or VP8, from those your device can send. It only lists codecs everyone in the call can play, and marks the ones your graphics card encodes. Switching takes effect straight away. Settings > Voice & Video lists all five.
+- **Viewers who can't play your codec still see you:** in unencrypted calls, anyone whose app can't play the codec you picked automatically gets an H.264 copy instead. In encrypted calls Zam sends H.264 until they leave.
+
+## v1.33.0
+
+✨ **New**
+
+- **Pick your screen-share bitrate:** the screen-share quality menu has a bitrate slider of its own, separate from resolution and frame rate. It goes from 300 kbps up to just under your measured upload speed, instead of a fixed bitrate for each resolution. Zam measures your upload while you're sending video, so until your first share on a device the slider goes up to 10 Mbps.
+- **Choose your video codec:** Settings > Voice & Video > Camera has a video codec setting for your camera and screen shares. H.264 is the new default, since most graphics cards can encode it; VP8 is the other choice. Both play everywhere, including iPhones and iPads.
+- **Hardware video encoding on Linux (desktop):** the desktop app on Linux now encodes your camera and screen share on the graphics card, for codecs the driver supports. Settings > Debug can turn this off and shows which codecs your system encodes in hardware.
+- **NVIDIA video encoding on Linux, experimental (Flatpak):** NVIDIA cards can now encode H.264 calls and screen shares on the GPU in the Flatpak. Turn it on in Settings > Debug and restart.
+
+## v1.32.4
+
+🐛 **Fixed**
+
+- **SVG images showed up blank:** after 1.32.2, most SVG images showed as empty once any formatted message had been on screen, and downloading one gave back a broken file. They display properly again, and animated SVGs keep their animation.
+
+## v1.32.3
+
+🔒 **Security**
+
+- **Unencrypted SVG images can't run code:** opening an unencrypted SVG image in a new tab could, in some cases, run code inside it with access to your Zam session. Every SVG now has that code removed first, the same as SVGs in encrypted rooms.
+
+## v1.32.2
+
+🐛 **Fixed**
+
+- **SVG images in encrypted rooms:** SVG images sent in end-to-end encrypted rooms showed as "Image unavailable". They now display, with anything in them that could run code removed first.
+
+## v1.32.1
+
+🐛 **Fixed**
+
+- **Seeking back in long audio and video:** in a FLAC, a long MP3 or a big video that was streaming, jumping back to a part that had already played could leave it stuck loading forever. The browser throws away what has played once it holds too much, and now Zam hands it that part again.
+- **WebM videos with sound play in Chrome:** streamed WebM files with both video and audio (most of what ffmpeg makes) failed to play at all in Chrome-based browsers and the desktop app.
+
+## v1.32.0
+
+✨ **New**
+
+- **Share one app's audio:** the screen-share picker has an Audio menu. Share the sound of the window you're sharing, everything except Zam, any single app that's playing, or nothing. Before, Windows shared all system sound, including the call itself, and Linux shared none. Works on Windows 10 (version 2004) and later, and on Linux with PipeWire.
+- **Built-in proxy setting (desktop):** Settings > General > Network sets a proxy for Zam: a SOCKS or HTTP proxy, a PAC file, none, or your system settings (launch flags still work). Calls can follow the proxy as before, connect straight to the call servers so audio never goes through the proxy, or go only through the proxy so call servers never see your IP address.
+- **More call stats:** the call stats panel now lists every audio and video stream, yours and everyone else's: codec, bitrate, audio frame size, resolution and frame rate, and whether video is encoded in hardware or software and what's holding its quality back. Screen shares included. It also says when the call server has switched you to TCP, which is different from your network blocking UDP.
+- **FLAC plays right away:** FLAC files now start playing while they download, like MP3s, instead of waiting for the whole file.
+- **Voices start at the right volume:** volume normalization remembers each person's level, and your own, between calls, so calls no longer spend their first few seconds evening out.
+- **Calls hold up under load (desktop):** while you're in a call, Zam asks the system to give its call audio and video work priority over other programs. On Linux this needs extra permissions, and without them nothing changes.
+
+🐛 **Fixed**
+
+- **Rejoining no longer distorts someone's voice:** each time someone left and rejoined a call, their voice got louder and more distorted, because every earlier copy of their audio started playing again alongside the new one.
+- **Your own mute shows next to your name:** in the call list under a room, muting yourself now shows the muted icon by your name, like it does for everyone else.
+- **24-bit FLAC in videos:** 24-bit FLAC audio tracks in MKV files now play.
+
+## v1.31.0
+
+✨ **New**
+
+- **New DMs wait for your first message:** clicking "Message" on someone you haven't talked to used to create the conversation and invite them straight away, even if you were only looking. Now you get a draft, and nothing is created and no invite is sent until you send your first message. If they message you while the draft is open, you're moved into that conversation instead.
+- **Call connection stats:** a signal icon next to the call status in the sidebar opens a live view of your call connection: your ping, upload and download, packet loss, and whether your audio is going over UDP, TCP or a relay. TCP is flagged, since it's a common cause of audio lagging or drifting out of sync. It also shows how good the server thinks each other person's connection is, so you can tell whether a problem is on your end or theirs. "Copy as JSON" grabs a snapshot to share.
+
+## v1.30.5
+
+✨ **New**
+
+- **Slash commands can be replies:** /shrug, /tableflip, /unflip, /lenny, /spoiler and /plain used to drop the message you were replying to. Now they're sent as a reply to it, in threads too. /me still sends on its own.
+
+## v1.30.4
+
+🐛 **Fixed**
+
+- **The shrug keeps its arm:** sending ¯\\\_(ツ)\_/¯ used to drop the backslash, so it showed up as ¯\_(ツ)\_/¯. It now arrives exactly as you typed it.
+
+## v1.30.3
+
+🐛 **Fixed**
+
+- **Your status goes idle when you step away:** leaving Zam open on a computer used to keep you shown as online forever. After 5 minutes without any input you now show as away, and you're back online as soon as you return. In the desktop app, using other apps still counts as being at the computer, and locking the screen shows you as away right away. If you set yourself to away or invisible, that's left as it is.
+
+## v1.30.2
+
+✨ **New**
+
+- **Several attachments send faster:** when you send more than one file at once, they now upload side by side instead of one after another. They still arrive in the chat in the order you added them, and the progress shown covers the whole batch.
+
+🐛 **Fixed**
+
+- **One failed file no longer holds back the rest:** if one attachment in a batch failed to send, the files after it were held back too. Now everything else still goes through, and only the file that failed stays in the composer for you to retry.
+
+## v1.30.1
+
+🐛 **Fixed**
+
+- **Desktop finds updates while it's open:** the desktop app only checked for a new version when it started, so if you left it running you didn't hear about updates until you restarted it. It now also checks every few hours and when your computer wakes from sleep.
+
+## v1.30.0
+
+✨ **New**
+
+- **Photos appear sooner:** JPEG photos you send are now rearranged so the people who receive them see the whole picture straight away, blurry at first and sharpening as it downloads, instead of filling in from the top. Nothing is re-encoded and the picture is exactly the same; files usually come out a little smaller too. You can turn this off in Settings > Messages & Media > Send photos that appear sooner.
+
+🐛 **Fixed**
+
+- **Big images in encrypted rooms load visibly:** large photos used to show a sliver at the top and then nothing until the whole file had arrived. They now paint in as they download, in the chat and when you open them.
+- **GIFs play while they load:** in encrypted rooms, an animated GIF sat on its first frame until it had fully downloaded. It now starts playing as soon as its first frame is in.
+- **Rooms open at the newest message:** going back into a room could leave it scrolled far up, at an old message, especially in rooms with images. It now opens at the bottom and stays there while images load.
+- **Works on Android 12's built-in WebView:** Zam now runs on the WebView that ships with Android 12 (Chrome 95 and 96). Encryption needs WebView 97 or newer, so update Android System WebView from the Play Store if you can.
+
+## v1.29.2
+
+🐛 **Fixed**
+
+- **New sessions on older Android phones can be verified:** on phones with an older Android System WebView, the app crashed in the background on every sync, so a new session never sent its encryption keys to the server. Your other sessions couldn't verify it, and nobody could send it encrypted messages. If one of your sessions is affected, sign it out and back in after updating.
+- **Works on older iPhones:** Zam now runs on iOS 15 and 16 Safari (iPhone 8 and similar). Before, it got stuck before the login screen, or (like the Android bug above) new sessions never sent their encryption keys.
+
+## v1.29.1
+
+🐛 **Fixed**
+
+- **Verifying sessions works after a bumpy recovery setup:** if the password step failed the first time you set up recovery, trying again said "Recovery is set up" but never sent your cross-signing keys to the server, so none of your sessions could verify each other. Setting up recovery now makes sure the keys reach the server. If your account is already affected, the session where you set up recovery shows "Your cross-signing keys never reached the server" in Settings > Security & Encryption, with a button to upload them.
+
+## v1.29.0
+
+✨ **New**
+
+- **Emoji and emotes when editing:** editing a message now works like the composer: `:shortcode` suggestions, custom emotes shown as images, Ctrl+Z/Ctrl+Y undo and Shift+Enter for a new line. The suggestion list floats over the chat, so opening it doesn't push messages around.
+- **Image previews while loading:** images you send now include a small preview, so the people who receive them see a blurry version straight away instead of an empty box while the full image loads. In encrypted rooms you can open an image before it has finished decrypting.
+
+🐛 **Fixed**
+
+- **Clearer message when a session can't be verified:** asking your other sessions to verify a new one failed with "no existing cross-signing key" if your account had never set up cross-signing. It now explains what's wrong and points you to Set up recovery in Settings > Security & Encryption. It also checks the server for your latest keys before asking.
+
+## v1.28.5
+
+🐛 **Fixed**
+
+- **No jump after sending an image or link:** right after you sent an image, or a message with a link preview, the chat jumped up and back down. It now stays still.
+
+## v1.28.4
+
+🐛 **Fixed**
+
+- **Chat no longer jumps when messages arrive:** on matrix.org and other Synapse servers, a new message in the open chat could make it jump up or go blank for a few seconds while it reloaded, and closed any image you had open. It now stays put.
+- **Mentions stay highlighted:** in encrypted rooms, a message that mentioned you lost its highlight after you left the room and came back, or after the chat reloaded.
+- **Send messages back to back:** after sending a message, the send button showed a spinner until the server confirmed it, which could take several seconds. You can now send the next message straight away.
+
+## v1.28.3
+
+✨ **New**
+
+- **GIFs send as KLIPY links:** picking a GIF now sends its klipy.com page link (like klipy.com/gifs/nukes-true) instead of a long file address. GIFs you star from search are saved the same way, and older favourites switch over when they show up in your search results.
+
+🐛 **Fixed**
+
+- **GIF search plays straight away:** GIFs in the picker's search results only started moving once they had fully downloaded. They now play while they load, and so do GIFs you star from search.
+
+## v1.28.2
+
+✨ **New**
+
+- **Reply with attachments:** images, videos, files and voice messages can now be sent as replies. Pick Reply, then attach or record as usual. Text typed alongside attachments becomes the caption on the first one, which carries the reply. This works in threads too.
+
+🐛 **Fixed**
+
+- **Voice messages stay in their thread:** a voice message recorded in a thread was posted to the main room. It now lands in the thread.
+
+## v1.28.1
+
+🐛 **Fixed**
+
+- **Running out of storage is no longer silent:** when your device is full, Zam couldn't save messages or encryption keys and carried on without saying so, sometimes with encryption quietly switched off. A banner now tells you the device is out of storage and stays until there is space again. Zam also warns you early when space is running low.
+- **Encryption problems say why:** when encryption can't start on a device, the banner now says it is off on this device and why (for example, no storage left). Once space is back, Try again starts it again.
+
+## v1.28.0
+
+✨ **New**
+
+- **Export client logs:** Settings > Debug Info now has Copy logs and Save logs, on every platform including the Android app. The export holds everything the app has logged since it started, with tokens, passwords and keys removed, plus a header with your app version, device and encryption status. Send it along when reporting a bug.
+- **WebView debugging on Android:** a switch under Settings > Debug Info lets a computer connected over USB inspect the app at chrome://inspect. It stays on across restarts until you turn it off.
+
+🐛 **Fixed**
+
+- **Encryption setup failures are reported clearly:** when end-to-end encryption fails to start, the reason is now logged as an error on every attempt and shown in the exported logs.
+
+## v1.27.4
+
+🐛 **Fixed**
+
+- **Read receipts no longer cover message text:** when a message's last line reached the edge of the screen, the read-receipt avatars in the corner sat on top of it. The text now wraps clear of them.
+- **Edited messages always say (edited):** in encrypted rooms, an edit showed the new text but often without the (edited) label. It now appears as soon as the edit decrypts.
+
+## v1.27.3
+
+🐛 **Fixed**
+
+- **Download the original MIDI or tracker file:** MIDI and tracker modules (.mid, .xm, .mod, .s3m, .it, ...) play as audio rendered on your device, so the player's download only saved that rendered WAV, and a MIDI sent as audio couldn't be downloaded as the original file at all. The player now has a download button that saves the file as it was sent. The player's own download still saves the rendered WAV.
+
+## v1.27.2
+
+🐛 **Fixed**
+
+- **MIDI attachments play the right instruments:** the included sound bank had no real equivalent for 44 General MIDI instruments and used the nearest MT-32 sound instead, so Kalimba played a square wave, Distortion Guitar sounded clean, Breath Noise was a pan flute and Gunshot a snare. Those now have their own sounds.
+
+✨ **New**
+
+- **GS sounds in the included bank:** all 98 GS variation sounds that Windows' MIDI synth has, including Ukulele, Mandolin, 12-string guitar, Sine Wave and the sound effects (Rain, Thunder, Dog, Siren, Explosion, ...). MIDI files made for Windows or Roland Sound Canvas modules now sound as intended. The bank grows from 0.9 to 1.8 MB, and is only downloaded the first time you play a MIDI.
+- **MIDI sounds the same everywhere:** MIDI attachments now play with the included sound bank by default, rather than your device's own. You can still pick System or a custom bank under Settings > Messages & Media > MIDI.
+
+## v1.27.1
+
+🐛 **Fixed**
+
+- **No more signing out because someone else's session re-keyed:** when one of someone's sessions comes back with new encryption keys under the same session ID, Zam now drops its old copy and takes on the new keys automatically, the same as for a session that just signed in. Before, your messages stayed unreadable to that session until you signed out and back in. The replaced session starts unverified, unless its owner has cross-signed its new keys.
+
+## v1.27.0
+
+🐛 **Fixed**
+
+- **One person can't read anything you send, even after resetting the room key:** this happens when their session lost its encryption data (cleared browser data, a reinstall) but stayed signed in, and came back with new keys under the same session ID. Sessions that already knew it keep the old keys, so nothing they send it can be read. Zam now notices when its own encryption data is gone and signs that session out instead, with a message asking you to sign in again.
+
+✨ **New**
+
+- **"Keys changed" in someone's Sessions list:** a session whose keys changed on the server is marked, with a note that it needs to sign out and back in. If you already have one stuck like this, signing out and back in on either side fixes it.
+
+## v1.26.0
+
+🐛 **Fixed**
+
+- **Messages you can't decrypt, from one of someone's sessions:** a session missing a message's key now asks the sending session for it, and Zam sends it back. This works for keys that never arrived, which used to leave every later message from that sender session unreadable until it switched keys. The sending session only re-sends to someone joined to the room, in rooms where members can see past messages, and only keys it created itself. Both sides need this version.
+- **Encryption failing to start no longer loses keys:** if encryption couldn't start, a session used to keep syncing and the server deleted the keys other people sent it, so their messages stayed unreadable even after a reload. Encryption now retries a few times before giving up. If it still can't start, sliding sync leaves those keys on the server, and classic sync pauses until a reload instead.
+
+✨ **New**
+
+- **Reset a room's key:** `/discardsession`, or Room settings > Security > Reset room key, makes your next message in that room use a new key, shared with every session in the room again. Use it when people can't read what you send.
+
+## v1.25.0
+
+✨ **New**
+
+- **See someone's sessions:** a user's profile card now has a Sessions list showing each of their sessions that yours knows about, marked Verified, Unverified or Not signed by owner. Your encrypted messages only reach the sessions on this list. If someone can't read your messages, check whether their session is listed; the refresh button asks the server for their current sessions.
+
+## v1.24.3
+
+🐛 **Fixed**
+
+- **Verifying a new session from an older one:** the older session now fetches just your own sessions before starting, instead of everyone you share an encrypted room with. That could take long enough to fail with "This session doesn't know about that one yet". If it still can't find the session, the error now says why: the session never published its encryption keys, or its keys were rejected. Either way, signing that session out and back in fixes it.
+
+## v1.24.2
+
+🐛 **Fixed**
+
+- **Verification crash:** verifying could crash when the same emoji appeared twice in the comparison.
+- **"Not a known device":** verifying a session you just signed in on from an older session no longer fails with this error. The older session now fetches your latest session list first.
+
+## v1.24.1
+
+🐛 **Fixed**
+
+- **New sessions now show as unverified:** a session you just signed in on said "Encryption setup incomplete" instead of "This session isn't verified yet", which hid the new "Verify with another device" button. It now shows as unverified and offers both ways to verify.
+
+## v1.24.0
+
+✨ **New**
+
+- **Verify a new session from the new session:** a session that isn't verified yet can now ask your other sessions to verify it, with "Verify with another device" (in Settings > Security, on this session in Settings > Sessions, and in the sidebar prompt). Accept the request on any of your verified sessions and compare the emoji. Entering your recovery key still works too.
+
+## v1.23.5
+
+🐛 **Fixed**
+
+- **NVIDIA video on Wayland (Linux Flatpak):** hardware video decoding is now off by default on Wayland with an NVIDIA GPU, so video decodes in software instead of misbehaving. To try hardware decoding there (experimental), pick "Vulkan" in Settings > Debug > NVIDIA video decoding; on Wayland it uses OpenGL, not Vulkan.
+
+## v1.23.4
+
+🐛 **Fixed**
+
+- **No video on Wayland (Linux Flatpak):** video no longer shows nothing, or a stale copy of the screen, on Wayland with an NVIDIA GPU. The hardware video path added in 1.23.2 doesn't work there, so Wayland goes back to the standard one.
+
+## v1.23.3
+
+🎨 **Improved**
+
+- **@room looks like a ping:** @room in a message is now highlighted blue, like a mention of a person.
+
+## v1.23.2
+
+🐛 **Fixed**
+
+- **NVIDIA hardware video decode (Linux Flatpak):** Zam now picks up its saved GPU detection and the NVIDIA video choice in Settings > Debug, so hardware H.264, HEVC and VP9 turn on by themselves, including on laptops with an Intel and an NVIDIA GPU. Before, it ignored them and decoded in software unless launched with manual flags.
+
+## v1.23.1
+
+🐛 **Fixed**
+
+- **@room pings:** messages containing @room now actually notify everyone in the room; before, the mention was never sent.
+- **Double sound on Windows:** loud notifications no longer play the Windows notification sound on top of Zam's own sound. The notifications themselves are unchanged.
+
+## v1.23.0
+
+🎙️ **Improved**
+
+- **Normalize your own mic:** Settings > Voice & Audio > Auto gain control has a new "Normalize" option, the same volume evening-out incoming voices get, applied to your microphone after noise removal. It is now the default; "AGC2" (the previous choice) is still there.
+- **Noise removal tuning in Settings > Debug:** a new "Voice processing" section has a slider for how much DeepFilterNet3 or DPDFNet may take off the signal (default 25 dB), and a toggle for the pause gate.
+
+🐛 **Fixed**
+
+- **Choppy voice with noise removal on:** the pause gate that cut the gaps between words is now off by default, since it could clip soft word starts. You can turn it back on in Settings > Debug.
+
+## v1.22.1
+
+🐛 **Fixed**
+
+- **Stuck on "Restoring session" after changing keybinds (Linux X11):** the input hook for "Work when Zam isn't focused" now runs in a separate process, so if it fails the app stays up and Settings > Keybinds shows an error instead of the app crashing on every launch.
+
+## v1.22.0
+
+✨ **New**
+
+- **Keyboard shortcuts:** Zam now has Discord's keyboard shortcuts, on Discord's default keys. Every one can be changed in the new Settings > Keybinds tab. Shortcuts cover moving between channels, unread channels, mentions and spaces, going back and forward, marking things read, the emoji/GIF/sticker pickers, search, pins, the inbox and member list, muting and deafening, answering, declining and starting calls, and more. Press Ctrl+/ to see them all.
+- **Quick switcher:** Ctrl+K opens a quick switcher to jump to any room or DM by typing part of its name.
+- **Push to talk and push to mute:** bind a key, a single modifier key or a mouse side button in Settings > Keybinds. Once push to talk has a key, calls start with your mic closed and it only sends while you hold the key.
+- **Voice shortcuts in other apps:** in the desktop app, turn on "Work when Zam isn't focused" in Settings > Keybinds. Push to talk, push to mute, toggle mute and toggle deafen then work while you're in another app or a game, like Discord's. Zam only listens for the keys you bound.
+    - **Windows and Linux X11:** works out of the box.
+    - **macOS:** asks for the Accessibility permission first, with a button to open the right page in System Settings.
+    - **Wayland:** the shortcuts go through your desktop's global shortcuts (KDE Plasma, GNOME 48 and newer, and others with the GlobalShortcuts portal). Your desktop may ask you to confirm them or pick other keys. Settings shows the keys it assigned.
+- **Double-click + to upload:** double-clicking the + button next to the message box opens the file picker straight away.
+
+🎙️ **Improved**
+
+- **Smoother mic levels:** Zam's microphone leveller is replaced with WebRTC's AGC2, the automatic gain control Chrome uses. Voices no longer pump: the volume dip after a loud word is a fraction of what it was.
+- **NVIDIA hardware video decoding on Wayland (Flatpak):** videos on NVIDIA graphics cards are now decoded by the card in Wayland sessions too, not only X11. NVIDIA systems that Zam didn't recognise before are now detected. Settings > Debug has an Automatic / Vulkan / Off choice for this. If it crashes twice in automatic mode, Zam goes back to the old path on the next launch.
+
+🔧 **Changed**
+
+- **The debug panel moved to Ctrl+Alt+Shift+D.** Ctrl+Shift+D now deafens, as in Discord.
+
+🐛 **Fixed**
+
+- **Room list title in other languages:** the room list header showed "Home" in English whatever language Zam was set to.
+
+## v1.21.0
+
+✨ **New**
+
+- **Spanish:** Zam is now available in Spanish (Español). Pick it under Appearance > Language in settings; dates use Spanish month and weekday names too. The translation is machine-drafted and needs review by native speakers.
+
+## v1.20.6
+
+🐛 **Fixed**
+
+- **Hardware video decoding on NVIDIA under X11 (Flatpak):** with an NVIDIA graphics card in an X11 session, hardware-decoded videos showed up black and HEVC videos didn't play at all. They now play, decoded by your graphics card. If your graphics card draws Zam wrongly with this on, start it with `ZAM_NVIDIA_VULKAN_VIDEO=0` to go back, or turn hardware acceleration off in Settings > Debug.
+- **The bundled NVIDIA video driver is always used:** on some NVIDIA systems the Flatpak still picked up a separately installed copy of the driver instead of the one it ships.
+
+## v1.20.5
+
+🐛 **Fixed**
+
+- **NVIDIA video decoding works out of the box in the Flatpak:** the Flatpak now includes NVIDIA's video decoding driver itself, so you no longer have to install `org.freedesktop.Platform.VAAPI.nvidia` by hand to get hardware-accelerated video on an NVIDIA graphics card.
+
+🔧 **Diagnostics**
+
+- **Hardware video on NVIDIA under X11:** the bundled driver has an experimental mode for the X11 problem where hardware-decoded video doesn't display. It's off unless you start Zam with `NVD_LINEAR=1`.
+
+## v1.20.4
+
+🔧 **Diagnostics**
+
+- **Hardware video on NVIDIA under X11 (Flatpak):** the Flatpak now includes a diagnostic tool for the step where hardware-decoded video fails to display on NVIDIA graphics cards in an X11 session. It does nothing unless you start Zam with `ZAM_VK_DEBUG=1`; if you're affected and want to help, see the issue tracker for the exact command.
+
+## v1.20.3
+
+✨ **New**
+
+- **GPU info and a hardware acceleration switch:** Settings > Debug in the desktop app now shows which video formats your graphics card decodes, what Chromium has hardware acceleration on for, and a full report you can copy into a bug report. If your graphics driver draws videos black or the window wrongly, you can turn hardware acceleration off there; it applies after a restart, and a button restarts Zam for you.
+
+🐛 **Fixed**
+
+- **Black videos with NVIDIA on X11 in the Flatpak:** 1.20.2 sent video to NVIDIA graphics cards for decoding, which only displays properly in a Wayland session. On X11, videos that used to play came out black. Zam now only does this on Wayland.
+
+## v1.20.2
+
+🐛 **Fixed**
+
+- **HEVC videos and hardware video decoding on NVIDIA in the Flatpak:** the Linux Flatpak never used an NVIDIA graphics card to decode video, so HEVC videos didn't play at all and other videos used more processor than they should. It now uses the card, once you install NVIDIA's video decoding driver for Flatpak: `flatpak install flathub org.freedesktop.Platform.VAAPI.nvidia//25.08`.
+- **Chromium features from the command line are no longer ignored:** `--enable-features=...` passed when launching the desktop app was being dropped.
+
+## v1.20.1
+
+✨ **New**
+
+- **Tracker music plays in the chat:** MOD, XM, S3M, IT and other tracker module files now get a player above their download card, like MIDI files, so you can listen without downloading them.
+- **DPDFNet on your GPU:** version 1.1.0 of the DPDFNet plugin (update it in Settings > Plugins) runs the noise filter on your graphics card where it can, using a fraction of the processor it needed before. It checks its results against the original model before first use, and falls back to the processor if your GPU is missing, too slow or misbehaves.
+
+🐛 **Fixed**
+
+- **MKV videos play while they load:** Matroska videos with H.264, HEVC or AAC audio, such as OBS recordings, no longer have to download completely before they start playing.
+- **DPDFNet no longer hogs the processor in the desktop and Android apps:** the plugin's native runtime kept more than a whole processor core busy during calls for a fraction of that work. Update the plugin to 1.1.0 to get the fix.
+
+## v1.20.0
+
+✨ **New**
+
+- **Noise filter plugins:** plugins can now add their own noise suppression for your microphone. It shows up under Voice & Audio > Noise suppression next to DeepFilterNet3, and runs with the rest of Zam's voice processing. If a plugin's filter can't run on your device, or stops keeping up during a call, DeepFilterNet3 takes over without interrupting you.
+- **DPDFNet:** a new plugin in the official plugin repo (Settings > Plugins) adds DPDFNet, an AI noise filter that removes more noise than DeepFilterNet3 while keeping your voice clearer and at its natural volume, even on a quiet microphone. It needs more processing power, so Zam tests it on your device first and keeps using DeepFilterNet3 on devices that are too slow. It downloads about 25 MB the first time, plus its native runtime in the desktop and Android apps.
+- **Plugins can bring native code:** in the desktop and Android apps, a plugin can ship its own native program, for example to run an AI model faster. Zam asks you first in a system dialog, checks every file against what the plugin published, and asks again whenever the plugin updates. Only allow it for plugins you trust: on Android it runs inside Zam with access to your account.
+
+## v1.19.11
+
+🐛 **Fixed**
+
+- **No more volume spikes or boosted background noise in calls:** Zam's mic leveller and the volume evening-out for other people mistook leftover background noise in pauses for a quiet voice and kept turning it up. You could hear people's noise floor whenever they were quiet, and the next word came in so loud it distorted. Now only actual speech changes the volume.
+- **Clicks and typing are filtered again:** noise suppression now also quietens the gaps between words, so mouse clicks, keyboard sounds and room noise in pauses are cut much further while your voice comes through as before.
+- **Changing audio settings during a call:** turning auto gain control or echo cancellation on or off mid-call no longer fails with "Couldn't apply audio processing change". If a change does fail, the message now says why.
+
+## v1.19.10
+
+🐛 **Fixed**
+
+- **No more pumping or "helium" voice with noise suppression:** in 1.19.9, the boost Zam gives a quiet microphone mistook room noise for a quiet voice, so it kept jumping up in pauses and back down when you spoke. Your voice swung between too loud and too quiet, sounded thin and high while the noise suppression caught up with each jump, and got muffled. The boost now only listens to your actual speech, and a normal microphone isn't boosted at all.
+- **Less muffled noise suppression:** DeepFilterNet3 no longer suppresses without limit, which was eating into voices along with the noise. Speech comes through clearer and steadier, with background noise still well reduced.
+- **Changing audio settings during a call works again:** switching auto gain control or noise suppression mid-call showed an error and could briefly cut your microphone. It now switches smoothly without interrupting what you're sending.
+
+## v1.19.9
+
+🐛 **Fixed**
+
+- **Noise suppression no longer mangles quiet microphones:** DeepFilterNet3 noise suppression damaged speech that reached it too quietly, and with Zam's mic leveller (the default) a quiet mic always did, so voices came out watery or broken up, or dropped out altogether on very quiet mics. Zam now raises a quiet mic before noise suppression and takes the same amount off again afterwards, so your voice is cleaned up properly without changing how loud you sound. The mic test in Settings uses the same processing, so you can hear the difference there.
+
+## v1.19.8
+
+🐛 **Fixed**
+
+- **Emote packs from Sable and other newer clients now show up:** packs made in clients that use the newer standard names (`m.room.image_pack`) were invisible in Zam: missing from the emoji and sticker pickers and from both lists in Settings → Emotes. Zam now reads both the new and the old names, shows packs the same way Sable does, and packs you enabled for all rooms in Sable are picked up too.
+
+✨ **New**
+
+- **New emote packs use the standard name:** packs you create in Zam are now saved under the newer standard name, like Sable does. Existing packs keep the name they already have, and nothing gets duplicated.
+- **Editing respects each pack's permissions:** room settings only offers to edit a pack when your power level allows every change it needs, and an edit is never left half-saved.
+
+## v1.19.7
+
+✨ **New**
+
+- **Videos you send start playing sooner:** MP4 and MOV videos have their index moved to the front of the file before they're uploaded, so people can start watching while it downloads instead of waiting for the whole file (this only helps if the video's index was at the end, which is how most phones and screen recorders save them). Nothing is re-encoded and the picture is identical. If a file looks unusual it's sent exactly as it was. You can turn this off in Settings → Messages and media → "Send videos that stream faster".
+
+## v1.19.6
+
+✨ **New**
+
+- **WebM videos play while they download:** WebM videos (what browsers and many bridges produce) now start as soon as the first seconds arrive instead of waiting for the whole file, including encrypted ones.
+- **The video viewer streams too:** opening a video from the room media panel no longer downloads the entire file before it starts, and shows progress while it loads.
+- **Audio plays while it downloads:** MP3, M4A and WebM audio attachments start playing right away instead of waiting for the full file, with a progress bar until they do.
+- **Big encrypted images show up as they download:** an encrypted image of 256 KB or more paints a preview that sharpens as it arrives (progressive JPEG, interlaced GIF and similar) instead of a spinner. It's replaced by the real image once it has been checked. JPEG XL gets the same treatment automatically in browsers that can decode it.
+
+🐛 **Fixed**
+
+- **Failed streams fall back instead of failing:** if the browser can't play a video or audio file while it downloads (some audio+video WebMs, for example), Zam now retries it as a full verified download rather than showing a playback error.
+
+## v1.19.5
+
+✨ **New**
+
+- **Download progress on media:** encrypted images, videos and voice/audio messages (and videos in the viewer) now show how much has downloaded, with a progress bar, instead of a bare spinner. Handy on slow homeservers.
+- **Encrypted videos play while they download:** encrypted videos of 4 MB or more start playing as soon as the first seconds arrive instead of waiting for the whole file. The file is still checked for tampering once it finishes; if that check fails, playback stops and Zam falls back to a full verified download.
+
+🐛 **Fixed**
+
+- **Encrypted images downloaded twice:** an encrypted image was fetched once for its preview and again for the full-size viewer. It's now downloaded once, halving the wait.
+- **Favourite GIFs hold their space while loading:** the favourites tab now reserves each GIF's shape before it loads, like the main GIF picker, instead of collapsing and jumping around.
+
+## v1.19.4
+
+✨ **New**
+
+- **Shift+click to download on desktop:** holding Shift while clicking a download button (image or video viewer, file attachments, room media panel) saves the file straight to your Downloads folder with no save dialog, like on Android. A plain click still asks where to save.
+
+## v1.19.3
+
+🐛 **Fixed**
+
+- **Updates download once:** on Android, leaving Settings → About and coming back while an update was downloading started a second download alongside the first, so the progress bar jumped back and forth between them. Reopening About now shows the download that's already running, and an update that already finished downloading isn't fetched again.
+- **Steady update progress on desktop:** opening About during a download no longer resets it to "Download available" while it's still downloading.
+
+## v1.19.2
+
+🐛 **Fixed**
+
+- **Noise suppression and auto gain control work in calls:** with DeepFilterNet3 or Zam's auto gain control turned on (the defaults), joining a call showed "Audio context needs to be set on LocalAudioTrack" and your microphone wasn't processed. Your mic is now cleaned up from the moment the call starts.
+
+## v1.19.1
+
+✨ **New**
+
+- **See where an emote comes from:** the emoji suggestions that pop up while you type `:` now show the room or space each custom emote belongs to, or "Your emotes" for your own, instead of just "custom".
+
+🐛 **Fixed**
+
+- **No emote preview for formatted words:** typing `*name*` or `_name_` in the composer showed the custom emote called `name` even though it isn't an emote shortcode. Only a full `:name:` shows one now. Sent messages were never affected.
+
+## v1.19.0
+
+✨ **New**
+
+- **AI noise suppression:** Zam now removes background noise from your microphone with DeepFilterNet3, an AI model that runs on your device. Keyboards, fans, traffic and room noise are taken out while your voice is kept. It replaces the browser's built-in suppressor, which only handled steady hum. You can switch back to the browser's version or turn it off under Voice & Audio, and Test mic there lets you hear the result before a call. If you had noise suppression off, it stays off. Browsers that can't run it (Safari before 16.4) use the browser's suppressor instead.
+- **The model stays on your device:** the Android and desktop apps ship with it. On the web it's downloaded once in the background after Zam starts (about 11 MB compressed) and kept across updates. Calls wait for it to load before your mic goes live, so you're never heard unfiltered at the start of a call.
+
+## v1.18.0
+
+✨ **New**
+
+- **Turn people up to 500%:** the volume slider in a call participant's menu now goes up to 500% instead of stopping at 100%, so a quiet microphone is no longer stuck being quiet. Very loud voices are rounded off smoothly instead of distorting.
+- **Even out voice volumes:** a new setting under Voice & Audio automatically turns quiet people up and loud people down, so you don't have to set everyone's volume by hand. It adjusts each person separately, so switching microphones mid-call is fine, and it never boosts background noise during pauses.
+- **Zam's own auto gain control:** your own microphone is now levelled by Zam instead of the browser. Unlike the browser's (and Discord's) version, it never changes your system microphone volume and doesn't raise your room noise between sentences. You can switch back to the browser's version or turn it off under Voice & Audio. If you had auto gain control off, it stays off.
+
+🐛 **Fixed**
+
+- **Deafen stays on:** when the browser had blocked call audio and you clicked to allow it, or on Safari when you came back to the tab, other people's audio could start playing even though you were deafened.
+
+## v1.17.1
+
+🐛 **Fixed**
+
+- **No more reloading two or three times on startup:** with sliding sync off, Zam could finish loading, blank the screen and start over, sometimes twice. It checked for missing rooms before the server had answered, so any room you'd joined since your last session looked lost and triggered a reload. It now waits for the server, and a room that really is missing is repaired in place instead of reloading.
+- **Opening a room no longer wipes the local cache:** the first room you opened in a session could make Zam delete its saved copy of your rooms, so the next launch had to load everything from scratch.
+- **Muted rooms show new messages again with sliding sync:** in muted or mentions-only rooms, new messages from others never made the room show as unread when sliding sync was on.
+- **Rooms whose latest event is a reaction or edit:** with sliding sync, such rooms could load with no messages at all, and "Mark as read" did nothing for them.
+- **Calls in group rooms show who's in them with sliding sync:** the room list showed nobody in a group room's call, because the people in it weren't loaded yet. Direct messages were already fine.
+- **Pings in quick bursts notify with sliding sync:** when several messages arrived in a room at once, or while Zam was catching up after sleep or a dropped connection, only the newest one reached notifications, so a ping before it made no sound or popup. Zam now fetches skipped messages when your mention count went up and notifies for them as usual.
+
+## v1.17.0
+
+✨ **New**
+
+- **Coloured text blocks:** code blocks marked `ansi` (Discord's coloured text) now show their colours, backgrounds, bold, italic, underline and strikethrough instead of raw escape codes. Blocks pasted without the hidden escape character work too.
+
+🐛 **Fixed**
+
+- **Code blocks wrap:** long lines in code blocks now wrap instead of scrolling sideways, including long runs without spaces like links and hashes.
+
+## v1.16.1
+
+🐛 **Fixed**
+
+- **Scrolling up in rooms full of joins:** loading older messages fetched a fixed 15 events at a time and stopped as soon as the screen was full, so in rooms where most events are joins or leaves you could get one message per load and wait at the top every time. Zam now keeps about 30 messages loaded above where you're reading, and asks for more events at once in rooms where few of them are visible.
+- **Less stutter in big rooms:** loading history that contains only joins or other hidden events no longer redraws the whole message list, messages decrypting one by one now refresh the screen at most once per frame, and the member list sorts much faster.
+
+## v1.16.0
+
+✨ **New**
+
+- **Search and media in encrypted rooms:** the server can't read encrypted messages, so search used to find nothing in encrypted rooms. Zam now keeps a compressed index of your encrypted rooms on this device, filled as messages arrive and by slowly fetching older history in the background. Search finds partial words and ignores accents, and rooms that turned on encryption later still find their older messages. The media list shows indexed attachments instantly. You can turn this off under Privacy & Safety, which deletes the index; it's also deleted when you sign out.
+
+🐛 **Fixed**
+
+- **Media list loads a screenful at a time:** opening a room's media list showed only one or two items per click, and sometimes none. It now fills the list and loads more as you scroll.
+- **Faster first upload:** the server's upload size limit is now checked while you're still writing, instead of after you press send.
+
+## v1.15.12
+
+🐛 **Fixed**
+
+- **Room permissions with sliding sync:** with sliding sync on, rooms could show the wrong permissions (for example, everyone treated as able to post or moderate) because the room's power levels were never loaded. They now load for every room, so permissions match classic sync.
+- **Read-only rooms lock the message box:** in rooms where you're not allowed to post, like announcement channels, the message box is now disabled and says you don't have permission, instead of letting you type a message that would fail.
+- **Uploads no longer stall before starting:** on slow connections (like Tor), an attachment could sit for a long time before any data was sent while the app waited on the server's upload size limit. That check now gives up after a few seconds, and the sending indicator shows upload progress.
+- **Thread names keep their spacing:** extra spaces inside a thread name are no longer squashed into one.
+
+## v1.15.11
+
+🐛 **Fixed**
+
+- **New threads show up right away:** the first reply in a thread you just started could vanish from the thread panel, and the thread's reply count and its entry in the Threads list didn't appear until you reloaded or someone else replied. Your first reply now shows immediately.
+
+## v1.15.10
+
+🐛 **Fixed**
+
+- **Joined rooms no longer show up under Browse:** after 1.15.9, a room you'd just joined could appear both in your list and in the space's Browse rooms list. Browse now only shows rooms you're not in.
+
+## v1.15.9
+
+🐛 **Fixed**
+
+- **Joined rooms and spaces show up right away:** on servers using sliding sync, a room or space you joined vanished from Browse but didn't appear in your list until a minute later or an app restart. It now appears immediately. The same applies to accepted invites and newly created rooms.
+
+## v1.15.8
+
+🐛 **Fixed**
+
+- **Room and space settings load again:** 1.15.7's Permissions tab could get stuck on "Loading…" forever. Settings now fetch what they need directly, wherever you open them from, and show an error with a Retry button if that fails.
+- **Saving access settings no longer changes things you didn't touch:** on servers using sliding sync, history visibility and guest access could show defaults before loading, and saving the tab could write those defaults back. The Access tab now waits for the real values.
+- **Space menus only show admin options to admins:** "Space settings" and "Add room" showed for everyone in a space.
+
+## v1.15.7
+
+🐛 **Fixed**
+
+- **Space and room permissions show their real values:** on servers using sliding sync, a space's (or an unopened room's) Permissions tab showed every level as 0. It now loads the real levels first.
+- **Saving permissions can no longer wipe everyone's levels:** saving from that screen while the levels hadn't loaded could reset every user's power level, admins included. Changes are now always applied on top of the room's current permissions.
+
+## v1.15.6
+
+🐛 **Fixed**
+
+- **Replies to stickers say what they're replying to:** a reply to a sticker, poll or untitled photo/video/file now shows "Sticker", "Poll", "Image" and so on in its quote, instead of "Original message unavailable".
+
+## v1.15.5
+
+🐛 **Fixed**
+
+- **Thread unread dot clears once you've read it:** on servers using sliding sync, the threads button kept showing unread messages after you'd read them, until you reloaded. Opening the thread (or reading it on another device) now clears it.
+
+## v1.15.4
+
+🐛 **Fixed**
+
+- **New threads show up right away:** after you start a thread, the "replies" chip under its first message now appears immediately instead of only after a refresh.
+
+## v1.15.3
+
+🐛 **Fixed**
+
+- **Stickers as replies:** sending a sticker while you're replying to a message now sends it as a reply to that message, in threads too.
+
+## v1.15.2
+
+🐛 **Fixed**
+
+- **Safer handover of encryption keys in the background (Android):** when Zam hands its keys over to the notification decryptor, it now waits until it has completely finished with them first, instead of a fixed half second. This closes a rare case where the two could both be writing at once.
+
+## v1.15.1
+
+🐛 **Fixed**
+
+- **Encrypted notifications while the app is in the background (Android), properly this time:** 1.15.0's fix didn't work, because Zam's page can't run at all while the app is in the background. Now, about 10 seconds after you leave Zam, it hands its encryption keys over to the part that decrypts notifications, so they show the message. Coming back picks up where you left off, without reloading the app.
+
+## v1.15.0
+
+✨ **New**
+
+- **Thread names:** the person who started a thread, or a moderator, can name it from the pencil button in the thread's header. The name shows in the thread header, the thread list and the "replies" chip under the first message. Other Matrix apps don't show thread names.
+- **My threads:** the thread list has an All threads / My threads switch. My threads shows the threads you started or replied in.
+- **Reply inside a thread:** Reply now works on messages in a thread, and tapping a quoted message scrolls to it.
+- **Export and import room keys:** Settings → Security & Encryption can save your encryption keys to a passphrase-protected file and load one back. It's the same format Element uses, so key files move between the two.
+- **Request to join from Explore rooms:** rooms that need an invite request now have a Request to join button instead of a greyed-out "Knock only".
+- **Source code link:** Settings → About links to Zam on GitHub.
+
+🐛 **Fixed**
+
+- **Encrypted notifications while the app is in the background (Android):** after Zam had been in the background for more than about half a minute, notifications for encrypted messages only said who sent something. Zam now pauses syncing shortly after leaving the screen so it can answer notifications straight away. On a phone where that still isn't fast enough, Zam steps aside in the background instead, and reloads when you come back to it (your drafts are kept).
+- **Thread scrolling:** "Load older replies" no longer jumps you back to the bottom, and new activity elsewhere no longer scrolls a thread you're reading.
+- **Missing thread replies:** replies that couldn't be decrypted, and polls started in a thread, were left out of the thread. They now show, with the usual "unable to decrypt" placeholder where needed.
+- **The first message of a thread:** the thread panel showed it as three lines of plain text. It now shows in full, with images, formatting and reactions.
+
+## v1.14.2
+
+✨ **New**
+
+- **Notifications for all your accounts in the browser:** with web push on, notifications for the accounts you aren't using now show the sender and message, decrypted, like the active account's, and tapping one switches to that account. Open each account once after updating to turn this on for it.
+- **Notifications for all your accounts on desktop:** while the app is open, your other accounts now notify too, within about 30 seconds. Tapping one switches to that account. This also covers browsers without web push.
+
+## v1.14.1
+
+✨ **New**
+
+- **See when an account's notifications are switched off:** another app (such as Element's "Enable notifications for this account") can turn off every notification for an account, and Zam never showed it, so that account just went quiet. Settings → Notifications now warns when this is on, with a button to turn notifications back on, and Debug Info shows it too.
+
+## v1.14.0
+
+✨ **New**
+
+- **Notifications for all your accounts (Android):** with several accounts signed in, notifications for the ones you aren't using now show the sender and message, decrypted, like the active account's. Tapping one switches to that account and opens the room, and Mark as read works from any account. Open each account once after updating to turn this on for it.
+
+🐛 **Fixed**
+
+- **Encrypted notifications on desktop:** with "Show all events" on, notifications for encrypted messages only said "🔒 Encrypted message". They now show the message.
+- **Editing the same message twice:** a second `s/old/new/` on a message added a "* " to the start of it, and pressing ↑ to edit your last message did nothing after you had edited it once. Both now edit the message itself.
+
+## v1.13.10
+
+🐛 **Fixed**
+
+- **Encrypted notifications when the app was closed (Android):** with the app swiped away, notifications for encrypted messages still only said who sent something. They now show the message whether or not the app is running.
+
+✨ **New**
+
+- **Gboard stickers and images (Android):** stickers, Emoji Kitchen combos and GIFs from the keyboard can now be sent from the message box. They're added as attachments, like a pasted image.
+- **Edit your last message with `s/old/new/`:** sending `s/teh/the/` fixes your last message instead of sending a new one. Add `g` to replace every match or `i` to ignore case, e.g. `s/teh/the/gi`. Works in threads too.
+- **Link preview rewriter:** a new built-in plugin that fetches link previews from a different address, e.g. a mirror of a site your homeserver can't reach. The link itself isn't changed. Add rules in its plugin settings.
+
+## v1.13.9
+
+🐛 **Fixed**
+
+- **Invites you couldn't ignore with sliding sync:** clicking Ignore on an invite left it in the inbox forever. It now goes away, and stays gone after a reload.
+- **DM invites named "Empty room" with sliding sync:** an invite to a DM showed as "Empty room (was ...)". It's now named after the person who invited you.
+- **Left rooms coming back with sliding sync:** a room you left could reappear in the sidebar about 30 seconds later. It now stays gone.
+- **Presence with sliding sync:** you showed as offline to others shortly after opening the app, and nobody else's online status showed up. Both now work like they do with sliding sync off.
+
+## v1.13.8
+
+🐛 **Fixed**
+
+- **Encrypted messages unreadable with sliding sync:** with sliding sync on, most messages in encrypted rooms showed "Unable to decrypt" even though the keys were there, and reloading didn't help. They now decrypt like they do with sliding sync off.
+- **Pinned messages in encrypted rooms:** pinned messages that weren't already loaded in the timeline showed as encrypted. They're now decrypted.
+- **"Show all events" stuck on encrypted:** with the debug option on, messages that decrypted after loading kept showing as `m.room.encrypted` until you left the room.
+
+✨ **New**
+
+- **Why a message couldn't be decrypted:** with "Show all events" on, messages that fail to decrypt now show the reason, to help track down missing keys.
+
+## v1.13.6
+
+🐛 **Fixed**
+
+- **"Set up recovery" could replace your existing recovery:** on accounts that already had a recovery key but weren't fully set up, the button could delete your key backup and show a new key that didn't actually work. It now only appears on accounts with no recovery at all.
+- **Restoring history could leave a session unverified:** entering your recovery key restored message history before verifying the session, so a slow or failed restore left it unverified. The session is now verified first.
+- **Messages from devices that aren't cross-signed couldn't be read:** "Exclude non-cross-signed devices" is now off by default, and turning it off unlocks messages it had already blocked without a reload.
+- **Notifications could damage encryption keys:** decrypting a notification in the background while the app was opening could, rarely, leave both using the key store at once. They now never overlap, and a stuck background decrypt no longer holds the notification back.
+
+## v1.13.5
+
+🐛 **Fixed**
+
+- **Encrypted messages in notifications:** notifications for encrypted messages only said who sent something. They now show the message, on Android and in the browser, even when the app isn't running.
+
+## v1.13.4
+
+✨ **New**
+
+- **Encryption setup on matrix.org:** setting up or resetting recovery on servers that sign you in through an account page, like matrix.org, now works. Instead of asking for a password, Zam sends you to your account page to approve the change, then carries on.
+- **Why a message can't be decrypted:** messages you can't read now say why, for example that the sender's device isn't verified, that their identity changed, or that the message was sent before this device signed in, instead of always saying the keys might be missing.
+
+🐛 **Fixed**
+
+- **"Content is not encrypted!" when setting up recovery:** accounts whose encryption had been reset before could never finish setting up recovery. They now can.
+- **Names and avatars stuck on placeholders:** with sliding sync on, people who joined a room or changed their name or avatar could keep showing a raw user ID and default avatar. They now update.
+- **Verification stalling on "Verifying…":** verifying someone while viewing a different room could lose a step and hang until it timed out. The verification's room now stays fully synced until it finishes.
+
+## v1.13.3
+
+🐛 **Fixed**
+
+- **Images failing to load on Android:** opening the app could make every image load two or three times over, and some stayed broken. Images now load once, with your login, from the start.
+- **Freezes on JPEG XL images:** showing a JPEG XL image where it has to be converted could freeze the app for a moment. The conversion now happens in the background.
+
+## v1.13.2
+
+🐛 **Fixed**
+
+- **Messages disappearing after a notification tap:** opening the app from a notification could show the newest messages for a moment, then lose them. They now stay.
+- **Stuck on "Reconnecting" on slow connections:** on a slow or weak connection, the app could keep reconnecting forever without catching up. It now gives slow responses more time to arrive, so it gets through and syncs.
+
+## v1.13.1
+
+✨ **New**
+
+- **Notifications without Google (Android):** Zam can now deliver notifications through UnifiedPush, using a distributor app such as ntfy, instead of Firebase. This works on phones without Google Play services. Choose it under Settings → Notifications → Push service. Automatic uses Firebase when it's available, and otherwise the UnifiedPush distributor you have installed.
+- **JPEG XL images:** JPEG XL images now display everywhere. The desktop app shows them natively, and elsewhere they're converted on the fly.
+
+🐛 **Fixed**
+
+- **Missing history in busy rooms:** in very active rooms, older messages could disappear after a sync gap, and scrolling up could stop early as if you'd reached the start of the room. History now stays intact and keeps loading.
+
+## v1.13.0
+
+✨ **New**
+
+- **Calls between homeservers:** calls between people on different homeservers (say matrix.org and your own server) now work both ways. Before, whoever joined on the other server's call server could listen but not talk ("failed to publish track, insufficient permissions"). Each person now sends from their own homeserver's call server and listens on everyone else's. Everyone in the call needs this version or newer to hear each other.
+
+🐛 **Fixed**
+
+- **Incoming calls not ringing:** a call to you could stay invisible, with no ring, until you switched rooms and back, even in the room you had open. It now rings straight away.
+
+## v1.12.11
+
+🐛 **Fixed**
+
+- **New messages missing after opening a notification (Android):** tapping a notification could show the room without the message you were notified about, or anything after it. Zam now waits for sync to catch up before jumping to the message.
+- **Voice calls failing to start:** starting a call could fail with "fetchClientWellKnown is not a function". Settings also wrongly reported that your server had no call server.
+- **Calls showing as "Call ended" right away:** a call you started could show as already ended in the chat and leave you looking like you weren't in it. Calls now show as ongoing until everyone leaves.
+
+🔧 **Changed**
+
+- **Ringing:** calls now ring using the newer call notification format, so calls from Element X and other current clients ring in Zam, including on Android with the app closed. Rings from older Zam versions still ring too, and a ring that arrives after the caller gave up no longer rings.
+
+## v1.12.10
+
+🔧 **Changed**
+
+- **Electron 44:** the desktop app now runs on Electron 44. macOS 12 (Monterey) is no longer supported.
+- **Flatpak permissions:** the Flatpak no longer needs read access to your whole home folder. Drag-and-drop now hands files over through the desktop portal instead.
+
+## v1.12.9
+
+🐛 **Fixed**
+
+- **Stuck on "Reconnecting" (sliding sync):** an error while processing an update could stop syncing for good until the app was restarted. Zam now restarts syncing on its own.
+- **Messages vanishing after opening a notification:** opening a room from a notification could show the newest messages and then drop them when sync caught up.
+
+🔧 **Debug**
+
+- **Sync log:** Settings → Debug Info now keeps a short sync log you can copy, to help track down connection problems.
+
+## v1.12.8
+
+🐛 **Fixed**
+
+- **Drag-and-drop attachments in the Flatpak:** files dragged in from outside your Downloads folder now upload instead of silently failing.
+- **Settings that didn't apply:** the taskbar flash option no longer shows in the browser or on Android, the MIDI "System" sound bank is only offered in the desktop app, and on Android the notification permission row now actually asks for permission instead of saying notifications aren't supported.
+- **Classic blurple:** buttons, your own message bubbles and the light theme's accent use classic blurple again instead of Discord's newer, more purple shade.
+
+## v1.12.7
+
+🐛 **Fixed**
+
+- **New messages not showing up:** after a brief network drop, or when coming back to the app (for example from a notification), new messages could take up to two minutes to appear. Zam now reconnects right away.
+- **Messages out of order with sliding sync:** when several messages arrived in a room you weren't viewing, the ones in between could end up above older history instead of at the bottom.
+- **™ ® ©:** `:tm:`, `:registered:` and `:copyright:` (and picking them from the emoji picker) now insert the plain symbols instead of the emoji versions, and the emoji versions sent from other apps show as plain symbols.
+
+## v1.12.6
+
+🐛 **Fixed**
+
+- **Custom emoji when editing:** custom emoji typed into the edit box now show up as emoji instead of `:text:`, and emoji already in the message are kept.
+- **Plugin sync:** pulling your plugin setup now also installs and turns on plugins from repos that you had on your other device, instead of only syncing their settings.
+- **`:tm:` and other emoji names:** emoji names work like Discord. Typing `:tm:` turns into ™️ as soon as you type the closing colon, and autocomplete finds emoji by their short name.
+- **DM pictures:** direct messages without their own picture now show the other person's avatar.
+- **Window size and position:** the desktop app now remembers its size, position and whether it was maximised. On Wayland, the position is still chosen by your desktop.
+
+## v1.12.5
+
+✨ **New**
+
+- **Flatpak:** Zam is now available as a Flatpak from its own repository. Install it from https://az4521.github.io/Zam/ (or with `flatpak install --user https://az4521.github.io/Zam/zam.flatpakref`), and it updates through `flatpak update`. A `.flatpak` file is also attached to each release.
+
+## v1.12.4
+
+🐛 **Fixed**
+
+- **Editing image text on desktop:** the text on a sent image, video, or file could only be edited from the phone menu. The Edit button now shows up on desktop too, and swipe or double-tap to edit works on these messages.
+
+✨ **Changed**
+
+- **Edit in the mobile message bar:** on your own messages, Edit now sits in the quick-actions bar in place of Thread. Thread is still in the ⋯ menu.
+
+## v1.12.3
+
+🐛 **Fixed**
+
+- **Can't edit the text on a sent image:** when you sent an image, video, or file with a message attached, the message text couldn't be edited afterwards. You can now edit it like any other message (and clearing it removes the text while keeping the attachment).
+
+## v1.12.2
+
+🐛 **Fixed**
+
+- **Videos not playing in Tor Browser:** videos in the timeline failed to load in Tor Browser (and briefly after a hard reload) because they depended on a background helper that isn't available there. They now load directly and start playing while they download.
+
+## v1.12.1
+
+🐛 **Fixed**
+
+- **Rooms disappearing when switching spaces:** switching to a space briefly hid its unjoined rooms and the contents of its sub-space categories until they loaded again. The last known list now shows straight away (also right after startup) and refreshes in the background.
+
+## v1.12.0
+
+✨ **New**
+
+- **Calls work like phone calls on Android:** calls keep going with the app in the background or the screen off, and show an ongoing-call notification with Hang up. Calls are registered with Android's calling system, so a Bluetooth headset, your car or a watch can answer, decline and hang up, and the headset's mute button works.
+- **Cellular calls put Matrix calls on hold:** answering a phone call mutes the Matrix call both ways instead of fighting over the microphone. Tap Resume in the call view when you're done.
+- **Speaker button:** in a call on Android, switch between speaker and earpiece (or your headset). The screen turns off when you hold the phone to your ear, and turning on your camera moves the call to the speaker.
+- **Ringing like a phone:** an incoming DM call rings until you answer or decline, wakes the screen and shows over the lock screen. On Android 14 and later, Settings → Voice & Audio offers to allow lock-screen calls if Android hasn't. Pressing a volume key silences the ring without dismissing the call.
+
+🐛 **Fixed**
+
+- **Only DMs ring:** calls in rooms and spaces no longer ring, on Android or with web push. They show a normal notification instead, matching the app.
+- **Ringing setting on notifications:** with "Ring for incoming DM calls" turned off, a DM call now shows a quiet notification instead of ringing.
+- **Calls answering themselves:** a DM call arriving on a locked phone could join the call without you pressing Accept. It now just rings.
+- **Reply and Mark as read on Android 12+:** these notification buttons did nothing. Reply now opens the app and sends your message, and Mark as read works without opening the app, respecting private read receipts.
+- **Repeated notification actions:** reopening the app from Recents could re-send a quick reply or re-join a call. Each action now runs only once.
+
+## v1.11.0
+
+✨ **New**
+
+- **Sub-spaces as categories:** inside a space, its sub-spaces now appear as collapsible categories in the room list, nested like a tree, instead of separate spaces you had to switch into. Rooms you haven't joined show up in place with a Join button, and a collapsed category shows an unread dot. Joined sub-spaces no longer take up their own icon on the space bar.
+- **Resizable room list:** on desktop, drag the edge of the room list to make it wider or narrower (or use the arrow keys on it; double-click resets). Long room names show in full on hover.
+- **Instant room list on startup:** the room list from your last session is shown right away while the app syncs, with both regular and sliding sync, then quietly replaced with the live list. It is deleted when you sign out.
+- **MIDI sound bank:** Settings → Messages & media → MIDI lets you choose which sound bank MIDI attachments play with: your system's (desktop), the included one, or your own SF2/SF3/DLS file.
+
+🐛 **Fixed**
+
+- **Reordering spaces:** dragging a space on the space bar sometimes dropped it one slot above where you let go, or sent it to the top, especially near the bottom of the list. It now lands where you drop it.
+
+## v1.10.2
+
+🐛 **Fixed**
+
+- **Messages that looked failed but had sent:** if the app closed right after you sent a message, it could come back marked as failed even though it had been delivered, and when the real message loaded the whole room's chat log could stop showing with a duplicate key error. Delivered messages are now recognised and cleaned up, and a room can no longer be broken by a repeated message.
+- **Opening a room from a notification:** tapping a notification could open the room frozen on the notified message, with newer messages never loading. The room now opens in its normal live view when it can, and otherwise keeps loading newer messages until it catches up.
+- **Loading older messages:** scrolling to the top of a room sometimes did nothing, with no spinner, even though older messages existed. Failed loads now retry, and reaching the top always asks again.
+- **Messages disappearing after switching rooms:** after the app reconnected or resumed while you were in another room, coming back could show only the newest messages with no way to scroll back. Older history loads again as you scroll up.
+
+## v1.10.1
+
+🐛 **Fixed**
+
+- **Space and room emoji with sliding sync:** custom emoji and sticker packs from spaces and other rooms were missing from the picker while sliding sync was on, because only the open room's packs were loaded. Packs now load for every room.
+
+## v1.10.0
+
+✨ **New**
+
+- **Native OAuth 2.0 / OIDC sign-in:** on homeservers that publish an OAuth API (Matrix Authentication Service, e.g. matrix.org), the sign-in form leads with "Continue" and signs you in on the server's own page, using the authorization-code flow with PKCE. Access tokens are short-lived and refresh in the background; the session survives restarts and account switching, and signing out revokes the tokens at the provider. Servers without it keep the password and single sign-on options, and so does a server that refuses to register Zam.
+- **Account page link:** on an OAuth account, Settings → Account and Security & Sessions point to your provider's account page for the password, other sessions and deactivation, instead of the in-app forms that can't work there.
+- **Single sign-on:** the sign-in form reads the server's login options and offers "Continue with {provider}" or "Continue with SSO" (OIDC, OAuth, SAML, CAS). Password fields are hidden on servers that don't accept passwords. It works on the web, in the desktop app and on Android.
+- **Languages:** the whole interface is now translatable. English, French, German and Assyrian Neo-Aramaic (Suret) are included, with a language picker in Appearance settings. Right-to-left languages mirror the layout inside each panel. The translations are machine-drafted and need review by native speakers.
+- **Sliding sync:** faster startup and room list on servers that support it, now on by default on the login form. Servers without it fall back to regular sync with a notice. Debug settings show the sync mode and progress.
+- **MIDI attachments:** `.mid` files now play. On desktop they use your operating system's sound bank, otherwise a bundled General MIDI bank (Phoenix MT-32 by W.D. Tharinda Perera, credited under Settings → About → Credits), with a simple synth as a last resort.
+- **Emote packs:** enable packs for all your rooms and manage them in Settings → Emotes. You can edit a pack's avatar and attribution, delete packs, and copy images into your own pack.
+- **Typing indicators:** Settings → Privacy & Safety has a new option to stop sending your typing status.
+
+🔒 **Security**
+
+- Devices that aren't cross-signed are now excluded when encrypting, and you are alerted when someone's cross-signing identity changes, with actions to accept or withdraw. A toggle in Session settings turns the exclusion off for testing.
+- Single sign-on: sign-in buttons stay disabled until the typed server address has been checked, and a forged or stale callback link can no longer cancel a real sign-in.
+
+🎨 **Polish**
+
+- Appearance: the layout toggles have their own heading.
+- Image uploads now record their dimensions and size.
+
+## v1.9.2
+
+🎨 **Polish**
+
+- Profiles and status: emoji in statuses, bios, pronouns and presence messages now show as the same emoji images as in chat, on the profile card and in the account menu.
+
+## v1.9.1
+
+✨ **New**
+
+- Profile: the timezone picker is now two steps. Choose a region (Europe), then a city (London).
+
+🐛 **Fixes**
+
+- Account menu: setting a status now has a Back button, like the presence and account lists.
+- Profile card: a status that this app also writes to your presence message no longer shows twice.
+
+## v1.9.0
+
+✨ **New**
+
+- **Extended profile:** Settings → Account has a new "More about you" section with pronouns, status, bio, timezone, banner, links and username colour. It needs a server that supports extended profiles, and honours the server's rules about which fields you may set.
+- **Username colour:** pick one colour for dark themes and one for light. Names in the chat use it, and it falls back to the normal colour when it would be hard to read. Settings → Appearance → Show name colours turns this off.
+- **Other people's profiles:** the profile card now shows their banner, pronouns, status, bio, local time and links. A banned user's extra fields are hidden.
+- **Call status:** your profile shows "In a call" while you are in a voice call, and other people's cards show how long they have been in one. Settings → Account → Show when I am in a call turns it off. A leftover from a crash is cleaned up on the next start.
+- **Account menu redesign:** the menu above your name at the bottom left is now a profile card with your banner, avatar, status and presence. It has Edit Profile, a presence menu and Switch Accounts. Click the bubble beside your avatar to set a status, with an emoji picker.
+- **Status in other clients:** your status is also written where Sable and Commet look for it (Commet's status field and your presence message), so it shows up there too.
+- Debug: Settings → Debug shows your raw extended profile and presence message as the server returns them.
+
+🐛 **Fixes**
+
+- Presence: a status message you cleared no longer sticks around in the app until you reload.
+- Presence: changing your presence (Online, Away, Invisible) no longer wipes your status message on servers that clear it.
+
+## v1.8.5
+
+🐛 **Fixes**
+
+- Chat: ©, ® and ™ now show as normal text instead of black emoji images that were unreadable on the dark background.
+
+## v1.8.4
+
+🐛 **Fixes**
+
+- Windows: the taskbar button shows the Zam icon even when an old or broken Start menu shortcut for the app exists. The app now tells Windows which icon to use instead of relying on that shortcut.
+
+## v1.8.3
+
+✨ **New**
+
+- Desktop: a red dot appears at the top right of the tray icon while you have unread pings, like the browser tab icon.
+
+🐛 **Fixes**
+
+- Desktop: pings now show a system pop-up. Notifications are posted by the desktop app itself, and clicking one brings the window back and opens the room.
+- Desktop: the taskbar icon no longer shows as blank in installed builds. The icon files are now unpacked so Windows can read them.
+
+## v1.8.2
+
+✨ **New**
+
+- **Desktop alerts setting:** Settings → Notifications → Desktop alerts chooses which notifications show a pop-up and flash the taskbar: loud only, silent and loud (the default), or none. Silent notifications no longer make the system chime.
+- Desktop: the taskbar button flashes (the dock icon bounces on macOS) when a notification or incoming call arrives while the window is in the background.
+
+🎨 **Icons**
+
+- Android: the notification icon is much bigger, filling the status bar slot instead of sitting in a padded box.
+- Desktop: the app now has a proper taskbar icon on Windows, with hand-sized icons from 16 to 256 px so small sizes stay crisp everywhere.
+- Desktop: the tray icon is the white logo with a black outline, so it shows on light and dark taskbars alike.
+
+## v1.8.1
+
+🔒 **Privacy & security**
+
+- **Attachments you send into an encrypted room are now encrypted:** images, files, videos and voice messages. Encrypted videos, yours and other people's, play in the timeline and the media browser.
+- **Plugins with auto-update off stay frozen:** an installed repo plugin is pinned to the exact commit you installed or updated it at, and a cleared cache refetches that same commit. A plugin can't install under the id of a built-in or another repo's plugin.
+- Hardened message rendering: an emoji inside a link address can no longer break out of the link.
+- Sharing into the web app accepts only same-origin share requests, and caps them at 20 files, 100 MB per file and 200 MB in total. The share sheet says when it dropped files.
+- Desktop: the built-in file server handles malformed addresses safely, and links to local or private network addresses no longer open in your browser.
+
+📲 **Sharing & notifications**
+
+- **Share-sheet Send sends only what the sheet shows.** Your unsent draft, staged files and armed reply in that room stay where they were. If the send fails, the share is staged in the composer instead of lost.
+- Notification Mark as read respects private read receipts, even with the app closed.
+- A quick reply from a notification goes into the thread when the message was in a thread. A reply that fails to send comes back as a draft with an error, and a reply typed with the app closed is kept as a draft for next launch.
+- A call ring notification no longer replaces or dismisses a message notification from the same room.
+
+💬 **Messages**
+
+- A failed delete shows an error and the message comes back, instead of vanishing until reload.
+- Swiping sideways inside a wide code block scrolls it instead of starting a reply.
+- Swiping your own image or file replies instead of trying to edit it.
+- Links in your own message bubbles are readable, and the read-receipt button is easier to hit.
+- Switching rooms is faster: a message builds its action bar only when you hover, focus or select it.
+- Touch scrolling through messages is smoother, because message rows no longer hold up the scroll to check for a swipe.
+- Plugins that rewrite your outgoing messages now also apply to thread replies and file captions.
+
+🪟 **Menus & dialogs**
+
+- Escape and the Android back button close only the top overlay: the read-receipt list, What's New, the screen-share quality menu, the who-reacted sheet, plugin popovers and the composer "+" menu now all behave the same way.
+- The image and video viewer shows your place in a gallery, such as "2 of 5", and screen readers announce it as you step through.
+
+📞 **Calls**
+
+- Leaving a call while it is still connecting no longer shows an error.
+- A call that fails to connect shows one error, not an extra "disconnected" message.
+- Changing noise suppression or other mic settings keeps your chosen microphone.
+- A failed mic or camera switch goes back to the previous device and tells you.
+- Screen-share quality changes apply to the running share, and the lower-quality stream gets its own bitrate. The system-audio toggle says it applies to the next share.
+- Kick and Ban from a call tile ask you to confirm first.
+- Screen readers announce the status badges on call tiles.
+- Joining a call without a usable microphone tells you why: access is blocked, no microphone is connected, or another app is using it.
+- Leaving a call is faster, and a camera or screen-share failure that lands after you leave no longer shows an error.
+- Voice & Video settings no longer create a new audio context on every call update while you are in a call.
+
+⚙️ **Settings**
+
+- The sidebar and room list no longer clip at large text sizes.
+- Deleting a theme preset and removing a plugin ask you to confirm first.
+- If a custom font can't be saved on this device, the app tells you.
+- The tray settings no longer show on the web, and settings search announces how many results it found.
+- In settings search, Escape clears what you typed before it closes settings, and Enter opens the first result.
+
+🧰 **Maintenance**
+
+- Dependency updates within their current versions. Known security advisories went from 22 to 4 low-severity ones.
+- Release builds now run type checks, tests and a formatting check first.
+
+## v1.7.4
+
+✨ **New**
+
+- The image viewer shows the file's name in the top-left corner, and hovering an image in chat shows it as a tooltip.
+
+🐛 **Fixes**
+
+- The settings sidebar (app and room settings) scrolls when its tabs don't fit.
+- Custom emoji reactions, picker grids, member lists and other homeserver images now load in browsers without service workers, such as Tor Browser.
+
+## v1.7.3
+
+🐛 **Fixes**
+
+- Downloading from the image viewer keeps the original filename instead of saving as "image".
+- Downloads with no file extension get the right one added, so they open correctly.
+
+## v1.7.2
+
+🐛 **Fixes**
+
+- Desktop: right-click "Save image as…" now saves the actual image (full size, with its filename) instead of a JSON error file.
+
+## v1.7.1
+
+✨ **New**
+
+- **Rename attachments before sending:** tap a queued file in the composer to edit its filename, like Discord.
+- **Right-click menu on desktop:** open or copy links, copy or save images, cut/copy/paste in the composer, and spelling suggestions.
+
+🐛 **Fixes**
+
+- Downloading images and files now works on Android; they save straight to your Downloads folder.
+- Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) undo and redo in the message box.
+- Ctrl+E (emoji), Ctrl+G (GIFs) and Ctrl+S (stickers) open their pickers again, including from a thread's composer.
+- The Home button is back to classic blurple.
+
+## v1.7.0
+
+✨ **Animations & UI**
+
+- Subtle fades when you switch rooms and settings tabs, and desktop popovers scale-fade in. Everything respects reduce motion.
+
+📞 **Calls & voice**
+
+- **Device submenus in the call menu:** expandable Input/Output rows let you switch mic and speaker without leaving the menu.
+- **Deafen shown on your own tile:** your roster row now carries the deafen icon.
+- **Snappier mic meter:** the input level bar uses a fast-attack/slow-release envelope (no more symmetric smear), so it tracks your voice honestly.
+- Picking "Default" mid-call now switches to the current system default mic.
+- Screen share biases the encoder toward detail and maintaining resolution.
+- Leaving a call briefly keeps a solo "Join" affordance (recently-left window) so you can hop back in.
+- The screen-share quality popover closes when you stop sharing from the OS.
+
+📲 **Share into Zam**
+
+- Reworked receive flow: a full-screen preview with per-file rows, a caption field, a recent-rooms list, and one-step send. Nothing sends automatically.
+
+⚙️ **Settings & appearance**
+
+- Your **custom font now applies app-wide**, not just to messages.
+- Settings tidy-up: link-preview media policy moved to Privacy & Safety, keep-sidebar and hold-to-open moved to Appearance/Messages, and search was reindexed for the new spots.
+
+✨ **Polish & fixes**
+
+- Reverted the in-app top-bar accent tint from 1.6.0.
+- Display names drop the disambiguation/Matrix-ID suffix in default mode; per-member ID lines follow the "show Matrix IDs" toggle.
+- Rightward row-swipe reliably opens the channel drawer instead of starting a reply.
+- Arrow-key roving focus in the room notification options.
+
+## v1.6.0
+
+🖥️ **Screen sharing**
+
+- **Quality picker in the share flow** — choose resolution (720p–4K), FPS (15/30/60) and system audio right where you start a share, and change quality mid-share from your own tile. Your last pick is remembered; the old Settings section is gone.
+- **Quality actually applies now** — the chosen resolution/FPS drives the published stream. Previously the stream was always down-encoded to a conservative default no matter what you picked.
+
+⚙️ **Settings overhaul**
+
+- **Grouped settings** — Discord-style sections: **Account** (Account · Security & Sessions · Privacy & Safety), **App** (Appearance · Messages & Media · Notifications · Voice & Video · Emotes), **Advanced** (General · Plugins · Server · About · Debug).
+- **Settings search** — type to find any setting; it jumps to and highlights the match.
+- **Custom font** — upload your own font (.woff2/.ttf/.otf, one slot, stays on this device) and use it for messages.
+- **App-wide text size** — the text-size slider now scales the whole app, not just messages, with a Reset button.
+- **Per-room notifications moved home** — set a room's (or a space's, applied to all its rooms) notification level in its own Room Settings. The per-room list in global Settings and the Room Order section are gone (reorder lives in the room list).
+
+📞 **Calls**
+
+- **Call member menu** — switch your mic/speaker mid-call from your own menu, hide someone's video just for you, or mention them in chat. The kick button now says what it does ("Kick … from room").
+- **Tile status & animations** — tiles show mute/deafen, local-mute and multi-device badges, and animate in/out on join/leave (respects reduce motion).
+- **No more Join flash** — leaving a call alone no longer flashes a bogus "Join Call" button.
+- **Device selection honored** — voice/video now uses the exact mic and camera you picked in Settings.
+- **"Join calls" permission row** — control who can join calls from room Permissions.
+
+📲 **Share into Zam**
+
+- Zam now appears in the Android share sheet and as a PWA share target. Share text, links or images from any app, pick a room, and review before sending — nothing sends automatically.
+
+✨ **Polish & fixes**
+
+- **What's New** — a one-time popup after updates, plus release notes in Settings → About.
+- The image lightbox pages through a burst of image uploads with arrows (and still pages inline images).
+- Subtle open animations for dialogs, sheets and the lightbox — all respect reduce motion.
+- The top navbar is tinted with your theme's accent color.
+- Media device dropdowns are sorted alphabetically.
+- Fixes: context menu reopens on a second right-click, participant-menu Profile works (+ volume %), read receipts no longer overlap right-aligned bubbles, reselecting the Plugins tab returns to the plugin list.
+
+## v1.5.1
+
+**Mobile & touch**
+
+- **Swipe to reply / edit** — swipe a message left to reply; swipe your own message further to edit. The button morphs from a reply arrow to a pencil as you go.
+
+**Fixes & platform**
+
+- **Samsung One UI keyboard** — word suggestions work again in the composer.
+- **Desktop: minimise-to-tray toggle** — a setting to choose whether the X closes to the tray (default) or quits Zam.
+
+## v1.5.0
+
+🧩 **Plugins (new!)**
+
+- Zam now has a full plugin system. Install plugins from GitHub repos or use the built-ins — all from **Settings → Plugins**. Each plugin has its own settings, and you can optionally sync your enabled plugins + settings across your devices.
+- Built-ins: fun slash commands (`/shrug`, `/tableflip`, `/me` …), double-tap-to-reply, a text replacer, and the GIF & sticker pickers.
+- Plugins can add slash commands, composer buttons, message actions, custom link embeds, side panels, and keyboard shortcuts — through a documented `zam` API.
+
+🎨 **Appearance**
+
+- **Message text size & font** — set your size and pick a bundled font (Inter, or the high-legibility Atkinson Hyperlegible). Per-device.
+- **Right-aligned own messages** — opt into an iMessage/WhatsApp-style layout where your messages sit in a coloured bubble on the right. Off by default; the bubble colour follows your theme.
+- A dedicated **Theme** settings tab.
+
+📱 **Mobile & touch**
+
+- **Hold-to-open** the message menu — switch between tap and long-press.
+- A **⋯ overflow menu** for the less-used message actions.
+
+🔔 **Notifications**
+
+- Tapping a notification now **jumps to the exact message**, not just the room.
+- **Quick-reply and mark-as-read** straight from a notification (web + Android).
+- Launching from a notification opens the right room/message even on a **cold start**.
+- Unanswered **call rings auto-dismiss** instead of lingering.
+
+🖼️ **Media**
+
+- **Page through a message's images** in the lightbox (arrows / arrow keys).
+- **Instagram thumbnails are clickable** now — tap to open the reel.
+
+🧰 **Other**
+
+- **Room / Space ID** field with a copy button in Settings → General.
+- A **"+" on the space rail** to create a space; fixed the empty room-header menu.
