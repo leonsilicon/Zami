@@ -31,10 +31,12 @@ import {
     VideoOff,
     MonitorUp,
     EllipsisVertical,
-    Smartphone,
+    MonitorSmartphone,
     Settings,
     Ear,
     Bluetooth,
+    ExternalLink,
+    PictureInPicture2,
 } from "lucide-svelte";
 import { t } from "$lib/i18n";
 import Avatar from "$lib/components/ui/Avatar.svelte";
@@ -50,8 +52,18 @@ import {
 import CallEncryptionBadge from "$lib/components/layout/CallEncryptionBadge.svelte";
 import UserProfileCard from "$lib/components/ui/UserProfileCard.svelte";
 import VideoTile from "$lib/components/layout/VideoTile.svelte";
-import { deviceCountByUser, callTileStatus } from "$lib/utils/callTileStatus";
 import {
+    deviceCountByUser,
+    devicesByUser,
+    callTileStatus,
+    type DeviceMembership,
+} from "$lib/utils/callTileStatus";
+import {
+    requestDeviceLabels,
+    callDeviceLabelsFor,
+} from "$lib/stores/callDeviceLabels.svelte";
+import {
+    getOwnDeviceId,
     getRoomCallMemberships,
     getRoomDisplayName,
     getMemberName,
@@ -80,6 +92,10 @@ import {
     isRecentlyLeftHere,
 } from "$lib/utils/voiceCall";
 import { screenShareSupportedHere } from "$lib/utils/videoTiles";
+import {
+    callPopoutSupported,
+    openCallPopout,
+} from "$lib/stores/callPopout.svelte";
 import {
     showChatView,
     openModal,
@@ -130,6 +146,9 @@ interface Props {
     room: Room;
     isMobile?: boolean;
     onMenuOpen?: () => void;
+    /** Set in the call's pop-out window (CallPopoutView): the header button
+     *  brings the call back to the main window. */
+    popout?: { onReturn: () => void };
 }
 
 // A tile's primary action lives on its wrapper <div> (click, contextmenu,
@@ -171,6 +190,10 @@ const TILE_MENU_BTN =
 /** `auto-fit` columns of at least `min` px sharing `width`, as CSS grid lays
  *  out `repeat(auto-fit, minmax(min, 1fr))`: empty tracks collapse, so fewer
  *  tiles than columns stretch to fill the row. */
+// Zami: one empty list for every tile without devices, so it doesn't
+// re-render the memoized tile.
+const NO_DEVICES: DeviceMembership[] = [];
+
 function autoFitColumns(
     width: number,
     min: number,
@@ -185,6 +208,7 @@ export default function CallView({
     room,
     isMobile = false,
     onMenuOpen,
+    popout,
 }: Props) {
     // Capture support is fixed for the session (no runtime change), so a plain
     // const is enough — used to hide the share-screen button where unsupported.
@@ -208,6 +232,19 @@ export default function CallView({
         () => deviceCountByUser(rawCallMemberships),
         [rawCallMemberships],
     );
+    const devicesOf = useMemo(
+        () => devicesByUser(rawCallMemberships),
+        [rawCallMemberships],
+    );
+    // Device names come from the crypto store (cache only). Fetch them for
+    // anyone joined from more than one device; the store dedupes by age.
+    useEffect(() => {
+        const multi = [...deviceCounts]
+            .filter(([, n]) => n > 1)
+            .map(([id]) => id);
+        if (multi.length > 0) void requestDeviceLabels(multi);
+    }, [deviceCounts]);
+    // Zami: deviceLabelsFor() is read per tile (ParticipantTile, below).
     const inThisCall = useRune(
         () => voiceCallState.roomId === room.roomId,
         [room],
@@ -547,17 +584,52 @@ export default function CallView({
                         </Text>
                     )}
                     <View className="flex-1" />
-                    <Pressable
-                        accessibilityRole="button"
-                        onPress={showChatView}
-                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
-                        accessibilityLabel={t("callView.showChat")}
-                    >
-                        <MessageSquare
-                            size={20}
-                            className="text-zam-textMuted"
-                        />
-                    </Pressable>
+                    {popout ? (
+                        <Pressable
+                            accessibilityRole="button"
+                            onPress={popout.onReturn}
+                            className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
+                            accessibilityLabel={t("callPopout.returnToMain")}
+                        >
+                            <PictureInPicture2
+                                size={20}
+                                className="text-zam-textMuted"
+                            />
+                        </Pressable>
+                    ) : (
+                        <>
+                            {!isMobile &&
+                                inThisCall &&
+                                callPopoutSupported() && (
+                                    <Pressable
+                                        accessibilityRole="button"
+                                        onPress={() =>
+                                            void openCallPopout(room.roomId)
+                                        }
+                                        className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
+                                        accessibilityLabel={t(
+                                            "callPopout.popOut",
+                                        )}
+                                    >
+                                        <ExternalLink
+                                            size={20}
+                                            className="text-zam-textMuted"
+                                        />
+                                    </Pressable>
+                                )}
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={showChatView}
+                                className="p-1.5 rounded transition-colors hover:bg-zam-messageHover"
+                                accessibilityLabel={t("callView.showChat")}
+                            >
+                                <MessageSquare
+                                    size={20}
+                                    className="text-zam-textMuted"
+                                />
+                            </Pressable>
+                        </>
+                    )}
                 </View>
 
                 {/* Tiles */}
@@ -720,6 +792,10 @@ export default function CallView({
                                             deviceCount={
                                                 deviceCounts.get(p.userId) ?? 1
                                             }
+                                            devices={
+                                                devicesOf.get(p.userId) ??
+                                                NO_DEVICES
+                                            }
                                             gridCellStyle={gridCellStyle}
                                             onTileLongPress={tileLongPress}
                                             onTileMenuPress={tileMenuPress}
@@ -818,6 +894,10 @@ export default function CallView({
                                         deafened={deafened}
                                         deviceCount={
                                             deviceCounts.get(p.userId) ?? 1
+                                        }
+                                        devices={
+                                            devicesOf.get(p.userId) ??
+                                            NO_DEVICES
                                         }
                                         gridCellStyle={gridCellStyle}
                                         onTileLongPress={tileLongPress}
@@ -1161,6 +1241,7 @@ interface ParticipantTileProps {
     micMuted: boolean;
     deafened: boolean;
     deviceCount: number;
+    devices: DeviceMembership[];
     gridCellStyle: { width: number | "100%" };
     onTileLongPress: (userId: string) => (e: GestureResponderEvent) => void;
     onTileMenuPress: (userId: string) => (e: GestureResponderEvent) => void;
@@ -1183,6 +1264,7 @@ const ParticipantTile = memo(function ParticipantTile({
     micMuted,
     deafened,
     deviceCount,
+    devices,
     gridCellStyle,
     onTileLongPress,
     onTileMenuPress,
@@ -1214,6 +1296,18 @@ const ParticipantTile = memo(function ParticipantTile({
     const tileDecorations = useRune(
         () => callTileDecorationItems(room.roomId, p.userId),
         [room, userId],
+    );
+    /** Display label for each of a user's devices, earliest joined first. */
+    const deviceNames = useRune(
+        () =>
+            callDeviceLabelsFor(
+                p.userId,
+                devices,
+                auth.userId,
+                getOwnDeviceId(),
+                t("callView.thisDevice"),
+            ),
+        [userId, devices],
     );
     // Zami: the plugin builds DOM into the element (pluginMount), which
     // DomView shows; `pointer-events-none` → pointerEvents="none".
@@ -1247,10 +1341,6 @@ const ParticipantTile = memo(function ParticipantTile({
             status.micOff && t("callView.muted"),
             status.deafened && t("callView.deafened"),
             status.locallyMuted && t("callView.mutedForYou"),
-            status.multiDevice &&
-                t("callView.devices", {
-                    value: deviceCount,
-                }),
         ]
             .filter(Boolean)
             .join(", ");
@@ -1348,16 +1438,6 @@ const ParticipantTile = memo(function ParticipantTile({
                     className="text-zam-textMuted flex-shrink-0"
                 />
             )}
-            {status.multiDevice && (
-                // Zami: `title` has no React
-                // Native equivalent.
-                <View className="flex-row items-center gap-0.5 flex-shrink-0">
-                    <Smartphone size={12} className="text-white" />
-                    <Text className="text-[10px] leading-none text-white">
-                        {deviceCount}
-                    </Text>
-                </View>
-            )}
         </>
     );
     return (
@@ -1396,8 +1476,7 @@ const ParticipantTile = memo(function ParticipantTile({
                         />
                         {(status.micOff ||
                             status.deafened ||
-                            status.locallyMuted ||
-                            status.multiDevice) && (
+                            status.locallyMuted) && (
                             <View
                                 accessible
                                 accessibilityLabel={statusLabel(
@@ -1443,7 +1522,52 @@ const ParticipantTile = memo(function ParticipantTile({
                                 </Text>
                             </View>
                         </View>
+                        {status.multiDevice && (
+                            // Zami: `title` has no React Native equivalent;
+                            // `max-w-[calc(100%-1rem)]` → the end inset.
+                            <View
+                                pointerEvents="none"
+                                className="absolute bottom-9 start-2 end-2 flex-row"
+                            >
+                                <View className="flex-shrink px-2 py-0.5 rounded bg-black/60">
+                                    <Text
+                                        numberOfLines={1}
+                                        className="text-[11px] leading-tight text-white/75 truncate"
+                                    >
+                                        {deviceNames.join(", ")}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
                     </>
+                )}
+                {status.multiDevice && (
+                    // Zami: `title` has no React Native equivalent; the
+                    // `sr-only` names join the pill's label.
+                    <View
+                        accessible
+                        accessibilityLabel={[
+                            t("callView.deviceCountPill", {
+                                count: deviceNames.length,
+                            }),
+                            deviceNames.join(", "),
+                        ].join(", ")}
+                        pointerEvents="none"
+                        className="absolute top-2 end-10 flex-row items-center gap-1 max-w-[45%] px-1.5 py-0.5 rounded bg-black/60"
+                    >
+                        <MonitorSmartphone
+                            size={12}
+                            className="text-white flex-shrink-0"
+                        />
+                        <Text
+                            numberOfLines={1}
+                            className="flex-shrink text-[11px] leading-none text-white truncate"
+                        >
+                            {t("callView.deviceCountPill", {
+                                count: deviceNames.length,
+                            })}
+                        </Text>
+                    </View>
                 )}
                 <Pressable
                     accessibilityRole="button"

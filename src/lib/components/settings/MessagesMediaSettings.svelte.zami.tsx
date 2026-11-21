@@ -2,7 +2,7 @@ import { pickedFile, Spin } from "@-/com.leonsilicon.zami.rn";
 import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import * as DocumentPicker from "expo-document-picker";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { t } from "$lib/i18n";
 import OptionSelector from "$lib/components/ui/OptionSelector.svelte";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
@@ -22,6 +22,7 @@ import {
     setHideRecentEmoji,
     setLightboxFitToScreen,
     setGifDefaultTab,
+    setDiscordRefreshServiceUrl,
     setMidiSoundBank,
     settingsState,
 } from "$lib/stores/settings.svelte";
@@ -56,6 +57,14 @@ import {
     type DiscordFavouriteItem,
 } from "$lib/utils/discordFavourites";
 import { allowsThirdPartyEmbed } from "$lib/utils/linkPreviewPolicy";
+import {
+    attachmentFavourite,
+    attachmentMediaType,
+    normaliseRefreshServiceUrl,
+    readUploadedAttachments,
+    writeUploadedAttachments,
+} from "$lib/utils/discordAttachmentImport";
+import { getOwnUserId, mxcToHttp, uploadContent } from "$lib/matrix/client";
 
 const gifTabOptions: Array<{ value: GifTab; label: string }> = [
     { value: "gifs", label: "GIFs" },
@@ -113,6 +122,30 @@ export default function MessagesMediaSettings() {
     const discordImportAvailable =
         typeof window !== "undefined" && !!window.desktop?.discordFavourites;
     const [discordBusy, setDiscordBusy] = useState(false);
+    // The user's own refresh service for GIFs uploaded to Discord. Saved only
+    // once it is a usable address (or cleared).
+    const [refreshServiceDraft, setRefreshServiceDraft] = useState(
+        () => settingsState.discordRefreshServiceUrl,
+    );
+    const refreshServiceInvalid =
+        refreshServiceDraft.trim() !== "" &&
+        normaliseRefreshServiceUrl(refreshServiceDraft) === null;
+    function onRefreshServiceInput(value: string) {
+        setRefreshServiceDraft(value);
+        if (value.trim() === "" || normaliseRefreshServiceUrl(value) !== null)
+            setDiscordRefreshServiceUrl(value);
+    }
+    function refreshErrorMessage(error: string, status?: number): string {
+        if (error === "unreachable" || error === "bad-proxy-url")
+            return t("messagesMediaSettings.discordRefreshUnreachable");
+        if (error === "rate-limited")
+            return t("messagesMediaSettings.discordRefreshRateLimited");
+        if (error === "http-error")
+            return t("messagesMediaSettings.discordRefreshHttpError", {
+                status: status ?? 0,
+            });
+        return t("messagesMediaSettings.discordRefreshBadResponse");
+    }
 
     // Encrypted favourites are account state, shown live from the server. Turning
     // them off is two-step: the list becomes readable by the homeserver again.
@@ -167,12 +200,83 @@ export default function MessagesMediaSettings() {
             const allowEmbeds = allowsThirdPartyEmbed(
                 settingsState.linkPreviewMedia,
             );
+            // GIFs uploaded to Discord: refresh their links through the user's
+            // service, then copy each file to the homeserver. Without a
+            // service they are skipped, as before.
+            const userId = getOwnUserId();
+            const serviceUrl = normaliseRefreshServiceUrl(
+                settingsState.discordRefreshServiceUrl,
+            );
+            const canCopy =
+                !!serviceUrl && !!bridge.refresh && !!bridge.download;
+            const uploaded = readUploadedAttachments(userId);
+            let refreshed: Record<string, string> = {};
+            let skippedAttachments = 0;
+            let failedAttachments = 0;
+            const pending = items
+                .filter((i) => i.attachment && !uploaded.has(i.url))
+                .map((i) => i.url);
+            if (serviceUrl && canCopy && pending.length > 0 && bridge.refresh) {
+                const r = await bridge.refresh(serviceUrl, pending);
+                if (r.ok) refreshed = r.refreshed;
+                else showErrorToast(refreshErrorMessage(r.error, r.status));
+            }
+            const sameAccount = () => getOwnUserId() === userId;
+            // One attachment: re-use an earlier copy, or download and upload.
+            const copyAttachment = async (item: DiscordFavouriteItem) => {
+                let mxc = uploaded.get(item.url);
+                let name: string | undefined;
+                let video = item.video;
+                if (!mxc) {
+                    const fresh = refreshed[item.url];
+                    if (!fresh || !bridge.download) return null;
+                    const file = await bridge.download(fresh);
+                    if (!file.ok) return null;
+                    const type = attachmentMediaType(
+                        file.name,
+                        file.contentType,
+                    );
+                    if (!type) return null;
+                    if (!sameAccount()) throw new Error("account changed");
+                    name = file.name;
+                    video = type.startsWith("video/");
+                    mxc = await uploadContent(
+                        new File([file.data as BlobPart], file.name, { type }),
+                    );
+                    uploaded.set(item.url, mxc);
+                    writeUploadedAttachments(userId, uploaded);
+                }
+                const httpUrl = mxcToHttp(mxc);
+                if (!httpUrl) return null;
+                return attachmentFavourite({
+                    mxc,
+                    httpUrl,
+                    video,
+                    name,
+                    width: item.width,
+                    height: item.height,
+                });
+            };
             if (discordMounted.current) setDiscordProgress({ done: 0, total });
             let done = 0;
             const built = await mapWithLimit(
                 items,
                 4,
                 async (item) => {
+                    if (item.attachment) {
+                        if (!canCopy && !uploaded.has(item.url)) {
+                            skippedAttachments++;
+                            return null;
+                        }
+                        try {
+                            const entry = await copyAttachment(item);
+                            if (!entry) failedAttachments++;
+                            return entry;
+                        } catch {
+                            failedAttachments++;
+                            return null;
+                        }
+                    }
                     try {
                         const { preview } = await fetchLinkPreview(
                             item.url,
@@ -196,10 +300,21 @@ export default function MessagesMediaSettings() {
             const entries = built.filter(
                 (e): e is NonNullable<typeof e> => e !== null,
             );
+            if (failedAttachments > 0)
+                showErrorToast(
+                    t("messagesMediaSettings.discordImportCopyFailed", {
+                        count: failedAttachments,
+                    }),
+                );
+            if (!sameAccount()) throw new Error("account changed");
+            const skippedDiscord = result.skippedDiscord + skippedAttachments;
             const broken =
                 result.invalid +
                 (result.items.length - items.length) +
-                (total - entries.length);
+                (total -
+                    entries.length -
+                    skippedAttachments -
+                    failedAttachments);
             const favourites = discordItemsToFavourites(entries, Date.now());
             if (favourites.length === 0) {
                 setOutcome(
@@ -219,11 +334,11 @@ export default function MessagesMediaSettings() {
             let msg = t("messagesMediaSettings.discordImportSuccess", {
                 added,
             });
-            if (result.skippedDiscord + broken > 0)
+            if (skippedDiscord + broken > 0)
                 msg +=
                     " " +
                     t("messagesMediaSettings.discordImportSkipped", {
-                        discord: result.skippedDiscord,
+                        discord: skippedDiscord,
                         broken,
                     });
             setOutcome(msg);
@@ -703,55 +818,103 @@ export default function MessagesMediaSettings() {
                     )}
                 </View>
                 {discordImportAvailable ? (
-                    <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-                        <View className="flex-1 min-w-0">
-                            <Text className="text-sm text-zam-textPrimary">
-                                {t("messagesMediaSettings.discordImportTitle")}
+                    <>
+                        <View className="gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+                            <View className="flex-1 min-w-0">
+                                <Text className="text-sm text-zam-textPrimary">
+                                    {t(
+                                        "messagesMediaSettings.discordImportTitle",
+                                    )}
+                                </Text>
+                                <Text className="text-xs text-zam-textMuted">
+                                    {t(
+                                        "messagesMediaSettings.discordImportDescription",
+                                    )}
+                                </Text>
+                                {discordBusy && discordProgress ? (
+                                    <Text
+                                        className="text-xs text-zam-textMuted"
+                                        accessibilityLiveRegion="polite"
+                                    >
+                                        {t(
+                                            "messagesMediaSettings.discordImportChecking",
+                                            {
+                                                done: discordProgress.done,
+                                                total: discordProgress.total,
+                                            },
+                                        )}
+                                    </Text>
+                                ) : discordOutcome ? (
+                                    <Text
+                                        className="text-xs text-zam-textMuted"
+                                        accessibilityLiveRegion="polite"
+                                    >
+                                        {discordOutcome}
+                                    </Text>
+                                ) : null}
+                            </View>
+                            <Pressable
+                                accessibilityRole="button"
+                                className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
+                                onPress={() => void importDiscordFavourites()}
+                                disabled={discordBusy}
+                            >
+                                <Text className="text-sm text-zam-textPrimary">
+                                    {discordBusy
+                                        ? t(
+                                              "messagesMediaSettings.discordImportBusy",
+                                          )
+                                        : t(
+                                              "messagesMediaSettings.discordImportButton",
+                                          )}
+                                </Text>
+                            </Pressable>
+                        </View>
+                        <View className="py-2">
+                            <Text
+                                nativeID="discord-refresh-service-label"
+                                className="text-sm text-zam-textPrimary"
+                            >
+                                {t(
+                                    "messagesMediaSettings.discordRefreshServiceTitle",
+                                )}
                             </Text>
                             <Text className="text-xs text-zam-textMuted">
                                 {t(
-                                    "messagesMediaSettings.discordImportDescription",
+                                    "messagesMediaSettings.discordRefreshServiceDescription",
                                 )}
                             </Text>
-                            {discordBusy && discordProgress ? (
+                            <TextInput
+                                nativeID="discord-refresh-service"
+                                accessibilityLabelledBy="discord-refresh-service-label"
+                                keyboardType="url"
+                                value={refreshServiceDraft}
+                                onChangeText={onRefreshServiceInput}
+                                editable={!discordBusy}
+                                spellCheck={false}
+                                autoCorrect={false}
+                                autoComplete="off"
+                                autoCapitalize="none"
+                                placeholder="https://refresh.example.com"
+                                placeholderTextColorClassName="accent-zam-textMuted"
+                                className={`mt-2 w-full px-2.5 py-1.5 rounded bg-zam-backgroundTertiary text-sm text-zam-textPrimary border ${
+                                    refreshServiceInvalid
+                                        ? "border-zam-danger"
+                                        : "border-zam-divider focus:border-zam-accent"
+                                } outline-none ${discordBusy ? "opacity-50" : ""}`}
+                            />
+                            {refreshServiceInvalid ? (
                                 <Text
-                                    className="text-xs text-zam-textMuted"
-                                    accessibilityLiveRegion="polite"
+                                    className="mt-1.5 text-xs text-zam-danger"
+                                    accessibilityRole="alert"
                                 >
                                     {t(
-                                        "messagesMediaSettings.discordImportChecking",
-                                        {
-                                            done: discordProgress.done,
-                                            total: discordProgress.total,
-                                        },
+                                        "messagesMediaSettings.discordRefreshServiceInvalid",
                                     )}
-                                </Text>
-                            ) : discordOutcome ? (
-                                <Text
-                                    className="text-xs text-zam-textMuted"
-                                    accessibilityLiveRegion="polite"
-                                >
-                                    {discordOutcome}
                                 </Text>
                             ) : null}
                         </View>
-                        <Pressable
-                            accessibilityRole="button"
-                            className="px-3 py-1.5 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover disabled:opacity-50 transition-colors"
-                            onPress={() => void importDiscordFavourites()}
-                            disabled={discordBusy}
-                        >
-                            <Text className="text-sm text-zam-textPrimary">
-                                {discordBusy
-                                    ? t(
-                                          "messagesMediaSettings.discordImportBusy",
-                                      )
-                                    : t(
-                                          "messagesMediaSettings.discordImportButton",
-                                      )}
-                            </Text>
-                        </Pressable>
-                    </View>
+                    </>
                 ) : null}
             </View>
 

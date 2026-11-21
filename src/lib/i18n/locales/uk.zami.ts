@@ -285,6 +285,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callKick.notPermitted":
         "Ви не можете відключити цього учасника від голосового каналу",
     "callKick.removedFromVoice": "{name} відключив вас від голосового каналу",
+    "callKick.removedByServer": "Вас відключили від дзвінка",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -295,6 +296,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "Частково зашифровано",
     "callEncryption.notEncrypted":
         "Без наскрізного шифрування: сервер викликів може бачити й чути цей виклик. Виклики в зашифрованих кімнатах зашифровані.",
+    "callPopout.blocked":
+        "Не вдалося відкрити вікно винесеного дзвінка. Дозвольте спливаючі вікна для цього сайту і спробуйте ще раз.",
+    "callPopout.bringBack": "Повернути",
+    "callPopout.focusWindow": "Показати вікно",
+    "callPopout.inOtherWindow": "Цей дзвінок відкрито в окремому вікні.",
+    "callPopout.popOut": "Винести дзвінок в окреме вікно",
+    "callPopout.returnToMain": "Повернути в головне вікно",
+    "callPopout.windowTitle": "{room} (дзвінок)",
     "callView.ringing": "Дзвінок…",
     "callView.showChat": "Показати чат",
     "callView.noOneIsInThisCall": "У цьому виклику нікого немає",
@@ -304,8 +313,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "Мікрофон вимкнено",
     "callView.deafened": "Звук вимкнено",
     "callView.mutedForYou": "Заглушено для вас",
-    "callView.joinedFromMultipleDevices": "Приєднано з кількох пристроїв",
-    "callView.devices": "Пристроїв: {value}",
+    "callView.deviceCountPill": "Пристроїв: {count}",
+    "callView.thisDevice": "Цей пристрій",
     "callView.enableAudio": "Увімкнути звук",
     "callView.onHold": "Утримується, поки триває інший виклик",
     "callView.resume": "Відновити",
@@ -1016,6 +1025,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Приватні дані заблоковані на цьому пристрої. Спочатку розблокуйте шифрування.",
     "privateData.keySaveFailed":
         "Не вдалося зберегти ключ приватних даних у секретному сховищі облікового запису. Спробуємо знову під час наступного розблокування.",
+    "privateData.unlockToEncrypt":
+        "Щоб зашифрувати улюблені GIF, на цьому пристрої потрібен ключ відновлення, щоб інші ваші пристрої могли їх прочитати.",
+    "privateData.unlockToDecrypt":
+        "Ваші улюблені GIF зашифровані. Введіть ключ відновлення, щоб читати їх на цьому пристрої.",
     "settingsSearch.encryptFavouriteGifs": "Шифрувати вибрані GIF",
     "privateData.toggleLabel": "Шифрувати вибрані GIF",
     "privateData.toggleHelp":
@@ -1709,7 +1722,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Перекодовувати GIF, які ви надсилаєте, в анімований WebP без втрат, що зазвичай менший і може відтворюватися під час завантаження. Зображення не змінюється. GIF, який не зменшиться, надсилається як є.",
     "messagesMediaSettings.discordImportTitle": "Імпорт обраного з Discord",
     "messagesMediaSettings.discordImportDescription":
-        "Копіює GIF, додані до обраного в настільному застосунку Discord на цьому комп'ютері. GIF, завантажені в Discord, імпортувати не можна.",
+        "Копіює GIF, додані до обраного в настільному застосунку Discord на цьому комп'ютері. GIF, завантажені в Discord, копіюються лише тоді, коли нижче налаштовано службу оновлення.",
     "messagesMediaSettings.discordImportButton": "Імпортувати",
     "messagesMediaSettings.discordImportBusy": "Перевірка посилань...",
     "messagesMediaSettings.discordImportChecking":
@@ -1726,6 +1739,22 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Не вдалося імпортувати жодного GIF.",
     "messagesMediaSettings.discordImportFailed":
         "Не вдалося імпортувати обране з Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Не вдалося скопіювати # GIF, завантажений в Discord.} few {Не вдалося скопіювати # GIF, завантажені в Discord.} many {Не вдалося скопіювати # GIF, завантажених в Discord.} other {Не вдалося скопіювати # GIF, завантажених в Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Служба оновлення Discord",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Посилання на GIF, завантажені в Discord, з часом застарівають. Щоб імпортувати й їх, введіть адресу служби оновлення, яку ви запускаєте самі (services/discord-refresh-proxy у вихідному коді Zam). Після цього GIF завантажуються на ваш домашній сервер.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Введіть адресу https:// (http:// працює лише на цьому комп'ютері).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Не вдалося зв'язатися зі службою оновлення Discord.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Службу оновлення Discord обмежено за кількістю запитів. Спробуйте пізніше.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Служба оновлення Discord повернула помилку ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Служба оновлення Discord надіслала відповідь, яку Zam не зміг прочитати.",
     "messagesMediaSettings.defaultTab": "Типова вкладка",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Яка вкладка відкривається у виборі GIF.",
@@ -2514,20 +2543,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "До",
     "screenShareQualityChips.bitrateCapHint":
         "Це межа, а не ціль: показ екрана використовує лише те, що потрібно зображенню й що може передати ваше з’єднання, аж до цього значення.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Використовується введена вами швидкість вивантаження, {upload}, тож це досягає {max}.",
+    "screenShareQualityChips.bitrateAuto": "Автоматично",
+    "screenShareQualityChips.bitrateAutoHint":
+        "Без обмежень: трансляція надсилає стільки, скільки зараз витримує ваше з'єднання, і знижує потік, коли канал заповнюється або глядач відстає.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Ваше вивантаження зараз близько {upload}.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Швидкість вивантаження відстежується наживо, поки ви надсилаєте відео.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Обмежено швидкістю вивантаження, яку ви вказали: {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Необов'язково. Вкажіть швидкість вивантаження, щоб трансляція її не перевищувала; залиште порожнім, щоб слідувати за з'єднанням.",
     "screenShareQualityChips.uploadOverride": "Швидкість вивантаження (Мбіт/с)",
     "screenShareQualityChips.uploadOverrideAuto": "Авто",
-    "screenShareQualityChips.uploadOverrideHint":
-        "Автоматичне вимірювання може показувати значно менше за вашу справжню швидкість. Введіть власне значення, щоб підняти межу; залиште порожнім, щоб вимірювати.",
     "screenShareQualityChips.kbps": "{n} кбіт/с",
     "screenShareQualityChips.mbps": "{n} Мбіт/с",
-    "screenShareQualityChips.bitrateMeasured":
-        "Ваше вивантаження вимірюється як {upload}, тож це досягає {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Ваше вивантаження ще не виміряно. Його вимірюють, поки ви надсилаєте відео, тож наразі це досягає {max}.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Понад {safe}: ваш вибір, швидкість вивантаження не перевіряється, і глядачі з повільнішим з'єднанням чи пристроєм можуть бачити ривки або зависання.",
     "screenShareQualityChips.nativeCapture": "Помічник захоплення Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Захоплює й кодує трансляцію поза браузером, тож важка гра її не смикає. Застосовується до наступної трансляції.",
@@ -2905,6 +2935,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "storageBanner.checkAgain": "Перевірити знову",
     "storageBanner.dismissLowStorageWarning":
         "Закрити попередження про сховище",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Ваш сервер досяг ліміту щомісячно активних користувачів, тому ваш обліковий запис зараз не може надсилати повідомлення й синхронізуватися.",
+    "usageLimits.bannerDisabled":
+        "Ваш сервер вимкнено адміністратором, тому ваш обліковий запис зараз не може надсилати повідомлення й синхронізуватися.",
+    "usageLimits.bannerResource":
+        "Ваш обліковий запис досяг ліміту використання на сервері, тому деякі дії зараз заблоковано.",
+    "usageLimits.bannerMediaQuota":
+        "Ви вичерпали квоту завантаження медіафайлів на сервері. Завантаження знову працюватиме після скидання квоти.",
+    "usageLimits.canUpgrade": "Перехід на вищий тариф збільшить цей ліміт.",
+    "usageLimits.learnMore": "Докладніше",
+    "usageLimits.contactAdmin": "Зв'язатися з адміністратором сервера",
+    "usageLimits.dismiss": "Закрити попередження про ліміт",
+    "usageLimits.toastResource":
+        "Ваш сервер блокує цей обліковий запис, бо досягнуто ліміту використання.",
+    "usageLimits.toastMediaQuota":
+        "Не вдалося завантажити: досягнуто ліміту завантаження медіафайлів.",
+    "usageLimits.toastRateLimited":
+        "Сервер обмежує передавання медіафайлів. Спробуйте трохи згодом.",
+    "usageLimits.toastRateLimitedFor":
+        "Сервер обмежує передавання медіафайлів. Спробуйте знову через {seconds} с.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification":

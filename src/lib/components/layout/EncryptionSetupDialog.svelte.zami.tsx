@@ -48,6 +48,7 @@ import {
     forgetSignInPassword,
     onboardingState,
     peekSignInPassword,
+    takeAfterUnlock,
 } from "$lib/stores/onboarding.svelte";
 import {
     planEncryptionSetup,
@@ -191,7 +192,17 @@ export default function EncryptionSetupDialog() {
         | "unlock"
         | "unlock-working"
         | "finished";
-    const [flow, setFlow] = useState<Flow>("idle");
+    // Opened to unlock secret storage for a feature: start at the key
+    // prompt, whatever the plan says (a verified session can still have 4S
+    // locked here).
+    const [unlockOnly] = useState(() => onboardingState.unlockReason !== null);
+    const [flow, setFlow] = useState<Flow>(unlockOnly ? "unlock" : "idle");
+    // "You're all set" only for a finished flow, or for the plan before the
+    // user has started anything.
+    const showDone =
+        flow === "finished" ||
+        (flow === "idle" && !unlockOnly && plan.kind === "done");
+    const unlockReason = useRune(() => onboardingState.unlockReason);
     const [error, setError] = useState("");
 
     // An automatic open stays invisible until there is something to say, and
@@ -389,6 +400,13 @@ export default function EncryptionSetupDialog() {
             setUnlockPassphrase("");
             await read();
             void refreshVerificationStatus();
+            // Opened for a feature: hand back to it, no setup summary.
+            if (unlockOnly) {
+                const resume = takeAfterUnlock();
+                close();
+                resume?.();
+                return;
+            }
             setFlow("finished");
         } catch (e) {
             setError(
@@ -540,7 +558,7 @@ export default function EncryptionSetupDialog() {
                     />
                 </>
             );
-        if (flow === "finished" || plan.kind === "done")
+        if (showDone)
             return (
                 <>
                     <Text className="text-sm text-zam-textSecondary">
@@ -604,6 +622,11 @@ export default function EncryptionSetupDialog() {
                             </Pressable>
                         </View>
                     )}
+                    {unlockReason ? (
+                        <Text className="text-sm text-zam-textSecondary">
+                            {t(unlockReason)}
+                        </Text>
+                    ) : null}
                     <Text className="text-sm text-zam-textSecondary">
                         {effectiveMode === "key"
                             ? t("encryptionSetup.enterKeyBody")
@@ -682,10 +705,15 @@ export default function EncryptionSetupDialog() {
                                 disabled={!unlockReady}
                             />
                             <Secondary
-                                label={t("encryptionSetup.back")}
+                                label={
+                                    unlockOnly
+                                        ? t("common.cancel")
+                                        : t("encryptionSetup.back")
+                                }
                                 onPress={() => {
                                     setError("");
-                                    setFlow("idle");
+                                    if (unlockOnly) close();
+                                    else setFlow("idle");
                                 }}
                             />
                         </>
@@ -890,7 +918,7 @@ export default function EncryptionSetupDialog() {
                         importantForAccessibility="no-hide-descendants"
                         className="flex-shrink-0 w-10 h-10 rounded-full bg-zam-accent/15 flex-row items-center justify-center"
                     >
-                        {flow === "finished" || plan.kind === "done" ? (
+                        {showDone ? (
                             <Check size={22} className="text-zam-accent" />
                         ) : (
                             <Lock size={20} className="text-zam-accent" />
@@ -904,7 +932,7 @@ export default function EncryptionSetupDialog() {
                         >
                             {flow === "show-key"
                                 ? t("encryptionSetup.saveKeyTitle")
-                                : flow === "finished" || plan.kind === "done"
+                                : showDone
                                   ? t("encryptionSetup.doneTitle")
                                   : flow === "unlock" ||
                                       flow === "unlock-working"

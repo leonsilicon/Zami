@@ -68,6 +68,11 @@ import InboxPanel from "$lib/components/layout/InboxPanel.svelte";
 import SpaceLandingPanel from "./SpaceLandingPanel.svelte";
 import IncomingCallCard from "$lib/components/layout/IncomingCallCard.svelte";
 import CallPipOverlay from "$lib/components/layout/CallPipOverlay.svelte";
+import CallPoppedOutNotice from "$lib/components/layout/CallPoppedOutNotice.svelte";
+import {
+    callPopoutState,
+    watchCallPopout,
+} from "$lib/stores/callPopout.svelte";
 import VerificationModal from "$lib/components/layout/VerificationModal.svelte";
 import EncryptionSetupDialog from "$lib/components/layout/EncryptionSetupDialog.svelte";
 import {
@@ -237,6 +242,7 @@ import {
     getDMPartnerId,
     logout,
     onRoomUpdate,
+    watchServerNotices,
     onAccountData,
     onLocalEchoUpdated,
     onThreadNameChange,
@@ -269,6 +275,7 @@ import {
     clearServiceWorkerNotifications,
     ensureCallNotifyPushRule,
     ensureThreadNamePushRule,
+    ensureEncryptedMentionRules,
     sendNotificationQuickReply,
     resolveQuickReplyThreadRoot,
     markRoomAsRead,
@@ -517,6 +524,8 @@ export default function AppShell() {
     const syncState = useRune(() => auth.syncState);
     const isMobile = useRune(() => interfaceState.isMobile);
     const leftOpen = useRune(() => interfaceState.leftOpen);
+    const callPopoutOpen = useRune(() => callPopoutState.open);
+    const callPopoutRoomId = useRune(() => callPopoutState.roomId);
     const sidebar = useRune(() => interfaceState.sidebar);
     const lightboxOpen = useRune(() => interfaceState.lightboxOpen);
     const modal = useRune(() => interfaceState.modal);
@@ -2100,6 +2109,8 @@ export default function AppShell() {
     // Zami: a no-op without Electron's bridge.
     useEffect(installDesktopSaveImage, []);
     useEffect(installDesktopMessageMenu, []);
+    // Closes a call's pop-out window when that call ends.
+    useEffect(watchCallPopout, []);
     // Keep the browser from evicting this origin's storage (crypto store,
     // account backup) when the disk runs low. See persistentStorage.ts.
     // Zami: "unsupported" here (no navigator.storage); the app's storage isn't
@@ -2222,6 +2233,13 @@ export default function AppShell() {
         if (client) ensureCallNotifyPushRule().catch(() => {});
         // Keep encrypted thread renames from notifying. Best-effort too.
         if (client) ensureThreadNamePushRule().catch(() => {});
+        // Let mentions in encrypted "mentions only" rooms reach this device's
+        // mention check (the server cannot see them). Best-effort too.
+        // Zami: not ported: the rule makes the server push every encrypted
+        // message in those rooms, and Zami's event_id_only pushes are shown by
+        // the OS with no step that could decrypt one and drop non-mentions
+        // (see src/lib/push.zami.ts). Adding it would ping for every message.
+        void ensureEncryptedMentionRules;
 
         // Mirror the session natively so the push service can enrich
         // notifications and read the active-session blob (off-native this is a
@@ -3032,6 +3050,7 @@ export default function AppShell() {
         const unsubRecentEmoji = initRecentEmoji();
         const unsubCustomization = initCustomizationSync();
         const unsubIgnored = initIgnoredUsers();
+        const unsubServerNotices = watchServerNotices();
         const unsubPresence = initPresence();
         const unsubVoice = initVoiceCall();
         const unsubIncoming = initIncomingCalls();
@@ -3152,6 +3171,7 @@ export default function AppShell() {
             unsubRecentEmoji();
             unsubCustomization();
             unsubIgnored();
+            unsubServerNotices();
             unsubPresence();
             unsubVoice();
             unsubIncoming();
@@ -3577,7 +3597,10 @@ export default function AppShell() {
                                     className="flex-row flex-1 min-w-0 overflow-hidden"
                                     style={roomPaneStyle}
                                 >
-                                    {callViewRoomId === activeRoom.roomId ? (
+                                    {callPopoutOpen &&
+                                    callPopoutRoomId === activeRoom.roomId ? (
+                                        <CallPoppedOutNotice />
+                                    ) : callViewRoomId === activeRoom.roomId ? (
                                         <Pane.CallView
                                             room={activeRoom}
                                             isMobile={isMobile}
@@ -3700,7 +3723,8 @@ export default function AppShell() {
                 <ShareTargetSheet />
             )}
 
-            <Pane.CallPipOverlay />
+            {/* The pop-out window already shows the whole call: no floating video too. */}
+            {!callPopoutOpen && <Pane.CallPipOverlay />}
 
             {/* Zami: `fixed top-4 right-4` → a Portal at the app root, below
                 the status bar and clear of a notch. */}

@@ -283,6 +283,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Não foi possível desconectar {name}",
     "callKick.notPermitted": "Você não pode desconectar este membro da voz",
     "callKick.removedFromVoice": "{name} removeu você do canal de voz",
+    "callKick.removedByServer": "Você foi removido da chamada",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -293,6 +294,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "Parcialmente criptografada",
     "callEncryption.notEncrypted":
         "Não criptografada de ponta a ponta: o servidor de chamadas pode ver e ouvir esta chamada. Chamadas em salas criptografadas são criptografadas.",
+    "callPopout.blocked":
+        "Não foi possível abrir a janela destacada. Permita pop-ups para este site e tente novamente.",
+    "callPopout.bringBack": "Trazer de volta",
+    "callPopout.focusWindow": "Mostrar janela",
+    "callPopout.inOtherWindow":
+        "Esta chamada está aberta em uma janela destacada.",
+    "callPopout.popOut": "Destacar chamada",
+    "callPopout.returnToMain": "Voltar à janela principal",
+    "callPopout.windowTitle": "{room} (chamada)",
     "callView.ringing": "Chamando…",
     "callView.showChat": "Mostrar chat",
     "callView.noOneIsInThisCall": "Ninguém está nesta chamada",
@@ -302,8 +312,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "Silenciado",
     "callView.deafened": "Ensurdecido",
     "callView.mutedForYou": "Silenciado para você",
-    "callView.joinedFromMultipleDevices": "Entrou por vários dispositivos",
-    "callView.devices": "{value} dispositivos",
+    "callView.deviceCountPill": "{count} dispositivos",
+    "callView.thisDevice": "Este dispositivo",
     "callView.enableAudio": "Ativar áudio",
     "callView.onHold": "Em espera enquanto outra chamada está ativa",
     "callView.resume": "Retomar",
@@ -990,6 +1000,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Os dados privados estão bloqueados neste dispositivo. Desbloqueie primeiro a encriptação.",
     "privateData.keySaveFailed":
         "Não foi possível guardar a chave de dados privados no armazenamento secreto da sua conta. Será tentado de novo na próxima vez que desbloquear.",
+    "privateData.unlockToEncrypt":
+        "Para criptografar seus GIFs favoritos, sua chave de recuperação é necessária neste dispositivo, para que seus outros dispositivos possam lê-los.",
+    "privateData.unlockToDecrypt":
+        "Seus GIFs favoritos estão criptografados. Digite sua chave de recuperação para lê-los neste dispositivo.",
     "settingsSearch.encryptFavouriteGifs": "Encriptar GIFs favoritos",
     "privateData.toggleLabel": "Encriptar GIFs favoritos",
     "privateData.toggleHelp":
@@ -1673,7 +1687,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Recodifica os GIFs que você envia como WebP animado sem perdas, que costuma ser menor e pode ser reproduzido durante o download. A imagem não muda. Um GIF que não ficaria menor é enviado como está.",
     "messagesMediaSettings.discordImportTitle": "Importar favoritos do Discord",
     "messagesMediaSettings.discordImportDescription":
-        "Copia os GIFs marcados como favoritos no aplicativo de desktop do Discord neste computador. GIFs enviados ao Discord não podem ser importados.",
+        "Copia os GIFs marcados como favoritos no aplicativo de desktop do Discord neste computador. GIFs enviados ao Discord só são copiados quando um serviço de atualização é configurado abaixo.",
     "messagesMediaSettings.discordImportButton": "Importar",
     "messagesMediaSettings.discordImportBusy": "Verificando links...",
     "messagesMediaSettings.discordImportChecking":
@@ -1690,6 +1704,22 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Nenhum GIF pôde ser importado.",
     "messagesMediaSettings.discordImportFailed":
         "Não foi possível importar os favoritos do Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Não foi possível copiar # GIF enviado ao Discord.} other {Não foi possível copiar # GIFs enviados ao Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Serviço de atualização do Discord",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Os links para GIFs enviados ao Discord expiram. Para importar também esses, informe o endereço de um serviço de atualização que você mesmo executa (services/discord-refresh-proxy no código-fonte do Zam). Os GIFs são então enviados ao seu homeserver.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Informe um endereço https:// (http:// só funciona neste computador).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Não foi possível acessar o serviço de atualização do Discord.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "O serviço de atualização do Discord está com limite de requisições. Tente novamente mais tarde.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "O serviço de atualização do Discord retornou um erro ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "O serviço de atualização do Discord enviou uma resposta que o Zam não conseguiu ler.",
     "messagesMediaSettings.defaultTab": "Aba padrão",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Em qual aba o seletor de GIFs abre.",
@@ -2487,20 +2517,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "Até",
     "screenShareQualityChips.bitrateCapHint":
         "Um limite, não uma meta: o compartilhamento usa apenas o que a imagem precisa e sua conexão suporta, até este valor.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Usando a velocidade de envio que você informou, {upload}, então isto chega a {max}.",
+    "screenShareQualityChips.bitrateAuto": "Automática",
+    "screenShareQualityChips.bitrateAutoHint":
+        "Sem limite: o compartilhamento envia o que sua conexão suporta agora e reduz quando ela lota ou um espectador fica para trás.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Seu envio está em cerca de {upload} agora.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Seu envio é acompanhado ao vivo enquanto você envia vídeo.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Limitado à velocidade de envio que você informou, {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Opcional. Informe sua velocidade de envio para manter o compartilhamento abaixo dela; deixe vazio para acompanhar a conexão.",
     "screenShareQualityChips.uploadOverride": "Velocidade de envio (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "Automática",
-    "screenShareQualityChips.uploadOverrideHint":
-        "A medição automática pode ficar bem abaixo da sua velocidade real. Informe seu próprio valor para aumentar o limite; deixe em branco para medir.",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "Seu envio mede {upload}, então isto chega a {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Seu envio ainda não foi medido. Ele é medido enquanto você envia vídeo, então por enquanto isto chega a {max}.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Acima de {safe} a escolha é sua: seu envio não é verificado, e quem assiste com conexões ou dispositivos mais lentos pode ver travadas ou congelamentos.",
     "screenShareQualityChips.nativeCapture": "Auxiliar de captura do Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Captura e codifica o compartilhamento fora do navegador, para que um jogo pesado não o trave. Vale para o próximo compartilhamento.",
@@ -2911,6 +2942,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "storageBanner.checkAgain": "Verificar novamente",
     "storageBanner.dismissLowStorageWarning":
         "Dispensar aviso de armazenamento",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Seu servidor atingiu o limite de usuários ativos mensais, então sua conta não pode enviar mensagens nem sincronizar agora.",
+    "usageLimits.bannerDisabled":
+        "Seu servidor foi desativado pelo administrador, então sua conta não pode enviar mensagens nem sincronizar agora.",
+    "usageLimits.bannerResource":
+        "Sua conta atingiu um limite de uso no seu servidor, então algumas ações estão bloqueadas agora.",
+    "usageLimits.bannerMediaQuota":
+        "Você esgotou sua cota de envio de mídia no seu servidor. Os envios voltarão a funcionar quando ela for renovada.",
+    "usageLimits.canUpgrade": "Fazer upgrade do seu plano aumenta este limite.",
+    "usageLimits.learnMore": "Saiba mais",
+    "usageLimits.contactAdmin": "Contatar o administrador do servidor",
+    "usageLimits.dismiss": "Fechar aviso de limite de uso",
+    "usageLimits.toastResource":
+        "Seu servidor está bloqueando esta conta porque um limite de uso foi atingido.",
+    "usageLimits.toastMediaQuota":
+        "Falha no envio: você atingiu seu limite de envio de mídia.",
+    "usageLimits.toastRateLimited":
+        "O servidor está limitando transferências de mídia. Tente novamente em instantes.",
+    "usageLimits.toastRateLimitedFor":
+        "O servidor está limitando transferências de mídia. Tente novamente em {seconds} s.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification":

@@ -35,7 +35,7 @@ import {
     type FavouriteGif,
 } from "$lib/stores/favourites.svelte";
 import { interfaceState } from "$lib/stores/interface.svelte";
-import { openEncryptionSetup } from "$lib/stores/onboarding.svelte";
+import { openSecretStorageUnlock } from "$lib/stores/onboarding.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { gifSendUrl, type GifKind, type GifResult } from "$lib/utils/klipy";
 import {
@@ -601,7 +601,11 @@ export default function GifPicker({
                         {t("favourites.lockedHint")}
                     </Text>
                     <Pressable
-                        onPress={() => openEncryptionSetup(false)}
+                        onPress={() =>
+                            openSecretStorageUnlock(
+                                "privateData.unlockToDecrypt",
+                            )
+                        }
                         accessibilityRole="button"
                     >
                         <Text className="text-xs font-semibold text-zam-textPrimary">

@@ -723,10 +723,13 @@ export const PUSH_APP_ID = APP_ID;
 // (with the per-room receipt privacy), and the debug push log. Nor what
 // MatrixMessagingService does before it posts: skipping a push for a room
 // already read elsewhere (queued while the phone was off), staying silent for
-// a moderator's com.zam.call.kick, and taking down the account's notifications
-// on a badge-only push that says every room is read. An event_id_only push
-// doesn't say what its event is, so they need the extension and background
-// task above, which would fetch it.
+// a moderator's com.zam.call.kick, taking down the account's notifications on
+// a badge-only push that says every room is read, and dropping a push in an
+// encrypted "mentions only" room unless the decrypted message mentions the
+// user. (So the shell doesn't add upstream's per-room e2ee_mentions rules; if
+// Zam on another device adds them, every message in such a room is shown.) An
+// event_id_only push doesn't say what its event is, so they need the
+// extension and background task above, which would fetch it.
 /** The alert the OS shows for a push: Expo message fields, for the gateway. */
 const ZAMI_EXPO_FIELDS: Record<string, unknown> = {
     body: GENERIC_NOTIFICATION_BODY,

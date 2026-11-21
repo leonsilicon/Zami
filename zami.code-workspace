@@ -84,6 +84,9 @@
       "*/**/*.yml": {
         "when": "$(basename).zami.yml"
       },
+      "*/**/Dockerfile": {
+        "when": "$(basename).zami"
+      },
       "*/**/LICENSE_APACHE": {
         "when": "$(basename).zami"
       },

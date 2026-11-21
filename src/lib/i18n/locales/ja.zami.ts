@@ -254,6 +254,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callParticipantMenu.couldNotDisconnect": "{name} を切断できませんでした",
     "callKick.notPermitted": "このメンバーを通話から切断する権限がありません",
     "callKick.removedFromVoice": "{name} により通話から退出させられました",
+    "callKick.removedByServer": "通話から退出させられました",
     "callEncryption.encrypted":
         "エンドツーエンド暗号化: この通話の参加者だけが映像と音声を見聞きできます。",
     "callEncryption.encryptedShort": "暗号化済み",
@@ -262,6 +263,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "一部暗号化",
     "callEncryption.notEncrypted":
         "エンドツーエンド暗号化されていません: 通話サーバーがこの通話を見聞きできます。暗号化されたルームでの通話は暗号化されます。",
+    "callPopout.blocked":
+        "ポップアウトウィンドウを開けませんでした。このサイトでポップアップを許可して、もう一度お試しください。",
+    "callPopout.bringBack": "戻す",
+    "callPopout.focusWindow": "ウィンドウを表示",
+    "callPopout.inOtherWindow":
+        "この通話はポップアウトウィンドウで開いています。",
+    "callPopout.popOut": "通話をポップアウト",
+    "callPopout.returnToMain": "メインウィンドウに戻す",
+    "callPopout.windowTitle": "{room}（通話）",
     "callView.ringing": "呼び出し中…",
     "callView.showChat": "チャットを表示",
     "callView.noOneIsInThisCall": "この通話には誰もいません",
@@ -271,8 +281,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "ミュート中",
     "callView.deafened": "スピーカーミュート中",
     "callView.mutedForYou": "あなたに対してミュート中",
-    "callView.joinedFromMultipleDevices": "複数のデバイスから参加中",
-    "callView.devices": "{value}台のデバイス",
+    "callView.deviceCountPill": "{count}台のデバイス",
+    "callView.thisDevice": "この端末",
     "callView.enableAudio": "音声を有効にする",
     "callView.onHold": "別の通話が有効なため保留中",
     "callView.resume": "再開",
@@ -816,6 +826,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このデバイスでは非公開データがロックされています。先に暗号化のロックを解除してください。",
     "privateData.keySaveFailed":
         "非公開データの鍵をアカウントのシークレットストレージに保存できませんでした。次回のロック解除時に再試行します。",
+    "privateData.unlockToEncrypt":
+        "お気に入りGIFを暗号化するには、他のデバイスでも読めるように、このデバイスでリカバリーキーが必要です。",
+    "privateData.unlockToDecrypt":
+        "お気に入りGIFは暗号化されています。このデバイスで読むにはリカバリーキーを入力してください。",
     "settingsSearch.encryptFavouriteGifs": "お気に入りGIFを暗号化",
     "privateData.toggleLabel": "お気に入りGIFを暗号化",
     "privateData.toggleHelp":
@@ -1436,7 +1450,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messagesMediaSettings.discordImportTitle":
         "Discordからお気に入りをインポート",
     "messagesMediaSettings.discordImportDescription":
-        "このコンピュータのDiscordデスクトップアプリでお気に入りに登録したGIFをコピーします。DiscordにアップロードされたGIFはインポートできません。",
+        "このコンピュータのDiscordデスクトップアプリでお気に入りに登録したGIFをコピーします。DiscordにアップロードされたGIFは、下で更新サービスを設定した場合のみコピーされます。",
     "messagesMediaSettings.discordImportButton": "インポート",
     "messagesMediaSettings.discordImportBusy": "リンクを確認しています...",
     "messagesMediaSettings.discordImportChecking":
@@ -1453,6 +1467,21 @@ const messages: Partial<Record<MessageKey, string>> = {
         "インポートできるGIFはありませんでした。",
     "messagesMediaSettings.discordImportFailed":
         "Discordからお気に入りをインポートできませんでした。",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, other {DiscordにアップロードされたGIFを#件コピーできませんでした。}}",
+    "messagesMediaSettings.discordRefreshServiceTitle": "Discord更新サービス",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "DiscordにアップロードされたGIFへのリンクは期限切れになります。これらも取り込むには、ご自身で運用している更新サービスのアドレスを入力してください(Zamのソースコードにある services/discord-refresh-proxy)。GIFはお使いのホームサーバーにアップロードされます。",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "https:// のアドレスを入力してください(http:// はこのコンピュータでのみ使用できます)。",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Discord更新サービスに接続できませんでした。",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Discord更新サービスはレート制限されています。しばらくしてから再試行してください。",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Discord更新サービスがエラーを返しました({status})。",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Discord更新サービスから、Zamが読み取れない応答が返されました。",
     "messagesMediaSettings.defaultTab": "既定のタブ",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "GIFピッカーが開くタブです。",
@@ -2174,20 +2203,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "最大",
     "screenShareQualityChips.bitrateCapHint":
         "これは上限であり目標値ではありません。共有は映像に必要な分と回線が運べる分だけを使い、最大でこの値までです。",
-    "screenShareQualityChips.bitrateOverridden":
-        "入力したアップロード速度 {upload} を使用しているため、最大 {max} まで上がります。",
+    "screenShareQualityChips.bitrateAuto": "自動",
+    "screenShareQualityChips.bitrateAutoHint":
+        "上限なし: 共有は現在の回線が扱える量を送信し、回線が混雑するか視聴者が遅れると送信量を下げます。",
+    "screenShareQualityChips.bitrateAutoNow":
+        "現在のアップロード速度は約 {upload} です。",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "映像を送信している間、アップロード速度をリアルタイムで確認します。",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "入力したアップロード速度 {upload} を上限にしています。",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "任意。アップロード速度を入力すると共有をその速度以下に抑えます。空欄の場合は回線に合わせます。",
     "screenShareQualityChips.uploadOverride": "アップロード速度 (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "自動",
-    "screenShareQualityChips.uploadOverrideHint":
-        "自動測定は実際の速度よりかなり低く出ることがあります。上限を上げたい場合はご自身の数値を入力してください。空欄にすると測定します。",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "アップロードの実測値は {upload} なので、最大 {max} まで上がります。",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "アップロードはまだ測定されていません。ビデオ送信中に測定されるため、当面は最大 {max} までです。",
-    "screenShareQualityChips.bitrateHighWarning":
-        "{safe} を超える値は手動での選択です。アップロード速度は確認されず、遅い回線や端末の視聴者にはカクつきやフリーズが起きることがあります。",
     "screenShareQualityChips.nativeCapture": "Windows キャプチャヘルパー",
     "screenShareQualityChips.nativeCaptureHint":
         "ブラウザの外で共有をキャプチャしてエンコードするため、負荷の高いゲーム中も映像がかくつきません。次の共有から適用されます。",
@@ -2550,6 +2580,29 @@ const messages: Partial<Record<MessageKey, string>> = {
         "デバイスの空き容量がほとんどありません（残り {free}）。早めに空きを確保してください。そうしないとZamはメッセージや暗号化キーを保存できません。",
     "storageBanner.checkAgain": "再確認",
     "storageBanner.dismissLowStorageWarning": "容量警告を閉じる",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "ホームサーバーが月間アクティブユーザー数の上限に達したため、現在このアカウントはメッセージの送信や同期ができません。",
+    "usageLimits.bannerDisabled":
+        "ホームサーバーが管理者によって無効化されたため、現在このアカウントはメッセージの送信や同期ができません。",
+    "usageLimits.bannerResource":
+        "このアカウントはホームサーバーの利用上限に達したため、現在一部の操作がブロックされています。",
+    "usageLimits.bannerMediaQuota":
+        "ホームサーバーのメディアアップロード枠を使い切りました。リセットされるとアップロードできるようになります。",
+    "usageLimits.canUpgrade":
+        "プランをアップグレードするとこの上限が引き上げられます。",
+    "usageLimits.learnMore": "詳細",
+    "usageLimits.contactAdmin": "サーバー管理者に連絡",
+    "usageLimits.dismiss": "利用上限の警告を閉じる",
+    "usageLimits.toastResource":
+        "利用上限に達したため、ホームサーバーがこのアカウントをブロックしています。",
+    "usageLimits.toastMediaQuota":
+        "アップロードに失敗しました: メディアのアップロード上限に達しています。",
+    "usageLimits.toastRateLimited":
+        "サーバーがメディア転送を制限しています。しばらくしてからもう一度お試しください。",
+    "usageLimits.toastRateLimitedFor":
+        "サーバーがメディア転送を制限しています。{seconds} 秒後にもう一度お試しください。",
     "updateBanner.dismissUpdateNotification": "更新通知を閉じる",
     "updateBanner.installFailed": "インストールに失敗しました",
     "userPicker.remove": "{userId} を削除",

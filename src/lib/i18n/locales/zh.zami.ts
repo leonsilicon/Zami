@@ -268,6 +268,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callParticipantMenu.couldNotDisconnect": "无法断开 {name}",
     "callKick.notPermitted": "你无法将此成员断开语音连接",
     "callKick.removedFromVoice": "{name} 将你移出了语音频道",
+    "callKick.removedByServer": "你已被移出通话",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -278,6 +279,13 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "部分加密",
     "callEncryption.notEncrypted":
         "未端到端加密：通话服务器可以看到和听到此通话。加密房间中的通话是加密的。",
+    "callPopout.blocked": "无法打开弹出窗口。请允许此网站弹出窗口，然后重试。",
+    "callPopout.bringBack": "收回",
+    "callPopout.focusWindow": "显示窗口",
+    "callPopout.inOtherWindow": "此通话已在弹出窗口中打开。",
+    "callPopout.popOut": "弹出通话",
+    "callPopout.returnToMain": "返回主窗口",
+    "callPopout.windowTitle": "{room}（通话）",
     "callView.ringing": "正在响铃…",
     "callView.showChat": "显示聊天",
     "callView.noOneIsInThisCall": "此通话中没有人",
@@ -287,8 +295,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "已静音",
     "callView.deafened": "已拒听",
     "callView.mutedForYou": "已对你静音",
-    "callView.joinedFromMultipleDevices": "从多台设备加入",
-    "callView.devices": "{value} 台设备",
+    "callView.deviceCountPill": "{count} 台设备",
+    "callView.thisDevice": "此设备",
     "callView.enableAudio": "启用音频",
     "callView.onHold": "另一通通话进行时已保留",
     "callView.resume": "恢复",
@@ -964,6 +972,10 @@ const messages: Partial<Record<MessageKey, string>> = {
     "privateData.locked": "此设备上的私密数据已锁定。请先解锁加密。",
     "privateData.keySaveFailed":
         "无法将私密数据密钥保存到账户的安全存储中，下次解锁时会重试。",
+    "privateData.unlockToEncrypt":
+        "加密收藏的 GIF 需要在此设备上输入恢复密钥，以便你的其他设备也能读取。",
+    "privateData.unlockToDecrypt":
+        "你收藏的 GIF 已加密。输入恢复密钥即可在此设备上读取。",
     "settingsSearch.encryptFavouriteGifs": "加密收藏的 GIF",
     "privateData.toggleLabel": "加密收藏的 GIF",
     "privateData.toggleHelp":
@@ -1580,7 +1592,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "将你发送的 GIF 重新编码为无损动画 WebP，通常体积更小，并且可以边下载边播放。画面不变。如果某个 GIF 转换后不会变小，则按原样发送。",
     "messagesMediaSettings.discordImportTitle": "从 Discord 导入收藏",
     "messagesMediaSettings.discordImportDescription":
-        "复制此电脑上 Discord 桌面应用中收藏的 GIF。上传到 Discord 的 GIF 无法导入。",
+        "复制此电脑上 Discord 桌面应用中收藏的 GIF。上传到 Discord 的 GIF 只有在下方设置了刷新服务时才会复制。",
     "messagesMediaSettings.discordImportButton": "导入",
     "messagesMediaSettings.discordImportBusy": "正在检查链接...",
     "messagesMediaSettings.discordImportChecking":
@@ -1596,6 +1608,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messagesMediaSettings.discordImportNoneImportable": "没有可以导入的 GIF。",
     "messagesMediaSettings.discordImportFailed": "无法从 Discord 导入收藏。",
     "messagesMediaSettings.defaultTab": "默认标签页",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, other {无法复制 # 个上传到 Discord 的 GIF。}}",
+    "messagesMediaSettings.discordRefreshServiceTitle": "Discord 刷新服务",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "上传到 Discord 的 GIF 链接会过期。若要一并导入这些 GIF,请输入你自己运行的刷新服务地址(Zam 源代码中的 services/discord-refresh-proxy)。随后这些 GIF 会上传到你的家庭服务器。",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "请输入 https:// 地址(http:// 仅适用于此电脑)。",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "无法连接到 Discord 刷新服务。",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Discord 刷新服务已限流,请稍后再试。",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Discord 刷新服务返回了错误({status})。",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Discord 刷新服务返回了 Zam 无法读取的响应。",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "GIF 选择器打开时显示的标签页。",
     "messagesMediaSettings.defaultGifTab": "默认 GIF 标签页",
@@ -2317,20 +2344,20 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "最高",
     "screenShareQualityChips.bitrateCapHint":
         "这是上限而非目标：共享只会使用画面所需且你的连接能承载的带宽，最高不超过此值。",
-    "screenShareQualityChips.bitrateOverridden":
-        "正在使用你输入的上传速度 {upload}，因此上限为 {max}。",
+    "screenShareQualityChips.bitrateAuto": "自动",
+    "screenShareQualityChips.bitrateAutoHint":
+        "不限制：共享会发送当前网络能承载的码率，网络拥塞或观众跟不上时自动降低。",
+    "screenShareQualityChips.bitrateAutoNow": "你的上传速度目前约为 {upload}。",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "发送视频时会实时检测上传速度。",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "已限制为你填写的上传速度 {upload}。",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "可选。填写上传速度可让共享不超过该值；留空则跟随网络状况。",
     "screenShareQualityChips.uploadOverride": "上传速度（Mbps）",
     "screenShareQualityChips.uploadOverrideAuto": "自动",
-    "screenShareQualityChips.uploadOverrideHint":
-        "自动测量的结果可能远低于你的实际速度。输入你自己的数值可提高上限；留空则自动测量。",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "测得你的上传速度为 {upload}，因此上限为 {max}。",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "尚未测量你的上传速度。它会在你发送视频时测量，因此目前上限为 {max}。",
-    "screenShareQualityChips.bitrateHighWarning":
-        "超过 {safe} 由你自行决定：不会检查你的上传速度，网络或设备较慢的观众可能会看到卡顿或画面冻结。",
     "screenShareQualityChips.nativeCapture": "Windows 捕获辅助程序",
     "screenShareQualityChips.nativeCaptureHint":
         "在浏览器之外捕获并编码共享画面，因此占用大的游戏不会让共享卡顿。将应用于下一次共享。",
@@ -2678,6 +2705,26 @@ const messages: Partial<Record<MessageKey, string>> = {
         "你的设备存储空间即将用尽（剩余 {free}）。请尽快释放空间，否则 Zam 将无法保存消息或加密密钥。",
     "storageBanner.checkAgain": "重新检查",
     "storageBanner.dismissLowStorageWarning": "忽略存储空间警告",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "你的主服务器已达到每月活跃用户上限，你的账号目前无法发送消息或同步。",
+    "usageLimits.bannerDisabled":
+        "你的主服务器已被管理员停用，你的账号目前无法发送消息或同步。",
+    "usageLimits.bannerResource":
+        "你的账号已达到主服务器的使用上限，部分操作目前被阻止。",
+    "usageLimits.bannerMediaQuota":
+        "你已用完主服务器上的媒体上传额度。额度重置后即可再次上传。",
+    "usageLimits.canUpgrade": "升级套餐可提高此上限。",
+    "usageLimits.learnMore": "了解更多",
+    "usageLimits.contactAdmin": "联系服务器管理员",
+    "usageLimits.dismiss": "关闭使用上限警告",
+    "usageLimits.toastResource":
+        "由于已达到使用上限，你的主服务器正在阻止此账号。",
+    "usageLimits.toastMediaQuota": "上传失败：你已达到媒体上传上限。",
+    "usageLimits.toastRateLimited": "服务器正在限制媒体传输。请稍后再试。",
+    "usageLimits.toastRateLimitedFor":
+        "服务器正在限制媒体传输。请在 {seconds} 秒后重试。",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification": "忽略更新通知",

@@ -87,6 +87,8 @@ import {
     getDMPartnerId,
     getRoomCallMemberships,
     getCallParticipantCounts,
+    getOwnDeviceId,
+    getRooms,
     getMemberName,
     getMemberAvatar,
     isVideoRoom,
@@ -96,16 +98,25 @@ import {
 } from "$lib/matrix/client";
 import { voiceCallState } from "$lib/stores/voiceCall.svelte";
 import {
+    callDeviceLabelsFor,
+    requestCallDeviceLabels,
+} from "$lib/stores/callDeviceLabels.svelte";
+import {
     dedupeParticipants,
     type VoiceParticipant,
 } from "$lib/utils/voiceCall";
-import { rosterCallStatus } from "$lib/utils/callTileStatus";
+import {
+    rosterCallStatus,
+    devicesByUser,
+    type DeviceMembership,
+} from "$lib/utils/callTileStatus";
 import {
     MicOff,
     HeadphoneOff,
     GripVertical,
     Circle,
     Check,
+    MonitorSmartphone,
 } from "lucide-svelte";
 import { presenceFor } from "$lib/stores/presence.svelte";
 import { settingsState, setDmSortOrder } from "$lib/stores/settings.svelte";
@@ -331,13 +342,45 @@ let callCountsMemo: {
     tick: number;
     userId: string | null;
     counts: ReadonlyMap<string, number>;
+    multiDevice: ReadonlyMap<string, number>;
 } | null = null;
-function callCounts(): ReadonlyMap<string, number> {
+function callCountsEntry() {
     const tick = voiceCallState.voiceTick;
     const userId = auth.userId;
-    if (callCountsMemo?.tick !== tick || callCountsMemo.userId !== userId)
-        callCountsMemo = { tick, userId, counts: getCallParticipantCounts() };
-    return callCountsMemo.counts;
+    if (callCountsMemo?.tick !== tick || callCountsMemo.userId !== userId) {
+        const counts = getCallParticipantCounts();
+        callCountsMemo = {
+            tick,
+            userId,
+            counts,
+            multiDevice: multiDeviceCounts(counts),
+        };
+    }
+    return callCountsMemo;
+}
+function callCounts(): ReadonlyMap<string, number> {
+    return callCountsEntry().counts;
+}
+/** Zami: per room with a call, how many of its people are joined from several
+ *  devices: their roster entries carry a second line (the device names). */
+function callMultiDeviceCounts(): ReadonlyMap<string, number> {
+    return callCountsEntry().multiDevice;
+}
+function multiDeviceCounts(
+    counts: ReadonlyMap<string, number>,
+): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const roomId of counts.keys()) {
+        const room = getRoom(roomId);
+        if (!room) continue;
+        let n = 0;
+        for (const devices of devicesByUser(
+            getRoomCallMemberships(room),
+        ).values())
+            if (devices.length > 1) n++;
+        if (n > 0) out.set(roomId, n);
+    }
+    return out;
 }
 
 function sameCounts(
@@ -615,6 +658,9 @@ function rowMetrics(fontScale: number) {
         dm: 12 + Math.max(32, sm + xs),
         empty: 64 + sm,
         rosterEntry: 4 + Math.max(20, xs),
+        /** A roster entry with its device-names line (`text-[11px]
+         *  leading-tight`). */
+        rosterEntryDevices: 4 + Math.max(20, xs + line(13.75)),
         rosterMargin: 2,
         /** Until the knock prompt is measured. */
         knockPrompt: 96,
@@ -900,6 +946,37 @@ function sameRoster(
     return a.length === b.length && a.every((p, i) => shallowEqual(p, b[i]));
 }
 
+/** Labels for a roster user's devices, earliest joined first. */
+function rosterDeviceLabels(
+    userId: string,
+    devices: DeviceMembership[],
+): string[] {
+    return callDeviceLabelsFor(
+        userId,
+        devices,
+        auth.userId,
+        getOwnDeviceId(),
+        t("callView.thisDevice"),
+    );
+}
+
+function sameStringLists(
+    a: ReadonlyMap<string, string[]>,
+    b: ReadonlyMap<string, string[]>,
+) {
+    if (a.size !== b.size) return false;
+    for (const [k, list] of a) {
+        const other = b.get(k);
+        if (
+            !other ||
+            other.length !== list.length ||
+            list.some((x, i) => x !== other[i])
+        )
+            return false;
+    }
+    return true;
+}
+
 function CallRosterList({ room }: { room: Room }) {
     const { actions, metrics } = useRowContext();
     const participants = useRune(
@@ -909,6 +986,22 @@ function CallRosterList({ room }: { room: Room }) {
         },
         [room],
         { isEqual: sameParticipants },
+    );
+    // Zami: each multi-device person's device labels (one per device), read
+    // apart from the deduped roster so a device joining re-renders it.
+    const deviceNamesOf = useRune(
+        () => {
+            void voiceCallState.voiceTick;
+            const out = new Map<string, string[]>();
+            for (const [userId, devices] of devicesByUser(
+                getRoomCallMemberships(room),
+            ))
+                if (devices.length > 1)
+                    out.set(userId, rosterDeviceLabels(userId, devices));
+            return out;
+        },
+        [room],
+        { isEqual: sameStringLists },
     );
     const speaking = useRune(() => voiceCallState.speakingUserIds);
     const muted = useRune(() => voiceCallState.mutedUserIds);
@@ -944,13 +1037,29 @@ function CallRosterList({ room }: { room: Room }) {
                     selfMicMuted,
                     selfDeafened,
                 });
+                const deviceNames = deviceNamesOf.get(p.userId) ?? [];
+                const devices = deviceNames;
                 return (
                     <Pressable
                         key={p.userId}
                         accessibilityRole="button"
-                        accessibilityLabel={t("roomList.inVoice", { name })}
+                        // Zami: the pill's sr-only count and the device names
+                        // follow the name, as they do in the button's text.
+                        accessibilityLabel={
+                            devices.length > 1
+                                ? `${t("roomList.inVoice", { name })}, ${t(
+                                      "callView.deviceCountPill",
+                                      { count: devices.length },
+                                  )}, ${deviceNames.join(", ")}`
+                                : t("roomList.inVoice", { name })
+                        }
                         className="w-full flex-row items-center gap-2 ps-8 pe-2 py-0.5 rounded active:bg-zam-messageHover"
-                        style={{ height: metrics.rosterEntry }}
+                        style={{
+                            height:
+                                devices.length > 1
+                                    ? metrics.rosterEntryDevices
+                                    : metrics.rosterEntry,
+                        }}
                         onPress={() => {
                             setActiveRoom(room.roomId);
                             showCallView(room.roomId);
@@ -983,12 +1092,35 @@ function CallRosterList({ room }: { room: Room }) {
                                 />
                             ) : null}
                         </View>
-                        <Text
-                            numberOfLines={1}
-                            className="flex-1 text-xs text-zam-textSecondary"
-                        >
-                            {name}
-                        </Text>
+                        <View className="flex-1 min-w-0">
+                            <View className="flex-row items-center gap-1 min-w-0">
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-1 min-w-0 text-xs text-zam-textSecondary"
+                                >
+                                    {name}
+                                </Text>
+                                {devices.length > 1 ? (
+                                    <View className="flex-shrink-0 flex-row items-center gap-0.5 px-1 py-0.5 rounded bg-zam-backgroundTertiary">
+                                        <MonitorSmartphone
+                                            size={12}
+                                            className="text-zam-textMuted"
+                                        />
+                                        <Text className="text-[10px] leading-none text-zam-textMuted">
+                                            {devices.length}
+                                        </Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                            {devices.length > 1 ? (
+                                <Text
+                                    numberOfLines={1}
+                                    className="text-[11px] leading-tight text-zam-textMuted"
+                                >
+                                    {deviceNames.join(", ")}
+                                </Text>
+                            ) : null}
+                        </View>
                         {status.micOff ? (
                             <MicOff
                                 size={14}
@@ -1748,11 +1880,17 @@ function rowHeight(
     row: Row,
     m: RowMetrics,
     calls: ReadonlyMap<string, number>,
+    multiDevice: ReadonlyMap<string, number>,
     knock: { roomId: string | null; height: number | null },
 ): number {
     const roster = (roomId: string) => {
         const n = calls.get(roomId) ?? 0;
-        return n > 0 ? n * m.rosterEntry + m.rosterMargin : 0;
+        const multi = multiDevice.get(roomId) ?? 0;
+        return n > 0
+            ? (n - multi) * m.rosterEntry +
+                  multi * m.rosterEntryDevices +
+                  m.rosterMargin
+            : 0;
     };
     switch (row.kind) {
         case "inbox":
@@ -2148,6 +2286,16 @@ export default function RoomList({
     } | null>(null);
     // Plain let: read only from event handlers, never from markup or an effect.
     const participantMenuToken = useRef(0);
+
+    // Device names for anyone joined from several devices in a call roster.
+    // Cache-only fetch; requestDeviceLabels skips users checked recently.
+    const voiceTick = useRune(() => voiceCallState.voiceTick);
+    const roomsTick = useRune(() => roomsState.roomsTick);
+    useEffect(() => {
+        void voiceTick;
+        void roomsTick;
+        void requestCallDeviceLabels(getRooms());
+    }, [voiceTick, roomsTick]);
 
     function openParticipantMenu(
         room: Room,
@@ -3167,13 +3315,18 @@ export default function RoomList({
     // Zami: where each row starts, for getItemLayout (see rowMetrics). Only a
     // change to the rows, a call's roster or the knock prompt redoes it.
     const calls = useRune(() => callCounts(), [], { isEqual: sameCounts });
+    const multiDevice = useRune(() => callMultiDeviceCounts(), [], {
+        isEqual: sameCounts,
+    });
     const offsets = useMemo(() => {
         const knock = { roomId: knockPromptId, height: knockPromptHeight };
         const out = new Float64Array(rows.length + 1);
         for (let i = 0; i < rows.length; i++)
-            out[i + 1] = out[i]! + rowHeight(rows[i]!, metrics, calls, knock);
+            out[i + 1] =
+                out[i]! +
+                rowHeight(rows[i]!, metrics, calls, multiDevice, knock);
         return out;
-    }, [rows, metrics, calls, knockPromptId, knockPromptHeight]);
+    }, [rows, metrics, calls, multiDevice, knockPromptId, knockPromptHeight]);
     const getItemLayout = useCallback(
         (_: ArrayLike<Row> | null | undefined, index: number) => ({
             length: offsets[index + 1]! - offsets[index]!,
