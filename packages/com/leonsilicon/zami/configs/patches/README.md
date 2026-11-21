@@ -1,6 +1,6 @@
 # @-/com.leonsilicon.zami.configs.patches
 
-Zami's changes to code it doesn't own: upstream Zam (`packages/com/github/az4521/Zam`) and
+Zami's changes to code it doesn't own: upstream Zam (`repos/com/github/az4521/Zam`) and
 npm packages. Each change is a [jssg](https://docs.codemod.com/jssg) codemod, the way
 Haniverse patches its dependencies, so the change is made again on each new upstream
 version instead of being a stored diff that stops applying.
@@ -16,7 +16,7 @@ codemods/jssg.ts              editNodes(): exact edits inside syntax nodes jssg 
 ```jsonc
 // A source tree in the repository: applied to the copy the web app is built from
 // (@-/com.leonsilicon.zami.web). The tree itself stays exactly as upstream has it.
-{ "source": "packages/com/github/az4521/Zam", "bundles": ["src/lib/push.ts"] }
+{ "source": "repos/com/github/az4521/Zam", "bundles": ["src/lib/push.ts"] }
 
 // An npm package: turned into a bun patch in patches/ and listed in the root
 // package.json's patchedDependencies.

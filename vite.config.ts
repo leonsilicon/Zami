@@ -1,11 +1,11 @@
 // Zami's Vite+ config: formatting, linting and tests for Zami's own code. Upstream Zam's
-// tree (packages/com/github/az4521/Zam) is never formatted or linted: it stays exactly as
+// tree (repos/com/github/az4521/Zam) is never formatted or linted: it stays exactly as
 // upstream has it, and Zami changes it only through codemods
 // (packages/com/leonsilicon/zami/configs/patches).
 import flatcap from "eslint-plugin-flatcap";
 import { defineConfig } from "vite-plus";
 
-const upstream = ["packages/com/github/**"];
+const upstream = ["repos/**"];
 
 // Generated: native projects (Expo prebuild), Expo's cache, the web app's build, the bun
 // patches the codemods generate, and Wrangler's types (`wrangler types`) and local state.
@@ -26,11 +26,17 @@ export default defineConfig({
     ignorePatterns: [...upstream, ...generated],
     overrides: [
       {
-        // Linting this file walks every package manifest under packages/, upstream Zam's
-        // too, which aren't Flatcap packages. Zami's own packages are still checked, with
-        // their code.
+        // Root manifest validation requires exact path casing for package names.
+        // The Zam workspace preserves the upstream directory name and uses lowercase in npm.
         files: ["vite.config.ts"],
         rules: { "flatcap/package-manifest": "off" },
+      },
+      {
+        files: ["packages/com/github/az4521/Zam/**/*.ts"],
+        rules: {
+          "flatcap/package-manifest": "off",
+          "flatcap/package-name-matches-path": "off",
+        },
       },
       {
         // node:test-style top-level tests register through promises the runner manages.
@@ -43,7 +49,11 @@ export default defineConfig({
     ignorePatterns: [...upstream, ...generated],
   },
   test: {
-    include: ["packages/com/leonsilicon/**/__tests__/*.test.ts", "apps/*/__tests__/*.test.ts"],
+    include: [
+      "packages/com/github/az4521/Zam/__tests__/*.test.ts",
+      "packages/com/leonsilicon/**/__tests__/*.test.ts",
+      "apps/*/__tests__/*.test.ts",
+    ],
     environment: "node",
   },
   run: {

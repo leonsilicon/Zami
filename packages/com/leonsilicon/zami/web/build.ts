@@ -1,4 +1,4 @@
-// Zam's web app, built from upstream Zam's tree (packages/com/github/az4521/Zam) with Zam's
+// Zam's web app, built from upstream Zam's tree (repos/com/github/az4521/Zam) with Zam's
 // own dependencies (its package-lock.json) and its own Vite config, plus Zami's codemods for
 // it (@-/com.leonsilicon.zami.configs.patches). The Zami app shows it in a WebView
 // (@-/com.leonsilicon.zami.shell).
@@ -28,7 +28,12 @@ import {
   codemodsHash,
   sourceCodemods,
 } from "@-/com.leonsilicon.zami.configs.patches";
+// Flatcap resolves names to case-sensitive paths, but npm names use lowercase.
+// oxlint-disable-next-line flatcap/no-unresolved-imports
+import { readZamBlobs, zamTree, type TreeEntry } from "@-/com.github.az4521.zam";
 import { repoRoot, ZAM_PATH } from "@-/com.leonsilicon.zami.paths";
+
+export { zamTree };
 
 /** The directory the native apps copy into their bundles, inside the output directory. */
 export const WEB_DIR_NAME = "zami-web";
@@ -84,36 +89,6 @@ export function defaultOutDir(root: string): string {
   return join(root, "apps/zami/.build/web");
 }
 
-interface TreeEntry {
-  mode: string;
-  sha: string;
-  /** The path in Zam's tree. */
-  path: string;
-}
-
-/** Zam's files as git's index has them, by their path in Zam's tree. */
-export function zamTree(root: string): TreeEntry[] {
-  const out = execFileSync("git", ["ls-files", "-s", "-z", "--", ZAM_PATH], {
-    cwd: root,
-    maxBuffer: 256 * 1024 * 1024,
-  }).toString("utf8");
-  const prefix = `${ZAM_PATH}/`;
-  const entries: TreeEntry[] = [];
-  for (const record of out.split("\0")) {
-    if (!record) continue;
-    const tab = record.indexOf("\t");
-    const [mode, sha] = record.slice(0, tab).split(" ");
-    const path = record.slice(tab + 1);
-    if (mode === undefined || sha === undefined || mode === "160000" || !path.startsWith(prefix))
-      continue;
-    entries.push({ mode, sha, path: path.slice(prefix.length) });
-  }
-  if (!entries.some((entry) => entry.path === "package.json")) {
-    throw new Error(`${ZAM_PATH} has no package.json: is upstream Zam there?`);
-  }
-  return entries.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-}
-
 /** Zam's files that differ from the index in the working tree (they aren't built). */
 function unstagedZamChanges(root: string): string[] {
   return execFileSync("git", ["diff", "--name-only", "--", ZAM_PATH], {
@@ -122,31 +97,6 @@ function unstagedZamChanges(root: string): string[] {
   })
     .split("\n")
     .filter(Boolean);
-}
-
-/** The contents of blobs, read with one `git cat-file --batch`. */
-function readBlobs(root: string, shas: string[]): Map<string, Buffer> {
-  const blobs = new Map<string, Buffer>();
-  const unique = [...new Set(shas)];
-  // In batches, so no single answer has to hold the whole tree.
-  for (let start = 0; start < unique.length; start += 2000) {
-    const batch = unique.slice(start, start + 2000);
-    const out = execFileSync("git", ["cat-file", "--batch"], {
-      cwd: root,
-      input: `${batch.join("\n")}\n`,
-      maxBuffer: 2 * 1024 * 1024 * 1024,
-    });
-    let offset = 0;
-    for (const sha of batch) {
-      const newline = out.indexOf(10, offset);
-      const [, , size] = out.subarray(offset, newline).toString("utf8").split(" ");
-      const length = Number(size);
-      if (!Number.isFinite(length)) throw new Error(`git cat-file: no blob ${sha}`);
-      blobs.set(sha, out.subarray(newline + 1, newline + 1 + length));
-      offset = newline + 1 + length + 1;
-    }
-  }
-  return blobs;
 }
 
 const MANIFEST = ".zami-web-export.json";
@@ -183,7 +133,7 @@ export function exportTree(
   for (const path of Object.keys(previous)) {
     if (!(path in next)) rmSync(join(dir, path), { force: true });
   }
-  const blobs = readBlobs(
+  const blobs = readZamBlobs(
     root,
     changed.map((entry) => entry.sha),
   );

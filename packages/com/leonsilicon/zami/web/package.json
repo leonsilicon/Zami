@@ -14,6 +14,7 @@
     ".": "./+.ts"
   },
   "dependencies": {
+    "@-/com.github.az4521.zam": "workspace:*",
     "@-/com.leonsilicon.zami.configs.patches": "workspace:*",
     "@-/com.leonsilicon.zami.paths": "workspace:*",
     "@-/com.leonsilicon.zami.plugins": "workspace:*"

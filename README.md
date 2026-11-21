@@ -8,7 +8,8 @@ callbacks, push notifications, native storage), so Zam takes the paths it takes 
 app.
 
 ```
-packages/com/github/az4521/Zam/        upstream Zam, as upstream has it (never edited)
+repos/com/github/az4521/Zam/           pristine upstream Zam submodule
+packages/com/github/az4521/Zam/        importable workspace package for pinned Zam source
 packages/com/leonsilicon/zami/
   configs/patches/                     Zami's changes to code it doesn't own, as jssg codemods
   web/                                 builds Zam's web app (`vpx _web`)
@@ -22,8 +23,9 @@ apps/site/                             zami.leonsilicon.com
 
 ## How it works
 
-1. **Zam, unmodified.** `packages/com/github/az4521/Zam` is upstream's tree, merged as a
-   subtree (below). Nothing in it is ever edited, formatted or linted.
+1. **Zam's source.** `repos/com/github/az4521/Zam` is a submodule pinned to an upstream
+   commit. Zami tooling imports `@-/com.github.az4521.zam` to read that commit. The submodule
+   stays pristine.
 2. **The web app.** `vpx _web build` exports that tree to a cache directory, applies Zami's
    codemods for it, installs Zam's dependencies from its own lockfile (`npm ci`) and builds
    it with its own Vite config. The native builds run it (incrementally) and bundle the
@@ -73,7 +75,7 @@ Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami'
 ## Setup and running
 
 ```sh
-git remote add upstream https://github.com/az4521/Zam.git   # once per clone
+git submodule update --init --recursive
 vp install
 vpx _dev              # iOS simulator: build the web app and the app if needed, install, launch, serve JS
 vpx _dev android      # Android emulator or device
@@ -99,16 +101,19 @@ vpx _maestro          # the Maestro flows (apps/zami/.maestro) on an iOS simulat
 
 ## Syncing upstream
 
-Upstream Zam is merged into its directory as a subtree:
+The `Zami upstream sync` workflow checks upstream's `master` every six hours. You can
+also run it from the Actions tab. When the upstream commit changes, the workflow checks
+Zami's codemods and builds the web app before pushing a commit that updates the submodule
+pin on `trunk`. If a codemod stops applying, the workflow log identifies it and the pin
+stays on the last buildable revision.
+
+To try the latest upstream commit locally, stage its pin before running the checks:
 
 ```sh
-git fetch upstream
-git merge -X subtree=packages/com/github/az4521/Zam upstream/master
+git submodule update --init --remote --checkout -- repos/com/github/az4521/Zam
+git add -- repos/com/github/az4521/Zam
 vpx _patches check && vpx _web build
 ```
-
-The scheduled workflow `.github/workflows/zami-upstream-sync.yml` does this and opens a pull
-request. A codemod that no longer applies fails the check; fix the codemod, not Zam's file.
 
 ## Releases
 

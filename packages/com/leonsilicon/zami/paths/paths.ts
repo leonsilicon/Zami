@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 /** Upstream Zam, unmodified, relative to the repository's root. */
-export const ZAM_PATH = "packages/com/github/az4521/Zam";
+export const ZAM_PATH = "repos/com/github/az4521/Zam";
 
 /** The Expo app, relative to the repository's root. */
 export const APP_PATH = "apps/zami";

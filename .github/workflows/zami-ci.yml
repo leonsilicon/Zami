@@ -1,6 +1,4 @@
-# Zami's checks, and the invariants of how it carries upstream Zam: Zam's tree
-# (packages/com/github/az4521/Zam) is exactly the upstream commit last merged into it, and
-# every codemod that changes Zam or an npm package still applies.
+# Checks Zami's own code and its codemods against the pinned Zam submodule.
 name: Zami CI
 
 on:
@@ -12,30 +10,18 @@ on:
 permissions:
   contents: read
 
-env:
-  ZAM: packages/com/github/az4521/Zam
-
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-      - run: git remote add upstream https://github.com/az4521/Zam.git && git fetch --no-tags upstream master
+          submodules: true
       - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: "26"
           run-install: true
           cache: true
-      - name: Zam's tree is upstream's, unmodified
-        run: |
-          merged=$(git merge-base HEAD upstream/master)
-          if [ "$(git rev-parse "$merged^{tree}")" != "$(git rev-parse "HEAD:$ZAM")" ]; then
-            echo "::error::$ZAM differs from upstream ${merged:0:10}, the commit last merged into it. Change Zam with a codemod (packages/com/leonsilicon/zami/configs/patches), never in place:"
-            git diff --stat "$merged" "HEAD:$ZAM" | tail -n 40
-            exit 1
-          fi
       - name: Format, lint and types (Zami's own code)
         run: vp check
       - run: vp run typecheck

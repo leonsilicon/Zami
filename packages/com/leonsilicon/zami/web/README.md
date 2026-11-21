@@ -13,8 +13,8 @@ vpx _web path              # where the built app is
 The native builds run `_web build` themselves (the shell's config plugin), so it rarely
 needs running by hand.
 
-1. It exports `packages/com/github/az4521/Zam`, as git's index has it, to a cache directory
-   (`~/Library/Caches/zami/web/src`), writing only what changed since the last export. The
+1. It reads the pinned Zam submodule through `@-/com.github.az4521.zam` and exports it
+   to a cache directory (`~/Library/Caches/zami/web/src`), writing only changed files. The
    cache is outside the repository and any node_modules: Node won't run TypeScript from
    under node_modules, which Zam's build scripts import.
 2. It applies Zami's codemods for Zam (`@-/com.leonsilicon.zami.configs.patches`) to that

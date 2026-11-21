@@ -15,6 +15,7 @@
     "allowJs": true
   },
   "include": [
+    "com/github/az4521/Zam/**/*.ts",
     "com/leonsilicon/zami/paths/*.ts",
     "com/leonsilicon/zami/web/**/*.ts",
     "com/leonsilicon/zami/dev/**/*.ts",

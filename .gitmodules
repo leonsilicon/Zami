@@ -1,0 +1,4 @@
+[submodule "Zam"]
+	path = repos/com/github/az4521/Zam
+	url = https://github.com/az4521/Zam.git
+	branch = master
