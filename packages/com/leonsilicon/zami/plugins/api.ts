@@ -24,6 +24,8 @@ import {
 } from "#components";
 import { openWebContext, type WebContextOptions } from "#contexts";
 import { noteComponentPatch, setEarly, wasLoadedEarly } from "#early";
+import { clearHome, readHome, writeHome, type Home, type HomeOptions } from "#home";
+import { activeUserId } from "#launch";
 import { addLayer, type Disposable } from "#layers";
 import { callNative, callReactNative, nativeAvailable, nativeModules } from "#native";
 import { createPatcher } from "#patch";
@@ -108,6 +110,20 @@ export function createZamiApi(options: ZamiApiOptions) {
       });
     }
     return track(patchComponent(target, wrap));
+  };
+
+  // A plugin that's turned off doesn't keep the app opening on its home.
+  let homeTracked = false;
+  const ownsHome = () => {
+    if (homeTracked) return;
+    homeTracked = true;
+    track({
+      dispose() {
+        homeTracked = false;
+        const userId = activeUserId();
+        if (userId) clearHome(localStorage, userId, pluginId);
+      },
+    });
   };
 
   return {
@@ -222,6 +238,31 @@ export function createZamiApi(options: ZamiApiOptions) {
       /** Load before the first render from the next launch on (or not, with `false`). */
       loadEarly: (early = true) => setEarly(pluginId, early),
       reload: () => location.reload(),
+      /**
+       * The page the app opens on, for the account that's signed in: from the next launch
+       * on, the app shows that room at once (as it last looked, while the session starts)
+       * and lands in it. It stays until the plugin clears it or unloads, or `until` passes.
+       */
+      home: {
+        /** Registers a room as the home; false when no account is signed in. */
+        set(home: HomeOptions): boolean {
+          const userId = activeUserId();
+          if (!userId) return false;
+          writeHome(localStorage, userId, pluginId, home);
+          ownsHome();
+          return true;
+        },
+        /** The home, whichever plugin registered it. */
+        get(): Home | null {
+          const userId = activeUserId();
+          return userId ? readHome(localStorage, userId) : null;
+        },
+        /** Takes this plugin's home off: the app opens where it was left again. */
+        clear(): void {
+          const userId = activeUserId();
+          if (userId) clearHome(localStorage, userId, pluginId);
+        },
+      },
     },
     /** The app's own Svelte, for drawing its components or a plugin's. */
     svelte: { mount, unmount, flushSync, tick, untrack },
