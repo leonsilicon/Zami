@@ -1,9 +1,10 @@
-# The app starts from a fresh install and renders Zam's sign-in screen: Metro's bundle
-# loads on Hermes, Zam's i18n resolves its English strings (which needs the FormatJS
-# polyfills), the stores restore no session, and LoginView renders through Uniwind.
+# A fresh install loads the bundled WebView and renders Zam’s sign-in screen.
 appId: com.leonsilicon.zami
 ---
 - runFlow: subflows/launch-app.yaml
 - assertVisible: "Sign in to your Matrix account"
 - assertVisible: "Sign in with QR code"
-- assertVisible: "Don't have an account?"
+- scrollUntilVisible:
+    element:
+      text: "Don't have an account\\?.*"
+    direction: DOWN
