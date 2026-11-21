@@ -5,4 +5,5 @@ web app is built. Zam's sign-in form turns sliding sync on by default; sliding s
 signing in to Beeper, so in the Zami app it starts off. The form's advanced options and
 Debug settings still turn it on.
 
-The component is parsed as HTML, so the edit is in the text of its `<script>`.
+The form scrolls inside the WebView so the advanced options and other controls stay
+reachable on short screens. The card is centered when there is room.
