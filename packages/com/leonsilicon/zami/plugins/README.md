@@ -44,7 +44,7 @@ when the plugin unloads. `@example/` uses most of it: load that folder in Settin
 | `styles`     | `add(css)`, `setVariables({ "--zam-accent-fill-rgb": "232 89 12" })`.                               |
 | `native`     | `available()`, `modules()`, `call(module, method, ...args)`, `reactNative(api, method, ...args)`.   |
 | `web`        | `open(options)`, a page of the plugin's own; `Worker`.                                              |
-| `app`        | `early`, `loadEarly(early?)`, `reload()`.                                                           |
+| `app`        | `early`, `loadEarly(early?)`, `reload()`, and the page the app opens on: `home`.                    |
 | `svelte`     | The app's own Svelte: `mount`, `unmount`, `flushSync`, `tick`, `untrack`.                           |
 
 ### Modules
@@ -111,6 +111,46 @@ was drawn with until its parent draws it again. So a plugin that patches a compo
 toast offers to reload. `app.loadEarly(false)` opts out, `app.loadEarly()` opts in, and
 `app.early` says whether this run loaded the plugin early.
 
+### Home and the launch page
+
+The app doesn't open on Zam's "Restoring session…" splash. It opens on the **launch page**:
+the app as it last looked, drawn before the session has started and taken off once the real
+shell has drawn the same thing underneath. The composer in it takes typing, and what was
+typed is in the real composer when it comes up. Nothing else in it does anything yet.
+
+By default the launch page is where the app was left. A plugin can register a **home**
+instead, and from the next launch on the app opens on that room: the launch page shows it,
+and Zam lands in it.
+
+```js
+// The room this account opens on, until midnight.
+zami.app.home.set({ roomId, until: midnight.getTime() });
+zami.app.home.get(); // { roomId, spaceId, until, pluginId } or null
+zami.app.home.clear();
+```
+
+`set` takes `roomId`, `spaceId` (the space to show it in; Zam's own Home when left out) and
+`until` (ms since the epoch, after which it stops being the home: without it, a room for one
+day would greet the next day's launch). It's per account, and one plugin's at a time: the
+last to register. It goes when the plugin clears it or is turned off. A home is where the
+app _opens_; taking the user there while the app runs is the plugin's own doing.
+
+The launch page of a home is saved while the app shows that room (when the app is left, and
+shortly after it changes), and kept while the user is elsewhere. A launch with no page to
+show (the first after signing in, after an update, or after the home changed) shows a
+spinner with no text until the shell is up.
+
+How it works (`launch.ts`, `launch-page.ts`): the page is a copy of the app's DOM kept in
+IndexedDB (`zami-launch`), with images as data: URLs and everything that wasn't drawn left
+out. Zam's regions in it are named `data-zami-launch-region`, so a plugin looking for
+`[data-zam-region="app"]` finds the app's own, not the copy. `<html>`'s `data-` attributes
+and the page's `<style>` elements are saved with it, so a plugin's styles apply to the copy
+before the plugin has loaded. A home is written where Zam keeps the last place it was, which
+its rooms store reads as it starts. An account that signs out leaves no page behind.
+`performance.getEntriesByType("mark")` has `zami-launch:drawn`, `:shell` and `:dismissed`
+next to Zam's own `zam-boot:` marks, and `localStorage.zami_launch_hold = "5000"` keeps the
+launch page up that much longer, to look at it.
+
 ### Stores and runes
 
 Zam's stores are Svelte 5 runes. Read and assign them as the app does
@@ -141,4 +181,7 @@ Zam's CSP allows; it allows no inline scripts or `eval`, in the page or in a con
 - The `zam.zami-plugins` codemod (`@-/com.leonsilicon.zami.configs.patches`) imports the
   runtime into Zam's `src/hooks.client.ts`, calls `zamiInit()` in its `init` hook, and has
   Zam's plugin host build `zam.zami` from `globalThis.__zamiHost`.
+- `zamiInit()` draws the launch page first, then patches Zam's `Splash`, `LoginView` and
+  `AppShell` (to take the text off the splash, and to know which of the three the root page
+  drew), then loads the early plugins.
 - `__tests__/instrument.test.ts` runs instrumented modules as real ES modules.
