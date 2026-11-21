@@ -38,10 +38,10 @@ Everything below is in place; this is what to check or redo.
   EXPO_ACCESS_TOKEN`. It stops pushes sent to Expo directly, but not through the gateway:
   the Matrix spec gives the notify endpoint no authentication, as with Sygnal.
 
-In the app, Settings → Debug Info shows the provider `expo`, the push token, the pusher
-the homeserver holds (pointing at this gateway), and the gateway's `/health`. The app's
-pushers point here unless `EXPO_PUBLIC_PUSH_GATEWAY_URL` names another gateway
-(`src/lib/push.zami.ts`).
+In the app, Settings → Debug Info shows the provider (`fcm`, Zam's name for its native
+path), the push token, the pusher the homeserver holds (pointing at this gateway), and the
+gateway's `/health`. The app's pushers point here unless `EXPO_PUBLIC_PUSH_GATEWAY_URL`
+names another gateway when its web app is built (`@-/com.leonsilicon.zami.web`).
 
 A simulator's token is registered with Expo as a development (sandbox) one, since a
 simulator build has no provisioning profile to say so.
@@ -59,7 +59,8 @@ login (`vpx wrangler login`) on the account that holds the `leonsilicon.com` zon
 
 ## What it sends
 
-The app registers this pusher (`src/lib/push.zami.ts`):
+Zam's web app registers this pusher (its `push.ts`, made this gateway's by the
+`zam.zami-pusher` codemod in `@-/com.leonsilicon.zami.configs.patches`):
 
 ```
 app_id  : com.leonsilicon.zami (the app's id: com.leonsilicon.zami.staging for staging)

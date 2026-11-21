@@ -5,37 +5,15 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    // `import "./foo"` resolves to `foo.zami.ts`, matching Metro: Zam's import strings stay as they are.
-    "moduleSuffixes": [".zami", ""],
-    "paths": {
-      "$lib": ["../../src/lib"],
-      "$lib/*": ["../../src/lib/*"],
-      "$app/environment": ["../../packages/com/leonsilicon/zami/sveltekit/+app__environment.ts"],
-      "$app/navigation": ["../../packages/com/leonsilicon/zami/sveltekit/+app__navigation.ts"],
-      "$app/state": ["../../packages/com/leonsilicon/zami/sveltekit/+app__state.ts"],
-      "lucide-svelte": ["../../packages/com/leonsilicon/zami/icons/lucide-svelte.d.ts"],
-      "@matrix-org/matrix-sdk-crypto-wasm": ["./node_modules/react-native-matrix-sdk-crypto-wasm"]
-    },
-    "types": ["svelte", "react-native"]
+    "types": ["react-native", "node"]
   },
   "include": [
     "*.ts",
     "*.tsx",
     "*.cjs",
-    // (TypeScript's include patterns have no braces.)
-    "../../packages/com/leonsilicon/zami/sveltekit/*.ts",
-    "../../packages/com/leonsilicon/zami/svelte-react/*.ts",
-    "../../packages/com/leonsilicon/zami/rn/*.ts",
-    "../../packages/com/leonsilicon/zami/rn/*.tsx",
-    "../../packages/com/leonsilicon/zami/blob/*.ts",
-    "../../packages/com/leonsilicon/zami/browser/*.ts",
-    "../../packages/com/leonsilicon/zami/plugins/*.ts",
-    "../../packages/com/leonsilicon/zami/plugins/*.tsx",
-    // Every translated component, whether or not the app reaches it yet.
-    "../../src/**/*.svelte.zami.tsx",
-    "../../src/app.zami.d.ts",
-    // Zam's ambient declarations for untyped modules.
-    "../../src/lib/types/*.zami.d.ts"
+    "../../packages/com/leonsilicon/zami/shell/*.ts",
+    "../../packages/com/leonsilicon/zami/shell/*.tsx"
   ]
 }

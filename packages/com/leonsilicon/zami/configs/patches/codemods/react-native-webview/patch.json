@@ -1,0 +1,11 @@
+{
+  "npmPackage": "react-native-webview",
+  "versions": ["14.0.1"],
+  "bundles": [
+    { "path": "apple/RNCWebViewImpl.m", "language": "cpp" },
+    {
+      "path": "android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java",
+      "language": "java"
+    }
+  ]
+}

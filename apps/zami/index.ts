@@ -1,27 +1,5 @@
-// First, so the launch timeline starts as early as the app's JS does.
-import "@-/com.leonsilicon.zami.startup";
-import "#polyfills";
-import "#blob";
-import "#globals";
-import "#fonts";
-import "#media";
-import "#calls";
-import "#notifications";
-// Starts loading the databases (and defines `indexedDB`) as the app starts: root.tsx only
-// reads `storageReady` once it has rendered, which with inline requires is when it would
-// first load (@-/com.leonsilicon.zami.metro).
-import "#storage";
-// Before anything renders: a plugin can patch any component only if every element the app
-// creates passes through its hook (@-/com.leonsilicon.zami.plugins).
-import "@-/com.leonsilicon.zami.plugins/install";
-import { parityRoot } from "@-/com.leonsilicon.zami.parity/native";
+// The Zami app: upstream Zam's web app in a native shell (@-/com.leonsilicon.zami.shell).
 import { registerRootComponent } from "expo";
-import { LogBox } from "react-native";
 import { Root } from "#root";
 
-// Zam logs many warnings (push rule notices, sync diagnostics). They still reach Metro's
-// console; the toasts they'd stack over the composer don't help on a phone screen.
-if (__DEV__) LogBox.ignoreAllLogs();
-
-// `vpx _parity` launches debug builds as Zam's reference or with its agent; otherwise Root.
-registerRootComponent(parityRoot(Root));
+registerRootComponent(Root);

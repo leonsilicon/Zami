@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.zami-plugins",
+  "version": "0.0.0",
+  "private": true,
+  "description": "zam.zami in Zam's plugin host, and early plugin loading in Zam's init hook.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:"
+  }
+}

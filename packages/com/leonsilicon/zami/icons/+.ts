@@ -1,1 +1,0 @@
-export { withClassName } from "#icon";

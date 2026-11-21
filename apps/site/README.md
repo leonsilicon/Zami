@@ -3,12 +3,10 @@
 Zami's home page, at https://zami.leonsilicon.com: static files in `public/`, served by
 Cloudflare Workers.
 
-It is also the app's OAuth `client_uri` (`src/lib/matrix/oauth.zami.ts`). Matrix
-Authentication Service requires a native app's redirect scheme to be that host reversed,
-so the app signs in through `com.leonsilicon.zami:/oauth-callback`, and the server's
-consent screen links here.
+The app signs in as upstream Zam does (Zam's `client_uri` and its
+`moe.crafty.matrix:/oauth` redirect), so this site isn't part of signing in.
 
-`public/favicon.svg` is a copy of `static/favicon.zami.svg`, the app's icon.
+`public/favicon.svg` is a copy of Zam's `static/favicon.svg`, the app's icon.
 
 ## Deploy
 

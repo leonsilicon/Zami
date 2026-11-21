@@ -1,0 +1,36 @@
+{
+  "name": "@-/com.leonsilicon.zami.shell",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Zami app: upstream Zam's web app in a WebView, served from the app's bundle, with Capacitor's native side (App, Browser, Preferences, PushNotifications) implemented in React Native and Expo modules.",
+  "type": "module",
+  "imports": {
+    "#shell": "./shell.tsx",
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts",
+    "./config-plugin": "./+config-plugin.ts"
+  },
+  "dependencies": {
+    "expo": "catalog:",
+    "expo-application": "catalog:",
+    "expo-constants": "catalog:",
+    "expo-device": "catalog:",
+    "expo-modules-core": "catalog:",
+    "expo-notifications": "catalog:",
+    "expo-sqlite": "catalog:",
+    "expo-status-bar": "catalog:",
+    "expo-web-browser": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:",
+    "react-native-safe-area-context": "catalog:",
+    "react-native-webview": "catalog:"
+  },
+  "devDependencies": {
+    "@capacitor/core": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

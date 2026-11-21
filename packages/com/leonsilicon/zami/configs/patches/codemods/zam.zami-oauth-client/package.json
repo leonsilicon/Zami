@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.zami-oauth-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zam signs in as Zami: its own OAuth client, at zami.leonsilicon.com, returning to the app's scheme.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:"
+  }
+}

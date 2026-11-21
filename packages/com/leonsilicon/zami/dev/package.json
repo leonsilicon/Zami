@@ -15,7 +15,8 @@
     ".": "./+.ts"
   },
   "dependencies": {
-    "@-/com.leonsilicon.zami.ports": "workspace:*",
+    "@-/com.leonsilicon.zami.paths": "workspace:*",
+    "@-/com.leonsilicon.zami.web": "workspace:*",
     "expo": "catalog:"
   },
   "devDependencies": {

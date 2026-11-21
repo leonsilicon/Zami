@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Git } from "@-/com.leonsilicon.zami.ports";
+import { appDir as zamiAppDir } from "@-/com.leonsilicon.zami.paths";
 
 /** An App Store Connect API key: what the script and xcodebuild authenticate with. */
 export interface AscKey {
@@ -342,7 +342,7 @@ export async function runTestflight(options: {
   variant?: Variant;
   cwd?: string;
 }): Promise<string> {
-  const appDir = join(new Git(options.cwd ?? process.cwd()).root, "apps/zami");
+  const appDir = zamiAppDir(options.cwd);
   const iosDir = join(appDir, "ios");
   const outDir = join(appDir, ".build", "testflight");
   const archive = join(outDir, "Zami.xcarchive");

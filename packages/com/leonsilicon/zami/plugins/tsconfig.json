@@ -1,9 +1,11 @@
 {
-  "extends": "../../../../../apps/zami/tsconfig.json",
-  "include": [
-    "*.ts",
-    "*.tsx",
-    "../../../../../apps/zami/vite-env.d.ts",
-    "../../../../../apps/zami/uniwind-types.d.ts"
-  ]
+  // The Vite plugin runs in Node; the rest runs in Zam's page, built by Vite with Zam's own
+  // Svelte. Both are checked here, against the DOM's types and Svelte's.
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": ["node", "svelte"],
+    "allowArbitraryExtensions": true
+  },
+  "include": ["*.ts", "__tests__/*.ts"]
 }

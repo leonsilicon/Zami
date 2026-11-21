@@ -1,232 +1,231 @@
-// Builds a plugin's `zam.zami`. Everything a plugin adds through it is tracked by the
-// host, so disabling the plugin undoes it.
-import { setDomContent } from "@-/com.leonsilicon.zami.rn";
-import { createRuneStore, useDeepRune, useRune } from "@-/com.leonsilicon.zami.svelte-react";
-import { reloadAppAsync, requireOptionalNativeModule } from "expo";
-import { NativeModules, Platform, TurboModuleRegistry } from "react-native";
-import { earlyPreference, setEarlyPreference, wasLoadedEarly } from "#early";
+// `zam.zami`: what the Zami app adds to Zam's plugin API. Zam's plugins already run in a real
+// browser here (the DOM, CSS, WebAssembly, Workers, canvas, iframes); this adds what Zam
+// doesn't give them: every module of the app and its top-level names, patches of any
+// function or component, Zam's stores, loading before the first render, and the app's
+// native side. Everything a plugin adds through it goes when the plugin unloads.
 import {
-  addInterceptor,
-  changeOutput,
-  changeProps,
-  findElement,
-  mapElements,
-  nameType,
-  wrapComponent,
-} from "#elements";
-import type { ZamiApiContext } from "#host";
-import { addLayer } from "#layers";
+  flushSync,
+  mount,
+  tick,
+  unmount,
+  untrack,
+  type Component as SvelteComponent,
+} from "svelte";
 import {
+  aroundComponent,
+  changedProps,
+  componentIds,
+  componentNames,
+  domComponent,
+  getComponent,
+  patchComponent,
+  type Component,
+  type Render,
+} from "#components";
+import { openWebContext, type WebContextOptions } from "#contexts";
+import { noteComponentPatch, setEarly, wasLoadedEarly } from "#early";
+import { addLayer, type Disposable } from "#layers";
+import { callNative, callReactNative, nativeAvailable, nativeModules } from "#native";
+import { createPatcher } from "#patch";
+import {
+  accessorFor,
   hasModule,
-  listComponents,
-  listLibraries,
-  listModules,
-  moduleBindings,
-  requireComponent,
+  importModule,
+  isLoaded,
+  moduleIds,
+  normalizeId,
+  readName,
   requireModule,
-  requireStore,
-  storeNames,
-} from "#modules";
-import { patchAfter, patchBefore, patchInstead } from "#patcher";
-import { pluginWeb } from "#plugin-web";
-import { setStyleSheet, setVariables } from "#stylesheet";
-import type { AnyComponent, ComponentTarget, Disposable, ZamiPluginApi } from "#types";
+} from "#registry";
+import { watch } from "#runes.svelte";
 
-/** Raised when `zam.zami` gains something. */
-export const ZAMI_API_VERSION = 1;
-
-interface Toasts {
-  showToast: (
-    message: string,
-    options?: { action?: { label: string; run: () => void }; tone?: string; sticky?: boolean },
-  ) => number;
-  dismissToast: (id: number) => void;
+export interface ZamiApiOptions {
+  pluginId: string;
+  manifest: { id: string; name?: string };
+  /** Zam's host: the handle comes off when the plugin unloads. */
+  track: (disposable: Disposable) => Disposable;
 }
 
-/** Zam's toasts, through the module table: this package doesn't import Zam's tree. */
-export function toasts(): Toasts {
-  return requireModule("$lib/stores/toasts.svelte") as Toasts;
+type ToastTone = "danger" | "accent" | "success";
+
+interface ToastOptions {
+  tone?: ToastTone;
+  sticky?: boolean;
+  action?: { label: string; run(): void };
 }
 
-/** Zam's stores by name, each loaded when first read. */
-function storesByName(): Record<string, Record<string, unknown>> {
-  let names: Set<string> | undefined;
-  const has = (name: string | symbol): name is string =>
-    typeof name === "string" && (names ??= new Set(storeNames())).has(name);
-  return new Proxy(
-    {},
-    {
-      get: (_, name) => (has(name) ? requireStore(name) : undefined),
-      has: (_, name) => has(name),
-      ownKeys: () => [...(names ??= new Set(storeNames()))],
-      getOwnPropertyDescriptor: (_, name) =>
-        has(name) ? { enumerable: true, configurable: true, value: requireStore(name) } : undefined,
-    },
+/** One of the app's toasts. */
+function toast(message: string, options?: ToastOptions): void {
+  void importModule("$lib/stores/toasts.svelte").then((toasts) =>
+    (toasts.showToast as (message: string, options?: ToastOptions) => number)(message, options),
   );
 }
 
-export function createZamiApi({ pluginId, track }: ZamiApiContext): ZamiPluginApi {
-  const undoable = (undo: () => void): Disposable => track({ dispose: undo });
-  const typeOf = (target: ComponentTarget): unknown => {
-    if (typeof target !== "string") return target;
-    const type = requireComponent(target);
-    // "RoomList", from the name or the module it was asked for by.
-    nameType(type, target.replace(/^.*\//, "").replace(/\.svelte$/, ""));
-    return type;
-  };
-  // A patch only reaches elements created after it: from the next launch on, this plugin
-  // loads before the first render (unless it has said otherwise).
-  const patching = (): void => {
-    if (earlyPreference(pluginId) === undefined) setEarlyPreference(pluginId, true);
-  };
-  let sheets = 0;
-  const addStyles = (css: string): Disposable => {
-    const id = `plugin:${pluginId}:zami:${++sheets}`;
-    setStyleSheet(id, String(css));
-    return undoable(() => setStyleSheet(id, ""));
-  };
-
+/** A layer over the whole window: it lets touches through wherever it draws nothing. */
+function addOverlay(render: (el: HTMLElement) => void | (() => void)): Disposable {
+  const layer = document.createElement("div");
+  layer.dataset.zamiLayer = "";
+  layer.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483000;";
+  document.body.append(layer);
+  const cleanup = render(layer);
   return {
-    version: ZAMI_API_VERSION,
-    platform: { os: Platform.OS, version: Platform.Version },
-
-    React: requireModule("react") as typeof import("react"),
-    ReactNative: requireModule("react-native") as typeof import("react-native"),
-    require: <T>(specifier: string) => requireModule(specifier) as T,
-    modules: {
-      list: (prefix) => listModules(prefix),
-      libraries: () => listLibraries(),
-      has: (specifier) => hasModule(specifier),
-      names: (specifier) => moduleBindings(specifier).names(),
-      get: (specifier, name) => moduleBindings(specifier).get(name),
-      set: (specifier, name, value) => {
-        const bindings = moduleBindings(specifier);
-        const previous = bindings.get(name);
-        bindings.set(name, value);
-        // Only if it's still ours: a later change (another plugin's) isn't ours to undo.
-        return undoable(() => {
-          if (bindings.get(name) === value) bindings.set(name, previous);
-        });
-      },
-    },
-    stores: storesByName(),
-
-    runes: {
-      useRune: (read, deps) => useRune(read, deps),
-      useDeepRune: (read, deps) => useDeepRune(read, deps),
-      watch: (read, onChange) => {
-        const store = createRuneStore(read);
-        store.getSnapshot();
-        let stop: (() => void) | undefined;
-        let stopped = false;
-        // The store watches from an effect root, which must not be made inside whatever
-        // effect is calling us (it would be attached to it): the next microtask is outside.
-        queueMicrotask(() => {
-          if (stopped) return;
-          stop = store.subscribe(() => {
-            try {
-              onChange(store.getSnapshot().value);
-            } catch (error) {
-              console.error(`[plugin ${pluginId}] a runes.watch handler threw`, error);
-            }
-          });
-        });
-        return undoable(() => {
-          stopped = true;
-          stop?.();
-        });
-      },
-    },
-
-    components: {
-      list: () => listComponents(),
-      get: (target) => requireComponent(target) as AnyComponent,
-      wrap: (target, wrap) => {
-        patching();
-        return undoable(
-          wrapComponent(typeOf(target), pluginId, wrap as (Original: AnyComponent) => unknown),
-        );
-      },
-      replace: (target, Replacement) => {
-        patching();
-        const { createElement } = requireModule("react") as typeof import("react");
-        return undoable(
-          wrapComponent(typeOf(target), pluginId, (Original) => {
-            const Replaced = (props: Record<string, unknown>) =>
-              createElement(Replacement, { ...props, Original });
-            return Replaced;
-          }),
-        );
-      },
-      props: (target, change) => {
-        patching();
-        return undoable(changeProps(typeOf(target), pluginId, change));
-      },
-      output: (target, change) => {
-        patching();
-        return undoable(changeOutput(typeOf(target), pluginId, change));
-      },
-    },
-
-    elements: {
-      intercept: (interceptor) => {
-        patching();
-        return undoable(addInterceptor(pluginId, interceptor));
-      },
-      find: findElement,
-      map: mapElements,
-    },
-
-    patch: {
-      before: (object, method, hook) => undoable(patchBefore(object, method, hook)),
-      after: (object, method, hook) => undoable(patchAfter(object, method, hook)),
-      instead: (object, method, hook) =>
-        undoable(
-          patchInstead(object, method, (args, original, self) =>
-            hook(args, original as (...inner: never[]) => unknown, self),
-          ),
-        ),
-    },
-
-    ui: {
-      render: (element, content) => {
-        setDomContent(element, content);
-        return undoable(() => setDomContent(element, undefined));
-      },
-      addLayer: (Layer) => undoable(addLayer(pluginId, Layer)),
-      toast: (message, options) => {
-        const id = toasts().showToast(String(message), {
-          tone: options?.tone ?? "accent",
-          sticky: options?.sticky,
-          action: options?.action,
-        });
-        return { dispose: () => toasts().dismissToast(id) };
-      },
-    },
-
-    styles: {
-      add: addStyles,
-      setVariables: (variables) => {
-        const id = `plugin:${pluginId}:zami:${++sheets}`;
-        setVariables(id, variables);
-        return undoable(() => setStyleSheet(id, ""));
-      },
-    },
-
-    native: {
-      modules: NativeModules as Record<string, unknown>,
-      turbo: <T>(name: string) => TurboModuleRegistry.get(name) as T | null,
-      expo: <T>(name: string) => requireOptionalNativeModule<T>(name),
-    },
-
-    web: pluginWeb(pluginId, track),
-
-    app: {
-      get early() {
-        return wasLoadedEarly(pluginId);
-      },
-      loadEarly: (early = true) => setEarlyPreference(pluginId, early),
-      reload: () => void reloadAppAsync(`plugin ${pluginId}`),
+    dispose() {
+      if (typeof cleanup === "function") cleanup();
+      layer.remove();
     },
   };
 }
+
+function addStyle(css: string): Disposable {
+  const style = document.createElement("style");
+  style.dataset.zamiPlugin = "";
+  style.textContent = css;
+  document.head.append(style);
+  return { dispose: () => style.remove() };
+}
+
+/** Theme variables over Zam's own (which its theme code sets inline on <html>). */
+function setVariables(variables: Record<string, string>): Disposable {
+  const declarations = Object.entries(variables)
+    .map(([name, value]) => `${name}: ${value} !important;`)
+    .join(" ");
+  return addStyle(`:root { ${declarations} }`);
+}
+
+export function createZamiApi(options: ZamiApiOptions) {
+  const { pluginId, track } = options;
+  const name = options.manifest.name ?? pluginId;
+  const patcher = createPatcher((error) => {
+    console.error(`[plugin ${pluginId}] a patch threw`, error);
+  });
+
+  const patchComponents = (target: string, wrap: (Original: Component) => Component) => {
+    if (noteComponentPatch(pluginId) && !wasLoadedEarly(pluginId)) {
+      toast(`${name} changed how parts of the app are drawn. Reload to see it everywhere.`, {
+        tone: "accent",
+        sticky: true,
+        action: { label: "Reload", run: () => location.reload() },
+      });
+    }
+    return track(patchComponent(target, wrap));
+  };
+
+  return {
+    /** The platform the app runs on: "ios" or "android". */
+    platform: (globalThis as { Capacitor?: { getPlatform?(): string } }).Capacitor?.getPlatform?.(),
+
+    /** One of the app's modules that has loaded, as Zam imports it (`$lib/stores/rooms.svelte`). */
+    require: requireModule,
+    /** One of the app's modules, loaded if it hasn't been. */
+    import: importModule,
+    modules: {
+      list: moduleIds,
+      has: hasModule,
+      isLoaded,
+      /** The names a module declares at its top level, exported or not. */
+      names: (specifier: string): readonly string[] => accessorFor(specifier)?.names ?? [],
+      get: (specifier: string, name: string) => readName(normalizeId(specifier), name),
+      /** Sets a top-level name of a module, for the module itself and its importers. */
+      set: (specifier: string, name: string, value: unknown) =>
+        track(addLayer(requireModule(specifier), name, () => value)),
+    },
+    /** Zam's stores by name: `stores.rooms` is `$lib/stores/rooms.svelte`. */
+    stores: new Proxy({} as Record<string, Record<string, unknown>>, {
+      get: (_, store) =>
+        typeof store === "string" ? requireModule(`$lib/stores/${store}.svelte`) : undefined,
+    }),
+    runes: {
+      /** Calls `onChange` with what `read` returns, now and whenever what it read changes. */
+      watch: <T>(read: () => T, onChange: (value: T) => void) =>
+        track({ dispose: watch(read, onChange) }),
+    },
+    patch: {
+      before: (...args: Parameters<typeof patcher.before>) => track(patcher.before(...args)),
+      after: (...args: Parameters<typeof patcher.after>) => track(patcher.after(...args)),
+      instead: (...args: Parameters<typeof patcher.instead>) => track(patcher.instead(...args)),
+    },
+    components: {
+      /** The app's components by name. */
+      list: componentNames,
+      /** The app's component modules. */
+      modules: componentIds,
+      get: getComponent,
+      /** Draws `wrap(Original)` wherever the app draws the component. */
+      wrap: patchComponents,
+      /** Draws `Replacement` in its place, with the same props plus `Original`. */
+      replace: (target: string, Replacement: Component) =>
+        patchComponents(
+          target,
+          (Original) => (anchor, props) =>
+            Replacement(
+              anchor,
+              changedProps(props, () => ({ Original })),
+            ),
+        ),
+      /** Changes the props it's drawn with: return the props to change. */
+      props: (
+        target: string,
+        change: (props: Record<string, unknown>) => Record<string, unknown> | void,
+      ) =>
+        patchComponents(
+          target,
+          (Original) => (anchor, props) => Original(anchor, changedProps(props, change)),
+        ),
+      /** Draws DOM before and after it. */
+      around: (target: string, sides: { before?: Render; after?: Render }) =>
+        patchComponents(target, (Original) => aroundComponent(Original, sides)),
+      /** A component that draws what `render(el, props)` puts in `el`. */
+      dom: domComponent,
+    },
+    ui: {
+      toast,
+      /** A layer over the whole app, drawn by `render(el)`. */
+      addLayer: (render: (el: HTMLElement) => void | (() => void)) => track(addOverlay(render)),
+      /** Draws a Svelte component (one of the app's, say) into `target`. */
+      render: (target: HTMLElement, Component: Component, props: Record<string, unknown> = {}) => {
+        // (Svelte types a component's anchor as its own internal type.)
+        const instance = mount(Component as unknown as SvelteComponent<Record<string, unknown>>, {
+          target,
+          props,
+        });
+        return track({ dispose: () => void unmount(instance) });
+      },
+    },
+    styles: {
+      add: (css: string) => track(addStyle(css)),
+      setVariables: (variables: Record<string, string>) => track(setVariables(variables)),
+    },
+    native: {
+      available: nativeAvailable,
+      /** The Expo modules built into the app, with their functions. */
+      modules: nativeModules,
+      /** Calls a function of one of them: `call("ExpoApplication", "getInstallationTimeAsync")`. */
+      call: (module: string, method: string, ...args: unknown[]) =>
+        callNative(module, method, args),
+      /** Calls one of React Native's APIs: `reactNative("Vibration", "vibrate", 50)`. */
+      reactNative: (api: string, method: string, ...args: unknown[]) =>
+        callReactNative(api, method, args),
+    },
+    web: {
+      open: (contextOptions?: WebContextOptions) => {
+        const context = openWebContext(contextOptions);
+        track({ dispose: () => context.dispose() });
+        return context;
+      },
+      Worker: globalThis.Worker,
+    },
+    app: {
+      /** Whether this run loaded the plugin before the first render. */
+      get early() {
+        return wasLoadedEarly(pluginId);
+      },
+      /** Load before the first render from the next launch on (or not, with `false`). */
+      loadEarly: (early = true) => setEarly(pluginId, early),
+      reload: () => location.reload(),
+    },
+    /** The app's own Svelte, for drawing its components or a plugin's. */
+    svelte: { mount, unmount, flushSync, tick, untrack },
+  };
+}
+
+export type ZamiApi = ReturnType<typeof createZamiApi>;

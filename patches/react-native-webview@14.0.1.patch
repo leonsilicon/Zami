@@ -1,0 +1,48 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 209b85525f0ceadae168b7575de00eafe4dba1d0..38e2fb2b5a833acd869b1c1514da1caee7447e0a 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -35,6 +35,28 @@ import android.webkit.CookieManager;
+ import java.util.concurrent.atomic.AtomicReference;
+ 
+ public class RNCWebViewClient extends WebViewClient {
++    /**
++     * Zami (patches/react-native-webview): answers a request before the network does, such
++     * as one for the app's own web app, which it serves from its assets. Null when nothing
++     * did. Set by @-/com.leonsilicon.zami.shell.
++     */
++    public interface RequestInterceptor {
++        @Nullable
++        WebResourceResponse intercept(WebView view, WebResourceRequest request);
++    }
++
++    public static volatile @Nullable RequestInterceptor requestInterceptor = null;
++
++    @Override
++    public @Nullable WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
++        RequestInterceptor interceptor = requestInterceptor;
++        if (interceptor != null) {
++            WebResourceResponse response = interceptor.intercept(view, request);
++            if (response != null) return response;
++        }
++        return super.shouldInterceptRequest(view, request);
++    }
++
+     private static String TAG = "RNCWebViewClient";
+     protected static final int SHOULD_OVERRIDE_URL_LOADING_TIMEOUT = 250;
+ 
+diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
+index 38904266dc37b006274104f4680778ffbfece369..673e58881848210c624497bf78793ab4db61770d 100644
+--- a/apple/RNCWebViewImpl.m
++++ b/apple/RNCWebViewImpl.m
+@@ -509,6 +509,10 @@ RCTAutoInsetsProtocol>
+     wkWebViewConfig.applicationNameForUserAgent = [NSString stringWithFormat:@"%@ %@", wkWebViewConfig.applicationNameForUserAgent, _applicationNameForUserAgent];
+   }
+ 
++  // Zami (patches/react-native-webview): lets the app register URL scheme handlers.
++  [[NSNotificationCenter defaultCenter] postNotificationName:@"RNCWebViewWillCreateWebView"
++                                                      object:wkWebViewConfig];
++
+   return wkWebViewConfig;
+ }
+ 

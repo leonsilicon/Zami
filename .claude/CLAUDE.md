@@ -1,32 +1,27 @@
 # Zami
 
-Zami is Zam (a SvelteKit Matrix client) plus a Zami version of every upstream file
-except unused configuration (`exclude` in `zami-ports.json`), kept next to the original (`foo.ts` → `foo.zami.ts`, `Foo.svelte` → `Foo.svelte.zami.tsx`,
-`LICENSE` → `LICENSE.zami`). Read `.github/README.md`, then `.github/PORTING.md`, before
-changing anything.
+Zami is Zam (a SvelteKit Matrix client) as an Expo app: Zam's own web app, changed only by
+codemods, in a WebView, with Capacitor's native side implemented in React Native. Read
+`README.md` before changing anything.
 
-- **Never edit, delete, rename or reformat an upstream file.** That's any file that isn't
-  a Zami version and isn't under `apps/`, `packages/`, `patches/`, `.claude/`,
-  `.github/workflows/zami-*` or `.github/{README,PORTING}.md`, nor one of Zami's root files
-  (`package.json`, which Zami overrides; `vite.config.js`, `bun.lock`, `bunfig.toml`,
-  `.gitattributes`, `zami-ports.json`, `zami-ports.lock.json`, and the generated editor
-  settings `zami.code-workspace` and `.zed/settings.json`). `vpx _zami check` fails if
-  you do.
-- Change behavior in the Zami versions. Prefer handling Vite or SvelteKit features in
-  `packages/com/leonsilicon/zami/metro` or `.../sveltekit` over editing copied files.
-- Code that isn't the Zami version of a Zam file goes in a Flatcap package under
-  `packages/com/leonsilicon/zami/` (see the user's Flatcap conventions).
-- Run the app with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
+- **Upstream Zam lives in `packages/com/github/az4521/Zam`, exactly as upstream has it.**
+  Never edit, delete, rename, format or lint anything there. It changes only by merging
+  upstream (`git merge -X subtree=packages/com/github/az4521/Zam upstream/master`).
+- **Change Zam's code (or an npm package) with a jssg codemod** in
+  `packages/com/leonsilicon/zami/configs/patches/codemods/<name>/` (`codemod.ts` and
+  `patch.json`; see that package's README). Zam's codemods are applied to the copy the web
+  app is built from; npm ones become bun patches (`vpx _patches generate`, never edit
+  `patches/` by hand). A codemod must fail loudly when upstream drifts. When one stops
+  applying after a merge, fix the codemod.
+- Prefer doing things in the shell (`packages/com/leonsilicon/zami/shell`: the WebView,
+  the bootstrap, the Capacitor plugins) over patching Zam. Zam reaches native code only
+  through Capacitor: to give it a native feature, implement the plugin it calls.
+- Zami's own code is Flatcap packages under `packages/com/leonsilicon/zami/` (see the
+  user's Flatcap conventions) and the apps in `apps/`.
+- Build Zam's web app with `vpx _web build` (native builds run it themselves). Run the app
+  with `vpx _dev` (iOS), `vpx _dev android` or `vpx _dev start`.
 - Run the end-to-end flows (`apps/zami/.maestro`) with `vpx _maestro` (iOS) or
-  `vpx _maestro android`. Update them when you change a screen they cover.
-- Check that translated views look like upstream's with `vpx _parity` (two iOS
-  simulators, Docker for its homeserver; `vpx _parity room settings-*` for some views).
-  Add a recipe to `packages/com/leonsilicon/zami/parity/views.ts` for a view it doesn't
-  reach yet, and record accepted differences with `--update-baseline`.
-- Test with `vp run test`: it includes upstream's own tests, run against the
-  Zami files. A failing upstream test means the Zami file is wrong, not the test.
-- Format and lint with Vite+: `vp fmt`, `vp lint`, `vp check`. The root `vite.config.js`
-  scopes them to Zami's own code and the Zami files (with Zam's formatting options). Never
-  run Prettier, oxfmt or oxlint directly, or on upstream files.
-- After migrating a file to the merged upstream version, run `vpx _zami done <file>`.
-  It updates `zami-ports.lock.json`; don't edit that by hand.
+  `vpx _maestro android`.
+- Check with `vp check`, `vp run typecheck`, `vp run test` and `vpx _patches check`. Format
+  and lint with Vite+ (`vp fmt`, `vp lint`), which the root `vite.config.ts` keeps off Zam's
+  tree. Never run Prettier, oxfmt or oxlint directly.
