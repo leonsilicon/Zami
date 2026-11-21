@@ -97,6 +97,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates",
       "version": "0.0.0",
@@ -295,6 +305,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods": ["@-/com.leonsilicon.zami.configs.patches.codemods@workspace:packages/com/leonsilicon/zami/configs/patches/codemods"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview": ["@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/react-native-webview"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates"],
 

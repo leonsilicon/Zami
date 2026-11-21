@@ -7,6 +7,8 @@ codemods (below). The shell gives it what Zam's Android app gets from Capacitor 
 callbacks, push notifications, native storage), so Zam takes the paths it takes in a native
 app.
 
+Zami's source lives in `apps/` and `packages/` and uses ordinary filenames.
+
 ```
 repos/com/github/az4521/Zam/           pristine upstream Zam submodule
 packages/com/github/az4521/Zam/        importable workspace package for pinned Zam source
@@ -28,9 +30,9 @@ apps/site/                             zami.leonsilicon.com
    commit. Zami tooling imports `@-/com.github.az4521.zam` to read that commit. The submodule
    stays pristine.
 2. **The web app.** `vpx _web build` exports that tree to a cache directory, applies Zami's
-   codemods for it, installs Zam's dependencies from its own lockfile (`npm ci`) and builds
-   it with its own Vite config. The native builds run it (incrementally) and bundle the
-   result as `zami-web/`.
+   codemods and installs Zam's dependencies from its lockfile (`npm ci`). It builds with
+   `vite.webview.config.ts`, a generated config that adds Zami's plugin to Zam's Vite
+   config. Native builds run this incrementally and bundle the result as `zami-web/`.
 3. **The shell.** The app is one WebView. Its native module serves the bundled web app at an
    origin of its own (`zami://localhost` on iOS, `https://localhost` on Android, like Zam's
    Capacitor app): a secure context with its own storage, with no local server. Before any

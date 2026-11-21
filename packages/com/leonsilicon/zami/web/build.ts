@@ -43,6 +43,7 @@ export const WEB_DIR_NAME = "zami-web";
  * without changing its inputs.
  */
 const BUILD_FORMAT = 1;
+const VITE_CONFIG_FILENAME = "vite.webview.config.ts";
 
 /** `zam.zami` (@-/com.leonsilicon.zami.plugins), whose Vite plugin the build adds. */
 const PLUGINS_DIR = join(import.meta.dirname, "../plugins");
@@ -231,11 +232,13 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
   }
   const codemods = sourceCodemods(ZAM_PATH);
   const settings = buildEnv();
+  const config = viteConfig();
   const version = hash(
     String(BUILD_FORMAT),
     JSON.stringify(settings),
     codemodsHash(codemods),
-    viteConfig(),
+    VITE_CONFIG_FILENAME,
+    config,
     ...sourceFiles(PLUGINS_DIR).map(
       (file) => `${relative(PLUGINS_DIR, file)}:${hash(readFileSync(file))}`,
     ),
@@ -294,10 +297,10 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
     readFileSync(buildMarker, "utf8").trim() !== version
   ) {
     log("Building Zam's web app (vite build)");
-    writeFileSync(join(src, "vite.zami.config.ts"), viteConfig());
+    writeFileSync(join(src, VITE_CONFIG_FILENAME), config);
     run(
       process.execPath,
-      ["node_modules/vite/bin/vite.js", "build", "--config", "vite.zami.config.ts"],
+      ["node_modules/vite/bin/vite.js", "build", "--config", VITE_CONFIG_FILENAME],
       src,
       env,
       log,
