@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
     },
     {
         tab: "messages-media",
+        label: t("settingsSearch.hideRecentEmoji"),
+        keywords: ["emoji", "picker", "recent", "recently", "used", "hide"],
+        anchor: "cust-messages",
+    },
+    {
+        tab: "messages-media",
         label: t("messagesMediaSettings.pingOnReply"),
         keywords: ["reply", "mention", "ping", "notify", "@"],
         anchor: "cust-messages",
@@ -249,6 +255,21 @@ export const SETTINGS_SEARCH_INDEX: readonly SettingsSearchEntry[] = [
         tab: "messages-media",
         label: t("settingsSearch.gifDefaultTab"),
         keywords: ["gif", "picker", "tenor", "klipy"],
+        anchor: "cust-gifs",
+    },
+    {
+        tab: "messages-media",
+        label: t("settingsSearch.encryptFavouriteGifs"),
+        keywords: [
+            "encrypt",
+            "encryption",
+            "private",
+            "privacy",
+            "favourites",
+            "favorites",
+            "homeserver",
+            "gif",
+        ],
         anchor: "cust-gifs",
     },
     // general (behavior)
