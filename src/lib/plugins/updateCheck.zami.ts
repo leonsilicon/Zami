@@ -22,7 +22,10 @@ export interface UpdateInfo {
     hasUpdate: boolean;
 }
 
-function safeNewer(latest: string, installed: string): boolean {
+export function isNewerPluginVersion(
+    latest: string,
+    installed: string,
+): boolean {
     try {
         return compareVersions(latest, installed) === 1;
     } catch {
@@ -47,7 +50,7 @@ export function computeUpdateStatus(
             id: p.id,
             installedVersion: p.version,
             latestVersion: latest,
-            hasUpdate: safeNewer(latest, p.version),
+            hasUpdate: isNewerPluginVersion(latest, p.version),
         });
     }
     return out;

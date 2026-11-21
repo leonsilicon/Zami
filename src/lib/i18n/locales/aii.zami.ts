@@ -1730,6 +1730,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.previewYou": "ܐܢܬ: {text}",
     "roomList.noRoomsYet": "ܠܝܬ ܓܘܡ̈ܐ ܗܠ ܗܫܐ",
     "roomList.emptyCategory": "ܠܝܬ ܓܘܡ̈ܐ",
+    "roomList.loadingRooms": "ܒܛܥܢܐ ܓܘܡ̈ܐ…",
     "roomList.copyRoomLink": "ܢܣܘܚ ܐܣܘܪܐ ܕܓܘܡܐ",
     "roomList.markAsRead": "ܢܝܫ ܐܝܟ ܩܪܝܐ",
     "roomList.addToSpace": "ܐܘܣܦ ܠܚܘܕܪܐ",

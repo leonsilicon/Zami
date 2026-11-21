@@ -1643,6 +1643,10 @@ export const en = {
     "pluginsSettings.updateToV": "Update to v{value}",
     "pluginsSettings.updating": "Updating...",
     "pluginsSettings.update": "Update",
+    "pluginsSettings.checkForUpdates": "Check {name} for updates",
+    "pluginsSettings.upToDate": "Up to date",
+    "pluginsSettings.updateCheckFailed":
+        "Could not check for updates ({message}).",
     "pluginsSettings.pluginSettings": "Plugin settings",
     "pluginsSettings.enable2": "Enable {name}",
     "pluginsSettings.working": "Working...",
@@ -1937,6 +1941,7 @@ export const en = {
     "roomList.previewYou": "You: {text}",
     "roomList.noRoomsYet": "No rooms yet",
     "roomList.emptyCategory": "No rooms",
+    "roomList.loadingRooms": "Loading rooms…",
     "roomList.copyRoomLink": "Copy Room Link",
     "roomList.markAsRead": "Mark as Read",
     "roomList.addToSpace": "Add to Space",

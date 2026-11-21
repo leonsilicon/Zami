@@ -28,6 +28,7 @@ import {
     getPullSummary,
     applyPull,
     applyUpdateCheck,
+    checkRepoPluginVersion,
     updateRepoPlugin,
     setGlobalAutoUpdate,
     setPluginAutoUpdate,
@@ -47,6 +48,7 @@ import {
 import type { PullSummary, PluginSyncPayload } from "$lib/plugins/pluginSync";
 import { filesFromDirectory } from "$lib/plugins/localPlugin";
 import { canPickDirectory, pickDirectory } from "$lib/plugins/localHandles";
+import { isNewerPluginVersion } from "$lib/plugins/updateCheck";
 import ToggleSwitch from "$lib/components/ui/ToggleSwitch.svelte";
 import {
     Settings,
@@ -1030,7 +1032,7 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
     p,
     hasSettings,
     repoName,
-    updateAvailable,
+    updateAvailable: browseUpdate,
     needsUpdate,
     updating,
     updateError,
@@ -1066,9 +1068,47 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
         setRemovePending,
         remove,
     } = actions;
+    const repoRef = p.source === "repo" ? p.repoRef : undefined;
+    const [checking, setChecking] = useState(false);
+    const [checkError, setCheckError] = useState("");
+    const [checked, setChecked] = useState<{
+        repoRef: string;
+        version: string;
+    } | null>(null);
+    const checkedVersion =
+        checked?.repoRef === repoRef ? checked?.version : undefined;
+    const availableVersion = checkedVersion ?? browseUpdate;
+    const updateAvailable =
+        availableVersion && isNewerPluginVersion(availableVersion, p.version)
+            ? availableVersion
+            : undefined;
+    const checkDisabled = busy || checking || updating;
+
+    async function checkForUpdates() {
+        if (!repoRef || checkDisabled) return;
+        setChecking(true);
+        setCheckError("");
+        try {
+            const version = await checkRepoPluginVersion(repoRef, p.id);
+            setChecked({ repoRef, version });
+        } catch (error) {
+            setCheckError(
+                t("pluginsSettings.updateCheckFailed", {
+                    message: (error as Error).message,
+                }),
+            );
+        } finally {
+            setChecking(false);
+        }
+    }
+
     return (
-        <View className="flex-row items-start gap-3 p-3 rounded bg-discord-backgroundTertiary">
-            <View className="flex-1 min-w-0">
+        <View
+            className={`p-3 rounded bg-discord-backgroundTertiary ${
+                repoRef ? "gap-2" : "flex-row items-start gap-3"
+            }`}
+        >
+            <View className={repoRef ? "min-w-0" : "flex-1 min-w-0"}>
                 <Text className="text-sm font-medium text-discord-textPrimary">
                     {p.name}
                 </Text>
@@ -1113,11 +1153,11 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                         <Pressable
                             accessibilityRole="button"
                             accessibilityState={{
-                                disabled: updating,
+                                disabled: checkDisabled,
                             }}
                             onPress={() => void doUpdate(p.id)}
-                            disabled={updating}
-                            className={updating ? "opacity-50" : ""}
+                            disabled={checkDisabled}
+                            className={checkDisabled ? "opacity-50" : ""}
                         >
                             <Text className="text-xs text-discord-accent hover:underline">
                                 {updating
@@ -1126,6 +1166,29 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                             </Text>
                         </Pressable>
                     </View>
+                ) : null}
+                {checking ||
+                (checkedVersion &&
+                    !checkError &&
+                    !updateAvailable &&
+                    !needsUpdate) ? (
+                    <Text
+                        className="text-xs text-discord-textMuted mt-1"
+                        accessibilityLiveRegion="polite"
+                        role="status"
+                    >
+                        {checking
+                            ? t("common.checking")
+                            : t("pluginsSettings.upToDate")}
+                    </Text>
+                ) : null}
+                {checkError ? (
+                    <Text
+                        className="text-xs text-discord-danger mt-1"
+                        accessibilityRole="alert"
+                    >
+                        {checkError}
+                    </Text>
                 ) : null}
                 {updateError ? (
                     <Text
@@ -1144,7 +1207,32 @@ const InstalledPluginRow = memo(function InstalledPluginRow({
                     </Text>
                 ) : null}
             </View>
-            <View className="flex-row items-center gap-2 flex-shrink-0">
+            <View className="flex-row flex-wrap items-center gap-2 flex-shrink-0">
+                {repoRef ? (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t(
+                            "pluginsSettings.checkForUpdates",
+                            {
+                                name: p.name,
+                            },
+                        )}
+                        accessibilityState={{
+                            busy: checking,
+                            disabled: checkDisabled,
+                        }}
+                        onPress={() => void checkForUpdates()}
+                        disabled={checkDisabled}
+                        className={`p-2 rounded hover:bg-discord-messageHover transition-colors ${
+                            checkDisabled ? "opacity-50" : ""
+                        }`}
+                    >
+                        <RefreshCw
+                            size={16}
+                            className="text-discord-textMuted"
+                        />
+                    </Pressable>
+                ) : null}
                 {hasSettings ? (
                     <Pressable
                         accessibilityRole="button"

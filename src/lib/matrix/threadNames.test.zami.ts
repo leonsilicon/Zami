@@ -1,16 +1,21 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    createClient,
     MatrixEvent,
     MatrixEventEvent,
+    PendingEventOrdering,
+    Room,
     RoomEvent,
     type MatrixClient,
-    type Room,
 } from "matrix-js-sdk";
 import {
     ensureThreadNamePushRule,
+    getThreadMessages,
     getThreadName,
     getThreadNameLevel,
+    getThreadSummary,
+    onThreadEvent,
     onThreadNameChange,
     setRoomPowerLevels,
     setThreadName,
@@ -35,6 +40,69 @@ const OWNER = "@owner:x";
 const relation = (root: string) => ({
     rel_type: THREAD_NAME_REL_TYPE,
     event_id: root,
+});
+
+it("shows the four counted thread replies after decryption", async () => {
+    const client = createClient({
+        baseUrl: "https://example.org",
+        userId: OWNER,
+    });
+    vi.spyOn(client, "supportsThreads").mockReturnValue(true);
+    const room = new Room(ROOM, client, OWNER, {
+        pendingEventOrdering: PendingEventOrdering.Detached,
+    });
+    const common = { room_id: ROOM, sender: OWNER, origin_server_ts: 1 };
+    const root = new MatrixEvent({
+        ...common,
+        event_id: "$root",
+        type: "m.room.message",
+        content: { msgtype: "m.text", body: "Root" },
+    });
+    const replies = Array.from(
+        { length: 4 },
+        (_, i) =>
+            new MatrixEvent({
+                ...common,
+                event_id: `$reply${i}`,
+                type: "m.room.encrypted",
+                content: {
+                    "m.relates_to": { rel_type: "m.thread", event_id: "$root" },
+                },
+            }),
+    );
+    room.createThread("$root", root, [root, ...replies], false);
+
+    expect(getThreadSummary(room, "$root").count).toBe(4);
+    expect(getThreadMessages(room, "$root")).toEqual(replies);
+
+    for (const [i, reply] of replies.entries()) {
+        await reply.attemptDecryption({
+            decryptEvent: async () => ({
+                clearEvent: {
+                    type: "m.room.message",
+                    content: { msgtype: "m.text", body: `Reply ${i}` },
+                },
+            }),
+        } as never);
+    }
+
+    expect(getThreadSummary(room, "$root").count).toBe(4);
+    expect(
+        getThreadMessages(room, "$root").map(
+            (event) => event.getContent().body,
+        ),
+    ).toEqual(["Reply 0", "Reply 1", "Reply 2", "Reply 3"]);
+
+    const onReply = vi.fn();
+    installClient(client);
+    const stop = onThreadEvent(onReply);
+    try {
+        client.emit(RoomEvent.Timeline, replies[0], room, true, false);
+        expect(onReply).toHaveBeenCalledWith(replies[0], room);
+    } finally {
+        stop();
+        releaseClient();
+    }
 });
 
 function cleartext(id: string, root: string, name: string, sender = OWNER) {

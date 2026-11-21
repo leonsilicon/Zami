@@ -179,6 +179,9 @@ export default function SpaceLandingPanel({
             roomsState.spaceHierarchy.length === 0,
     );
     const showSpaceHome = useRune(() => roomsState.showSpaceHome);
+    // Zami: nor while the room list is still loading (roomsState.roomListLoaded)
+    // and nothing in the space is known yet: its rooms may just not be here yet.
+    const roomListLoaded = useRune(() => roomsState.roomListLoaded);
 
     // Zami: the same function every render, for the memoized rows.
     const handleJoin = useCallback(async (child: SpaceChildInfo) => {
@@ -261,7 +264,10 @@ export default function SpaceLandingPanel({
     ) : null;
 
     let footer: ReactElement | null = null;
-    if (stillLoading)
+    if (
+        stillLoading ||
+        (!roomListLoaded && joinable.length === 0 && joinedRooms.length === 0)
+    )
         footer = (
             <View className="flex-1 flex-row items-center justify-center gap-3">
                 <Spin className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full" />

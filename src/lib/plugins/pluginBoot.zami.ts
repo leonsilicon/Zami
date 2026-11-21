@@ -170,15 +170,17 @@ export function setPluginAutoUpdate(id: string, v: boolean | undefined): void {
 // --- SHA resolution ---
 
 /**
- * Resolve a branch to a commit SHA via the GitHub API. Called ONLY at install,
- * update, and the boot migration for unpinned plugins. Throws on failure.
+ * Resolve a branch to a commit SHA via the GitHub API. Throws on failure.
  */
 async function resolveCommitSha(
     ref: ReturnType<typeof normalizeRepoRef>,
 ): Promise<string> {
     const url = commitShaApiUrl(ref);
     const res = await fetch(url, {
-        headers: { Accept: "application/vnd.github.sha" },
+        headers: {
+            Accept: "application/vnd.github.sha",
+            "Cache-Control": "no-cache",
+        },
     });
     if (!res.ok) {
         throw new Error(
@@ -192,6 +194,30 @@ async function resolveCommitSha(
         );
     }
     return sha.trim();
+}
+
+async function fetchLatestRepoEntry(
+    ref: ReturnType<typeof normalizeRepoRef>,
+    pluginId: string,
+): Promise<{ sha: string; entry: PluginIndexEntry }> {
+    const sha = await resolveCommitSha(ref);
+    const res = await fetch(pinnedFileUrl(ref, sha, "index.json"));
+    if (!res.ok) throw new Error(`index fetch ${res.status}`);
+    const entry = parseIndex(await res.json()).find((e) => e.id === pluginId);
+    if (!entry) throw new Error(`plugin ${pluginId} not found in repo index`);
+    return { sha, entry };
+}
+
+/** Read the version listed at the tip of the plugin's configured branch. */
+export async function checkRepoPluginVersion(
+    repoRef: string,
+    pluginId: string,
+): Promise<string> {
+    const { entry } = await fetchLatestRepoEntry(
+        normalizeRepoRef(repoRef),
+        pluginId,
+    );
+    return entry.version;
 }
 
 // --- loader wired to the item-2 store ---
@@ -1118,23 +1144,7 @@ export async function updateRepoPlugin(
             return { ok: false, error: "not an installed repo plugin" };
         const ref = normalizeRepoRef(persisted.repoRef);
 
-        // Resolve SHA FIRST
-        const sha = await resolveCommitSha(ref);
-
-        // Fetch index.json at the resolved SHA to find the entry
-        const indexRes = await fetch(pinnedFileUrl(ref, sha, "index.json"));
-        if (!indexRes.ok)
-            return { ok: false, error: `index fetch ${indexRes.status}` };
-        // parseIndex drops entries with an unsafe path; the index at THIS
-        // commit decides where the plugin lives now.
-        const entry = parseIndex(await indexRes.json()).find(
-            (e) => e.id === pluginId,
-        );
-        if (!entry)
-            return {
-                ok: false,
-                error: `plugin ${pluginId} not found in repo index`,
-            };
+        const { sha, entry } = await fetchLatestRepoEntry(ref, pluginId);
         const pluginPath = entry.path;
 
         // Fetch manifest at the pinned SHA

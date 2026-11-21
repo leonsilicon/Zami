@@ -2290,6 +2290,17 @@ export function isRoomListFromCache(): boolean {
 }
 
 /**
+ * Zami: true once sync has delivered the whole room list (classic: the first
+ * PREPARED, from the saved sync or the server; sliding: every list window
+ * covers its room count). Until then the rooms on screen are the saved room
+ * list or what sync has delivered so far, so an empty list means "still
+ * loading", not "no rooms": the views say so (roomsState.roomListLoaded).
+ */
+export function isRoomListComplete(): boolean {
+    return roomListComplete;
+}
+
+/**
  * True for a room that exists only in the saved room list, not in the SDK:
  * sync has not delivered it yet, either because the app booted offline or
  * briefly at the start of any boot. Its timeline is the cached tail, and
@@ -2449,6 +2460,10 @@ function markRoomListComplete(client: MatrixClient): void {
         roomListCache = null;
         for (const cb of roomUpdateSubscribers) cb();
     }
+    // Zami: the room lists stop saying "Loading rooms…" (isRoomListComplete).
+    // Sliding sync has no sync state change to tell them, and with no saved
+    // room list nothing else would.
+    else for (const cb of roomListStatusSubscribers) cb();
     void saveRoomListSnapshot(client, true);
 }
 
@@ -3654,7 +3669,9 @@ export function getThreadMessages(
         isThreadReplyContent({
             type: e.getType(),
             isRedacted: e.isRedacted(),
-            relatesTo: e.getOriginalContent()?.["m.relates_to"],
+            // Decrypted content can omit the wire relation the SDK counted.
+            relatesTo:
+                e.getRelation() ?? e.getOriginalContent()?.["m.relates_to"],
             rootEventId,
         });
     // SDK-native: the per-thread timeline. Thread.events includes the root as
@@ -3815,7 +3832,8 @@ export function onThreadEvent(
         event: MatrixEvent,
         room: Room | undefined,
     ) => {
-        const isThread = eventThreadRoot(event) !== null;
+        const isThread =
+            event.isRelation("m.thread") || eventThreadRoot(event) !== null;
         const relType = facts.relType;
         const isEdit = relType === "m.replace";
         const isRedaction = facts.type === "m.room.redaction";
@@ -6648,6 +6666,9 @@ export async function sendEdit(
 }
 
 const roomUpdateSubscribers = new Set<() => void>();
+// Zami: onRoomUpdate subscribers, told the room list is complete without a full
+// rebuild (markRoomListComplete).
+const roomListStatusSubscribers = new Set<() => void>();
 
 /** Re-run every onRoomUpdate subscriber (room lists re-derive). */
 export function notifyRoomUpdate(): void {
@@ -6664,6 +6685,8 @@ export function onRoomUpdate(callback: () => void): () => void {
         callback();
     };
     roomUpdateSubscribers.add(rebuild);
+    const statusChanged = () => callback();
+    roomListStatusSubscribers.add(statusChanged);
     const syncHandler = (state: string) => {
         if (state === "PREPARED" || state === "SYNCING") callback();
     };
@@ -6672,6 +6695,7 @@ export function onRoomUpdate(callback: () => void): () => void {
     matrixClient.on(RoomEvent.Tags as never, callback as never);
     return () => {
         roomUpdateSubscribers.delete(rebuild);
+        roomListStatusSubscribers.delete(statusChanged);
         matrixClient?.off(ClientEvent.Sync, syncHandler as never);
         matrixClient?.off("Room.myMembership" as never, callback as never);
         matrixClient?.off(RoomEvent.Tags as never, callback as never);

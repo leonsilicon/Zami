@@ -1842,6 +1842,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.previewYou": "Vous : {text}",
     "roomList.noRoomsYet": "Aucun salon pour l'instant",
     "roomList.emptyCategory": "Aucun salon",
+    "roomList.loadingRooms": "Chargement des salons…",
     "roomList.copyRoomLink": "Copier le lien du salon",
     "roomList.markAsRead": "Marquer comme lu",
     "roomList.addToSpace": "Ajouter à un espace",

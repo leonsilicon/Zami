@@ -1711,6 +1711,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "roomList.previewYou": "あなた: {text}",
     "roomList.noRoomsYet": "ルームはまだありません",
     "roomList.emptyCategory": "ルームなし",
+    "roomList.loadingRooms": "ルームを読み込み中…",
     "roomList.copyRoomLink": "ルームのリンクをコピー",
     "roomList.markAsRead": "既読にする",
     "roomList.addToSpace": "スペースに追加",

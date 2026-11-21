@@ -1628,7 +1628,8 @@ type Row =
     | { kind: "dm"; key: string; room: Room }
     /** A block's bottom margin (`mb-2`, a category's `mb-1`). */
     | { kind: "gap"; key: string; depth: number; size: "h-1" | "h-2" }
-    | { kind: "empty"; key: string };
+    /** Zami: or, while the room list is still loading, "Loading rooms…". */
+    | { kind: "empty"; key: string; loading: boolean };
 
 /** A category the list shows, for the `loadSubHierarchy` action. */
 type CategoryLoad = { id: string; depth: number; expanded: boolean };
@@ -2473,6 +2474,8 @@ export default function RoomList({
     }
 
     const hierarchyLoading = useRune(() => roomsState.hierarchyLoading);
+    // Zami: see roomsState.roomListLoaded.
+    const roomListLoaded = useRune(() => roomsState.roomListLoaded);
 
     // Zami: the list's blocks, in upstream's order, as FlatList rows. Built in
     // a rune selector: sub-space categories read their children live, so with
@@ -2555,11 +2558,19 @@ export default function RoomList({
                     const hier =
                         subHierarchies[node.id] ?? getCachedHierarchy(node.id);
                     const kids = spaceChildren(node.id, hier);
-                    // Spinner only when there's nothing cached to show meanwhile.
-                    const loading = subHierarchyLoading.has(node.id) && !hier;
                     const nestedSpaces = kids.spaces.filter(
                         (c) => c.id !== node.id && !ancestors.includes(c.id),
                     );
+                    // Zami: nothing in it yet while the room list is still
+                    // loading is "loading" too, not "No rooms".
+                    const empty =
+                        kids.rooms.length === 0 &&
+                        kids.unjoined.length === 0 &&
+                        nestedSpaces.length === 0;
+                    // Spinner only when there's nothing cached to show meanwhile.
+                    const loading =
+                        (subHierarchyLoading.has(node.id) && !hier) ||
+                        (empty && !roomListLoaded);
                     loads.push({ id: node.id, depth, expanded });
                     push({
                         kind: "category",
@@ -2594,12 +2605,7 @@ export default function RoomList({
                                 indent + 1,
                                 `${path}/${child.id}`,
                             );
-                        if (
-                            !loading &&
-                            kids.rooms.length === 0 &&
-                            kids.unjoined.length === 0 &&
-                            nestedSpaces.length === 0
-                        )
+                        if (!loading && empty)
                             push({
                                 kind: "emptyCategory",
                                 key: `${path}|empty`,
@@ -2671,7 +2677,11 @@ export default function RoomList({
                     !hierarchyLoading &&
                     !showDMs
                 )
-                    push({ kind: "empty", key: "empty" });
+                    push({
+                        kind: "empty",
+                        key: roomListLoaded ? "empty" : "loading",
+                        loading: !roomListLoaded,
+                    });
 
                 return out;
             });
@@ -2698,6 +2708,7 @@ export default function RoomList({
             showDMs,
             sortedDirectRooms,
             hierarchyLoading,
+            roomListLoaded,
             rowCache,
         ],
         { isEqual: (a, b) => a.rows === b.rows && a.loads === b.loads },
@@ -2892,7 +2903,17 @@ export default function RoomList({
                         </Indent>
                     );
                 case "empty":
-                    return (
+                    return item.loading ? (
+                        <View
+                            className="flex-row items-center justify-center gap-2 px-4"
+                            style={{ height: metrics.empty }}
+                        >
+                            <Spin className="w-3.5 h-3.5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
+                            <Text className="text-sm text-discord-textMuted">
+                                {t("roomList.loadingRooms")}
+                            </Text>
+                        </View>
+                    ) : (
                         <Text className="px-4 py-8 text-sm text-discord-textMuted text-center">
                             {t("roomList.noRoomsYet")}
                         </Text>

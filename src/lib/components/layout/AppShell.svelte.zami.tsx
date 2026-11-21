@@ -253,6 +253,7 @@ import {
     startEventIndex,
     type ActiveSessionHeartbeat,
     noteChatsOnScreen,
+    isRoomListComplete,
 } from "$lib/matrix/client";
 import {
     shouldNotifyDecrypted,
@@ -495,6 +496,8 @@ export default function AppShell() {
     const activeRoomId = useRune(() => roomsState.activeRoomId);
     const activeSpaceId = useRune(() => roomsState.activeSpaceId);
     const noSpaces = useRune(() => roomsState.spaces.length === 0);
+    // Zami: see roomsState.roomListLoaded.
+    const roomListLoaded = useRune(() => roomsState.roomListLoaded);
     const inviteRoomId = useRune(() => inviteDialogState.roomId);
     const pollRoomId = useRune(() => pollDialogState.roomId);
     const locationRoomId = useRune(() => locationDialogState.roomId);
@@ -1873,6 +1876,8 @@ export default function AppShell() {
     } | null>(null);
 
     function refreshRooms() {
+        // Zami: see roomsState.roomListLoaded.
+        roomsState.roomListLoaded = isRoomListComplete();
         const layout = getSpaceLayout();
         // Deliberately unconditional: SpaceSidebar's `rootItems` derived reads
         // spaceLayout and leans on this reassignment to pick up renamed or
@@ -3315,15 +3320,30 @@ export default function AppShell() {
                                 />
                             ) : (
                                 <View className="flex-1 flex-col items-center justify-center p-8">
-                                    <View className="w-24 h-24 rounded-full bg-discord-backgroundSecondary flex-row items-center justify-center mb-6">
-                                        <Text className="text-5xl font-bold text-discord-textMuted">
-                                            #
-                                        </Text>
-                                    </View>
+                                    {/* Zami: while the room list is still loading (at launch
+                                        with no saved one, not even the remembered room is
+                                        known yet), say so instead of claiming it's empty. */}
+                                    {!roomListLoaded ? (
+                                        <View className="flex-row items-center gap-3">
+                                            <Spin className="w-5 h-5 border-2 border-discord-textMuted border-t-transparent rounded-full" />
+                                            <Text
+                                                accessibilityRole="header"
+                                                className="text-base text-discord-textMuted"
+                                            >
+                                                {t("roomList.loadingRooms")}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <View className="w-24 h-24 rounded-full bg-discord-backgroundSecondary flex-row items-center justify-center mb-6">
+                                            <Text className="text-5xl font-bold text-discord-textMuted">
+                                                #
+                                            </Text>
+                                        </View>
+                                    )}
                                     {/* Only a spaceless account is genuinely empty. With
                                         spaces joined, Home being empty just means every room
                                         lives in one — saying "no rooms yet" would be a lie. */}
-                                    {noSpaces ? (
+                                    {!roomListLoaded ? null : noSpaces ? (
                                         <>
                                             <Text
                                                 accessibilityRole="header"

@@ -163,6 +163,14 @@ export const roomsState = $state({
     /** Levels below the joined ancestor (1 = direct child, 2 = nested, …). */
     spaceDrillDepth: 0,
     hierarchyLoading: false,
+    /**
+     * Zami: whether sync has delivered the whole room list yet
+     * (isRoomListComplete; the app shell's refreshRooms keeps it current).
+     * Until then a list with nothing in it is still loading (at launch with no
+     * saved room list, or the saved one's first part), so the views show
+     * "Loading rooms…" instead of saying there are none.
+     */
+    roomListLoaded: false,
     isLoading: false,
     unreadTick: 0,
     roomsTick: 0,
