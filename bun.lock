@@ -25,6 +25,10 @@
       "name": "@-apps/site",
       "version": "0.0.0",
     },
+    "apps/upstream-sync": {
+      "name": "@-apps/upstream-sync",
+      "version": "0.0.0",
+    },
     "apps/zami": {
       "name": "@-apps/zami",
       "version": "0.1.0",
@@ -321,6 +325,8 @@
     "@-apps/push-gateway": ["@-apps/push-gateway@workspace:apps/push-gateway"],
 
     "@-apps/site": ["@-apps/site@workspace:apps/site"],
+
+    "@-apps/upstream-sync": ["@-apps/upstream-sync@workspace:apps/upstream-sync"],
 
     "@-apps/zami": ["@-apps/zami@workspace:apps/zami"],
 
