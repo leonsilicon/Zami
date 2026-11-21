@@ -48,6 +48,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/com/github/az4521/Zam": {
+      "name": "@-/com.github.az4521.zam",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.paths": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches": {
       "name": "@-/com.leonsilicon.zami.configs.patches",
       "version": "0.0.0",
@@ -55,6 +66,7 @@
         "_patches": "./_patches.ts",
       },
       "dependencies": {
+        "@-/com.github.az4521.zam": "workspace:*",
         "@-/com.leonsilicon.zami.paths": "workspace:*",
         "codemod": "catalog:",
       },
@@ -230,6 +242,7 @@
         "_web": "./_web.ts",
       },
       "dependencies": {
+        "@-/com.github.az4521.zam": "workspace:*",
         "@-/com.leonsilicon.zami.configs.patches": "workspace:*",
         "@-/com.leonsilicon.zami.paths": "workspace:*",
         "@-/com.leonsilicon.zami.plugins": "workspace:*",
@@ -270,6 +283,8 @@
   },
   "packages": {
     "2g": ["2g@1.0.1", "", { "peerDependencies": { "typescript": ">=5.8.0" }, "optionalPeers": ["typescript"], "bin": { "2g": "bin/cli.js" } }, "sha512-+uViadKOS/wwR4pFu5g8TPn3QHpKqoX19JHCnp8k/3cLpImdcXozwvZA6Q/5PeW3AcU8neL8faaMidBcv7o8CA=="],
+
+    "@-/com.github.az4521.zam": ["@-/com.github.az4521.zam@workspace:packages/com/github/az4521/Zam"],
 
     "@-/com.leonsilicon.zami.configs.patches": ["@-/com.leonsilicon.zami.configs.patches@workspace:packages/com/leonsilicon/zami/configs/patches"],
 

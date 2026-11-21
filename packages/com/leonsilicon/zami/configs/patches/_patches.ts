@@ -5,14 +5,17 @@
 //   _patches check                     every codemod still applies: the source ones to a
 //                                      copy of their tree, the npm ones as current patches
 //   _patches apply <source> <dir>      apply the codemods for <source> (a tree in the
-//                                      repository, e.g. packages/com/github/az4521/Zam) to
+//                                      repository, e.g. repos/com/github/az4521/Zam) to
 //                                      the copy of it in <dir>
 //
 // Run from anywhere in the repository.
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { repoRoot } from "@-/com.leonsilicon.zami.paths";
+// Flatcap resolves names to case-sensitive paths, but npm names use lowercase.
+// oxlint-disable-next-line flatcap/no-unresolved-imports
+import { readZamFile } from "@-/com.github.az4521.zam";
+import { repoRoot, ZAM_PATH } from "@-/com.leonsilicon.zami.paths";
 import { applyCodemod, applySourceCodemods, discoverCodemods } from "#codemods";
 import { checkNpmPatch, generateNpmPatch, npmCodemods } from "#npm";
 
@@ -25,13 +28,14 @@ function check(): number {
     const target = codemod.config.target;
     try {
       if (target.kind === "source") {
-        // Only the files it changes, copied from the tree as it is in the repository.
+        // Copy only the files it changes, using the pin for Zam.
         const copy = mkdtempSync(join(tmpdir(), `zami-patches-${codemod.name}-`));
         try {
           for (const bundle of codemod.config.bundles) {
-            const from = join(root, target.source, bundle.path);
-            mkdirSync(dirname(join(copy, bundle.path)), { recursive: true });
-            cpSync(from, join(copy, bundle.path));
+            const file = join(copy, bundle.path);
+            mkdirSync(dirname(file), { recursive: true });
+            if (target.source === ZAM_PATH) writeFileSync(file, readZamFile(root, bundle.path));
+            else cpSync(join(root, target.source, bundle.path), file);
           }
           applyCodemod(codemod, copy);
         } finally {

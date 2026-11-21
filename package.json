@@ -12,6 +12,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "packages/com/github/az4521/Zam",
       "packages/com/leonsilicon/**"
     ],
     "catalog": {
