@@ -17,9 +17,10 @@
  *   is sent. Nothing published changes.
  */
 import {
-    NATIVE_PLACEHOLDER_FILL,
+    NATIVE_LAYERED_PLACEHOLDER,
     NATIVE_PLACEHOLDER_SIZE,
     PlaceholderClock,
+    placeholderI420,
 } from "$lib/utils/nativeShareSubstitute";
 
 interface StartMessage {
@@ -32,16 +33,20 @@ interface StartMessage {
     sub: MessagePort;
     /** The share's frame rate (the placeholders' nominal duration). */
     fps: number;
+    /** Sent as two simulcast layers: the larger placeholder. */
+    layered?: boolean;
 }
 
 type ToMain =
     { type: "info"; info: unknown } | { type: "ended"; reason: string };
 
-const canvas = new OffscreenCanvas(
-    NATIVE_PLACEHOLDER_SIZE,
-    NATIVE_PLACEHOLDER_SIZE,
-);
-const ctx = canvas.getContext("2d");
+/** The placeholder picture, from memory: see placeholderI420 for why it
+ *  must not be a canvas. */
+let placeholderSize: { width: number; height: number } = {
+    width: NATIVE_PLACEHOLDER_SIZE,
+    height: NATIVE_PLACEHOLDER_SIZE,
+};
+let placeholder = placeholderI420(NATIVE_PLACEHOLDER_SIZE);
 let writer: WritableStreamDefaultWriter<VideoFrame> | null = null;
 let previewWriter: WritableStreamDefaultWriter<VideoFrame> | null = null;
 let helper: MessagePort | null = null;
@@ -64,14 +69,6 @@ const statsTimer = setInterval(() => {
     skippedNotReady = 0;
 }, 2000);
 
-/** Fill the placeholder once. It stays one colour: a changing picture makes
- *  the encoder insert a keyframe every 256 frames (NATIVE_PLACEHOLDER_FILL). */
-function draw(): void {
-    if (!ctx) return;
-    ctx.fillStyle = NATIVE_PLACEHOLDER_FILL;
-    ctx.fillRect(0, 0, NATIVE_PLACEHOLDER_SIZE, NATIVE_PLACEHOLDER_SIZE);
-}
-
 /** Write one placeholder, stamped with `captureUs` (the AU's capture time;
  *  none for a catch-up placeholder, see PlaceholderClock). Skipped (not
  *  queued) when the generator can't take it now: the substitution stage asks
@@ -82,17 +79,24 @@ function tick(captureUs?: number): void {
         skippedNotReady++;
         return;
     }
-    const frame = new VideoFrame(canvas, {
+    // One colour every frame: a changing picture makes the encoder insert a
+    // keyframe every 256 frames (NATIVE_PLACEHOLDER_FILL).
+    const frame = new VideoFrame(placeholder, {
+        format: "I420",
+        codedWidth: placeholderSize.width,
+        codedHeight: placeholderSize.height,
         timestamp: clock.stamp(captureUs, performance.now() * 1000),
         duration: Math.round(1e6 / fps),
     });
     writes++;
-    writer.write(frame).catch(() => {});
+    writer.write(frame).catch(() => frame.close());
 }
 
 // ---------------------------------------------------------------- preview
 
 let decoder: VideoDecoder | null = null;
+/** Most AUs the preview decoder may hold before it is reset. */
+const MAX_PREVIEW_DECODE_QUEUE = 8;
 let needKey = true;
 
 /** H.264 codec string (avc1.PPCCLL) from the first SPS in an AU. */
@@ -182,6 +186,14 @@ function decodeAu(au: { key: boolean; ts: number; data: ArrayBuffer }): void {
     }
     if (needKey && !hasKeyNal(bytes)) return;
     needKey = false;
+    // A preview decoder that falls behind (a busy GPU under a game) would
+    // queue every AU without limit, each a copy: start over at a keyframe.
+    if (decoder.decodeQueueSize > MAX_PREVIEW_DECODE_QUEUE) {
+        previewInfo(`decoder behind (${decoder.decodeQueueSize} queued)`);
+        resetDecoder();
+        helper?.postMessage({ cmd: "key" });
+        return;
+    }
     try {
         decoder.decode(
             new EncodedVideoChunk({
@@ -202,8 +214,19 @@ function onAu(au: {
     key: boolean;
     ts: number;
     data: ArrayBuffer;
+    layer?: number;
 }): void {
     if (!sub) return;
+    const layer = au.layer === 1 ? 1 : 0;
+    if (layer === 1) {
+        // The half-size simulcast layer: only substituted. Its placeholder
+        // frames come from the same placeholders as the full layer's (the
+        // encoder makes both layers from each one).
+        sub.postMessage({ key: au.key, ts: au.ts, data: au.data, layer }, [
+            au.data,
+        ]);
+        return;
+    }
     // The preview decodes first: EncodedVideoChunk copies its bytes, and the
     // transfer below detaches au.data (decoding after it saw an empty buffer,
     // so the preview never configured a decoder).
@@ -211,7 +234,9 @@ function onAu(au: {
     decodeAu(au);
     // The AU goes to the substitution stage, then the placeholder that
     // carries it (the AU is queued first), stamped with its capture time.
-    sub.postMessage({ key: au.key, ts: au.ts, data: au.data }, [au.data]);
+    sub.postMessage({ key: au.key, ts: au.ts, data: au.data, layer }, [
+        au.data,
+    ]);
     tick(au.ts);
 }
 
@@ -253,14 +278,30 @@ self.onmessage = (
     helper = msg.helper;
     sub = msg.sub;
     fps = msg.fps;
-    draw();
+    if (msg.layered) {
+        placeholderSize = NATIVE_LAYERED_PLACEHOLDER;
+        placeholder = placeholderI420(
+            NATIVE_LAYERED_PLACEHOLDER.width,
+            NATIVE_LAYERED_PLACEHOLDER.height,
+        );
+    }
     sub.onmessage = (ev: MessageEvent<{ req?: string } | null>) => {
-        if (ev.data?.req === "key") helper?.postMessage({ cmd: "key" });
+        if (ev.data?.req === "key")
+            helper?.postMessage({
+                cmd: "key",
+                layer: (ev.data as { layer?: number }).layer === 1 ? 1 : 0,
+            });
         else if (ev.data?.req === "catchup") tick();
     };
     helper.onmessage = (ev: MessageEvent<unknown>) => {
         const m = ev.data as
-            | { type: "au"; key: boolean; ts: number; data: ArrayBuffer }
+            | {
+                  type: "au";
+                  key: boolean;
+                  ts: number;
+                  data: ArrayBuffer;
+                  layer?: number;
+              }
             | { type: "info"; info: unknown }
             | { type: "ended"; reason: string }
             | null;

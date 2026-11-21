@@ -303,6 +303,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Réactiver le son du partage",
     "callView.you": "Vous",
     "callView.sScreen": "Écran de {name}",
+    "callView.yourScreen": "Votre écran",
     "callView.exitSpotlightFor": "Quitter la mise en avant de {label}",
     "callView.spotlight": "Mettre en avant {label}",
 
@@ -980,6 +981,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "En réponse à",
     "linkPreview.showMore": "Afficher plus",
     "linkPreview.showLess": "Afficher moins",
+    "linkPreview.translatedFrom": "Traduit depuis : {language}",
+    "linkPreview.showOriginal": "Voir l'original",
+    "linkPreview.showTranslation": "Voir la traduction",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} vote} other {{votes} votes}}",
     "linkPreview.pollFinal": "Résultats finaux",
@@ -2270,6 +2274,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Votre débit montant mesure {upload}, donc ceci va jusqu'à {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Votre débit montant n'a pas encore été mesuré. Il l'est pendant que vous envoyez de la vidéo, donc ceci va jusqu'à {max} pour l'instant.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Au-delà de {safe}, c'est votre choix : votre débit montant n'est pas vérifié, et les spectateurs sur des connexions ou appareils plus lents peuvent voir des saccades ou des gels.",
     "screenShareQualityChips.nativeCapture": "Assistant de capture Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Capture et encode le partage hors du navigateur, pour qu'un jeu gourmand ne le saccade pas. S'applique au prochain partage.",
@@ -3139,6 +3145,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "le processeur",
     "callStats.limitBandwidth": "la bande passante",
     "callStats.limitNone": "rien",
+    "callStats.shareHeldByViewers":
+        "Un spectateur ne suit pas : votre partage est limité à {rate} Mbit/s",
     "callStats.limitOther": "autre",
     "callStats.frameTime": "Temps par image",
     "callStats.resent": "Renvoyé",

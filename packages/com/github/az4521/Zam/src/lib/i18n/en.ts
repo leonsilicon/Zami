@@ -302,6 +302,7 @@ export const en = {
     "callView.unmuteShareAudio": "Unmute share audio",
     "callView.you": "You",
     "callView.sScreen": "{name}'s screen",
+    "callView.yourScreen": "Your screen",
     "callView.exitSpotlightFor": "Exit spotlight for {label}",
     "callView.spotlight": "Spotlight {label}",
 
@@ -1094,6 +1095,9 @@ export const en = {
     "linkPreview.replyingTo": "Replying to",
     "linkPreview.showMore": "Show more",
     "linkPreview.showLess": "Show less",
+    "linkPreview.translatedFrom": "Translated from {language}",
+    "linkPreview.showOriginal": "Show original",
+    "linkPreview.showTranslation": "Show translation",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} vote} other {{votes} votes}}",
     "linkPreview.pollFinal": "Final results",
@@ -2353,6 +2357,8 @@ export const en = {
         "Your upload measures {upload}, so this goes up to {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Your upload hasn't been measured yet. It's measured while you send video, so this goes up to {max} for now.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Above {safe} is your call: your upload isn't checked, and viewers on slower connections or devices may see stutter or freezes.",
     "screenShareQualityChips.nativeCapture": "Windows capture helper",
     "screenShareQualityChips.nativeCaptureHint":
         "Captures and encodes the share outside the browser, so a busy game doesn't stutter it. Applies to the next share.",
@@ -3099,6 +3105,8 @@ export const en = {
     "callStats.limitCpu": "CPU",
     "callStats.limitBandwidth": "bandwidth",
     "callStats.limitNone": "nothing",
+    "callStats.shareHeldByViewers":
+        "A viewer can't keep up: your share is held at {rate} Mbps",
     "callStats.limitOther": "other",
     "callStats.frameTime": "Time per frame",
     "callStats.resent": "Resent",

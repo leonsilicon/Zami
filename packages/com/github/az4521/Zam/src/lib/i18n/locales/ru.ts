@@ -316,6 +316,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.unmuteShareAudio": "Включить звук демонстрации",
     "callView.you": "Вы",
     "callView.sScreen": "Экран пользователя {name}",
+    "callView.yourScreen": "Ваш экран",
     "callView.exitSpotlightFor": "Выйти из режима «в центре внимания»: {label}",
     "callView.spotlight": "Выделить: {label}",
 
@@ -1135,6 +1136,9 @@ const messages: Partial<Record<MessageKey, string>> = {
     "linkPreview.replyingTo": "В ответ",
     "linkPreview.showMore": "Показать больше",
     "linkPreview.showLess": "Свернуть",
+    "linkPreview.translatedFrom": "Переведено с языка: {language}",
+    "linkPreview.showOriginal": "Показать оригинал",
+    "linkPreview.showTranslation": "Показать перевод",
     "linkPreview.pollVotes":
         "{count, plural, one {{votes} голос} few {{votes} голоса} many {{votes} голосов} other {{votes} голоса}}",
     "linkPreview.pollFinal": "Окончательные результаты",
@@ -2435,6 +2439,8 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Ваша скорость отдачи измерена как {upload}, поэтому предел поднимается до {max}.",
     "screenShareQualityChips.bitrateUnmeasured":
         "Скорость вашей отдачи ещё не измерена. Она измеряется, пока вы отправляете видео, поэтому пока предел поднимается до {max}.",
+    "screenShareQualityChips.bitrateHighWarning":
+        "Выше {safe}: на ваш страх и риск, скорость отдачи не проверяется, и у зрителей с медленным соединением или устройством возможны рывки и зависания.",
     "screenShareQualityChips.nativeCapture": "Помощник захвата Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Захватывает и кодирует трансляцию вне браузера, поэтому тяжелая игра её не подтормаживает. Применяется к следующей трансляции.",
@@ -3207,6 +3213,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callStats.limitCpu": "процессор",
     "callStats.limitBandwidth": "пропускная способность",
     "callStats.limitNone": "ничего",
+    "callStats.shareHeldByViewers":
+        "Зритель не успевает: ваша трансляция ограничена {rate} Мбит/с",
     "callStats.limitOther": "другое",
     "callStats.frameTime": "Время на кадр",
     "callStats.resent": "Повторно отправлено",

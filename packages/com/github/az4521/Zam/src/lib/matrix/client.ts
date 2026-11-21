@@ -10178,6 +10178,42 @@ export async function setRoomPowerLevelTags(
     );
 }
 
+/** State that decides what we may do in a room. */
+const PERMISSION_STATE_TYPES = new Set([
+    "m.room.power_levels",
+    "m.room.create",
+    "m.room.join_rules",
+]);
+
+/**
+ * Calls `callback` (at most once per 100 ms) when power levels, the create
+ * event or join rules change in any room. Ordinary state events do not bump
+ * roomsTick, and a room's power levels often land after the first render
+ * (sliding sync, a space with no recent messages), so UI gated on a
+ * permission showed its "not allowed" default until something unrelated
+ * re-rendered it: the join button, the space settings menu. Returns the
+ * unsubscribe function.
+ */
+export function onPermissionStateChanged(callback: () => void): () => void {
+    if (!matrixClient) return () => {};
+    const client = matrixClient;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onEvents = (event: MatrixEvent) => {
+        if (!PERMISSION_STATE_TYPES.has(event.getType())) return;
+        if (timer !== null) return;
+        timer = setTimeout(() => {
+            timer = null;
+            callback();
+        }, 100);
+    };
+    client.on(RoomStateEvent.Events as never, onEvents as never);
+    return () => {
+        client.off(RoomStateEvent.Events as never, onEvents as never);
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+    };
+}
+
 /**
  * Calls `callback` whenever either power level tags event changes in the
  * room. Ordinary state events do not bump roomsTick, so UI that shows tags
@@ -11593,7 +11629,14 @@ function rtcSessionFor(
     room: Room,
 ): ReturnType<MatrixClient["matrixRTC"]["getRoomSession"]> | null {
     const live = matrixClient?.getRoom(room.roomId);
-    return live ? matrixClient!.matrixRTC.getRoomSession(live) : null;
+    if (!live) return null;
+    const session = matrixClient!.matrixRTC.getRoomSession(live);
+    // A session created here (a room opened before the subscribe-time scan
+    // saw it) can go 0 -> N members through a recalc with no
+    // `session_started`, so watch it now or its changes never bump voiceTick
+    // and the Join button stays hidden until the view remounts.
+    watchVoiceSession(session as never);
+    return session;
 }
 
 /**
@@ -11612,11 +11655,12 @@ function recalcCallOnMemberLoaded(event: MatrixEvent): void {
         .getLiveTimeline()
         .getState(EventTimeline.FORWARDS)
         ?.getStateEvents(EventType.GroupCallMemberPrefix);
-    const inCall = callState?.some(
-        (e) =>
-            e.getSender() === userId &&
-            !isMembershipLeave(e.getContent() as Record<string, unknown>),
-    );
+    const inCall =
+        callState?.some(
+            (e) =>
+                e.getSender() === userId &&
+                !isMembershipLeave(e.getContent() as Record<string, unknown>),
+        ) || hasStickyEventFrom(room, userId);
     if (!inCall) return;
     void rtcSessionFor(room)
         ?.ensureRecalculateSessionMembers()
@@ -11735,6 +11779,19 @@ let onVoiceSessionStarted: ((roomId: string, session: object) => void) | null =
     null;
 let onVoiceSessionEnded: (() => void) | null = null;
 
+/** Whether `userId` has a sticky event in the room: how newer clients send
+ *  their call membership (m.rtc.member), which the state check above misses. */
+function hasStickyEventFrom(room: Room, userId: string): boolean {
+    const sticky = (
+        room as unknown as {
+            _unstable_getStickyEvents?: () => Iterable<MatrixEvent>;
+        }
+    )._unstable_getStickyEvents?.();
+    if (!sticky) return false;
+    for (const e of sticky) if (e.getSender() === userId) return true;
+    return false;
+}
+
 function notifyVoiceSessions(): void {
     for (const cb of voiceSessionSubscribers) cb();
 }
@@ -11823,6 +11880,7 @@ export {
     playSoundboardSound,
     refreshDecodeSupport,
     refreshShareSmoothing,
+    shareBitrateHeldAt,
     participantHasShareAudio,
     setParticipantLocalMute,
     setParticipantShareMute,
@@ -11848,6 +11906,8 @@ export {
     leaveVoiceCall,
     setMicMuted,
     setMicClosedAtJoin,
+    setMicGateOpen,
+    setMicGateOpenAtJoin,
     setVoicePlaybackMuted,
     setVoiceOutputDevice,
     setVoiceOutputVolume,

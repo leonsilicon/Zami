@@ -8,6 +8,9 @@ import {
     nativeShareSize,
     PlaceholderClock,
     type NativeAu,
+    placeholderI420,
+    placeholderLayer,
+    LayeredSubstitute,
 } from "./nativeShareSubstitute";
 
 function au(tag: number, key: boolean): NativeAu {
@@ -217,6 +220,16 @@ describe("PlaceholderClock", () => {
         expect(clock.stamp(9e9, 6e6)).toBe(9e9 + 1e6);
     });
 
+    it("puts a catch-up 1 ms after the last, so the queued AUs keep their capture times", () => {
+        const clock = new PlaceholderClock();
+        expect(clock.stamp(9e9, 5e6)).toBe(9e9);
+        // Catch-up written 80 ms later, while AUs captured since are queued.
+        expect(clock.stamp(undefined, 5e6 + 80000)).toBe(9e9 + 1000);
+        // The queued AUs then keep their real 16.7 ms spacing.
+        expect(clock.stamp(9e9 + 16667, 5e6 + 81000)).toBe(9e9 + 16667);
+        expect(clock.stamp(9e9 + 33333, 5e6 + 82000)).toBe(9e9 + 33333);
+    });
+
     it("stays strictly increasing, by at least 1 ms", () => {
         const clock = new PlaceholderClock();
         const a = clock.stamp(9e9, 5e6);
@@ -274,5 +287,78 @@ describe("nativeShareSize", () => {
         expect(
             nativeShareSize({ event: "started", width: 0, height: 1080 }),
         ).toBeNull();
+    });
+});
+
+describe("placeholderI420", () => {
+    it("is a full I420 picture of one grey", () => {
+        const p = placeholderI420(64);
+        expect(p.length).toBe(64 * 64 * 1.5);
+        expect(new Set(p.subarray(0, 64 * 64))).toEqual(new Set([93]));
+        expect(new Set(p.subarray(64 * 64))).toEqual(new Set([128]));
+    });
+});
+
+describe("simulcast placeholders", () => {
+    const sized = (w: number, type = "delta", tag = 0) => {
+        // 64 = the one-layer placeholder; 352 = the layered one's low layer.
+        const h = w === 352 ? 198 : w;
+        return {
+            type,
+            data: new Uint8Array([tag]).buffer as ArrayBuffer,
+            getMetadata: () => ({
+                width: w,
+                height: h,
+                mimeType: "video/H264",
+            }),
+        };
+    };
+
+    it("tells the layers apart by the placeholder's encoded size", () => {
+        const rect = (w: number, h: number) => ({
+            type: "delta",
+            data: new ArrayBuffer(1),
+            getMetadata: () => ({ width: w, height: h }),
+        });
+        expect(placeholderLayer(sized(64))).toBe(0);
+        expect(placeholderLayer(rect(704, 396))).toBe(0);
+        expect(placeholderLayer(rect(352, 198))).toBe(1);
+        // Camera layers are never taken for placeholders.
+        expect(placeholderLayer(rect(640, 360))).toBeNull();
+        expect(placeholderLayer(rect(320, 180))).toBeNull();
+        expect(placeholderLayer(sized(32))).toBeNull();
+        expect(placeholderLayer(sized(960))).toBeNull();
+        expect(placeholderLayer({ data: new ArrayBuffer(1) })).toBeNull();
+    });
+
+    it("gives each layer's placeholders that layer's AUs", () => {
+        const sub = new LayeredSubstitute({ requestKey: () => {} });
+        sub.push({ key: true, data: new Uint8Array([1]).buffer, layer: 0 });
+        sub.push({ key: true, data: new Uint8Array([2]).buffer, layer: 1 });
+        const low = sized(352, "key");
+        const full = sized(64, "key");
+        expect(sub.substitute(low)).toBe(true);
+        expect(sub.substitute(full)).toBe(true);
+        expect(new Uint8Array(low.data)[0]).toBe(2);
+        expect(new Uint8Array(full.data)[0]).toBe(1);
+    });
+
+    it("treats an AU without a layer as the full layer's", () => {
+        const sub = new LayeredSubstitute({ requestKey: () => {} });
+        sub.push({ key: true, data: new Uint8Array([7]).buffer });
+        const full = sized(64, "key");
+        expect(sub.substitute(full)).toBe(true);
+        expect(new Uint8Array(full.data)[0]).toBe(7);
+        // Nothing queued for the low layer: its H.264 placeholder is dropped.
+        expect(sub.substitute(sized(352, "delta"))).toBe(false);
+    });
+
+    it("asks for a keyframe on the layer that needs one", () => {
+        const asked: number[] = [];
+        const sub = new LayeredSubstitute({ requestKey: (l) => asked.push(l) });
+        sub.push({ key: false, data: new Uint8Array([3]).buffer, layer: 1 });
+        // The low layer's encoder made a keyframe; the queued AU is a delta.
+        expect(sub.substitute(sized(352, "key"))).toBe(false);
+        expect(asked).toEqual([1]);
     });
 });
