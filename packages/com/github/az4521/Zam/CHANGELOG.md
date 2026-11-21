@@ -4,6 +4,122 @@ Human-readable release notes. The `## v<version>` section for the released versi
 the GitHub release body automatically (see `.github/workflows/release.yml`); the auto-generated
 commit list is appended below it.
 
+## v1.66.18
+
+✨ **New**
+
+- **Pop a call out into its own window**, so you can keep it in view while you use the rest of Zam.
+- **See each device someone joined a call from**, instead of a tiny indicator, when they're in a call on more than one device.
+- **A warning when your server blocks your account or your upload quota runs out**, for example on matrix.org.
+- **Import favourite GIFs you uploaded to Discord** (desktop app), through a small self-hostable link-refresh service you set up in Settings.
+
+⚡ **Better screen shares**
+
+- **No bitrate ceiling:** shares now default to Automatic and follow your live upload speed instead of an old best-ever reading. A manual cap is still available.
+- **Shares no longer get stuck at half resolution** for viewers, including on high-DPI screens.
+
+🐛 **Fixed**
+
+- **Mentions not notifying in encrypted rooms set to "mentions only".**
+- **Being kicked from a call** no longer reconnects you automatically.
+- **Turning on encrypted favourite GIFs** now asks for your recovery key when it's needed.
+
+## v1.66.17
+
+⚡ **Faster**
+
+- **Zam starts up faster**, most noticeably on phones and slow connections: it no longer waits for three server checks in a row before showing your chats.
+- **Less memory over a long session:** rooms you haven't looked at for a while keep only their newest messages in memory, and load the rest again when you scroll up.
+
+🐛 **Fixed**
+
+- **Telegram sticker imports freezing partway through.** A sticker that won't download now fails on its own instead of stopping the import.
+- **Imported Telegram stickers are named after their emoji** (for example `Pack_joy_3`) instead of just a number.
+
+🛠️ **Debug**
+
+- **Settings > Debug > Startup timing** shows how long each startup step took, with a copy button for bug reports.
+
+## v1.66.16
+
+✨ **New**
+
+- **Messages show greyed out until they're sent**, so you can tell when one hasn't reached the server yet.
+- **A loading bar on the "Restoring session" screen** while Zam starts up.
+
+🐛 **Fixed**
+
+- **Tapping a notification opening the room you were last in** instead of the message, when Zam was still starting up (Android) or the open window was still loading (web app).
+- **Accounts on different servers sharing the sticky call membership setting** (Debug). It's now per account, and Zam only uses it when your homeserver supports it.
+- **Calls after signing into another account in the same window** possibly using the previous server's TURN details.
+
+## v1.66.15
+
+✨ **New**
+
+- **Timestamps in everyone's local time:** write `<t:1700000000>` (or `<t:1700000000:R>` and the other Discord styles), or pick a date with "Insert timestamp" in the composer's + menu. Each reader sees it in their own time zone; other Matrix apps see it in UTC.
+- **Disconnect from voice:** moderators can remove someone from a voice channel without kicking them from the room, from the participant's menu in the call. Only works on people using Zam.
+- **Encrypted favourite GIFs (optional):** Settings > Messages & Media > GIFs can encrypt your favourites list so your homeserver can't read it. Off by default; your other devices need your recovery key or a verified session to read the list.
+
+🐛 **Fixed**
+
+- **Green and purple bands, and crashes, with videos in the attachment viewer and the composer's attachment preview.** Zam no longer keeps more videos decoding than your graphics card can handle.
+- **Importing favourite GIFs from Discord twice** adding duplicates.
+
+## v1.66.14
+
+🐛 **Fixed**
+
+- **The Telegram sticker import asking for a bot token** even though Zam's built-in sticker service is available. Packs now import with just a link again.
+- **Android: "Sync now" for the search index failing** with "MatrixClient has been stopped" after the app had been in the background.
+- **Flatpak: the update message** now says why an update has to go through your software center (it needs new permissions, you declined the prompt, or your Flatpak is too old), instead of looking like a broken updater.
+
+## v1.66.13
+
+✨ **New**
+
+- **Recently used emoji:** your 10 most recently used emoji (including custom ones) now show at the top of the emoji picker, with their own tab. The list follows you across devices. You can hide it in Settings > Messages & Media.
+- **Import favourite GIFs from Discord:** on desktop, Settings > Messages & Media can import the favourite GIFs from your Discord app, including Snap and Flatpak installs of Discord and Discord Canary. GIFs hosted on Discord itself can't be imported, because their links expire.
+
+🐛 **Fixed**
+
+- **Rooms whose last message has a reaction showing as unread again** after a restart.
+- **Android: notifications for messages you already read on another device** popping up when the phone came back on.
+- **Android: notifications showing an "N" avatar** when the message couldn't be loaded. They now use the room's name or Zam's icon.
+- **Android: notifications staying up** after you read everything on another device, on servers that send a "nothing unread" update.
+- **The Telegram sticker import** missing from Settings since stickers moved to the Emotes tab.
+
+## v1.66.12
+
+✨ **New**
+
+- **Rejoin after a restart:** if Zam closes or crashes while you're in a call, it offers to rejoin that call next time it starts (as long as people are still in it).
+- **Picture in picture:** the streamer's avatar now sits next to their name. On desktop the pop-out window has the same look as the in-app one, plus mute, deafen and hang up buttons, and you can drag the in-app window out of Zam to pop it out, or drag it back in.
+- **Long code blocks** are now cut off at about 20 lines, with a Show more button to see the rest.
+- **Images open faster:** the lightbox shows the image you already see straight away and sharpens it as the full one loads. Photos sent from Zam now use the start of the full image as their preview, so opening one continues from what's already downloaded.
+- **Tweets with HLS-only video** now play.
+- **Link previews** of the web app now show Zam's name, description and icon.
+- **Adaptive video quality** is now on by default.
+
+🐛 **Fixed**
+
+- **The media tab using a lot of memory:** it loaded full-size images, all at once. It now loads thumbnails, only for the tiles you can see.
+- **Encrypted images being downloaded and decrypted again** every time you opened them.
+- **Screen shares stuck on VP8** on some computers whose graphics card can encode H.264.
+- **People watching a screen share missing from its watcher list**, especially after someone left and rejoined.
+- **The picture-in-picture watcher list hidden under its buttons**, and the call screen's watcher list being cut off.
+- **VP8 missing** from the hardware video decoding debug list.
+
+## v1.66.11
+
+🐛 **Fixed**
+
+- **Screen shares jumping back and forth on Linux with an NVIDIA card (Flatpak):** with NVIDIA hardware video decoding on, a decoded frame could be shown before it had finished arriving, so the picture flicked back a few frames over and over. Each frame is now complete before it's shown.
+
+✨ **New**
+
+- **Telegram video stickers:** sticker packs imported from Telegram now bring their video (.webm) stickers along too.
+
 ## v1.66.10
 
 🐛 **Fixed**

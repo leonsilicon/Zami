@@ -1,6 +1,6 @@
 {
     "name": "zam",
-    "version": "1.66.10",
+    "version": "1.66.18",
     "private": true,
     "main": "electron/main.cjs",
     "scripts": {
@@ -16,10 +16,11 @@
         "format": "prettier --write .",
         "electron": "electron .",
         "electron:dev": "npm run build && electron .",
-        "electron:build": "npm run build && npm run build:app-audio && npm run build:share-capture && npm run build:mediaremote &&node scripts/gen-shell-hash.mjs && electron-builder",
+        "electron:build": "npm run build && npm run build:app-audio && npm run build:share-capture && npm run build:media-session && npm run build:mediaremote && node scripts/gen-shell-hash.mjs && electron-builder",
         "build:app-audio": "node scripts/build-app-audio.mjs",
         "build:share-capture": "node scripts/build-share-capture.mjs",
-        "test:electron": "node --test electron/nativeShare.test.cjs",
+        "build:media-session": "node scripts/build-media-session.mjs",
+        "test:electron": "node --test electron/nativeShare.test.cjs electron/discordFavourites.test.cjs electron/discordAttachments.test.cjs",
         "build:mediaremote": "node scripts/build-mediaremote-adapter.mjs",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -63,6 +64,10 @@
                 {
                     "from": "native/share-capture/build/zam-share.exe",
                     "to": "zam-share.exe"
+                },
+                {
+                    "from": "native/media-session/build/zam-media.exe",
+                    "to": "zam-media.exe"
                 }
             ]
         },
@@ -154,6 +159,7 @@
         "@homebridge/dbus-native": "^0.7.9",
         "@lottiefiles/dotlottie-web": "0.82.1",
         "electron-updater": "^6.3.9",
+        "hls.js": "1.7.4",
         "uiohook-napi": "^1.5.5",
         "ws": "8.22.1"
     },
