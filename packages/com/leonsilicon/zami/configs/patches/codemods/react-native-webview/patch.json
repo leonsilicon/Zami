@@ -4,6 +4,10 @@
   "bundles": [
     { "path": "apple/RNCWebViewImpl.m", "language": "cpp" },
     {
+      "path": "android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java",
+      "language": "java"
+    },
+    {
       "path": "android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java",
       "language": "java"
     }

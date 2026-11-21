@@ -119,11 +119,34 @@ and whenever what `read` read changes.
 
 ### Native
 
-`native.call(module, method, ...args)` calls a function of one of the Expo modules built into
-the app (`native.modules()` lists them with their functions), through the shell's Zami
-plugin (`@-/com.leonsilicon.zami.shell`). `native.reactNative(api, method, ...args)` calls
-`Linking`, `Share` or `Vibration`. Arguments and results cross as JSON. iOS and Android don't
-load native code at run time, so a plugin can't bring its own (Zam's `zam.native`).
+Use `native.modules()` to discover the Expo packages, native module names, and methods
+available in the installed Zami build. The package names expose selected Expo SDK functions
+using the same method names as the SDK. For example, from a plugin's `onload(zam)`:
+
+```js
+const native = zam.zami?.native;
+if (native?.available()) {
+  const modules = await native.modules();
+  if (modules["expo-haptics"]?.includes("selectionAsync")) {
+    await native.call("expo-haptics", "selectionAsync");
+  }
+}
+```
+
+The SDK packages cover battery, clipboard, crypto, document and image pickers, haptics,
+image manipulation, keep-awake, linking, localization, foreground location, mail composition,
+network state, printing, screen orientation, motion, sharing, and speech. For a one-shot
+motion sample, use `native.call("expo-sensors", "readAsync", "accelerometer")`. The other
+sensor names are `deviceMotion` and `gyroscope`; check `isAvailableAsync` and request
+permissions for the same sensor name as needed.
+
+`native.call("ExpoApplication", "getInstallationTimeAsync")` still calls the native module
+directly. `native.reactNative(api, method, ...args)` calls `Linking`, `Share`, or `Vibration`.
+Calls return promises, and arguments and results cross as JSON. Native file URIs returned by
+pickers and printing can be passed to another native method, such as `expo-sharing`'s
+`shareAsync`. A plugin with a separate browser build can bundle the packages' web
+implementations there. Android native calls require a system WebView that supports
+origin-aware messaging. Any new native dependency requires a new Zami build.
 
 ### Web contexts
 

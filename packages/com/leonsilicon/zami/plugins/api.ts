@@ -197,9 +197,9 @@ export function createZamiApi(options: ZamiApiOptions) {
     },
     native: {
       available: nativeAvailable,
-      /** The Expo modules built into the app, with their functions. */
+      /** The callable Expo packages and native modules, with their methods. */
       modules: nativeModules,
-      /** Calls a function of one of them: `call("ExpoApplication", "getInstallationTimeAsync")`. */
+      /** Calls a method such as `call("expo-haptics", "selectionAsync")`. */
       call: (module: string, method: string, ...args: unknown[]) =>
         callNative(module, method, args),
       /** Calls one of React Native's APIs: `reactNative("Vibration", "vibrate", 50)`. */

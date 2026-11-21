@@ -20,7 +20,9 @@
         "NSCameraUsageDescription": "Zami uses the camera for video calls, sign-in QR codes and photos you send.",
         "NSMicrophoneUsageDescription": "Zami uses the microphone for voice messages and calls.",
         "NSLocationWhenInUseUsageDescription": "Zami shares your location only when you choose to send it.",
+        "NSMotionUsageDescription": "Zami plugins use motion data for features you enable.",
         "NSPhotoLibraryAddUsageDescription": "Zami saves the images and videos you choose to your photo library.",
+        "NSPhotoLibraryUsageDescription": "Zami lets you choose photos and videos to use in the app.",
         "UIBackgroundModes": ["audio", "remote-notification"]
       }
     },

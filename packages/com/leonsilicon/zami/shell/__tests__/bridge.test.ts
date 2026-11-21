@@ -4,10 +4,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { runInContext, createContext, type Context } from "node:vm";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import { bootstrapScript } from "#bootstrap";
 import { Bridge, PluginError, resultScript, type PluginEvents, type ShellPlugin } from "#bridge";
 import { parsePageMessage } from "#protocol";
+import { createZamiPlugin } from "#zami-plugin";
+
+vi.mock("react-native", () => ({ Linking: {}, Share: {}, Vibration: {} }));
 
 const capacitorCore = readFileSync(
   createRequire(import.meta.url).resolve("@capacitor/core/dist/index.cjs.js"),
@@ -104,6 +107,47 @@ test("a call reaches its plugin and resolves with what it returns", async () => 
   );
   assert.deepEqual(result, { value: "value of a" });
   assert.deepEqual(seen, [{ key: "a" }]);
+});
+
+test("Zami discovers and calls a public Expo SDK method by package name", async () => {
+  const page = loadPage([
+    createZamiPlugin({
+      "expo-clipboard": { getStringAsync: async () => "copied" },
+    }),
+  ]);
+  const result = await page.run(`
+    const zami = registerPlugin("Zami");
+    return {
+      methods: (await zami.modules()).modules["expo-clipboard"],
+      reply: await zami.call({ module: "expo-clipboard", method: "getStringAsync" }),
+    };
+  `);
+  assert.deepEqual(result, { methods: ["getStringAsync"], reply: { value: "copied" } });
+
+  const errorCode = await page.run(`
+    try {
+      await registerPlugin("Zami").call({ module: "expo-clipboard", method: "toString" });
+    } catch (error) {
+      return error.code;
+    }
+  `);
+  assert.equal(errorCode, "UNIMPLEMENTED");
+});
+
+test("native replies stay on the trusted WebView origin", () => {
+  const received: unknown[] = [];
+  const context = createContext({
+    location: { href: "zami://localhost/room" },
+    window: { Capacitor: { fromNative: (result: unknown) => received.push(result) } },
+  });
+  const script = resultScript(
+    { callbackId: "zami1", pluginId: "Zami", methodName: "call", success: true },
+    "zami://localhost",
+  );
+  runInContext(script, context);
+  context.location.href = "zami://localhost.example/room";
+  runInContext(script, context);
+  assert.equal(received.length, 1);
 });
 
 test("a failed call rejects with the plugin's message and code", async () => {

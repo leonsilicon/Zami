@@ -30,6 +30,46 @@ export default function codemod(root: SgRoot): string | null {
           "\n  return wkWebViewConfig;\n}\n\n- (void)didMoveToWindow",
         marker: "RNCWebViewWillCreateWebView",
       },
+      {
+        kinds: ["translation_unit", "ERROR"],
+        contains: "didReceiveScriptMessage:(WKScriptMessage *)message",
+        from: "if ([message.name isEqualToString:MessageHandlerName]) {\n    if (_onMessage) {",
+        to: "if ([message.name isEqualToString:MessageHandlerName]) {\n    if (_onMessage && message.frameInfo.isMainFrame) {",
+        marker: "if (_onMessage && message.frameInfo.isMainFrame)",
+      },
+    ]);
+  }
+
+  if (filename.endsWith("/RNCWebView.java")) {
+    return editNodes(root, [
+      {
+        kinds: ["method_declaration"],
+        contains: "public void onPostMessage(",
+        from: "onMessage(message.getData(), sourceOrigin.toString());",
+        to: "onMessage(message.getData(), sourceOrigin.toString(), isMainFrame);",
+        marker: "onMessage(message.getData(), sourceOrigin.toString(), isMainFrame);",
+      },
+      {
+        kinds: ["method_declaration"],
+        contains: "public void onMessage(String message, String sourceUrl",
+        from: "public void onMessage(String message, String sourceUrl)",
+        to: "public void onMessage(String message, String sourceUrl, boolean isMainFrame)",
+        marker: "public void onMessage(String message, String sourceUrl, boolean isMainFrame)",
+      },
+      {
+        kinds: ["method_declaration"],
+        contains: "public void onMessage(String message, String sourceUrl",
+        from: 'data.putString("data", message);',
+        to: 'data.putString("data", message);\n                    data.putBoolean("isMainFrame", isMainFrame);',
+        marker: 'data.putBoolean("isMainFrame", isMainFrame);',
+      },
+      {
+        kinds: ["method_declaration"],
+        contains: "public void postMessage(String message)",
+        from: "onMessage(message, mWebView.getUrl())",
+        to: "onMessage(message, mWebView.getUrl(), false)",
+        marker: "onMessage(message, mWebView.getUrl(), false)",
+      },
     ]);
   }
 

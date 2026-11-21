@@ -1,6 +1,6 @@
 // `zam.zami.native`: the Zami app's native side, from the page. The shell's Zami plugin
-// (@-/com.leonsilicon.zami.shell) calls any function of the Expo modules built into the app,
-// and a few of React Native's APIs, over the same bridge as Zam's own Capacitor calls.
+// (@-/com.leonsilicon.zami.shell) exposes public Expo SDK functions by package name, raw
+// Expo modules, and a few React Native APIs through Zam's Capacitor bridge.
 // Arguments and results cross as JSON.
 
 interface CapacitorGlobal {
@@ -25,13 +25,13 @@ async function call(method: string, options: Record<string, unknown>): Promise<u
   return native.nativePromise("Zami", method, options);
 }
 
-/** The Expo modules built into the app, with their functions' names. */
+/** The callable Expo packages and native modules, with their methods. */
 export async function nativeModules(): Promise<Record<string, string[]>> {
   const result = (await call("modules", {})) as { modules?: Record<string, string[]> };
   return result.modules ?? {};
 }
 
-/** Calls `method` of the Expo module `module` with `args`; resolves with what it returns. */
+/** Calls an Expo package or native module method. */
 export async function callNative(
   module: string,
   method: string,

@@ -26,7 +26,7 @@ import { createPreferencesPlugin } from "#preferences-plugin";
 import { parsePageMessage } from "#protocol";
 import { createPushNotificationsPlugin } from "#push-notifications-plugin";
 import { createUnifiedPushPlugin } from "#unified-push-plugin";
-import { createZamiPlugin } from "#zami-plugin";
+import { createZamiPlugin, type ExpoPluginModules } from "#zami-plugin";
 
 /** Zam's own background (its <meta name="theme-color">), until the page says otherwise. */
 const DEFAULT_THEME = "#313338";
@@ -97,7 +97,7 @@ function useKeyboardHeight(): number {
   return height;
 }
 
-export function ZamiShell() {
+export function ZamiShell({ expoPluginModules }: { expoPluginModules?: ExpoPluginModules }) {
   // WebView's props are `WebViewProps & P`, and P defaults to undefined (so: never).
   const webView = useRef<WebView<object>>(null);
   const insets = useSafeAreaInsets();
@@ -106,6 +106,7 @@ export function ZamiShell() {
   const [loaded, setLoaded] = useState(false);
   const canGoBack = useRef(false);
   const source = useMemo(webAppSource, []);
+  const origin = source === null ? null : originOf(source.url);
 
   const { bridge, script } = useMemo(() => {
     const app = createAppPlugin({ canGoBack: () => canGoBack.current });
@@ -116,11 +117,13 @@ export function ZamiShell() {
         createPreferencesPlugin(),
         createPushNotificationsPlugin(),
         // `zam.zami.native`: the app's native side, for Zam's plugins.
-        createZamiPlugin(),
+        createZamiPlugin(expoPluginModules),
         // Only Zam's Android code asks it (where Capacitor's platform is "android").
         ...(Platform.OS === "android" ? [createUnifiedPushPlugin()] : []),
       ],
-      (result) => webView.current?.injectJavaScript(resultScript(result)),
+      (result) => {
+        if (origin !== null) webView.current?.injectJavaScript(resultScript(result, origin));
+      },
     );
     const script = bootstrapScript({
       platform: Platform.OS,
@@ -130,7 +133,7 @@ export function ZamiShell() {
     // Served to the bundled web app's pages before anything else they run.
     ZamiShellNative.setStartScript(script);
     return { bridge, script };
-  }, []);
+  }, [expoPluginModules, origin]);
 
   useEffect(() => bridge.start(), [bridge]);
 
@@ -144,13 +147,24 @@ export function ZamiShell() {
     Object.assign(globalThis, { __zamiShell: debug });
   }, [debug]);
 
-  const origin = source === null ? null : originOf(source.url);
-
-  function onMessage(event: WebViewMessageEvent): void {
-    const message = parsePageMessage(event.nativeEvent.data);
+  function onMessage({ nativeEvent }: WebViewMessageEvent): void {
+    const message = parsePageMessage(nativeEvent.data);
     if (message === null) return;
-    if (message.type === "capacitor") void bridge.call(message);
-    else if (message.event === "theme") setTheme(message.color);
+    if (message.type === "capacitor") {
+      // The WebKit handler filters subframes. On Android only the origin-aware
+      // transport can identify the sending frame.
+      if (
+        message.pluginId === "Zami" &&
+        (origin === null ||
+          typeof nativeEvent.url !== "string" ||
+          originOf(nativeEvent.url) !== origin ||
+          (Platform.OS === "android" &&
+            (!("isMainFrame" in nativeEvent) || nativeEvent.isMainFrame !== true)))
+      ) {
+        return;
+      }
+      void bridge.call(message);
+    } else if (message.event === "theme") setTheme(message.color);
     else if (debug !== null) receiveDebug(debug, message);
   }
 

@@ -1,3 +1,42 @@
+diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+index 80c68034b193a47bedb56ca527352de9548e8ac6..d9d5ca95e8c29a8661a3421567f1e052c3391477 100644
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java
+@@ -253,7 +253,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+             this.bridgeListener = new WebViewCompat.WebMessageListener() {
+               @Override
+               public void onPostMessage(@NonNull WebView view, @NonNull WebMessageCompat message, @NonNull Uri sourceOrigin, boolean isMainFrame, @NonNull JavaScriptReplyProxy replyProxy) {
+-                RNCWebView.this.onMessage(message.getData(), sourceOrigin.toString());
++                RNCWebView.this.onMessage(message.getData(), sourceOrigin.toString(), isMainFrame);
+               }
+             };
+             WebViewCompat.addWebMessageListener(
+@@ -324,7 +324,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+       injectJavascriptObject();
+     }
+ 
+-    public void onMessage(String message, String sourceUrl) {
++    public void onMessage(String message, String sourceUrl, boolean isMainFrame) {
+         ThemedReactContext reactContext = getThemedReactContext();
+         RNCWebView mWebView = this;
+ 
+@@ -338,6 +338,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+                     }
+                     WritableMap data = mRNCWebViewClient.createWebViewEvent(webView, sourceUrl);
+                     data.putString("data", message);
++                    data.putBoolean("isMainFrame", isMainFrame);
+ 
+                     if (mMessagingJSModule != null) {
+                         dispatchDirectMessage(data);
+@@ -446,7 +447,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+         public void postMessage(String message) {
+             if (mWebView.getMessagingEnabled()) {
+                 // Post to main thread because `mWebView.getUrl()` requires to be executed on main.
+-                mWebView.post(() -> mWebView.onMessage(message, mWebView.getUrl()));
++                mWebView.post(() -> mWebView.onMessage(message, mWebView.getUrl(), false));
+             } else {
+                 FLog.w(TAG, "ReactNativeWebView.postMessage method was called but messaging is disabled. Pass an onMessage handler to the WebView.");
+             }
 diff --git a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
 index 209b85525f0ceadae168b7575de00eafe4dba1d0..38e2fb2b5a833acd869b1c1514da1caee7447e0a 100644
 --- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
@@ -32,7 +71,7 @@ index 209b85525f0ceadae168b7575de00eafe4dba1d0..38e2fb2b5a833acd869b1c1514da1cae
      protected static final int SHOULD_OVERRIDE_URL_LOADING_TIMEOUT = 250;
  
 diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
-index 38904266dc37b006274104f4680778ffbfece369..673e58881848210c624497bf78793ab4db61770d 100644
+index 38904266dc37b006274104f4680778ffbfece369..05f88fe5521010bc5286dccf01b8810001d5826c 100644
 --- a/apple/RNCWebViewImpl.m
 +++ b/apple/RNCWebViewImpl.m
 @@ -509,6 +509,10 @@ RCTAutoInsetsProtocol>
@@ -46,3 +85,12 @@ index 38904266dc37b006274104f4680778ffbfece369..673e58881848210c624497bf78793ab4
    return wkWebViewConfig;
  }
  
+@@ -796,7 +800,7 @@ RCTAutoInsetsProtocol>
+       _onLoadingFinish(event);
+     }
+   } else if ([message.name isEqualToString:MessageHandlerName]) {
+-    if (_onMessage) {
++    if (_onMessage && message.frameInfo.isMainFrame) {
+       NSMutableDictionary<NSString *, id> *event = [self baseEvent];
+       [event addEntriesFromDictionary: @{@"data": message.body}];
+       [event addEntriesFromDictionary: @{@"url": message.frameInfo.request.URL.absoluteString}];

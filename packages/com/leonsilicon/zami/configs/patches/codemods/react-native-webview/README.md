@@ -9,5 +9,8 @@ origin of its own.
   `zami` URL scheme handler on it.
 - **Android** (`RNCWebViewClient.java`): asks `RNCWebViewClient.requestInterceptor` about
   each request before the network, and the shell answers the ones for `https://localhost`.
+- **Bridge messages**: iOS passes messages from the main frame only. Android
+  (`RNCWebView.java`) forwards AndroidX WebView's main-frame flag so the shell can check
+  the sender before dispatching Expo SDK calls.
 
 Regenerate the patch with `vpx _patches generate react-native-webview`.

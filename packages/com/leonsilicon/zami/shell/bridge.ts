@@ -214,6 +214,8 @@ export class Bridge {
 }
 
 /** The script that hands `result` to the page. */
-export function resultScript(result: CallResult): string {
-  return `window.Capacitor&&window.Capacitor.fromNative&&window.Capacitor.fromNative(${JSON.stringify(result)});true;`;
+export function resultScript(result: CallResult, origin?: string): string {
+  const reply = `window.Capacitor&&window.Capacitor.fromNative&&window.Capacitor.fromNative(${JSON.stringify(result)});`;
+  if (origin === undefined) return `${reply}true;`;
+  return `if(location.href===${JSON.stringify(origin)}||location.href.startsWith(${JSON.stringify(`${origin}/`)})){${reply}}true;`;
 }
