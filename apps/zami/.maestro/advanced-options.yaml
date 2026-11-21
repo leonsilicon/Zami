@@ -1,59 +1,56 @@
-# LoginView's advanced options open, and the sliding-sync checkbox (rn's Checkbox) toggles
-# both ways and reports its state to accessibility, whichever state it starts in.
-#
-# Maestro reads that state differently per platform. iOS gives React Native's checkbox no
-# checked trait, but its value says "checkbox, checked" (or "unchecked"), which Maestro
-# takes as the element's text. Android's node is a checked CheckBox; Maestro matches
-# `checked: true` there but not `checked: false`, so an unchecked box is one that isn't
-# visible as checked.
+# LoginView opens Advanced options and toggles its sliding-sync checkbox both ways.
 appId: com.leonsilicon.zami
 ---
 - runFlow: subflows/launch-app.yaml
-- tapOn:
-    text: ".*Advanced options"
-    retryTapIfNoChange: false
-# On a small screen (CI's Android emulator) the checkbox opens below the fold.
 - scrollUntilVisible:
     element:
-      text: "Use sliding sync"
+      text: ".*Advanced options.*"
     direction: DOWN
+- tapOn:
+    text: ".*Advanced options.*"
+    retryTapIfNoChange: false
+# The WebView may put the expanded checkbox below the fold.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Use sliding sync.*"
+          direction: DOWN
 
-# iOS, starting checked, then starting unchecked (each leaves it as it found it).
+# Run the iOS state assertions when accessibility exposes the checkbox value.
 - runFlow:
     when:
       platform: iOS
       visible: "checkbox, checked"
     commands:
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - tapOn: { text: "Use sliding sync.*", retryTapIfNoChange: false }
       - assertVisible: "checkbox, unchecked"
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - tapOn: { text: "Use sliding sync.*", retryTapIfNoChange: false }
       - assertVisible: "checkbox, checked"
 - runFlow:
     when:
       platform: iOS
       visible: "checkbox, unchecked"
     commands:
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - tapOn: { text: "Use sliding sync.*", retryTapIfNoChange: false }
       - assertVisible: "checkbox, checked"
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
+      - tapOn: { text: "Use sliding sync.*", retryTapIfNoChange: false }
       - assertVisible: "checkbox, unchecked"
 
-# Android, the same.
+# Android WebView reports the HTML input ID as its resource ID and provides a checked state.
 - runFlow:
     when:
       platform: Android
-      visible: { text: "Use sliding sync", checked: true }
     commands:
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
-      - assertNotVisible: { text: "Use sliding sync", checked: true }
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
-      - assertVisible: { text: "Use sliding sync", checked: true }
-- runFlow:
-    when:
-      platform: Android
-      notVisible: { text: "Use sliding sync", checked: true }
-    commands:
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
-      - assertVisible: { text: "Use sliding sync", checked: true }
-      - tapOn: { text: "Use sliding sync", retryTapIfNoChange: false }
-      - assertNotVisible: { text: "Use sliding sync", checked: true }
+      - scrollUntilVisible:
+          element:
+            id: sliding-sync
+          direction: DOWN
+      - assertNotVisible: { id: sliding-sync, checked: true }
+      - tapOn: { id: sliding-sync, retryTapIfNoChange: false }
+      - assertVisible: { id: sliding-sync, checked: true }
+      - tapOn: { id: sliding-sync, retryTapIfNoChange: false }
+      - assertVisible: { id: sliding-sync }
+      - assertNotVisible: { id: sliding-sync, checked: true }

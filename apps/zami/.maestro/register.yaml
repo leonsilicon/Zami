@@ -6,6 +6,9 @@ appId: com.leonsilicon.zami
     text: "Register"
     retryTapIfNoChange: false
 - assertVisible: "Create an account"
-- assertVisible: "Already have an account?"
+- scrollUntilVisible:
+    element:
+      text: "Already have an account\\?.*"
+    direction: DOWN
 - runFlow: subflows/launch-app.yaml
 - assertVisible: "Sign in to your Matrix account"
