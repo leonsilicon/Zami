@@ -16,6 +16,7 @@ const generated = [
   "apps/zami/.build/**",
   "patches/**",
   "apps/push-gateway/worker-configuration.d.ts",
+  "apps/upstream-sync/worker-configuration.d.ts",
   "apps/*/.wrangler/**",
 ];
 
@@ -61,7 +62,7 @@ export default defineConfig({
       test: { cache: false, command: "vp test run" },
       typecheck: {
         command:
-          "tsc -p packages && tsc -p packages/com/leonsilicon/zami/shell && tsc -p packages/com/leonsilicon/zami/configs/patches && tsc -p packages/com/leonsilicon/zami/plugins && tsc -p apps/zami && tsc -p apps/push-gateway",
+          "tsc -p packages && tsc -p packages/com/leonsilicon/zami/shell && tsc -p packages/com/leonsilicon/zami/configs/patches && tsc -p packages/com/leonsilicon/zami/plugins && tsc -p apps/zami && tsc -p apps/push-gateway && tsc -p apps/upstream-sync",
       },
       // Every codemod still applies: Zam's to its tree, the npm ones as current bun patches.
       patches: { cache: false, command: "_patches check" },

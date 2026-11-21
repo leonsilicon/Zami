@@ -1,10 +1,8 @@
-# Check upstream Zam on a schedule and bump only the pinned Git commit after verification.
+# Check upstream Zam after a fork webhook or manual dispatch and bump the verified pin.
 # ZAMI_BOT_TOKEN lets the push trigger trunk's normal workflows.
 name: Zami upstream sync
 
 on:
-  schedule:
-    - cron: "23 */6 * * *"
   workflow_dispatch:
 
 permissions:
