@@ -7,6 +7,7 @@
   "imports": {
     "#dom-host": "./dom-host.svelte",
     "#around": "./around.svelte",
+    "#launch-splash": "./launch-splash.svelte",
     "#runes.svelte": "./runes.svelte.ts",
     "#*": "./*.ts"
   },
@@ -15,6 +16,7 @@
     "./web": "./+web.ts"
   },
   "devDependencies": {
+    "@-/com.leonsilicon.zami.paths": "workspace:*",
     "@types/node": "catalog:",
     "acorn": "catalog:",
     "svelte": "catalog:",
