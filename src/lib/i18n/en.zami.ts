@@ -267,6 +267,14 @@ export const en = {
         "Could not open a direct message",
     "callParticipantMenu.couldNotKick": "Could not kick {name}",
     "callParticipantMenu.couldNotBan": "Could not ban {name}",
+    "callParticipantMenu.disconnectFromVoice": "Disconnect from voice",
+    "callParticipantMenu.disconnecting": "Disconnecting…",
+    "callParticipantMenu.confirmDisconnect":
+        "Confirm disconnecting {name} from voice?",
+    "callParticipantMenu.couldNotDisconnect": "Could not disconnect {name}",
+    "callKick.notPermitted": "You cannot disconnect this member from voice",
+    "callKick.removedFromVoice": "{name} removed you from the voice channel",
+    "callKick.removedByServer": "You were removed from the call",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -277,6 +285,14 @@ export const en = {
     "callEncryption.partialShort": "Partly encrypted",
     "callEncryption.notEncrypted":
         "Not end-to-end encrypted: the call server can see and hear this call. Calls in encrypted rooms are encrypted.",
+    "callPopout.blocked":
+        "Could not open the pop-out window. Allow pop-ups for this site and try again.",
+    "callPopout.bringBack": "Bring back",
+    "callPopout.focusWindow": "Show window",
+    "callPopout.inOtherWindow": "This call is open in a pop-out window.",
+    "callPopout.popOut": "Pop out call",
+    "callPopout.returnToMain": "Return to main window",
+    "callPopout.windowTitle": "{room} (call)",
     "callView.ringing": "Ringing…",
     "callView.showChat": "Show chat",
     "callView.noOneIsInThisCall": "No one is in this call",
@@ -286,8 +302,8 @@ export const en = {
     "callView.muted": "Muted",
     "callView.deafened": "Deafened",
     "callView.mutedForYou": "Muted for you",
-    "callView.joinedFromMultipleDevices": "Joined from multiple devices",
-    "callView.devices": "{value} devices",
+    "callView.deviceCountPill": "{count} devices",
+    "callView.thisDevice": "This device",
     "callView.enableAudio": "Enable audio",
     "callView.onHold": "On hold while another call is active",
     "callView.resume": "Resume",
@@ -615,6 +631,8 @@ export const en = {
     "debugSettings.disableGallerySend": "Don't send galleries",
     "debugSettings.disableGallerySendHint":
         "Attachments picked together normally go as one gallery message with one caption (MSC4274, sent as dm.filament.gallery). On, each goes as its own message instead. Galleries from others are still shown.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Your homeserver doesn't support sticky events.",
     "debugSettings.stickyCallMembership": "Sticky call membership",
     "debugSettings.stickyCallMembershipHint":
         "Join calls with a sticky m.rtc.member event (MSC4354) instead of an m.call.member state event. Clients that only read state events, including Zam before 1.51, won't see you in the call. Applies from your next call.",
@@ -695,6 +713,12 @@ export const en = {
         "Nothing logged yet. Restarts, failed requests and timeline resets show up here.",
     "debugSettings.refresh": "Refresh",
     "debugSettings.copied": "Copied",
+    "debugSettings.startupTiming": "Startup timing",
+    "debugSettings.startupTimingHint":
+        "Time from page load to each startup step. Copy to share.",
+    "debugSettings.startupTimingEmpty": "No startup steps recorded yet.",
+    "debugSettings.startupTimingRow": "+{dt} ms (at {at} ms)",
+    "debugSettings.copyTiming": "Copy timing",
     "debugSettings.useSlidingSync": "Use sliding sync",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Experimental. Loads rooms in a growing window. Reloads the app to apply.",
@@ -772,6 +796,7 @@ export const en = {
     "emojiPicker.custom": "Custom",
     "emojiPicker.standard": "Standard",
     "emojiPicker.myEmojis2": "My Emojis",
+    "emojiPicker.recentlyUsed": "Recently Used",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Dismiss",
@@ -941,6 +966,32 @@ export const en = {
     "richPresenceCard.openFailed": "Couldn't get an OpenID token.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Favourites are locked on this device. Unlock them before changing them.",
+    "favourites.saveFailed":
+        "Could not save your favourites. Your change was undone.",
+    "favourites.lockedHint":
+        "Favourites are locked on this device. Enter your recovery key or verify this device to see and change them.",
+    "favourites.unlock": "Unlock",
+    "privateData.locked":
+        "Private data is locked on this device. Unlock encryption first.",
+    "privateData.keySaveFailed":
+        "Could not save the private data key to your account's secret storage. It will be retried the next time you unlock.",
+    "privateData.unlockToEncrypt":
+        "Encrypting your favourite GIFs needs your recovery key on this device, so other devices can read them.",
+    "privateData.unlockToDecrypt":
+        "Your favourite GIFs are encrypted. Enter your recovery key to read them on this device.",
+    "settingsSearch.encryptFavouriteGifs": "Encrypt favourite GIFs",
+    "privateData.toggleLabel": "Encrypt favourite GIFs",
+    "privateData.toggleHelp":
+        "Hides your favourite GIFs from the homeserver. Other devices need your recovery key or a verified session to read them, and older Zam versions won't see them.",
+    "privateData.offWarning":
+        "Turning this off makes your favourite GIFs readable by the homeserver again.",
+    "privateData.turnOff": "Turn off encryption",
+    "privateData.enableFailed":
+        "Could not encrypt your favourite GIFs. Nothing was changed.",
+    "privateData.disableFailed":
+        "Could not turn off encryption for your favourite GIFs. Nothing was changed.",
     "gifPicker.searchFavourites": "Search favourites…",
     "gifPicker.searchKlipy": "Search KLIPY…",
     "gifPicker.searchFavourites2": "Search favourites",
@@ -1450,6 +1501,8 @@ export const en = {
     "messageItem.galleryDownload": "Download {name}",
     "messageItem.galleryEmpty": "Empty gallery",
     "messageItem.edited": "(edited)",
+    "codeBlock.showMore": "Show more",
+    "codeBlock.showLess": "Show less",
     "messageItem.decryptingImage": "Decrypting image...",
     "messageItem.couldnTDecryptImage": "Couldn't decrypt image",
     "messageItem.imageUnavailable": "[Image unavailable]",
@@ -1570,6 +1623,9 @@ export const en = {
         "Strip EXIF, GPS location, camera details and other hidden metadata from photos and videos you send. The picture is unchanged, and the rotation is kept so photos still show upright.",
     "messagesMediaSettings.stripMetadataWarning":
         "Warning: with this off, files you send can leak your personal information, including the location where they were taken.",
+    "messagesMediaSettings.hideRecentEmoji": "Hide recently used emoji section",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Don't show the emoji you used last at the top of the emoji picker.",
     "messagesMediaSettings.randomizeFileNames": "Randomize file names",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "Upload files under a random name made of letters and numbers instead of their real name. The file extension is kept, including ones like .tar.gz.",
@@ -1577,6 +1633,42 @@ export const en = {
         "Send GIFs as animated WebP",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Re-encode GIFs you send as lossless animated WebP, which is usually smaller and can play while it downloads. The picture is unchanged. A GIF that would not get smaller is sent as it is.",
+    "messagesMediaSettings.discordImportTitle":
+        "Import favourites from Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Copies the GIFs favourited in the Discord desktop app on this computer. GIFs uploaded to Discord are copied only when a refresh service is set below.",
+    "messagesMediaSettings.discordImportButton": "Import",
+    "messagesMediaSettings.discordImportBusy": "Checking links...",
+    "messagesMediaSettings.discordImportChecking":
+        "Checking links... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {Imported # GIF.} other {Imported # GIFs.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "Skipped {discord} uploaded to Discord and {broken} broken links.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {The GIF was already in your favourites.} other {All # GIFs were already in your favourites.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Couldn't find the Discord desktop app's data on this computer.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "No GIFs could be imported.",
+    "messagesMediaSettings.discordImportFailed":
+        "Couldn't import favourites from Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Couldn't copy # GIF uploaded to Discord.} other {Couldn't copy # GIFs uploaded to Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Discord refresh service",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Links to GIFs uploaded to Discord expire. To import those too, enter the address of a refresh service you run yourself (services/discord-refresh-proxy in Zam's source). The GIFs are then uploaded to your homeserver.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Enter an https:// address (http:// only works for this computer).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Couldn't reach the Discord refresh service.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "The Discord refresh service is rate limited. Try again later.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "The Discord refresh service returned an error ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "The Discord refresh service sent a reply Zam couldn't read.",
     "messagesMediaSettings.defaultTab": "Default tab",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Which tab the GIF picker opens on.",
@@ -2345,20 +2437,21 @@ export const en = {
     "screenShareQualityChips.bitrateUpTo": "Up to",
     "screenShareQualityChips.bitrateCapHint":
         "A limit, not a target: the share uses only what the picture needs and your connection can carry, up to this.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Using the upload speed you entered, {upload}, so this goes up to {max}.",
+    "screenShareQualityChips.bitrateAuto": "Automatic",
+    "screenShareQualityChips.bitrateAutoHint":
+        "No limit: the share sends what your connection carries right now, and backs off when it fills up or a viewer falls behind.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Your upload carries about {upload} right now.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Your upload is followed live while you send video.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Held to the upload speed you entered, {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Optional. Enter your upload speed to keep the share under it; leave it empty to follow the connection.",
     "screenShareQualityChips.uploadOverride": "Upload speed (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "Auto",
-    "screenShareQualityChips.uploadOverrideHint":
-        "The automatic measurement can read well under your real speed. Enter your own figure to raise the limit; leave it empty to measure.",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "Your upload measures {upload}, so this goes up to {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Your upload hasn't been measured yet. It's measured while you send video, so this goes up to {max} for now.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Above {safe} is your call: your upload isn't checked, and viewers on slower connections or devices may see stutter or freezes.",
     "screenShareQualityChips.nativeCapture": "Windows capture helper",
     "screenShareQualityChips.nativeCaptureHint":
         "Captures and encodes the share outside the browser, so a busy game doesn't stutter it. Applies to the next share.",
@@ -2747,6 +2840,28 @@ export const en = {
         "Your device is almost out of storage ({free} left). Free up space soon, or Zam won't be able to save messages or encryption keys.",
     "storageBanner.checkAgain": "Check again",
     "storageBanner.dismissLowStorageWarning": "Dismiss storage warning",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Your homeserver has reached its monthly active user limit, so your account can't send messages or sync right now.",
+    "usageLimits.bannerDisabled":
+        "Your homeserver has been disabled by its administrator, so your account can't send messages or sync right now.",
+    "usageLimits.bannerResource":
+        "Your account has reached a usage limit on your homeserver, so some actions are blocked right now.",
+    "usageLimits.bannerMediaQuota":
+        "You've used up your media upload allowance on your homeserver. Uploads will work again when it resets.",
+    "usageLimits.canUpgrade": "Upgrading your plan raises this limit.",
+    "usageLimits.learnMore": "Learn more",
+    "usageLimits.contactAdmin": "Contact the server admin",
+    "usageLimits.dismiss": "Dismiss usage limit warning",
+    "usageLimits.toastResource":
+        "Your homeserver is blocking this account because a usage limit was reached.",
+    "usageLimits.toastMediaQuota":
+        "Upload failed: you've reached your media upload limit.",
+    "usageLimits.toastRateLimited":
+        "The server is limiting media transfers. Try again in a moment.",
+    "usageLimits.toastRateLimitedFor":
+        "The server is limiting media transfers. Try again in {seconds} s.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification": "Dismiss update notification",
@@ -3177,6 +3292,19 @@ export const en = {
     "composerActionsMenu.recordVoiceMessage": "Record voice message",
     "composerActionsMenu.shareLocation": "Share location",
     "composerActionsMenu.createThread": "Create thread",
+    "composerActionsMenu.insertTimestamp": "Insert timestamp",
+    "timestampPicker.title": "Insert a timestamp",
+    "timestampPicker.dateAndTime": "Date and time",
+    "timestampPicker.format": "Format",
+    "timestampPicker.insert": "Insert",
+    "timestampPicker.cancel": "Cancel",
+    "timestampPicker.styleShortTime": "Short time",
+    "timestampPicker.styleLongTime": "Long time",
+    "timestampPicker.styleShortDate": "Short date",
+    "timestampPicker.styleLongDate": "Long date",
+    "timestampPicker.styleShortDateTime": "Short date and time",
+    "timestampPicker.styleLongDateTime": "Long date and time",
+    "timestampPicker.styleRelative": "Relative",
     "composerActionsMenu.inviteToGame": "Invite to game",
     "gameInvite.title": "Invite to game",
     "gameInvite.game": "Game",
@@ -3556,6 +3684,11 @@ export const en = {
     // src/lib/stores/voiceCall.svelte.ts
     "voiceCall.couldnTLoadTheCallComponent":
         "Couldn't load the call component. Check your connection, then reload the page to try again.",
+    "voiceCall.rejoin": "Rejoin",
+    "voiceCall.rejoinVoicePrompt":
+        "You were in a voice call in {room}. Rejoin?",
+    "voiceCall.rejoinVideoPrompt":
+        "You were in a video call in {room}. Rejoin?",
     "voiceCall.couldNotJoinTheVoiceCall": "Could not join the voice call",
     "voiceCall.joinedWithoutAMicrophone":
         "Your microphone isn't available - you can still listen and share your screen",
@@ -4071,6 +4204,7 @@ export const en = {
     "settingsSearch.removeLocationAndMetadata":
         "Remove location and other metadata from uploads",
     "settingsSearch.sendGifsAsAnimatedWebp": "Send GIFs as animated WebP",
+    "settingsSearch.hideRecentEmoji": "Hide recently used emoji section",
     "settingsSearch.midiSoundBank": "MIDI sound bank",
     "settingsSearch.holdToOpenMessageMenu": "Hold to open message menu",
     "settingsSearch.checkSpelling": "Check spelling",
@@ -4225,6 +4359,12 @@ export const en = {
     "updateStatus.openReleasePage": "Open release page",
     "updateStatus.flatpakManualUpdate":
         "Update available{versionSuffix}. Install it from your software center or with flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Update available{versionSuffix}. It needs new permissions, which Flatpak only grants through your software center or flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Update available{versionSuffix}. Automatic Flatpak updates were declined, so install it from your software center or with flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Update available{versionSuffix}. This Flatpak version can't update apps itself; install it from your software center or with flatpak update",
     "updateStatus.packageManagerUpdate":
         "Update available{versionSuffix}. Update it with {manager}",
     "updateStatus.updateCheckFailed": "Update check failed",

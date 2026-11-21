@@ -275,6 +275,15 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Não foi possível abrir uma mensagem direta",
     "callParticipantMenu.couldNotKick": "Não foi possível expulsar {name}",
     "callParticipantMenu.couldNotBan": "Não foi possível banir {name}",
+    "callParticipantMenu.disconnectFromVoice": "Desconectar da voz",
+    "callParticipantMenu.disconnecting": "Desconectando…",
+    "callParticipantMenu.confirmDisconnect":
+        "Confirmar a desconexão de {name} da voz?",
+    "callParticipantMenu.couldNotDisconnect":
+        "Não foi possível desconectar {name}",
+    "callKick.notPermitted": "Você não pode desconectar este membro da voz",
+    "callKick.removedFromVoice": "{name} removeu você do canal de voz",
+    "callKick.removedByServer": "Você foi removido da chamada",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -285,6 +294,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "Parcialmente criptografada",
     "callEncryption.notEncrypted":
         "Não criptografada de ponta a ponta: o servidor de chamadas pode ver e ouvir esta chamada. Chamadas em salas criptografadas são criptografadas.",
+    "callPopout.blocked":
+        "Não foi possível abrir a janela destacada. Permita pop-ups para este site e tente novamente.",
+    "callPopout.bringBack": "Trazer de volta",
+    "callPopout.focusWindow": "Mostrar janela",
+    "callPopout.inOtherWindow":
+        "Esta chamada está aberta em uma janela destacada.",
+    "callPopout.popOut": "Destacar chamada",
+    "callPopout.returnToMain": "Voltar à janela principal",
+    "callPopout.windowTitle": "{room} (chamada)",
     "callView.ringing": "Chamando…",
     "callView.showChat": "Mostrar chat",
     "callView.noOneIsInThisCall": "Ninguém está nesta chamada",
@@ -294,8 +312,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "Silenciado",
     "callView.deafened": "Ensurdecido",
     "callView.mutedForYou": "Silenciado para você",
-    "callView.joinedFromMultipleDevices": "Entrou por vários dispositivos",
-    "callView.devices": "{value} dispositivos",
+    "callView.deviceCountPill": "{count} dispositivos",
+    "callView.thisDevice": "Este dispositivo",
     "callView.enableAudio": "Ativar áudio",
     "callView.onHold": "Em espera enquanto outra chamada está ativa",
     "callView.resume": "Retomar",
@@ -628,6 +646,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "Não enviar galerias",
     "debugSettings.disableGallerySendHint":
         "Anexos escolhidos juntos normalmente saem como uma única mensagem de galeria com uma única legenda (MSC4274, enviada como dm.filament.gallery). Ativado, cada um sai como sua própria mensagem. Galerias de outras pessoas continuam aparecendo.",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "Seu servidor doméstico não oferece suporte a eventos sticky.",
     "debugSettings.stickyCallMembership": "Participação em chamadas sticky",
     "debugSettings.stickyCallMembershipHint":
         "Entrar nas chamadas com um evento sticky m.rtc.member (MSC4354) em vez de um evento de estado m.call.member. Clientes que só leem eventos de estado, incluindo o Zam anterior à 1.51, não verão você na chamada. Vale a partir da sua próxima chamada.",
@@ -710,6 +730,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Nada registrado ainda. Reinícios, requisições com falha e redefinições da linha do tempo aparecem aqui.",
     "debugSettings.refresh": "Atualizar",
     "debugSettings.copied": "Copiado",
+    "debugSettings.startupTiming": "Tempo de inicialização",
+    "debugSettings.startupTimingHint":
+        "Tempo desde o carregamento da página até cada etapa de inicialização. Copie para compartilhar.",
+    "debugSettings.startupTimingEmpty":
+        "Nenhuma etapa de inicialização registrada ainda.",
+    "debugSettings.startupTimingRow": "+{dt} ms (em {at} ms)",
+    "debugSettings.copyTiming": "Copiar tempos",
     "debugSettings.useSlidingSync": "Usar sliding sync",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "Experimental. Carrega salas em uma janela crescente. Recarrega o aplicativo para aplicar.",
@@ -787,6 +814,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "Personalizados",
     "emojiPicker.standard": "Padrão",
     "emojiPicker.myEmojis2": "Meus emojis",
+    "emojiPicker.recentlyUsed": "Usados recentemente",
 
     // src/lib/components/ui/ErrorToasts.svelte
     "errorToasts.dismiss": "Dispensar",
@@ -961,6 +989,32 @@ const messages: Partial<Record<MessageKey, string>> = {
     "richPresenceCard.openFailed": "Não foi possível obter um token OpenID.",
 
     // src/lib/components/ui/GifPicker.svelte
+    "favourites.locked":
+        "Os favoritos estão bloqueados neste dispositivo. Desbloqueie-os antes de alterá-los.",
+    "favourites.saveFailed":
+        "Não foi possível guardar os seus favoritos. A alteração foi desfeita.",
+    "favourites.lockedHint":
+        "Os favoritos estão bloqueados neste dispositivo. Introduza a sua chave de recuperação ou verifique este dispositivo para os ver e alterar.",
+    "favourites.unlock": "Desbloquear",
+    "privateData.locked":
+        "Os dados privados estão bloqueados neste dispositivo. Desbloqueie primeiro a encriptação.",
+    "privateData.keySaveFailed":
+        "Não foi possível guardar a chave de dados privados no armazenamento secreto da sua conta. Será tentado de novo na próxima vez que desbloquear.",
+    "privateData.unlockToEncrypt":
+        "Para criptografar seus GIFs favoritos, sua chave de recuperação é necessária neste dispositivo, para que seus outros dispositivos possam lê-los.",
+    "privateData.unlockToDecrypt":
+        "Seus GIFs favoritos estão criptografados. Digite sua chave de recuperação para lê-los neste dispositivo.",
+    "settingsSearch.encryptFavouriteGifs": "Encriptar GIFs favoritos",
+    "privateData.toggleLabel": "Encriptar GIFs favoritos",
+    "privateData.toggleHelp":
+        "Oculta os seus GIFs favoritos do servidor doméstico. Outros dispositivos precisam da sua chave de recuperação ou de uma sessão verificada para os ler, e as versões antigas do Zam não os vão ver.",
+    "privateData.offWarning":
+        "Ao desativar, os seus GIFs favoritos voltam a ficar legíveis pelo servidor doméstico.",
+    "privateData.turnOff": "Desativar encriptação",
+    "privateData.enableFailed":
+        "Não foi possível encriptar os seus GIFs favoritos. Nada foi alterado.",
+    "privateData.disableFailed":
+        "Não foi possível desativar a encriptação dos seus GIFs favoritos. Nada foi alterado.",
     "gifPicker.searchFavourites": "Pesquisar favoritos…",
     "gifPicker.searchKlipy": "Pesquisar no KLIPY…",
     "gifPicker.searchFavourites2": "Pesquisar favoritos",
@@ -1491,6 +1545,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.galleryDownload": "Baixar {name}",
     "messageItem.galleryEmpty": "Galeria vazia",
     "messageItem.edited": "(editada)",
+    "codeBlock.showMore": "Mostrar mais",
+    "codeBlock.showLess": "Mostrar menos",
     "messageItem.decryptingImage": "Descriptografando imagem...",
     "messageItem.couldnTDecryptImage":
         "Não foi possível descriptografar a imagem",
@@ -1618,6 +1674,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Remove EXIF, localização GPS, detalhes da câmera e outros metadados ocultos das fotos e vídeos que você envia. A imagem não muda, e a rotação é mantida para que as fotos continuem na posição correta.",
     "messagesMediaSettings.stripMetadataWarning":
         "Aviso: com isto desativado, os arquivos que você envia podem vazar suas informações pessoais, inclusive o local onde foram feitos.",
+    "messagesMediaSettings.hideRecentEmoji":
+        "Ocultar a seção de emojis usados recentemente",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "Não mostrar os emojis usados por último no topo do seletor de emojis.",
     "messagesMediaSettings.randomizeFileNames": "Aleatorizar nomes de arquivo",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "Envia os arquivos com um nome aleatório formado por letras e números em vez do nome real. A extensão do arquivo é mantida, inclusive as como .tar.gz.",
@@ -1625,6 +1685,41 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Enviar GIFs como WebP animado",
     "messagesMediaSettings.reencodeGifsYouSend":
         "Recodifica os GIFs que você envia como WebP animado sem perdas, que costuma ser menor e pode ser reproduzido durante o download. A imagem não muda. Um GIF que não ficaria menor é enviado como está.",
+    "messagesMediaSettings.discordImportTitle": "Importar favoritos do Discord",
+    "messagesMediaSettings.discordImportDescription":
+        "Copia os GIFs marcados como favoritos no aplicativo de desktop do Discord neste computador. GIFs enviados ao Discord só são copiados quando um serviço de atualização é configurado abaixo.",
+    "messagesMediaSettings.discordImportButton": "Importar",
+    "messagesMediaSettings.discordImportBusy": "Verificando links...",
+    "messagesMediaSettings.discordImportChecking":
+        "Verificando links... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, one {# GIF importado.} other {# GIFs importados.}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "{discord} enviados ao Discord e {broken} links quebrados foram ignorados.",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, one {Esse GIF já estava nos seus favoritos.} other {Todos os # GIFs já estavam nos seus favoritos.}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "Não foram encontrados os dados do aplicativo de desktop do Discord neste computador.",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "Nenhum GIF pôde ser importado.",
+    "messagesMediaSettings.discordImportFailed":
+        "Não foi possível importar os favoritos do Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Não foi possível copiar # GIF enviado ao Discord.} other {Não foi possível copiar # GIFs enviados ao Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Serviço de atualização do Discord",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Os links para GIFs enviados ao Discord expiram. Para importar também esses, informe o endereço de um serviço de atualização que você mesmo executa (services/discord-refresh-proxy no código-fonte do Zam). Os GIFs são então enviados ao seu homeserver.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Informe um endereço https:// (http:// só funciona neste computador).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Não foi possível acessar o serviço de atualização do Discord.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "O serviço de atualização do Discord está com limite de requisições. Tente novamente mais tarde.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "O serviço de atualização do Discord retornou um erro ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "O serviço de atualização do Discord enviou uma resposta que o Zam não conseguiu ler.",
     "messagesMediaSettings.defaultTab": "Aba padrão",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Em qual aba o seletor de GIFs abre.",
@@ -2422,20 +2517,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "Até",
     "screenShareQualityChips.bitrateCapHint":
         "Um limite, não uma meta: o compartilhamento usa apenas o que a imagem precisa e sua conexão suporta, até este valor.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Usando a velocidade de envio que você informou, {upload}, então isto chega a {max}.",
+    "screenShareQualityChips.bitrateAuto": "Automática",
+    "screenShareQualityChips.bitrateAutoHint":
+        "Sem limite: o compartilhamento envia o que sua conexão suporta agora e reduz quando ela lota ou um espectador fica para trás.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Seu envio está em cerca de {upload} agora.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Seu envio é acompanhado ao vivo enquanto você envia vídeo.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Limitado à velocidade de envio que você informou, {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Opcional. Informe sua velocidade de envio para manter o compartilhamento abaixo dela; deixe vazio para acompanhar a conexão.",
     "screenShareQualityChips.uploadOverride": "Velocidade de envio (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "Automática",
-    "screenShareQualityChips.uploadOverrideHint":
-        "A medição automática pode ficar bem abaixo da sua velocidade real. Informe seu próprio valor para aumentar o limite; deixe em branco para medir.",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "Seu envio mede {upload}, então isto chega a {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Seu envio ainda não foi medido. Ele é medido enquanto você envia vídeo, então por enquanto isto chega a {max}.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Acima de {safe} a escolha é sua: seu envio não é verificado, e quem assiste com conexões ou dispositivos mais lentos pode ver travadas ou congelamentos.",
     "screenShareQualityChips.nativeCapture": "Auxiliar de captura do Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Captura e codifica o compartilhamento fora do navegador, para que um jogo pesado não o trave. Vale para o próximo compartilhamento.",
@@ -2846,6 +2942,28 @@ const messages: Partial<Record<MessageKey, string>> = {
     "storageBanner.checkAgain": "Verificar novamente",
     "storageBanner.dismissLowStorageWarning":
         "Dispensar aviso de armazenamento",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Seu servidor atingiu o limite de usuários ativos mensais, então sua conta não pode enviar mensagens nem sincronizar agora.",
+    "usageLimits.bannerDisabled":
+        "Seu servidor foi desativado pelo administrador, então sua conta não pode enviar mensagens nem sincronizar agora.",
+    "usageLimits.bannerResource":
+        "Sua conta atingiu um limite de uso no seu servidor, então algumas ações estão bloqueadas agora.",
+    "usageLimits.bannerMediaQuota":
+        "Você esgotou sua cota de envio de mídia no seu servidor. Os envios voltarão a funcionar quando ela for renovada.",
+    "usageLimits.canUpgrade": "Fazer upgrade do seu plano aumenta este limite.",
+    "usageLimits.learnMore": "Saiba mais",
+    "usageLimits.contactAdmin": "Contatar o administrador do servidor",
+    "usageLimits.dismiss": "Fechar aviso de limite de uso",
+    "usageLimits.toastResource":
+        "Seu servidor está bloqueando esta conta porque um limite de uso foi atingido.",
+    "usageLimits.toastMediaQuota":
+        "Falha no envio: você atingiu seu limite de envio de mídia.",
+    "usageLimits.toastRateLimited":
+        "O servidor está limitando transferências de mídia. Tente novamente em instantes.",
+    "usageLimits.toastRateLimitedFor":
+        "O servidor está limitando transferências de mídia. Tente novamente em {seconds} s.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification":
@@ -3293,6 +3411,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "Gravar mensagem de voz",
     "composerActionsMenu.shareLocation": "Compartilhar localização",
     "composerActionsMenu.createThread": "Criar tópico",
+    "composerActionsMenu.insertTimestamp": "Inserir data e hora",
+    "timestampPicker.title": "Inserir data e hora",
+    "timestampPicker.dateAndTime": "Data e hora",
+    "timestampPicker.format": "Formato",
+    "timestampPicker.insert": "Inserir",
+    "timestampPicker.cancel": "Cancelar",
+    "timestampPicker.styleShortTime": "Hora curta",
+    "timestampPicker.styleLongTime": "Hora longa",
+    "timestampPicker.styleShortDate": "Data curta",
+    "timestampPicker.styleLongDate": "Data longa",
+    "timestampPicker.styleShortDateTime": "Data e hora curtas",
+    "timestampPicker.styleLongDateTime": "Data e hora longas",
+    "timestampPicker.styleRelative": "Relativa",
     "composerActionsMenu.inviteToGame": "Convidar para o jogo",
     "gameInvite.title": "Convidar para o jogo",
     "gameInvite.game": "Jogo",
@@ -3695,6 +3826,11 @@ const messages: Partial<Record<MessageKey, string>> = {
     // src/lib/stores/voiceCall.svelte.ts
     "voiceCall.couldnTLoadTheCallComponent":
         "Não foi possível carregar o componente de chamada. Verifique sua conexão e recarregue a página para tentar novamente.",
+    "voiceCall.rejoin": "Entrar novamente",
+    "voiceCall.rejoinVoicePrompt":
+        "Você estava numa chamada de voz em {room}. Entrar novamente?",
+    "voiceCall.rejoinVideoPrompt":
+        "Você estava numa videochamada em {room}. Entrar novamente?",
     "voiceCall.couldNotJoinTheVoiceCall":
         "Não foi possível entrar na chamada de voz",
     "voiceCall.joinedWithoutAMicrophone":
@@ -4211,6 +4347,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "Remover localização e outros metadados dos envios",
     "settingsSearch.sendGifsAsAnimatedWebp": "Enviar GIFs como WebP animado",
+    "settingsSearch.hideRecentEmoji":
+        "Ocultar a seção de emojis usados recentemente",
     "settingsSearch.midiSoundBank": "Banco de sons MIDI",
     "settingsSearch.holdToOpenMessageMenu":
         "Pressionar e segurar para abrir o menu da mensagem",
@@ -4372,6 +4510,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "Abrir página da versão",
     "updateStatus.flatpakManualUpdate":
         "Atualização disponível{versionSuffix}. Instale-a pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakNeedsPermissions":
+        "Atualização disponível{versionSuffix}. Ela precisa de novas permissões, que o Flatpak só concede pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakUpdateDeclined":
+        "Atualização disponível{versionSuffix}. As atualizações automáticas do Flatpak foram recusadas; instale-a pela sua central de programas ou com flatpak update",
+    "updateStatus.flatpakNoPortal":
+        "Atualização disponível{versionSuffix}. Esta versão do Flatpak não consegue atualizar apps sozinha; instale-a pela sua central de programas ou com flatpak update",
     "updateStatus.packageManagerUpdate":
         "Atualização disponível{versionSuffix}. Atualize com {manager}",
     "updateStatus.updateCheckFailed": "Falha ao verificar atualizações",

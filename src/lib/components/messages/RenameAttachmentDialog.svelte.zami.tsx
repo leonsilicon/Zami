@@ -82,6 +82,8 @@ export default function RenameAttachmentDialog({
 
     // Zami: <video controls preload="metadata"> → expo-video's player, which
     // loads the file but doesn't play it until asked.
+    // Zami: upstream's `use:releaseDecoder` is what useVideoPlayer does
+    // already: the player is released when the dialog unmounts.
     const player = useVideoPlayer(previewUrl && video ? previewUrl : null);
     // Zami: `max-h-[50vh] w-full object-contain`: the preview keeps the image's
     // aspect ratio (once it has loaded) up to half the screen's height.

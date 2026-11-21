@@ -150,6 +150,50 @@ declare global {
          *  arbitrates screen-share source selection. */
         desktop?: {
             showWindow?: () => void;
+            /** Settings > Messages > GIFs: the GIFs favourited in the Discord
+             *  desktop app on this machine (electron, read-only). Discord's
+             *  links are unverified: the renderer checks each one. */
+            discordFavourites?: {
+                read: () => Promise<
+                    import("$lib/utils/discordFavourites").DiscordFavouritesResult
+                >;
+                /** Fresh signed links for Discord attachment links, from the
+                 *  user's refresh service (electron/discordAttachments.cjs). */
+                refresh?: (
+                    serviceUrl: string,
+                    urls: string[],
+                ) => Promise<
+                    | { ok: true; refreshed: Record<string, string> }
+                    | {
+                          ok: false;
+                          error:
+                              | "bad-proxy-url"
+                              | "unreachable"
+                              | "rate-limited"
+                              | "http-error"
+                              | "bad-response";
+                          status?: number;
+                      }
+                >;
+                /** Downloads one refreshed Discord attachment in main. */
+                download?: (url: string) => Promise<
+                    | {
+                          ok: true;
+                          data: Uint8Array;
+                          contentType: string;
+                          name: string;
+                      }
+                    | {
+                          ok: false;
+                          error:
+                              | "bad-url"
+                              | "unreachable"
+                              | "http-error"
+                              | "too-large";
+                          status?: number;
+                      }
+                >;
+            };
             /** Settings > General > Network (electron/proxy.cjs). */
             proxy?: {
                 info: () => Promise<DesktopProxyInfo>;
@@ -165,6 +209,18 @@ declare global {
             /** Tell main a call is (dis)connected, to raise process
              *  priority during it (electron/callPriority.cjs). */
             call?: { setActive: (active: boolean) => void };
+            /** The call's pop-out window (electron/main.cjs, "zam-call-pip"):
+             *  its size, following the cursor during a drag, and docking
+             *  back when it is dropped over the Zam window. Screen
+             *  coordinates in DIPs. */
+            callPip?: {
+                spawnSize: (size: { width: number; height: number }) => void;
+                follow: (grab: { x: number; y: number } | null) => void;
+                /** Returns the unsubscribe. */
+                onDocked: (
+                    cb: (centre: { x: number; y: number }) => void,
+                ) => () => void;
+            };
             /** Settings > Debug GPU section (electron/main.cjs). */
             gpu?: {
                 info: () => Promise<{

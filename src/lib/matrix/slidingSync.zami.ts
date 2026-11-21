@@ -21,13 +21,14 @@ import {
 } from "matrix-js-sdk/lib/sliding-sync";
 import {
     hasUnflaggedScrollback,
-    isSlidingSyncUnsupportedError,
     isSlidingTimelineGap,
     nextWindowEnd,
     roomsWithDroppedTimeline,
     shouldRecoverSkippedEvents,
 } from "$lib/utils/slidingSyncHelpers";
+import { bootMark } from "$lib/utils/bootTiming";
 import { describeSyncError, logSync } from "$lib/matrix/syncLog";
+import { startSlidingProbe, takeSlidingProbe } from "$lib/matrix/slidingProbe";
 import { keepSlidingSyncAlive } from "$lib/matrix/slidingSyncKeepAlive";
 import { adaptSlidingSyncTimeout } from "$lib/matrix/slidingSyncTimeout";
 import { resendRoomSubscriptions } from "$lib/matrix/slidingSyncSubscriptions";
@@ -286,52 +287,40 @@ export async function buildSlidingSync(
     if (!userId || !isSlidingSyncEnabled(userId)) return undefined;
 
     // Ask the server before committing: on one that lacks the endpoint sync
-    // would otherwise just sit in an error state with no way back.
-    const probe = async (): Promise<boolean | null> => {
-        try {
-            await client.slidingSync(
-                { lists: {}, timeout: 0, clientTimeout: 10000 },
-                client.getHomeserverUrl(),
-            );
-            return true;
-        } catch (err) {
-            if (isSlidingSyncUnsupportedError(err)) {
-                console.warn(
-                    "[matrix] sliding sync unsupported, falling back",
-                    err,
-                );
-                return false;
-            }
-            // Anything else (network blip, 5xx, rate limit) is not evidence the
-            // server can't do it; let the real sync loop retry as it normally does.
-            return null;
-        }
-    };
-    const fallBack = () => {
+    // would otherwise just sit in an error state with no way back. The probe
+    // is normally already in flight (started in createAuthenticatedClient, see
+    // slidingProbe.ts); a fresh one is sent only when none was started.
+    const pendingProbe = takeSlidingProbe(client) ?? startSlidingProbe(client);
+    const fallBack = (err: unknown) => {
         const reason = t("client.thisHomeserverDoesnTSupportSliding");
+        console.warn("[matrix] sliding sync unsupported, falling back", err);
         // Turned off so the next boot doesn't probe and warn again; the
         // user can re-enable it from Debug settings if the server changes.
         setSlidingSyncEnabled(userId, false);
         slidingSyncFallbackReason = reason;
         hooks.onFallback?.(reason);
     };
-    // Zami: only until the server has said yes once. After that the question
-    // is asked behind the app instead of in front of it: this request held up
-    // the splash for a round trip on every launch, and for ten seconds on a
-    // bad connection. A server that has since dropped the endpoint falls back
-    // on the next launch.
+    // Zami: only until the server has said yes once. After that the answer
+    // is awaited behind the app instead of in front of it: this request held
+    // up the splash for a round trip on every launch, and for ten seconds on
+    // a bad connection. A server that has since dropped the endpoint falls
+    // back on the next launch.
     if (isSlidingSyncConfirmed(userId)) {
-        void probe().then((supported) => {
-            if (supported === false) fallBack();
+        void pendingProbe.then((probe) => {
+            bootMark("sliding-probe-done");
+            if (probe.kind === "unsupported") fallBack(probe.err);
         });
     } else {
-        const supported = await probe();
-        if (supported === false) {
-            fallBack();
+        const probe = await pendingProbe;
+        bootMark("sliding-probe-done");
+        if (probe.kind === "unsupported") {
+            fallBack(probe.err);
             return undefined;
         }
-        if (supported) setSlidingSyncConfirmed(userId);
+        if (probe.kind === "ok") setSlidingSyncConfirmed(userId);
     }
+    // A transient failure ("failed") is not evidence the server can't do it;
+    // let the real sync loop retry as it normally does.
 
     const lists = new Map<string, MSC3575List>([
         [

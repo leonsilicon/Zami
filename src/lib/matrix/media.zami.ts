@@ -5,6 +5,11 @@ import { matrixClient, captureClient, ownedClientOrThrow } from "./runtime";
 import type { ClientOwnership } from "$lib/utils/clientGeneration";
 import { threadRelationParams } from "./client";
 import { settingsState } from "$lib/stores/settings.svelte";
+import { noteUsageOk, reportUsageLimit } from "$lib/stores/usageLimits.svelte";
+import {
+    classifyLimitError,
+    classifyLimitResponse,
+} from "$lib/utils/usageLimits";
 import { faststartMp4 } from "$lib/utils/mp4Faststart";
 import { progressiveJpegForUpload } from "$lib/utils/progressiveJpegUpload";
 import { stripLocationMetadata } from "$lib/utils/stripMetadata";
@@ -67,6 +72,14 @@ import {
     extensionFor,
     fileFromUri,
 } from "@-/com.leonsilicon.zami.blob/files";
+import { openAuthedReader } from "./mediaStream";
+import {
+    JPEG_EOI,
+    chooseThumbnailPrefix,
+    prefixThumbnailBytes,
+    splitThumbnailPrefix,
+    thumbnailPrefixFields,
+} from "$lib/utils/thumbnailPrefix";
 
 async function captureVideoThumbnail(file: File): Promise<{
     blob: Blob;
@@ -283,13 +296,15 @@ export async function uploadAttachment(
         if (native) {
             try {
                 ownedClientOrThrow(owner);
-                const { content_uri } = await ownedClientOrThrow(
-                    owner,
-                ).uploadContent(native.ciphertext, {
-                    type: "application/octet-stream",
-                    includeFilename: false,
-                    progressHandler,
-                });
+                const { content_uri } = await watchedUpload(
+                    ownedClientOrThrow(owner),
+                    native.ciphertext,
+                    {
+                        type: "application/octet-stream",
+                        includeFilename: false,
+                        progressHandler,
+                    },
+                );
                 return { file: { ...native.info, url: content_uri } };
             } finally {
                 native.release();
@@ -303,7 +318,8 @@ export async function uploadAttachment(
         const encryptedBlob = new Blob([data], {
             type: "application/octet-stream",
         });
-        const { content_uri } = await ownedClientOrThrow(owner).uploadContent(
+        const { content_uri } = await watchedUpload(
+            ownedClientOrThrow(owner),
             encryptedBlob,
             {
                 type: "application/octet-stream",
@@ -316,7 +332,8 @@ export async function uploadAttachment(
         // Plaintext path: upload as-is with the original name, byte-identical
         // to the pre-encryption code path for unencrypted rooms. `type` only
         // matters for a plugin Blob that carries none of its own.
-        const { content_uri } = await ownedClientOrThrow(owner).uploadContent(
+        const { content_uri } = await watchedUpload(
+            ownedClientOrThrow(owner),
             blob,
             opts.type
                 ? { name: opts.name, type: opts.type, progressHandler }
@@ -357,6 +374,28 @@ function mediaEventContent(
         }
     }
     return content;
+}
+
+function isJpegUpload(upload: File, original: File): boolean {
+    const mime = (upload.type || original.type).split(";")[0].trim();
+    return mime.toLowerCase() === "image/jpeg";
+}
+
+/**
+ * The leading scans of a JPEG upload to send as its thumbnail, with the EOI
+ * marker appended (see prefixThumbnailBytes), and the shared prefix length; or
+ * null when no prefix qualifies.
+ */
+async function prefixThumbnailFor(
+    upload: File,
+): Promise<{ length: number; bytes: Uint8Array<ArrayBuffer> } | null> {
+    const bytes = new Uint8Array(await upload.arrayBuffer());
+    const found = chooseThumbnailPrefix(bytes, "image/jpeg");
+    if (!found) return null;
+    return {
+        length: found.length,
+        bytes: prefixThumbnailBytes(bytes.subarray(0, found.length)),
+    };
 }
 
 /**
@@ -455,7 +494,34 @@ export async function prepareFileContent(
                 info["org.matrix.msc4230.is_animated"] = true;
             }
         }
-        if (thumb?.blob) {
+        // A JPEG whose first scans qualify is its own thumbnail: the prefix
+        // bytes plus EOI, marked so receivers can fetch the rest
+        // (utils/thumbnailPrefix).
+        const prefix =
+            thumb && isJpegUpload(toUpload, file)
+                ? await prefixThumbnailFor(toUpload)
+                : null;
+        if (thumb && prefix) {
+            ownedClientOrThrow(owner);
+            const name = "thumbnail.jpg";
+            const thumbUpload = await uploadAttachment(
+                owner,
+                roomId,
+                new File([prefix.bytes], name, { type: "image/jpeg" }),
+                { name, msgtype },
+            );
+            Object.assign(
+                info,
+                thumbnailFields(thumbUpload),
+                thumbnailPrefixFields(prefix.length),
+            );
+            info.thumbnail_info = {
+                mimetype: "image/jpeg",
+                w: thumb.w,
+                h: thumb.h,
+                size: prefix.bytes.length,
+            };
+        } else if (thumb?.blob) {
             ownedClientOrThrow(owner);
             const mimetype = thumb.blob.type;
             const name =
@@ -710,6 +776,47 @@ export function pickerThumbUrl(mxcUrl: string, size: number): string | null {
     return swControlsPage() ? markPickerThumb(url) : url;
 }
 
+/** Report a media download refused for a usage limit (rate limit). Reads
+ *  a clone, so the caller's response stays usable. Never throws. */
+async function reportMediaLimit(resp: Response, url: string): Promise<void> {
+    try {
+        if (!(resp.headers.get("content-type") ?? "").includes("json")) return;
+        const body: unknown = await resp
+            .clone()
+            .json()
+            .catch(() => null);
+        const signal = classifyLimitResponse(
+            resp.status,
+            body,
+            url,
+            resp.headers.get("retry-after"),
+        );
+        if (signal) reportUsageLimit(signal, url);
+    } catch {
+        // Reporting never masks the real failure.
+    }
+}
+
+/** The SDK uploads over XMLHttpRequest, past limitWatchingFetch: classify
+ *  a refused upload here (upload quota, server block, rate limit) and note
+ *  a successful one so an upload-quota banner lifts. */
+async function watchedUpload(
+    client: MatrixClient,
+    ...args: Parameters<MatrixClient["uploadContent"]>
+): Promise<Awaited<ReturnType<MatrixClient["uploadContent"]>>> {
+    try {
+        const res = await client.uploadContent(...args);
+        noteUsageOk(UPLOAD_PATH, "POST");
+        return res;
+    } catch (err) {
+        const signal = classifyLimitError(err, UPLOAD_PATH);
+        if (signal) reportUsageLimit(signal, UPLOAD_PATH);
+        throw err;
+    }
+}
+
+const UPLOAD_PATH = "/_matrix/media/v3/upload";
+
 /** Fetch an attachment from the homeserver with auth and return an object URL for use in <video/audio src> and file downloads. */
 export async function fetchAttachmentBlob(
     httpUrl: string,
@@ -754,10 +861,12 @@ export async function fetchAttachmentBlob(
         );
     }
     const resp = await fetch(httpUrl, { headers, signal: opts.signal });
-    if (!resp.ok)
+    if (!resp.ok) {
+        await reportMediaLimit(resp, httpUrl);
         throw new Error(
             t("media.failedToFetchAttachment", { status: resp.status }),
         );
+    }
     const chunks = await readBodyWithProgress(resp, opts);
     // Same allowlist as a decrypted attachment: the server's sandbox CSP
     // doesn't follow the bytes into a blob URL of our origin.
@@ -784,10 +893,12 @@ export async function fetchMediaBytes(
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const resp = await fetch(httpUrl, { headers, signal });
-    if (!resp.ok)
+    if (!resp.ok) {
+        await reportMediaLimit(resp, httpUrl);
         throw new Error(
             t("media.failedToFetchAttachment", { status: resp.status }),
         );
+    }
     const declared = Number(resp.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > maxBytes)
         throw new Error("Media too large");
@@ -799,17 +910,16 @@ export async function fetchMediaBytes(
 
 /**
  * Fetch an ENCRYPTED attachment (`content.file`) from the homeserver with auth,
- * decrypt it (AES-CTR, integrity-checked in decryptAttachment) and return an
- * object URL. Mirrors fetchAttachmentBlob's same-origin token guard. The
- * plaintext mimetype comes from the event's `content.info.mimetype` — the
- * EncryptedFile itself carries none. The caller owns the object URL and must
- * revoke it. Throws (never returns a URL) if the integrity hash fails.
+ * decrypt it (AES-CTR, integrity-checked in decryptAttachment) and return the
+ * plaintext as a Blob. The caller decides what to do with it: put it in the
+ * shared decryptedBlobCache, or make an object URL of its own. Throws (never
+ * returns a Blob) if the integrity hash fails.
  */
-export async function fetchDecryptedAttachmentBlob(
+export async function fetchDecryptedAttachment(
     file: EncryptedFileInfo & { url: string },
     mimetype?: string,
     opts: ReadProgressOptions = {},
-): Promise<string> {
+): Promise<Blob> {
     if (!matrixClient) throw new Error(t("media.notLoggedIn"));
     const httpUrl = mxcToHttp(file.url);
     if (!httpUrl)
@@ -821,33 +931,9 @@ export async function fetchDecryptedAttachmentBlob(
     const token = matrixClient.getAccessToken();
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    // Zami: downloaded, checked against its hash and decrypted natively into
-    // the media cache (the bytes never enter JS), named for the same
-    // allowlisted type; an SVG still takes the sanitizing path below.
-    const native = isSvgMimeType(mimetype)
-        ? null
-        : downloadEncryptedMedia(
-              file,
-              extensionFor(safeAttachmentMimeType(mimetype)) ||
-                  extensionFor(mimetype ?? ""),
-              {
-                  account: matrixClient.getUserId() ?? "",
-                  url: httpUrl,
-                  headers,
-                  expectedSize: opts.expectedSize,
-                  signal: opts.signal,
-                  onProgress: opts.onProgress,
-                  httpError: (status) =>
-                      new Error(
-                          t("media.failedToFetchEncryptedAttachment", {
-                              status,
-                          }),
-                      ),
-              },
-          );
-    if (native) return native;
     const resp = await fetch(httpUrl, { headers, signal: opts.signal });
     if (!resp.ok) {
+        await reportMediaLimit(resp, httpUrl);
         throw new Error(
             t("media.failedToFetchEncryptedAttachment", {
                 status: resp.status,
@@ -861,7 +947,54 @@ export async function fetchDecryptedAttachmentBlob(
     // future open-in-tab/iframe sink can't execute e.g. an image/svg+xml or
     // text/html blob in our origin (audit SEC-L9). SVG is the exception: it is
     // sanitized instead, so it keeps the type an <img> needs to render it.
-    const blob = await safeMediaBlob(new Blob([plaintext]), mimetype);
+    return safeMediaBlob(new Blob([plaintext]), mimetype);
+}
+
+/**
+ * As fetchDecryptedAttachment, but as an object URL the caller owns and must
+ * revoke. Prefer decryptedBlobCache when the file is shown more than once.
+ */
+export async function fetchDecryptedAttachmentBlob(
+    file: EncryptedFileInfo & { url: string },
+    mimetype?: string,
+    opts: ReadProgressOptions = {},
+): Promise<string> {
+    // Zami: the file's URL in the native media cache when it can go there
+    // (cachedDecryptedAttachment finds it again), instead of a blob in JS.
+    if (matrixClient) {
+        const httpUrl = mxcToHttp(file.url);
+        if (httpUrl && isSameOrigin(httpUrl, matrixClient.getHomeserverUrl())) {
+            const token = matrixClient.getAccessToken();
+            const headers: Record<string, string> = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+            // Zami: downloaded, checked against its hash and decrypted natively into
+            // the media cache (the bytes never enter JS), named for the same
+            // allowlisted type; an SVG still takes the sanitizing path below.
+            const native = isSvgMimeType(mimetype)
+                ? null
+                : downloadEncryptedMedia(
+                      file,
+                      extensionFor(safeAttachmentMimeType(mimetype)) ||
+                          extensionFor(mimetype ?? ""),
+                      {
+                          account: matrixClient.getUserId() ?? "",
+                          url: httpUrl,
+                          headers,
+                          expectedSize: opts.expectedSize,
+                          signal: opts.signal,
+                          onProgress: opts.onProgress,
+                          httpError: (status) =>
+                              new Error(
+                                  t("media.failedToFetchEncryptedAttachment", {
+                                      status,
+                                  }),
+                              ),
+                      },
+                  );
+            if (native) return native;
+        }
+    }
+    const blob = await fetchDecryptedAttachment(file, mimetype, opts);
     // Zami: a big blob's file is written off the JS thread.
     return createObjectURLAsync(blob);
 }
@@ -875,6 +1008,80 @@ export function cachedDecryptedAttachment(
 ): string | null {
     const userId = matrixClient?.getUserId();
     return userId ? cachedEncryptedMedia(userId, file) : null;
+}
+
+/** Whether `file` looks like an EncryptedFile (its key and url are there). */
+function isEncryptedFileRef(
+    file: unknown,
+): file is EncryptedFileInfo & { url: string } {
+    if (typeof file !== "object" || file === null) return false;
+    const f = file as Record<string, unknown>;
+    return (
+        typeof f.url === "string" && typeof f.key === "object" && f.key !== null
+    );
+}
+
+/**
+ * The bytes of an image's prefix thumbnail (`info.thumbnail_file`), decrypted,
+ * split into the whole thumbnail (with its EOI, for decoding) and the shared
+ * prefix (the file's first `length` bytes, for the resume). Null when there is
+ * no encrypted thumbnail or it does not have the declared shape (then the event
+ * is shown as ordinary). Throws when the download or its integrity check fails.
+ */
+export async function fetchThumbnailPrefix(
+    info: Record<string, unknown>,
+    length: number,
+    opts: ReadProgressOptions = {},
+): Promise<{ thumb: Uint8Array; prefix: Uint8Array } | null> {
+    if (!isEncryptedFileRef(info.thumbnail_file)) return null;
+    const blob = await fetchDecryptedAttachment(
+        info.thumbnail_file,
+        "image/jpeg",
+        opts,
+    );
+    if (blob.size !== length + JPEG_EOI.length) return null;
+    return splitThumbnailPrefix(
+        new Uint8Array(await blob.arrayBuffer()),
+        length,
+    );
+}
+
+/**
+ * The plaintext of an encrypted image, fetched from where its thumbnail prefix
+ * ends: the prefix's bytes are not downloaded again. The result is the whole
+ * file, verified as fetchDecryptedAttachment verifies it. When the ranged
+ * download fails (the server did not honour the Range, or the held prefix is
+ * not the start of this file) the whole file is downloaded as usual.
+ */
+export async function fetchDecryptedAttachmentFromPrefix(
+    file: EncryptedFileInfo & { url: string },
+    prefix: Uint8Array,
+    mimetype?: string,
+    opts: ReadProgressOptions = {},
+): Promise<Blob> {
+    if (!matrixClient) throw new Error(t("media.notLoggedIn"));
+    try {
+        const httpUrl = mxcToHttp(file.url);
+        if (!httpUrl)
+            throw new Error(t("media.encryptedAttachmentHasAnInvalidUrl"));
+        const reader = await openAuthedReader(httpUrl, {
+            decrypt: file,
+            prefix,
+            expectedSize: opts.expectedSize,
+            onProgress: opts.onProgress,
+            signal: opts.signal,
+        });
+        const chunks: Uint8Array[] = [];
+        for (;;) {
+            const r = await reader.read();
+            if (r.done) break;
+            chunks.push(r.value);
+        }
+        return await safeMediaBlob(new Blob(chunks as BlobPart[]), mimetype);
+    } catch (err) {
+        if (opts.signal?.aborted) throw err;
+        return fetchDecryptedAttachment(file, mimetype, opts);
+    }
 }
 
 /** HEAD-request a URL (with auth for homeserver URLs) and return its Content-Type. */
@@ -974,7 +1181,7 @@ export async function uploadContent(file: File): Promise<string> {
     const upload = settingsState.stripMetadata
         ? await zamiStripMetadata(file)
         : file;
-    const { content_uri } = await matrixClient.uploadContent(upload, {
+    const { content_uri } = await watchedUpload(matrixClient, upload, {
         name: upload.name,
     });
     return content_uri;

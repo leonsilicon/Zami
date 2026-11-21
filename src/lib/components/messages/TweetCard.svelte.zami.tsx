@@ -24,6 +24,7 @@ import {
     type TweetEmbed,
     type TweetSegment,
 } from "$lib/utils/tweetEmbed";
+import { pickVideoSource } from "$lib/utils/tweetVideo";
 
 interface Props {
     tweet: TweetEmbed;
@@ -217,7 +218,9 @@ export default function TweetCard({ tweet, nested = false }: Props) {
         if (item.kind === "video")
             return (
                 <Video
-                    src={item.url}
+                    // Zami: expo-video plays an HLS playlist itself, so either
+                    // source is the src (upstream's hlsSource loads hls.js).
+                    src={pickVideoSource(item).url}
                     poster={item.thumbnail}
                     className="w-full min-w-0 rounded bg-black"
                     style={cellStyle}

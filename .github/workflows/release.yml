@@ -71,8 +71,8 @@ jobs:
               env:
                   VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
                   VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
-                  VITE_TG_PROXY_URL: ${{ vars.TG_PROXY_URL }}
-                  VITE_TG_PROXY_KEY: ${{ vars.TG_PROXY_KEY }}
+                  VITE_TG_PROXY_URL: ${{ secrets.TG_PROXY_URL }}
+                  VITE_TG_PROXY_KEY: ${{ secrets.TG_PROXY_KEY }}
             - run: node scripts/build-bundle.mjs
             - uses: actions/upload-artifact@v4
               with:
@@ -120,8 +120,8 @@ jobs:
               env:
                   VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
                   VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
-                  VITE_TG_PROXY_URL: ${{ vars.TG_PROXY_URL }}
-                  VITE_TG_PROXY_KEY: ${{ vars.TG_PROXY_KEY }}
+                  VITE_TG_PROXY_URL: ${{ secrets.TG_PROXY_URL }}
+                  VITE_TG_PROXY_KEY: ${{ secrets.TG_PROXY_KEY }}
             - uses: actions/setup-java@v4
               with:
                   distribution: temurin
@@ -217,13 +217,23 @@ jobs:
               env:
                   VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
                   VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
-                  VITE_TG_PROXY_URL: ${{ vars.TG_PROXY_URL }}
-                  VITE_TG_PROXY_KEY: ${{ vars.TG_PROXY_KEY }}
+                  VITE_TG_PROXY_URL: ${{ secrets.TG_PROXY_URL }}
+                  VITE_TG_PROXY_KEY: ${{ secrets.TG_PROXY_KEY }}
             # Windows: the per-application screen-share audio helper
             # (native/app-audio), packed by build.win.extraResources. A no-op
             # on the other runners.
             - name: Build app audio helper
               run: npm run build:app-audio
+            # Windows: the native screen-share capture + encode helper
+            # (native/share-capture), packed by build.win.extraResources.
+            # Needs MSVC (C++/WinRT). A no-op on the other runners.
+            - name: Build share capture helper
+              run: npm run build:share-capture
+            # Windows: the now-playing helper (native/media-session) for
+            # "Listening to" presence. Needs MSVC (C++/WinRT), which the
+            # windows runner has. A no-op on the other runners.
+            - name: Build media session helper
+              run: npm run build:media-session
             # macOS: the MediaRemote now-playing adapter
             # (native/mediaremote-adapter), packed by build.mac.extraResources.
             # A no-op on the other runners.
@@ -279,8 +289,8 @@ jobs:
               env:
                   VITE_PUSH_GATEWAY_URL: ${{ vars.PUSH_GATEWAY_URL }}
                   VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
-                  VITE_TG_PROXY_URL: ${{ vars.TG_PROXY_URL }}
-                  VITE_TG_PROXY_KEY: ${{ vars.TG_PROXY_KEY }}
+                  VITE_TG_PROXY_URL: ${{ secrets.TG_PROXY_URL }}
+                  VITE_TG_PROXY_KEY: ${{ secrets.TG_PROXY_KEY }}
             - name: Fingerprint the desktop shell
               run: node scripts/gen-shell-hash.mjs
             - name: Build unpacked Linux app

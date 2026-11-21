@@ -27,6 +27,7 @@ import {
     isAccountNotificationsDisabled,
     getSlidingSyncProgress,
     getSlidingSyncFallbackReason,
+    stickyEventsAdvertised,
 } from "$lib/matrix/client";
 import {
     checkGatewayHealth,
@@ -79,6 +80,7 @@ import {
 } from "$lib/stores/indexBuild.svelte";
 import { fullIndexPercent, groupThousands } from "$lib/utils/fullIndexProgress";
 import { buildLogExport, saveLogExport } from "$lib/logExport";
+import { bootTimeline } from "$lib/utils/bootTiming";
 import {
     canToggleWebViewDebugging,
     getWebViewDebugging,
@@ -146,6 +148,28 @@ export default function DebugSettings() {
         }
     }
 
+    // Startup timing: snapshot when the panel opens; Copy re-reads it.
+    const [bootSteps, setBootSteps] = useState(() => bootTimeline());
+    const [bootCopied, setBootCopied] = useState(false);
+    async function copyBootTiming() {
+        const steps = bootTimeline();
+        setBootSteps(steps);
+        const text = steps
+            .map(
+                (s) =>
+                    `${s.name} +${s.dt.toFixed(1)}ms (at ${s.t.toFixed(1)}ms)`,
+            )
+            .join("\n");
+        try {
+            // Zami: navigator.clipboard → expo-clipboard.
+            await Clipboard.setStringAsync(text);
+            setBootCopied(true);
+            setTimeout(() => setBootCopied(false), 2000);
+        } catch {
+            /* clipboard denied: the rows are still on screen */
+        }
+    }
+
     // Client logs: everything logCapture.ts kept since launch, redacted.
     const [logsBusy, setLogsBusy] = useState(false);
     const [logsCopied, setLogsCopied] = useState(false);
@@ -194,6 +218,25 @@ export default function DebugSettings() {
         if (prefetchOn) void refreshPrefetch();
         // oxlint-disable-next-line react-hooks/exhaustive-deps -- once, as upstream's onMount.
     }, []);
+
+    // Whether this homeserver advertises MSC4354 sticky events. null while the
+    // probe is pending, which leaves the toggle enabled.
+    const [stickyAdvertised, setStickyAdvertised] = useState<boolean | null>(
+        null,
+    );
+    useEffect(() => {
+        let live = true;
+        void stickyEventsAdvertised().then((ok) => {
+            if (live) setStickyAdvertised(ok);
+        });
+        return () => {
+            live = false;
+        };
+    }, []);
+    // Unsupported and off: nothing to switch on. Unsupported but still on
+    // (saved earlier, or on another homeserver) stays switchable so it can be
+    // turned off.
+    const stickyDisabled = stickyAdvertised === false && !stickyCallMembership;
 
     // Android background download of raw history pages. Read on demand (Refresh).
     const prefetchOn = historyPrefetchAvailable();
@@ -570,6 +613,55 @@ export default function DebugSettings() {
                 ) : null}
             </View>
 
+            <View>
+                <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-2">
+                    {t("debugSettings.startupTiming")}
+                </Text>
+                <View className="flex-row flex-wrap items-center gap-3 py-2 border-b border-zam-divider">
+                    <Text className="flex-1 min-w-48 text-xs text-zam-textMuted">
+                        {t("debugSettings.startupTimingHint")}
+                    </Text>
+                    <Pressable
+                        accessibilityRole="button"
+                        onPress={() => void copyBootTiming()}
+                        className="px-2.5 py-1 rounded bg-zam-backgroundSecondary hover:bg-zam-messageHover"
+                    >
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
+                            {bootCopied
+                                ? t("debugSettings.copied")
+                                : t("debugSettings.copyTiming")}
+                        </Text>
+                    </Pressable>
+                </View>
+                {bootSteps.length === 0 ? (
+                    <Text className="py-2 text-xs text-zam-textMuted">
+                        {t("debugSettings.startupTimingEmpty")}
+                    </Text>
+                ) : (
+                    <View className="py-1">
+                        {bootSteps.map((step, i) => (
+                            <View
+                                key={i}
+                                className="flex-row items-baseline gap-3 py-0.5"
+                            >
+                                <Text
+                                    numberOfLines={1}
+                                    className="flex-1 min-w-0 font-mono text-xs text-zam-textPrimary"
+                                >
+                                    {step.name}
+                                </Text>
+                                <Text className="font-mono text-xs text-zam-textMuted tabular-nums">
+                                    {t("debugSettings.startupTimingRow", {
+                                        dt: step.dt.toFixed(1),
+                                        at: step.t.toFixed(1),
+                                    })}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+
             {/* Zami: the launch timeline (@-/com.leonsilicon.zami.startup), for a
                 slow "Restoring session". A diagnostic, so not translated. */}
             <View>
@@ -667,11 +759,19 @@ export default function DebugSettings() {
                         <Text className="text-xs text-zam-textMuted">
                             {t("debugSettings.stickyCallMembershipHint")}
                         </Text>
+                        {stickyDisabled ? (
+                            <Text className="text-xs text-zam-textMuted">
+                                {t(
+                                    "debugSettings.stickyCallMembershipUnsupported",
+                                )}
+                            </Text>
+                        ) : null}
                     </View>
                     <ToggleSwitch
                         checked={stickyCallMembership}
                         onChange={setStickyCallMembership}
                         label={t("debugSettings.stickyCallMembership")}
+                        disabled={stickyDisabled}
                     />
                 </View>
                 <View className="flex-row items-center gap-3 py-2 border-b border-zam-divider">

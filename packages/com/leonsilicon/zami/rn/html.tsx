@@ -52,7 +52,25 @@ export interface HtmlProps {
   onImagePress?: (src: string, element: HtmlElement, images: HtmlElement[]) => void;
   /** Lines to clamp to, like `line-clamp-*`. */
   numberOfLines?: number;
+  /** Clips tall code blocks, with a toggle to show them whole (Zam's `codeBlocks` action). */
+  codeBlocks?: CodeBlockCollapse;
 }
+
+/** How tall `<pre>` blocks collapse. Which ones are expanded is kept by `keyOf`, across renders. */
+export interface CodeBlockCollapse {
+  /** The height a block is clipped at, border included. */
+  maxHeight: number;
+  /** Whether a block whose content is `contentHeight` tall is clipped by `maxHeight`. */
+  overflows: (contentHeight: number, maxHeight: number) => boolean;
+  /** A stable key for the message's `index`th code block. */
+  keyOf: (index: number) => string;
+  /** The toggle's label: "Show more" while collapsed, "Show less" while expanded. */
+  label: (expanded: boolean) => string;
+}
+
+// Expanded code blocks by CodeBlockCollapse.keyOf, for this run of the app (as Zam's
+// action keeps them): a row that remounts keeps its blocks as they were.
+const expandedCodeBlocks = new Set<string>();
 
 // Zam's look for message content: `.message-body` in src/app.zami.css and the
 // `:global(.message-body …)` styles in MessageItem.svelte, over Tailwind's preflight
@@ -151,6 +169,8 @@ interface Context {
   decoration: Decoration;
   /** Inside a code block: highlight.js's colors. */
   syntax: SyntaxColors | undefined;
+  /** HtmlProps.codeBlocks, with each `<pre>`'s index among the HTML's code blocks. */
+  codeBlocks: { collapse: CodeBlockCollapse; index: ReadonlyMap<HtmlLayout, number> } | undefined;
 }
 
 // Only text styles: a className's layout classes would repeat on every block.
@@ -198,7 +218,22 @@ function rootContext(
     spoiler: false,
     decoration: decorate("none", text.textDecorationLine),
     syntax: undefined,
+    codeBlocks: undefined,
   };
+}
+
+/** Each `<pre>` block's index among the layout's, in document order. */
+function codeBlockIndex(layout: readonly HtmlLayout[]): Map<HtmlLayout, number> {
+  const index = new Map<HtmlLayout, number>();
+  const walk = (items: readonly HtmlLayout[]) => {
+    for (const item of items) {
+      if (item.type !== "block") continue;
+      if (item.tag === "pre") index.set(item, index.size);
+      walk(item.children);
+    }
+  };
+  walk(layout);
+  return index;
 }
 
 function withText(context: Context, text: TextStyle): Context {
@@ -272,6 +307,14 @@ function renderInline(node: HtmlNode, context: Context, key: number): ReactNode 
         </Text>
       );
     }
+    case "time":
+      // Zam's inline timestamp pill (inlineTimestamp's TIMESTAMP_PILL_CLASS), whose
+      // text MessageItem has already localized.
+      return (
+        <Text key={key} className={context.hidden ? undefined : "bg-zam-backgroundTertiary"}>
+          {renderInlines(node.children, context)}
+        </Text>
+      );
     default:
       return renderSpan(node, context, key);
   }
@@ -599,11 +642,53 @@ function CodeBlock({ block, context, spacing }: BlockProps): ReactNode {
     fontSize: styles.code.fontSize,
     syntax,
   };
+  const collapse = context.codeBlocks?.collapse;
+  const index = context.codeBlocks?.index.get(block);
+  const key = collapse && index !== undefined ? collapse.keyOf(index) : null;
+  const [expanded, setExpanded] = useState(() => key !== null && expandedCodeBlocks.has(key));
+  // The content's height, padding and border included, as Zam's action measures it.
+  const [contentHeight, setContentHeight] = useState(0);
+  const overflowing =
+    collapse !== undefined && key !== null && collapse.overflows(contentHeight, collapse.maxHeight);
+  const toggle = () => {
+    if (key === null) return;
+    if (expanded) expandedCodeBlocks.delete(key);
+    else expandedCodeBlocks.add(key);
+    setExpanded(!expanded);
+  };
+  const clipped = overflowing && !expanded && collapse ? { maxHeight: collapse.maxHeight } : null;
   return (
-    <View className="bg-zam-backgroundTertiary border-zam-divider" style={[styles.pre, spacing]}>
-      <ScrollView horizontal contentContainerStyle={styles.preContent}>
+    <View
+      className="bg-zam-backgroundTertiary border-zam-divider"
+      style={[styles.pre, clipped, spacing]}
+    >
+      <ScrollView
+        horizontal
+        contentContainerStyle={styles.preContent}
+        onContentSizeChange={(_width, height) => setContentHeight(height + 2)}
+      >
         <View>{renderBlocks(block.children, code)}</View>
       </ScrollView>
+      {overflowing && collapse ? (
+        // The toggle bar over the clipped bottom (Zam's `.code-block-toggle`), or under the
+        // whole block once expanded.
+        <View
+          className="bg-zam-backgroundTertiary"
+          style={expanded ? styles.codeToggle : [styles.codeToggle, styles.codeToggleOver]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={toggle}
+            className="border border-zam-divider bg-zam-backgroundSecondary rounded-full"
+            style={styles.codeToggleButton}
+          >
+            <Text className="text-zam-textPrimary" style={styles.codeToggleLabel}>
+              {collapse.label(expanded)}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -719,6 +804,7 @@ export function Html({
   onLinkPress,
   onImagePress,
   numberOfLines,
+  codeBlocks,
 }: HtmlProps): ReactNode {
   const classes = useMemo(() => readClassName(className), [className]);
   const nodes = useMemo(() => parseHtml(html, { resolveMxc }), [html, resolveMxc]);
@@ -727,6 +813,11 @@ export function Html({
     [nodes, classes.preserveWhitespace],
   );
   const style = useResolveClassNames(classes.text);
+  const latestCodeBlocks = useRef(codeBlocks);
+  useLayoutEffect(() => {
+    latestCodeBlocks.current = codeBlocks;
+  }, [codeBlocks]);
+  const collapses = codeBlocks !== undefined;
   // A changing `onLinkPress` (an inline arrow) doesn't re-render the content.
   const latestOnLinkPress = useRef(onLinkPress);
   useLayoutEffect(() => {
@@ -747,10 +838,26 @@ export function Html({
         : undefined,
     [takesImages, nodes],
   );
-  const context = useMemo(
-    () => rootContext(style, classes, press, pressImage),
-    [style, classes, press, pressImage],
+  // A changing `codeBlocks` (an inline object) doesn't re-render the content either.
+  const collapse = useMemo<CodeBlockCollapse | undefined>(
+    () =>
+      collapses
+        ? {
+            get maxHeight() {
+              return latestCodeBlocks.current?.maxHeight ?? Infinity;
+            },
+            overflows: (height, max) => latestCodeBlocks.current?.overflows(height, max) ?? false,
+            keyOf: (index) => latestCodeBlocks.current?.keyOf(index) ?? String(index),
+            label: (expanded) => latestCodeBlocks.current?.label(expanded) ?? "",
+          }
+        : undefined,
+    [collapses],
   );
+  const context = useMemo(() => {
+    const root = rootContext(style, classes, press, pressImage);
+    if (collapse) root.codeBlocks = { collapse, index: codeBlockIndex(layout) };
+    return root;
+  }, [style, classes, press, pressImage, collapse, layout]);
   return useMemo(() => {
     if (numberOfLines) {
       return (
@@ -783,6 +890,11 @@ const styles = StyleSheet.create({
   pre: { borderWidth: 1, borderRadius: 6, overflow: "hidden" },
   preContent: { padding: 12 },
   code: { fontFamily: MONO, fontSize: 13, lineHeight: 19.5 },
+  // `.code-block-toggle` and its button.
+  codeToggle: { alignItems: "center", paddingTop: 8, paddingBottom: 12 },
+  codeToggleOver: { position: "absolute", left: 0, right: 0, bottom: 0, opacity: 0.95 },
+  codeToggleButton: { paddingVertical: 3, paddingHorizontal: 12 },
+  codeToggleLabel: { fontSize: 12, lineHeight: 15 },
   hr: { borderTopWidth: 1 },
   row: { flexDirection: "row" },
   fill: { flex: 1 },

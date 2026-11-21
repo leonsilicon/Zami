@@ -100,9 +100,10 @@ import {
     type VideoCodecChoice,
 } from "$lib/utils/videoCodecs";
 import {
+    AUTO_SCREEN_SHARE_BITRATE,
     DEFAULT_SCREEN_SHARE_BITRATE,
     MIN_SCREEN_SHARE_BITRATE,
-    SAFE_SCREEN_SHARE_BITRATE,
+    isAutoBitrate,
 } from "$lib/utils/screenShareBitrate";
 
 const STORAGE_PREFIX = "settings:";
@@ -261,6 +262,15 @@ const initialActivePreset =
     storedActivePreset ||
     (legacyTheme ? migrateThemeToPresetName(legacyTheme) : "");
 
+// The sticky-membership toggle used to be device-global. Drop that bare key
+// before anything reads it: readScoped() would otherwise hand it to whichever
+// account reads first, and the old value would reach every other account.
+try {
+    localStorage.removeItem(STORAGE_PREFIX + "stickyCallMembership");
+} catch {
+    // ignore (private mode)
+}
+
 export const settingsState = $state({
     /** COMPAT SHIM: Legacy local interface color theme. Now derived from activePreset's base.
      * Use activeBase for the actual base; this exists for back-compat only. */
@@ -276,6 +286,10 @@ export const settingsState = $state({
     dateStyle: normalizeDateStyle(readString("dateStyle")),
     /** Which tab the GIF picker opens on (device-global, like theme). */
     gifDefaultTab: normalizeGifTab(readString("gifDefaultTab")),
+    /** Base URL of the user's own Discord link refresh service
+     *  (services/discord-refresh-proxy), used by the Discord favourites
+     *  import for GIFs uploaded to Discord. Device-global; "" when unset. */
+    discordRefreshServiceUrl: readString("discordRefreshServiceUrl") ?? "",
     customDatePattern: readString("customDatePattern") || "yyyy-MM-dd",
     alwaysAbsolute: readBool("alwaysAbsolute", false),
     /** Show full Matrix ids (@user:server) instead of display names across
@@ -302,8 +316,9 @@ export const settingsState = $state({
     orderHints: readBool("orderHints", true),
     /** Debug: announce our call membership as a sticky m.rtc.member (MSC4354)
      *  instead of an m.call.member state event. Default OFF: clients that
-     *  only read state events won't see us in the call. */
-    stickyCallMembership: readBool("stickyCallMembership", false),
+     *  only read state events won't see us in the call. Account-scoped: each
+     *  homeserver differs in whether it supports sticky events. */
+    stickyCallMembership: readAccountBool("stickyCallMembership", false),
     /** Device-global: whether the packaged desktop/Android build auto-downloads
      *  updates. Default ON; the escape hatch is this toggle. */
     autoUpdateEnabled: readBool("autoUpdateEnabled", true),
@@ -389,6 +404,10 @@ export const settingsState = $state({
      *  receivers can watch it as it downloads. Only used when the result is
      *  smaller. Default OFF, since the file type changes. Local-only. */
     gifsAsWebp: readBool("gifsAsWebp", false),
+    /** Device-global: hide the "Recently Used" section and tab at the top of
+     *  the emoji picker. Recording keeps going, so turning it back off shows an
+     *  up-to-date list. Default OFF (section shown). Local-only. */
+    hideRecentEmoji: readBool("hideRecentEmoji", false),
     /** Device-global: the image viewer opens with images smaller than the
      *  screen enlarged to fill it, instead of at their own size. The viewer's
      *  fit button flips it for the image being viewed. Default ON. */
@@ -609,8 +628,7 @@ export const settingsState = $state({
     shareSmoothingMs: readShareSmoothing(),
     screenShareFps: readAccountString("screenShareFps") ?? "30",
     /** Screen-share bitrate cap (bits/sec), picked apart from resolution and
-     *  fps. Clamped to the measured upload when applied
-     *  (utils/screenShareBitrate). */
+     *  fps; 0 is automatic, no cap (utils/screenShareBitrate). */
     screenShareBitrate: readScreenShareBitrate(),
     /** Video codecs this device lists but can't show (set by the user, or by
      *  a stream that arrived and never decoded). Left out of what it tells
@@ -626,7 +644,7 @@ export const settingsState = $state({
     ),
     /** Ask the SFU for video sized to the tile showing it, and pause video
      *  that isn't on screen (LiveKit adaptiveStream). Read at join. */
-    adaptiveStream: readAccountBool("adaptiveStream", false),
+    adaptiveStream: readAccountBool("adaptiveStream", true),
     /** Peer-to-peer calls (MSC4575) only through the homeserver's TURN
      *  server, so the others see its address instead of ours. Read when a
      *  connection is made. */
@@ -981,7 +999,7 @@ export function reloadAccountSettings(): void {
     settingsState.callVideoCodec = normalizeCallVideoCodec(
         readAccountString("callVideoCodec"),
     );
-    settingsState.adaptiveStream = readAccountBool("adaptiveStream", false);
+    settingsState.adaptiveStream = readAccountBool("adaptiveStream", true);
     settingsState.meshRelayOnly = readAccountBool("meshRelayOnly", false);
     settingsState.meshPublicStun = readAccountBool("meshPublicStun", false);
     settingsState.callSoundsEnabled = readAccountBool(
@@ -990,6 +1008,10 @@ export function reloadAccountSettings(): void {
     );
     settingsState.callSoundsVolume = readAccountNumber("callSoundsVolume", 0.5);
     settingsState.ringEnabled = readAccountBool("ringEnabled", true);
+    settingsState.stickyCallMembership = readAccountBool(
+        "stickyCallMembership",
+        false,
+    );
     settingsState.ringVolume = readAccountNumber("ringVolume", 1);
     settingsState.ringtone = readAccountString("ringtone") ?? "";
     settingsState.participantAudio = parseAudioMap(
@@ -1014,6 +1036,14 @@ export function setDateStyle(value: DateStyle): void {
     settingsState.dateStyle = value;
     writeString("dateStyle", value);
     customizationChanged();
+}
+
+export function setDiscordRefreshServiceUrl(value: string): void {
+    settingsState.discordRefreshServiceUrl = value.trim();
+    writeString(
+        "discordRefreshServiceUrl",
+        settingsState.discordRefreshServiceUrl,
+    );
 }
 
 export function setGifDefaultTab(value: GifTab): void {
@@ -1076,7 +1106,7 @@ export function setOrderHints(value: boolean): void {
 
 export function setStickyCallMembership(value: boolean): void {
     settingsState.stickyCallMembership = value;
-    writeBool("stickyCallMembership", value);
+    writeAccountBool("stickyCallMembership", value);
 }
 
 export function setAutoUpdateEnabled(value: boolean): void {
@@ -1233,6 +1263,11 @@ export function setRandomizeFileNames(value: boolean): void {
 export function setGifsAsWebp(value: boolean): void {
     settingsState.gifsAsWebp = value;
     writeBool("gifsAsWebp", value);
+}
+
+export function setHideRecentEmoji(value: boolean): void {
+    settingsState.hideRecentEmoji = value;
+    writeBool("hideRecentEmoji", value);
 }
 
 export function setLightboxFitToScreen(value: boolean): void {
@@ -1591,28 +1626,28 @@ export function setScreenShareFps(value: string): void {
 
 function readScreenShareBitrate(): number {
     const n = Number(readAccountString("screenShareBitrate"));
-    if (!Number.isFinite(n) || n < MIN_SCREEN_SHARE_BITRATE)
+    if (!Number.isFinite(n) || isAutoBitrate(n))
         return DEFAULT_SCREEN_SHARE_BITRATE;
-    // Before 8 Mbps became the limit, the slider offered up to 90% of the
-    // measured upload, so a pick above 8 wasn't a deliberate "more than the
-    // safe limit". Bring it down once per account; picks made after this
-    // stand. Only once signed in: a flag written before that lands in the
-    // unscoped key, which the account would later adopt as already done.
-    // (The key is a literal: this runs while settingsState is initialised.)
-    if (
-        auth.userId &&
-        readAccountString("screenShareBitrateResetTo8") === null
-    ) {
-        writeAccountString("screenShareBitrateResetTo8", "true");
-        if (n > SAFE_SCREEN_SHARE_BITRATE) {
+    // Older builds had no automatic mode: 8 Mbps was both the default and a
+    // limit every pick at or under it was held to, and an earlier migration
+    // brought every higher pick down to it. So a stored 8 Mbps is almost
+    // never a deliberate cap: make it automatic once per account. Picks made
+    // after this stand. Only once signed in: a flag written before that
+    // lands in the unscoped key, which the account would later adopt as
+    // already done. (The key is a literal: this runs while settingsState is
+    // initialised.)
+    if (auth.userId && readAccountString("screenShareBitrateAuto") === null) {
+        writeAccountString("screenShareBitrateAuto", "true");
+        // (A literal too: older builds' default and "safe" limit.)
+        if (n === 8_000_000) {
             writeAccountString(
                 "screenShareBitrate",
-                String(SAFE_SCREEN_SHARE_BITRATE),
+                String(AUTO_SCREEN_SHARE_BITRATE),
             );
-            return SAFE_SCREEN_SHARE_BITRATE;
+            return AUTO_SCREEN_SHARE_BITRATE;
         }
     }
-    return n;
+    return Math.max(MIN_SCREEN_SHARE_BITRATE, n);
 }
 
 function readUploadSpeedOverride(): number {
@@ -1620,7 +1655,15 @@ function readUploadSpeedOverride(): number {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** 0 (or anything not a positive number) goes back to measuring. */
+/** The upload speed the user typed in (bits/sec), or null for "follow the
+ *  connection" (stores/uploadEstimate). */
+export function uploadOverride(): number | null {
+    const n = settingsState.uploadSpeedOverride;
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** 0 (or anything not a positive number) goes back to following the
+ *  connection. */
 export function setUploadSpeedOverride(bps: number): void {
     settingsState.uploadSpeedOverride =
         Number.isFinite(bps) && bps > 0 ? Math.round(bps) : 0;
@@ -1630,12 +1673,12 @@ export function setUploadSpeedOverride(bps: number): void {
     );
 }
 
+/** 0 (or less) is automatic: no cap (utils/screenShareBitrate). */
 export function setScreenShareBitrate(bps: number): void {
     if (!Number.isFinite(bps)) return;
-    settingsState.screenShareBitrate = Math.max(
-        MIN_SCREEN_SHARE_BITRATE,
-        Math.round(bps),
-    );
+    settingsState.screenShareBitrate = isAutoBitrate(bps)
+        ? AUTO_SCREEN_SHARE_BITRATE
+        : Math.max(MIN_SCREEN_SHARE_BITRATE, Math.round(bps));
     writeAccountString(
         "screenShareBitrate",
         String(settingsState.screenShareBitrate),

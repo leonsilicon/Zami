@@ -35,6 +35,7 @@ import {
     type FavouriteGif,
 } from "$lib/stores/favourites.svelte";
 import { interfaceState } from "$lib/stores/interface.svelte";
+import { openSecretStorageUnlock } from "$lib/stores/onboarding.svelte";
 import { settingsState } from "$lib/stores/settings.svelte";
 import { gifSendUrl, type GifKind, type GifResult } from "$lib/utils/klipy";
 import {
@@ -163,6 +164,7 @@ export default function GifPicker({
 
     // Favourites tab: local text filter over the URL and the user's tags.
     const favourites = useRune(() => favouritesState.gifs);
+    const favouritesLocked = useRune(() => favouritesState.locked);
     const visibleFavourites = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return favourites;
@@ -592,6 +594,26 @@ export default function GifPicker({
                     className="w-full bg-zam-backgroundTertiary text-zam-textPrimary text-sm rounded-lg px-3 py-1.5 border border-transparent focus:border-zam-accent/30"
                 />
             </View>
+
+            {tab === "favourites" && favouritesLocked ? (
+                <View className="mx-3 mb-2 flex-row items-center gap-2 rounded-lg bg-zam-backgroundTertiary px-3 py-2 flex-shrink-0">
+                    <Text className="flex-1 text-xs text-zam-textMuted">
+                        {t("favourites.lockedHint")}
+                    </Text>
+                    <Pressable
+                        onPress={() =>
+                            openSecretStorageUnlock(
+                                "privateData.unlockToDecrypt",
+                            )
+                        }
+                        accessibilityRole="button"
+                    >
+                        <Text className="text-xs font-semibold text-zam-textPrimary">
+                            {t("favourites.unlock")}
+                        </Text>
+                    </Pressable>
+                </View>
+            ) : null}
 
             {/* Grid. This scroll box is rendered on both tabs and in every
                 empty state, and it is labelled as a list only while it is

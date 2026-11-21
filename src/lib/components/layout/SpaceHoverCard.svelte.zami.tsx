@@ -2,7 +2,7 @@ import { useRune } from "@-/com.leonsilicon.zami.svelte-react";
 import { useState } from "react";
 import { I18nManager, Text, View, useWindowDimensions } from "react-native";
 import { t } from "$lib/i18n";
-import { Volume2 } from "lucide-svelte";
+import { MonitorSmartphone, Volume2 } from "lucide-svelte";
 import Avatar from "$lib/components/ui/Avatar.svelte";
 import {
     countVoiceParticipants,
@@ -106,28 +106,54 @@ export default function SpaceHoverCard({ anchor, name, getVoice }: Props) {
                                     {shown.map((p) => (
                                         <View
                                             key={p.userId}
-                                            className="flex-row items-center gap-1.5 min-w-0"
+                                            className="min-w-0"
                                         >
-                                            <Avatar
-                                                src={p.avatar}
-                                                name={p.name}
-                                                id={p.userId}
-                                                size={20}
-                                            />
-                                            <Text
-                                                numberOfLines={1}
-                                                className="flex-shrink text-xs text-zam-textSecondary min-w-0"
-                                            >
-                                                {p.name}
-                                            </Text>
-                                            {p.live ? (
-                                                <View className="ms-auto flex-shrink-0 h-3.5 px-1 rounded-sm bg-zam-danger justify-center">
-                                                    <Text className="text-white text-[9px] font-bold leading-[14px] tracking-wide">
-                                                        {t(
-                                                            "spaceSidebar.liveBadge",
-                                                        )}
-                                                    </Text>
-                                                </View>
+                                            <View className="flex-row items-center gap-1.5 min-w-0">
+                                                <Avatar
+                                                    src={p.avatar}
+                                                    name={p.name}
+                                                    id={p.userId}
+                                                    size={20}
+                                                />
+                                                <Text
+                                                    numberOfLines={1}
+                                                    className="flex-shrink text-xs text-zam-textSecondary min-w-0"
+                                                >
+                                                    {p.name}
+                                                </Text>
+                                                {/* Zami: the card is hidden from
+                                                    accessibility, so the pill's
+                                                    sr-only count has no use. */}
+                                                {p.devices &&
+                                                p.devices.length > 1 ? (
+                                                    <View className="flex-shrink-0 flex-row items-center gap-0.5 px-1 py-0.5 rounded bg-zam-backgroundTertiary">
+                                                        <MonitorSmartphone
+                                                            size={12}
+                                                            className="text-zam-textMuted"
+                                                        />
+                                                        <Text className="text-[10px] leading-none text-zam-textMuted">
+                                                            {p.devices.length}
+                                                        </Text>
+                                                    </View>
+                                                ) : null}
+                                                {p.live ? (
+                                                    <View className="ms-auto flex-shrink-0 h-3.5 px-1 rounded-sm bg-zam-danger justify-center">
+                                                        <Text className="text-white text-[9px] font-bold leading-[14px] tracking-wide">
+                                                            {t(
+                                                                "spaceSidebar.liveBadge",
+                                                            )}
+                                                        </Text>
+                                                    </View>
+                                                ) : null}
+                                            </View>
+                                            {p.devices &&
+                                            p.devices.length > 1 ? (
+                                                <Text
+                                                    numberOfLines={1}
+                                                    className="ps-[26px] text-[11px] leading-tight text-zam-textMuted"
+                                                >
+                                                    {p.devices.join(", ")}
+                                                </Text>
                                             ) : null}
                                         </View>
                                     ))}

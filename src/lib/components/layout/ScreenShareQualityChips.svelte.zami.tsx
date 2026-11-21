@@ -12,24 +12,23 @@ import {
     setNativeScreenShare,
     setScreenShareBitrate,
     setUploadSpeedOverride,
+    uploadOverride,
 } from "$lib/stores/settings.svelte";
 import { nativeShareAvailable } from "$lib/desktopScreenShare";
-import {
-    measuredUpload,
-    screenShareBitrateCeiling,
-    uploadOverride,
-} from "$lib/stores/uploadEstimate.svelte";
+import { uploadEstimate } from "$lib/stores/uploadEstimate.svelte";
 import { voiceCallState } from "$lib/stores/voiceCall.svelte";
 import { switchCallVideoCodec } from "$lib/matrix/client";
 import { VIDEO_CODEC_LABELS, type VideoCodec } from "$lib/utils/videoCodecs";
 import {
+    AUTO_SCREEN_SHARE_BITRATE,
     BITRATE_SLIDER_STEPS,
     MAX_SCREEN_SHARE_BITRATE,
-    SAFE_SCREEN_SHARE_BITRATE,
+    SHARE_AUTO_START_BPS,
     bitrateFromSlider,
     bitrateParts,
     clampBitrate,
-    isHighBitrate,
+    isAutoBitrate,
+    roundBitrate,
     sliderFromBitrate,
 } from "$lib/utils/screenShareBitrate";
 import { SCREEN_RESOLUTIONS, SCREEN_FPS_OPTIONS } from "$lib/utils/voiceCall";
@@ -65,19 +64,38 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
         onQualityChange?.(settingsState.screenShareResolution, fps);
     }
 
-    // The bitrate is picked apart from resolution and fps, from about 240p's
-    // bitrate up to 50 Mbps. Up to 8 Mbps the measured upload can hold it
-    // lower (`ceiling`); above 8 it is the user's own call, with a warning.
-    // While dragging only the label follows; the pick is saved (and a live
-    // share retargeted) on release.
-    const ceiling = useRune(() => screenShareBitrateCeiling());
-    const measured = useRune(() => measuredUpload());
+    // The bitrate is automatic by default: no cap, the share sends what the
+    // upload carries right now. Turning that off picks a cap, from about
+    // 240p's bitrate up to 50 Mbps, sent as picked. While dragging only the
+    // label follows; the pick is saved (and a live share retargeted) on
+    // release.
+    const auto = isAutoBitrate(screenShareBitrate);
+    const live = useRune(() => uploadEstimate.live);
     const overridden = useRune(() => uploadOverride() !== null);
     const [draftBitrate, setDraftBitrate] = useState<number | null>(null);
     const shownBitrate =
         draftBitrate ??
         clampBitrate(screenShareBitrate, MAX_SCREEN_SHARE_BITRATE);
-    const highBitrate = isHighBitrate(shownBitrate);
+
+    function retarget(): void {
+        onQualityChange?.(
+            settingsState.screenShareResolution,
+            Number(settingsState.screenShareFps),
+        );
+    }
+
+    function setAuto(on: boolean): void {
+        // A manual cap starts from what the upload carries now, if known.
+        setScreenShareBitrate(
+            on
+                ? AUTO_SCREEN_SHARE_BITRATE
+                : clampBitrate(
+                      roundBitrate(live ?? SHARE_AUTO_START_BPS),
+                      MAX_SCREEN_SHARE_BITRATE,
+                  ),
+        );
+        retarget();
+    }
 
     function bitrateLabel(bps: number): string {
         const { unit, n } = bitrateParts(bps);
@@ -94,11 +112,8 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                 ? mbps * 1_000_000
                 : 0,
         );
-        // The ceiling moved: bring a live share's cap along with it.
-        onQualityChange?.(
-            settingsState.screenShareResolution,
-            Number(settingsState.screenShareFps),
-        );
+        // The automatic cap moved: bring a live share along with it.
+        retarget();
     }
 
     function commitBitrate(position: number): void {
@@ -106,10 +121,7 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
         setScreenShareBitrate(
             bitrateFromSlider(position, MAX_SCREEN_SHARE_BITRATE),
         );
-        onQualityChange?.(
-            settingsState.screenShareResolution,
-            Number(settingsState.screenShareFps),
-        );
+        retarget();
     }
 
     // In a call: the codecs we can send that everyone can watch, plus the one
@@ -280,100 +292,110 @@ export default function ScreenShareQualityChips({ onQualityChange }: Props) {
                 </View>
             )}
             <View>
-                <View className="flex-row items-baseline justify-between gap-2 mb-1.5">
+                <View className="flex-row items-center justify-between gap-2 mb-1.5">
                     <Text className="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
                         {t("screenShareQualityChips.bitrate")}
                     </Text>
-                    <Text className="text-xs text-zam-textPrimary tabular-nums">
-                        {`${t("screenShareQualityChips.bitrateUpTo")} ${bitrateLabel(shownBitrate)}`}
-                    </Text>
+                    <View className="flex-row items-center gap-2">
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("screenShareQualityChips.bitrateAuto")}
+                        </Text>
+                        <ToggleSwitch
+                            checked={auto}
+                            onChange={(v) => setAuto(v)}
+                            label={t("screenShareQualityChips.bitrateAuto")}
+                        />
+                    </View>
                 </View>
-                <Range
-                    min={0}
-                    max={BITRATE_SLIDER_STEPS}
-                    step={1}
-                    className="w-full"
-                    ticks={[
-                        sliderFromBitrate(
-                            SAFE_SCREEN_SHARE_BITRATE,
-                            MAX_SCREEN_SHARE_BITRATE,
-                        ),
-                    ]}
-                    value={sliderFromBitrate(
-                        shownBitrate,
-                        MAX_SCREEN_SHARE_BITRATE,
-                    )}
-                    accessibilityLabel={t("screenShareQualityChips.bitrate")}
-                    accessibilityValueText={bitrateLabel(shownBitrate)}
-                    onChange={(position) =>
-                        setDraftBitrate(
-                            bitrateFromSlider(
-                                position,
+                {auto ? (
+                    <>
+                        <Text className="text-xs text-zam-textMuted">
+                            {t("screenShareQualityChips.bitrateAutoHint")}
+                        </Text>
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
+                            {overridden
+                                ? t(
+                                      "screenShareQualityChips.bitrateAutoOverridden",
+                                      {
+                                          upload: bitrateLabel(
+                                              uploadSpeedOverride,
+                                          ),
+                                      },
+                                  )
+                                : live !== null
+                                  ? t(
+                                        "screenShareQualityChips.bitrateAutoNow",
+                                        {
+                                            upload: bitrateLabel(live),
+                                        },
+                                    )
+                                  : t(
+                                        "screenShareQualityChips.bitrateAutoUnknown",
+                                    )}
+                        </Text>
+                        <View className="flex-row items-center justify-between gap-2 mt-1.5">
+                            <Text className="flex-shrink text-xs text-zam-textMuted">
+                                {t("screenShareQualityChips.uploadOverride")}
+                            </Text>
+                            {/* Zami: `text-end` isn't React Native's; `inputmode="decimal"`
+                                is the decimal keypad. */}
+                            <TextInput
+                                accessibilityLabel={t(
+                                    "screenShareQualityChips.uploadOverride",
+                                )}
+                                keyboardType="decimal-pad"
+                                autoComplete="off"
+                                autoCorrect={false}
+                                className="w-24 px-2 py-1 rounded text-xs bg-zam-backgroundTertiary text-zam-textPrimary border border-transparent focus:border-zam-accent outline-none"
+                                placeholder={t(
+                                    "screenShareQualityChips.uploadOverrideAuto",
+                                )}
+                                placeholderTextColorClassName="accent-zam-textMuted"
+                                value={uploadText ?? savedUploadText}
+                                onChangeText={setUploadText}
+                                onEndEditing={(e) => {
+                                    setUploadText(null);
+                                    commitUploadOverride(e.nativeEvent.text);
+                                }}
+                            />
+                        </View>
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
+                            {t("screenShareQualityChips.uploadOverrideCapHint")}
+                        </Text>
+                    </>
+                ) : (
+                    <>
+                        <Text className="text-xs text-zam-textPrimary tabular-nums mb-1">
+                            {`${t("screenShareQualityChips.bitrateUpTo")} ${bitrateLabel(shownBitrate)}`}
+                        </Text>
+                        <Range
+                            min={0}
+                            max={BITRATE_SLIDER_STEPS}
+                            step={1}
+                            className="w-full"
+                            value={sliderFromBitrate(
+                                shownBitrate,
                                 MAX_SCREEN_SHARE_BITRATE,
-                            ),
-                        )
-                    }
-                    onChangeEnd={(position) => commitBitrate(position)}
-                />
-                {highBitrate && (
-                    <Text
-                        className="text-xs text-zam-warning mt-0.5"
-                        accessibilityRole="alert"
-                    >
-                        {t("screenShareQualityChips.bitrateHighWarning", {
-                            safe: bitrateLabel(SAFE_SCREEN_SHARE_BITRATE),
-                        })}
-                    </Text>
+                            )}
+                            accessibilityLabel={t(
+                                "screenShareQualityChips.bitrate",
+                            )}
+                            accessibilityValueText={bitrateLabel(shownBitrate)}
+                            onChange={(position) =>
+                                setDraftBitrate(
+                                    bitrateFromSlider(
+                                        position,
+                                        MAX_SCREEN_SHARE_BITRATE,
+                                    ),
+                                )
+                            }
+                            onChangeEnd={(position) => commitBitrate(position)}
+                        />
+                        <Text className="text-xs text-zam-textMuted mt-0.5">
+                            {t("screenShareQualityChips.bitrateCapHint")}
+                        </Text>
+                    </>
                 )}
-                <Text className="text-xs text-zam-textMuted mt-0.5">
-                    {t("screenShareQualityChips.bitrateCapHint")}
-                </Text>
-                {!highBitrate && (
-                    <Text className="text-xs text-zam-textMuted mt-0.5">
-                        {overridden && measured !== null
-                            ? t("screenShareQualityChips.bitrateOverridden", {
-                                  upload: bitrateLabel(measured),
-                                  max: bitrateLabel(ceiling),
-                              })
-                            : measured === null
-                              ? t("screenShareQualityChips.bitrateUnmeasured", {
-                                    max: bitrateLabel(ceiling),
-                                })
-                              : t("screenShareQualityChips.bitrateMeasured", {
-                                    upload: bitrateLabel(measured),
-                                    max: bitrateLabel(ceiling),
-                                })}
-                    </Text>
-                )}
-                <View className="flex-row items-center justify-between gap-2 mt-1.5">
-                    <Text className="flex-shrink text-xs text-zam-textMuted">
-                        {t("screenShareQualityChips.uploadOverride")}
-                    </Text>
-                    {/* Zami: `text-end` isn't React Native's; `inputmode="decimal"`
-                        is the decimal keypad. */}
-                    <TextInput
-                        accessibilityLabel={t(
-                            "screenShareQualityChips.uploadOverride",
-                        )}
-                        keyboardType="decimal-pad"
-                        autoComplete="off"
-                        autoCorrect={false}
-                        className="w-24 px-2 py-1 rounded text-xs bg-zam-backgroundTertiary text-zam-textPrimary border border-transparent focus:border-zam-accent outline-none"
-                        placeholder={t(
-                            "screenShareQualityChips.uploadOverrideAuto",
-                        )}
-                        placeholderTextColorClassName="accent-zam-textMuted"
-                        value={uploadText ?? savedUploadText}
-                        onChangeText={setUploadText}
-                        onEndEditing={(e) => {
-                            setUploadText(null);
-                            commitUploadOverride(e.nativeEvent.text);
-                        }}
-                    />
-                </View>
-                <Text className="text-xs text-zam-textMuted mt-0.5">
-                    {t("screenShareQualityChips.uploadOverrideHint")}
-                </Text>
             </View>
             <View className="flex-row items-center justify-between gap-3">
                 <View className="flex-shrink">

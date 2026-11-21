@@ -104,6 +104,8 @@ import {
     mentionsFromFormatted,
     mentionsFromHtml,
 } from "$lib/utils/messageBody";
+import { convertInlineTimestampsInBody } from "$lib/utils/inlineTimestamp";
+import TimestampPicker from "./TimestampPicker.svelte";
 import {
     editableBody,
     isEmptyEdit,
@@ -128,6 +130,7 @@ import {
     replaceEmojiShortcodes,
 } from "$lib/data/emojiShortcodes";
 import EmojiPicker from "$lib/components/ui/EmojiPicker.svelte";
+import { recordRecentEmoji } from "$lib/stores/recentEmoji.svelte";
 import EmojiSuggestions from "$lib/components/messages/EmojiSuggestions.svelte";
 import { decorateComposerText } from "$lib/utils/composerDecorate";
 import { diffCaret } from "$lib/utils/textUndo";
@@ -1217,6 +1220,23 @@ export default function MessageInput({
     function commitEmoji(candidate: EmojiCandidate) {
         const query = emoji.query();
         if (query === null) return;
+        // Record the use for "Recently Used". A custom candidate carries only
+        // the http url, so find its live copy for the mxc url the list keys on.
+        if (candidate.kind === "unicode") {
+            recordRecentEmoji({ kind: "unicode", emoji: candidate.emoji });
+        } else {
+            const live = getCustomEmojis(room, roomsState.activeSpaceId).find(
+                (e) =>
+                    e.shortcode === candidate.shortcode &&
+                    e.url === candidate.url,
+            );
+            if (live)
+                recordRecentEmoji({
+                    kind: "custom",
+                    shortcode: live.shortcode,
+                    url: live.mxcUrl,
+                });
+        }
         const next = applyEmojiCandidate(
             textRef.current,
             { query, start: emojiStart.current },
@@ -1316,6 +1336,10 @@ export default function MessageInput({
         composerPickerOpen &&
         composerPicker === "gif" &&
         composerPickerOwner === effComposerKey;
+    const showTimestampPicker =
+        composerPickerOpen &&
+        composerPicker === "timestamp" &&
+        composerPickerOwner === effComposerKey;
     // Read-only room: the user's power level is below what posting needs
     // (announcement channels). Locks the composer like `disabled` does.
     const noSendPermission = useRune(() => {
@@ -1366,6 +1390,18 @@ export default function MessageInput({
         closeModal();
         if (refocus && textareaFocusedBeforePicker.current)
             textareaEl.current?.focus();
+    }
+
+    function openTimestampPicker() {
+        openComposerPicker("timestamp", effComposerKey);
+    }
+
+    // Appends the token like the emoji and GIF inserts do (the composer has
+    // no caret-position insert helper).
+    function insertTimestamp(token: string) {
+        setComposerText(composerInsertText(textRef.current, token));
+        closeModal();
+        textareaEl.current?.focus();
     }
 
     // roomsTick so a late member load / display-name change re-resolves the
@@ -1537,7 +1573,8 @@ export default function MessageInput({
                 showActionsMenu ||
                 showEmojiPicker ||
                 showGifPicker ||
-                showStickerPicker
+                showStickerPicker ||
+                showTimestampPicker
             )
                 closeModal();
             setComposerText(editableBody(ev));
@@ -1746,6 +1783,9 @@ export default function MessageInput({
             return;
         }
         const usePlain = command.kind === "text-transform" && !!command.plain;
+        // The plain body of a message that also has a formatted body: tokens
+        // read as UTC text. /plain stays literal (no formatted body either).
+        const plainBody = usePlain ? body : convertInlineTimestampsInBody(body);
         // Resolve formatting before clearing the composer (buildFormattedBody
         // reads pendingMentions, reset below).
         const formatted = usePlain ? null : buildFormattedBody(body);
@@ -1782,7 +1822,7 @@ export default function MessageInput({
             if (command.kind === "emote") {
                 await sendEmote(
                     roomId,
-                    body,
+                    plainBody,
                     formatted?.html ?? undefined,
                     mentions,
                     isThread ? { rootEventId: threadRootId! } : undefined,
@@ -1795,7 +1835,7 @@ export default function MessageInput({
                 await sendThreadReply(
                     roomId,
                     threadRootId!,
-                    body,
+                    plainBody,
                     mentions,
                     usePlain ? undefined : (formatted?.html ?? undefined),
                     undefined,
@@ -1806,7 +1846,7 @@ export default function MessageInput({
                     roomId,
                     buildReplyContent({
                         replyEventId: replyId,
-                        text: body,
+                        text: plainBody,
                         formattedText: usePlain
                             ? undefined
                             : (formatted?.html ?? undefined),
@@ -1818,12 +1858,12 @@ export default function MessageInput({
             } else if (formatted?.html) {
                 await sendFormattedMessage(
                     roomId,
-                    body,
+                    plainBody,
                     formatted.html,
                     mentions,
                 );
             } else {
-                await sendTextMessage(roomId, body);
+                await sendTextMessage(roomId, plainBody);
             }
             // The reply was used (or, for /me, dropped) — clear it so the
             // banner doesn't leak onto the user's next message.
@@ -2065,7 +2105,10 @@ export default function MessageInput({
             pluginRegistry.outgoingTextTransforms.map((e) => e.value),
             { roomId },
         );
-        const trimmed = outgoingText.trim();
+        // `sourceText` keeps the typed <t:...> tokens for the formatted body;
+        // `trimmed` is the plain body, where each token reads as UTC text.
+        const sourceText = outgoingText.trim();
+        const trimmed = convertInlineTimestampsInBody(sourceText);
         if (
             (!trimmed && fileQueue.length === 0) ||
             isSendingRef.current ||
@@ -2121,7 +2164,7 @@ export default function MessageInput({
         }
         // Resolve mentions before clearing the composer below (buildFormattedBody
         // reads pendingMentions, which we reset up front).
-        const formatted = trimmed ? buildFormattedBody(trimmed) : null;
+        const formatted = trimmed ? buildFormattedBody(sourceText) : null;
 
         // When files are queued alongside text, attach the text to the first
         // file as a caption (MSC2530) rather than sending it as a separate
@@ -3030,6 +3073,7 @@ export default function MessageInput({
                         : undefined
                 }
                 onInviteToGame={() => openGameInviteDialog(roomId)}
+                onInsertTimestamp={openTimestampPicker}
             />
         );
     }
@@ -3191,6 +3235,11 @@ export default function MessageInput({
                                 onPress={() => openRename(item)}
                                 className="w-20 h-20 rounded-lg bg-zam-backgroundTertiary flex-row items-center justify-center overflow-hidden border border-zam-divider hover:border-zam-accent transition-colors"
                             >
+                                {/* Zami: not ported: composerVideoPreview, which
+                                    holds a decoder only while the tile is in the
+                                    strip's visible area and keeps a captured
+                                    still up otherwise; each tile here keeps its
+                                    own player. */}
                                 {item.previewUrl &&
                                 item.file.type.startsWith("video/") ? (
                                     <QueuedVideoPreview
@@ -3487,6 +3536,26 @@ export default function MessageInput({
                                 // place beside its button).
                                 <View className="absolute bottom-full start-0 mb-2 z-50">
                                     {renderComposerActionsMenu()}
+                                </View>
+                            ))}
+                        {showTimestampPicker &&
+                            (isTouchscreen ? (
+                                <PickerDock
+                                    onClose={closeModal}
+                                    keyboardOffset={keyboardOffset}
+                                >
+                                    <TimestampPicker
+                                        onInsert={insertTimestamp}
+                                        onClose={closeModal}
+                                    />
+                                </PickerDock>
+                            ) : (
+                                // Zami: not ported: the backdrop, as for the "+" menu.
+                                <View className="absolute bottom-full start-0 mb-2 z-50">
+                                    <TimestampPicker
+                                        onInsert={insertTimestamp}
+                                        onClose={closeModal}
+                                    />
                                 </View>
                             ))}
                     </View>

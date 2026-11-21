@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { t } from "$lib/i18n";
 import type { VideoTileDescriptor } from "$lib/utils/videoTiles";
 import { shareViewers } from "$lib/utils/shareWatchers";
+import WatcherStack from "$lib/components/layout/WatcherStack.svelte";
+import TileLabel from "$lib/components/layout/TileLabel.svelte";
 import {
     callPipState,
     closePipWindow,
@@ -29,11 +31,7 @@ import {
     voiceCallState,
     watchShare,
 } from "$lib/stores/voiceCall.svelte";
-import {
-    getMemberName,
-    getRoom,
-    participantHasShareAudio,
-} from "$lib/matrix/client";
+import { participantHasShareAudio } from "$lib/matrix/client";
 
 interface Props {
     tile: VideoTileDescriptor;
@@ -41,6 +39,9 @@ interface Props {
     mirror?: boolean;
     /** Small filmstrip mode: hide the label + fullscreen chrome. */
     compact?: boolean;
+    /** Draw the watchers stack at the top end. The picture-in-picture
+     *  panel turns it off and lays the stack out with its own buttons. */
+    showWatchers?: boolean;
 }
 
 export default function VideoTile({
@@ -48,6 +49,7 @@ export default function VideoTile({
     label,
     mirror = false,
     compact = false,
+    showWatchers = true,
 }: Props) {
     const insets = useSafeAreaInsets();
 
@@ -92,17 +94,6 @@ export default function VideoTile({
     const isShare = tile.source === "screenshare";
     const shareWatchers = useRune(() => voiceCallState.shareWatchers);
     const viewers = shareViewers(shareWatchers, tile.identity);
-    const viewersLabel = t("videoTile.watchingCount", {
-        count: viewers.length,
-    });
-    const callRoomId = useRune(() => voiceCallState.roomId);
-    function viewerName(userId: string): string {
-        const room = callRoomId ? getRoom(callRoomId) : null;
-        return room ? getMemberName(room, userId) : userId;
-    }
-    // Zami: the viewer list opens on hover upstream; here a press on the
-    // count toggles it.
-    const [viewersOpen, setViewersOpen] = useState(false);
 
     // Someone else's share sound can be muted for us alone, as in the menu.
     const shareSound = useRune(
@@ -159,41 +150,16 @@ export default function VideoTile({
                     style={{ width: "100%", height: "100%" }}
                 />
             )}
-            {isShare && !tile.unwatched && (
-                <View className="absolute top-1 end-1 z-10 items-end">
-                    <Pressable
-                        accessibilityRole="image"
-                        accessibilityLabel={viewersLabel}
-                        onPress={() => setViewersOpen((open) => !open)}
-                        className="flex-row items-center gap-1 px-1.5 py-0.5 rounded bg-black/60"
-                    >
-                        <Eye size={12} className="text-white" />
-                        <Text className="tabular-nums text-white text-xs">
-                            {viewers.length}
-                        </Text>
-                    </Pressable>
-                    {viewersOpen && (
-                        <View className="mt-1 min-w-[10rem] max-w-[14rem] rounded bg-black/85 p-2 shadow-lg">
-                            <Text className="font-semibold mb-1 text-xs text-white">
-                                {t("videoTile.watchers")}
-                            </Text>
-                            {viewers.length === 0 ? (
-                                <Text className="text-xs text-zam-textMuted">
-                                    {t("videoTile.noWatchers")}
-                                </Text>
-                            ) : (
-                                viewers.map((userId) => (
-                                    <Text
-                                        key={userId}
-                                        numberOfLines={1}
-                                        className="truncate text-xs text-white"
-                                    >
-                                        {viewerName(userId)}
-                                    </Text>
-                                ))
-                            )}
-                        </View>
-                    )}
+            {isShare && !tile.unwatched && showWatchers && (
+                /* Top end, clear of the tile's own buttons (they sit at the
+                   bottom end). The stack collapses to avatars and "+N" in
+                   small tiles. Zami: `max-w-[calc(100%-0.5rem)]` → the start
+                   inset. */
+                <View
+                    pointerEvents="box-none"
+                    className="absolute top-1 end-1 start-1 z-10 items-end"
+                >
+                    <WatcherStack viewers={viewers} max={compact ? 3 : 5} />
                 </View>
             )}
             {!compact && !tile.unwatched && (
@@ -203,13 +169,8 @@ export default function VideoTile({
                         pointerEvents="none"
                         className="absolute bottom-2 start-2 end-2 flex-row"
                     >
-                        <View className="flex-shrink px-2 py-0.5 rounded bg-black/60">
-                            <Text
-                                numberOfLines={1}
-                                className="text-xs text-white truncate"
-                            >
-                                {label}
-                            </Text>
+                        <View className="flex-shrink">
+                            <TileLabel userId={tile.userId} label={label} />
                         </View>
                     </View>
                     <View className="absolute bottom-2 end-2 flex-row gap-1">

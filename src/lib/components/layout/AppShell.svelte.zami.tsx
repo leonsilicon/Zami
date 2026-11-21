@@ -33,6 +33,8 @@ import { replaceState } from "$app/navigation";
 import { page } from "$app/state";
 import { localeInfo, t } from "$lib/i18n";
 import { motionOK } from "$lib/utils/motionPreference";
+import { isSilentZamEvent } from "$lib/utils/silentZamEvents";
+import { bootMark } from "$lib/utils/bootTiming";
 
 import SpaceSidebar from "$lib/components/layout/SpaceSidebar.svelte";
 import RoomList from "$lib/components/layout/RoomList.svelte";
@@ -66,6 +68,11 @@ import InboxPanel from "$lib/components/layout/InboxPanel.svelte";
 import SpaceLandingPanel from "./SpaceLandingPanel.svelte";
 import IncomingCallCard from "$lib/components/layout/IncomingCallCard.svelte";
 import CallPipOverlay from "$lib/components/layout/CallPipOverlay.svelte";
+import CallPoppedOutNotice from "$lib/components/layout/CallPoppedOutNotice.svelte";
+import {
+    callPopoutState,
+    watchCallPopout,
+} from "$lib/stores/callPopout.svelte";
 import VerificationModal from "$lib/components/layout/VerificationModal.svelte";
 import EncryptionSetupDialog from "$lib/components/layout/EncryptionSetupDialog.svelte";
 import {
@@ -148,6 +155,8 @@ import {
 } from "$lib/stores/composerDrafts.svelte";
 import { composerThreadKey } from "$lib/utils/threadContent";
 import { initFavourites } from "$lib/stores/favourites.svelte";
+import { initPrivateAccountData } from "$lib/matrix/privateAccountData.svelte";
+import { initRecentEmoji } from "$lib/stores/recentEmoji.svelte";
 import { initCustomizationSync } from "$lib/stores/customizationSync.svelte";
 import { initIgnoredUsers } from "$lib/stores/ignoredUsers.svelte";
 import { initPresence } from "$lib/stores/presence.svelte";
@@ -233,6 +242,7 @@ import {
     getDMPartnerId,
     logout,
     onRoomUpdate,
+    watchServerNotices,
     onAccountData,
     onLocalEchoUpdated,
     onThreadNameChange,
@@ -265,6 +275,7 @@ import {
     clearServiceWorkerNotifications,
     ensureCallNotifyPushRule,
     ensureThreadNamePushRule,
+    ensureEncryptedMentionRules,
     sendNotificationQuickReply,
     resolveQuickReplyThreadRoot,
     markRoomAsRead,
@@ -513,6 +524,8 @@ export default function AppShell() {
     const syncState = useRune(() => auth.syncState);
     const isMobile = useRune(() => interfaceState.isMobile);
     const leftOpen = useRune(() => interfaceState.leftOpen);
+    const callPopoutOpen = useRune(() => callPopoutState.open);
+    const callPopoutRoomId = useRune(() => callPopoutState.roomId);
     const sidebar = useRune(() => interfaceState.sidebar);
     const lightboxOpen = useRune(() => interfaceState.lightboxOpen);
     const modal = useRune(() => interfaceState.modal);
@@ -2096,6 +2109,8 @@ export default function AppShell() {
     // Zami: a no-op without Electron's bridge.
     useEffect(installDesktopSaveImage, []);
     useEffect(installDesktopMessageMenu, []);
+    // Closes a call's pop-out window when that call ends.
+    useEffect(watchCallPopout, []);
     // Keep the browser from evicting this origin's storage (crypto store,
     // account backup) when the disk runs low. See persistentStorage.ts.
     // Zami: "unsupported" here (no navigator.storage); the app's storage isn't
@@ -2148,6 +2163,7 @@ export default function AppShell() {
     }, []);
 
     useEffect(() => {
+        bootMark("shell-mounted");
         reloadAccountSettings();
 
         // One-time "What's New": pop up once on the first launch after the version
@@ -2217,6 +2233,13 @@ export default function AppShell() {
         if (client) ensureCallNotifyPushRule().catch(() => {});
         // Keep encrypted thread renames from notifying. Best-effort too.
         if (client) ensureThreadNamePushRule().catch(() => {});
+        // Let mentions in encrypted "mentions only" rooms reach this device's
+        // mention check (the server cannot see them). Best-effort too.
+        // Zami: not ported: the rule makes the server push every encrypted
+        // message in those rooms, and Zami's event_id_only pushes are shown by
+        // the OS with no step that could decrypt one and drop non-mentions
+        // (see src/lib/push.zami.ts). Adding it would ping for every message.
+        void ensureEncryptedMentionRules;
 
         // Mirror the session natively so the push service can enrich
         // notifications and read the active-session blob (off-native this is a
@@ -2601,6 +2624,9 @@ export default function AppShell() {
         // Web push notification taps (service worker) deep-link via postMessage.
         const onSwMessage = (e: MessageEvent) => {
             if (e.data?.type === "OPEN_ROOM" && e.data.roomId) {
+                // Tell the service worker this window took the tap; it tries
+                // the next window (or opens one) when no ack arrives.
+                e.ports?.[0]?.postMessage({ handled: true });
                 openRoomFromNotification(
                     e.data.roomId,
                     e.data.userId,
@@ -2656,6 +2682,8 @@ export default function AppShell() {
         // otherwise never re-derive the lists — catch up once.
         scheduleRefreshRooms();
         const unsubTimeline = onTimelineEvent((event, room, isLiveAppend) => {
+            // Commands (com.zam.call.kick) are not messages: no unread, no alert.
+            if (isSilentZamEvent(event.getType())) return;
             bumpUnreadTick();
             // Mid-timeline insertions (out-of-order/threaded events the SDK
             // slots into the middle of the timeline) are forwarded so the view
@@ -2689,6 +2717,7 @@ export default function AppShell() {
         // see them, because it gates on the cleartext type.
         const unsubDecryptedNotify = onDecryptedTimelineEvent(
             (event, room, meta) => {
+                if (isSilentZamEvent(event.getType())) return;
                 bumpUnreadTick();
                 const eventId = event.getId();
                 // The SDK caches push actions against the ciphertext envelope
@@ -3016,9 +3045,12 @@ export default function AppShell() {
                 // offline boot — cached values stay
             }
         })();
+        const unsubPrivateData = initPrivateAccountData();
         const unsubFavourites = initFavourites();
+        const unsubRecentEmoji = initRecentEmoji();
         const unsubCustomization = initCustomizationSync();
         const unsubIgnored = initIgnoredUsers();
+        const unsubServerNotices = watchServerNotices();
         const unsubPresence = initPresence();
         const unsubVoice = initVoiceCall();
         const unsubIncoming = initIncomingCalls();
@@ -3103,6 +3135,7 @@ export default function AppShell() {
             },
         );
 
+        bootMark("shell-mount-done");
         return () => {
             // Deferred notifications must not land after teardown/logout.
             for (const t of pendingNotifyTimers) window.clearTimeout(t);
@@ -3134,8 +3167,11 @@ export default function AppShell() {
             unsubMarkedUnread();
             unsubReadConfirmed();
             unsubFavourites();
+            unsubPrivateData();
+            unsubRecentEmoji();
             unsubCustomization();
             unsubIgnored();
+            unsubServerNotices();
             unsubPresence();
             unsubVoice();
             unsubIncoming();
@@ -3561,7 +3597,10 @@ export default function AppShell() {
                                     className="flex-row flex-1 min-w-0 overflow-hidden"
                                     style={roomPaneStyle}
                                 >
-                                    {callViewRoomId === activeRoom.roomId ? (
+                                    {callPopoutOpen &&
+                                    callPopoutRoomId === activeRoom.roomId ? (
+                                        <CallPoppedOutNotice />
+                                    ) : callViewRoomId === activeRoom.roomId ? (
                                         <Pane.CallView
                                             room={activeRoom}
                                             isMobile={isMobile}
@@ -3684,7 +3723,8 @@ export default function AppShell() {
                 <ShareTargetSheet />
             )}
 
-            <Pane.CallPipOverlay />
+            {/* The pop-out window already shows the whole call: no floating video too. */}
+            {!callPopoutOpen && <Pane.CallPipOverlay />}
 
             {/* Zami: `fixed top-4 right-4` → a Portal at the app root, below
                 the status bar and clear of a notch. */}

@@ -248,6 +248,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "ダイレクトメッセージを開けませんでした",
     "callParticipantMenu.couldNotKick": "{name} をキックできませんでした",
     "callParticipantMenu.couldNotBan": "{name} をBANできませんでした",
+    "callParticipantMenu.disconnectFromVoice": "通話から切断",
+    "callParticipantMenu.disconnecting": "切断中…",
+    "callParticipantMenu.confirmDisconnect": "{name} を通話から切断しますか？",
+    "callParticipantMenu.couldNotDisconnect": "{name} を切断できませんでした",
+    "callKick.notPermitted": "このメンバーを通話から切断する権限がありません",
+    "callKick.removedFromVoice": "{name} により通話から退出させられました",
+    "callKick.removedByServer": "通話から退出させられました",
     "callEncryption.encrypted":
         "エンドツーエンド暗号化: この通話の参加者だけが映像と音声を見聞きできます。",
     "callEncryption.encryptedShort": "暗号化済み",
@@ -256,6 +263,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "一部暗号化",
     "callEncryption.notEncrypted":
         "エンドツーエンド暗号化されていません: 通話サーバーがこの通話を見聞きできます。暗号化されたルームでの通話は暗号化されます。",
+    "callPopout.blocked":
+        "ポップアウトウィンドウを開けませんでした。このサイトでポップアップを許可して、もう一度お試しください。",
+    "callPopout.bringBack": "戻す",
+    "callPopout.focusWindow": "ウィンドウを表示",
+    "callPopout.inOtherWindow":
+        "この通話はポップアウトウィンドウで開いています。",
+    "callPopout.popOut": "通話をポップアウト",
+    "callPopout.returnToMain": "メインウィンドウに戻す",
+    "callPopout.windowTitle": "{room}（通話）",
     "callView.ringing": "呼び出し中…",
     "callView.showChat": "チャットを表示",
     "callView.noOneIsInThisCall": "この通話には誰もいません",
@@ -265,8 +281,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "ミュート中",
     "callView.deafened": "スピーカーミュート中",
     "callView.mutedForYou": "あなたに対してミュート中",
-    "callView.joinedFromMultipleDevices": "複数のデバイスから参加中",
-    "callView.devices": "{value}台のデバイス",
+    "callView.deviceCountPill": "{count}台のデバイス",
+    "callView.thisDevice": "この端末",
     "callView.enableAudio": "音声を有効にする",
     "callView.onHold": "別の通話が有効なため保留中",
     "callView.resume": "再開",
@@ -562,6 +578,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "debugSettings.disableGallerySend": "ギャラリーを送信しない",
     "debugSettings.disableGallerySendHint":
         "一緒に選んだ添付ファイルは通常、キャプション1つのギャラリーメッセージ1件として送信されます（MSC4274、dm.filament.gallery として送信）。オンにすると、それぞれ別のメッセージとして送信します。他の人のギャラリーは引き続き表示されます。",
+    "debugSettings.stickyCallMembershipUnsupported":
+        "お使いのホームサーバーはスティッキーイベントに対応していません。",
     "debugSettings.stickyCallMembership": "スティッキー通話メンバーシップ",
     "debugSettings.stickyCallMembershipHint":
         "通話に m.call.member ステートイベントの代わりに、スティッキーな m.rtc.member イベント (MSC4354) で参加します。ステートイベントしか読まないクライアント (1.51 より前の Zam を含む) には、通話中のあなたが見えません。次の通話から適用されます。",
@@ -643,6 +661,13 @@ const messages: Partial<Record<MessageKey, string>> = {
         "まだ記録はありません。再起動、失敗したリクエスト、タイムラインのリセットがここに表示されます。",
     "debugSettings.refresh": "更新",
     "debugSettings.copied": "コピーしました",
+    "debugSettings.startupTiming": "起動時間",
+    "debugSettings.startupTimingHint":
+        "ページ読み込みから各起動ステップまでの時間です。コピーして共有できます。",
+    "debugSettings.startupTimingEmpty":
+        "起動ステップはまだ記録されていません。",
+    "debugSettings.startupTimingRow": "+{dt} ms（{at} ms時点）",
+    "debugSettings.copyTiming": "時間をコピー",
     "debugSettings.useSlidingSync": "スライディング同期を使用",
     "debugSettings.experimentalLoadsRoomsInAGrowing":
         "実験的。ルームを拡大していくウィンドウで読み込みます。適用するにはアプリを再読み込みします。",
@@ -718,6 +743,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "emojiPicker.custom": "カスタム",
     "emojiPicker.standard": "標準",
     "emojiPicker.myEmojis2": "マイ絵文字",
+    "emojiPicker.recentlyUsed": "最近使った絵文字",
     "errorToasts.dismiss": "閉じる",
     "extendedProfileDebug.extendedProfile": "拡張プロフィール",
     "extendedProfileDebug.fetchFromServer": "サーバーから取得",
@@ -789,6 +815,32 @@ const messages: Partial<Record<MessageKey, string>> = {
     "generalSettings.runAtStartupFailed": "システムで許可されませんでした。",
     "generalSettings.noGeneralSettingsAreAvailableOn":
         "このプラットフォームで利用できる一般設定はありません。",
+    "favourites.locked":
+        "このデバイスではお気に入りがロックされています。変更するにはロックを解除してください。",
+    "favourites.saveFailed":
+        "お気に入りを保存できませんでした。変更は元に戻されました。",
+    "favourites.lockedHint":
+        "このデバイスではお気に入りがロックされています。リカバリーキーを入力するか、このデバイスを認証すると、表示と変更ができます。",
+    "favourites.unlock": "ロック解除",
+    "privateData.locked":
+        "このデバイスでは非公開データがロックされています。先に暗号化のロックを解除してください。",
+    "privateData.keySaveFailed":
+        "非公開データの鍵をアカウントのシークレットストレージに保存できませんでした。次回のロック解除時に再試行します。",
+    "privateData.unlockToEncrypt":
+        "お気に入りGIFを暗号化するには、他のデバイスでも読めるように、このデバイスでリカバリーキーが必要です。",
+    "privateData.unlockToDecrypt":
+        "お気に入りGIFは暗号化されています。このデバイスで読むにはリカバリーキーを入力してください。",
+    "settingsSearch.encryptFavouriteGifs": "お気に入りGIFを暗号化",
+    "privateData.toggleLabel": "お気に入りGIFを暗号化",
+    "privateData.toggleHelp":
+        "お気に入りのGIFをホームサーバーから見えないようにします。ほかの端末で読むにはリカバリーキーか検証済みのセッションが必要で、古いZamでは表示されません。",
+    "privateData.offWarning":
+        "オフにすると、お気に入りのGIFはホームサーバーから再び読めるようになります。",
+    "privateData.turnOff": "暗号化をオフにする",
+    "privateData.enableFailed":
+        "お気に入りGIFを暗号化できませんでした。変更はありません。",
+    "privateData.disableFailed":
+        "お気に入りGIFの暗号化をオフにできませんでした。変更はありません。",
     "gifPicker.searchFavourites": "お気に入りを検索…",
     "gifPicker.searchKlipy": "KLIPY を検索…",
     "gifPicker.searchFavourites2": "お気に入りを検索",
@@ -1269,6 +1321,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messageItem.galleryDownload": "{name}をダウンロード",
     "messageItem.galleryEmpty": "空のギャラリー",
     "messageItem.edited": "（編集済み）",
+    "codeBlock.showMore": "もっと見る",
+    "codeBlock.showLess": "折りたたむ",
     "messageItem.decryptingImage": "画像を復号しています...",
     "messageItem.couldnTDecryptImage": "画像を復号できませんでした",
     "messageItem.imageUnavailable": "[画像は利用できません]",
@@ -1382,6 +1436,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "送信する写真や動画からEXIF、GPS位置情報、カメラ情報などの隠れたメタデータを取り除きます。画質は変わらず、向きの情報は残るので写真は正しい向きで表示されます。",
     "messagesMediaSettings.stripMetadataWarning":
         "警告: これをオフにすると、送信するファイルから撮影場所などの個人情報が漏れる可能性があります。",
+    "messagesMediaSettings.hideRecentEmoji":
+        "最近使った絵文字のセクションを非表示",
+    "messagesMediaSettings.hideRecentEmojiDescription":
+        "絵文字ピッカーの上部に、最近使った絵文字を表示しません。",
     "messagesMediaSettings.randomizeFileNames": "ファイル名をランダム化",
     "messagesMediaSettings.randomizeFileNamesDescription":
         "実際の名前ではなく、英数字のランダムな名前でアップロードします。拡張子は .tar.gz のようなものも含めて保持されます。",
@@ -1389,6 +1447,41 @@ const messages: Partial<Record<MessageKey, string>> = {
         "GIFをアニメーションWebPで送信",
     "messagesMediaSettings.reencodeGifsYouSend":
         "送信するGIFを可逆圧縮のアニメーションWebPに再エンコードします。通常はより小さく、ダウンロード中に再生できます。画質は変わりません。小さくならないGIFはそのまま送信されます。",
+    "messagesMediaSettings.discordImportTitle":
+        "Discordからお気に入りをインポート",
+    "messagesMediaSettings.discordImportDescription":
+        "このコンピュータのDiscordデスクトップアプリでお気に入りに登録したGIFをコピーします。DiscordにアップロードされたGIFは、下で更新サービスを設定した場合のみコピーされます。",
+    "messagesMediaSettings.discordImportButton": "インポート",
+    "messagesMediaSettings.discordImportBusy": "リンクを確認しています...",
+    "messagesMediaSettings.discordImportChecking":
+        "リンクを確認しています... {done} / {total}",
+    "messagesMediaSettings.discordImportSuccess":
+        "{added, plural, other {GIFを#件インポートしました。}}",
+    "messagesMediaSettings.discordImportSkipped":
+        "Discordにアップロードされた{discord}件と、壊れたリンク{broken}件をスキップしました。",
+    "messagesMediaSettings.discordImportAllPresent":
+        "{count, plural, other {#件のGIFはすでにお気に入りに登録されています。}}",
+    "messagesMediaSettings.discordImportNotFound":
+        "このコンピュータでDiscordデスクトップアプリのデータが見つかりませんでした。",
+    "messagesMediaSettings.discordImportNoneImportable":
+        "インポートできるGIFはありませんでした。",
+    "messagesMediaSettings.discordImportFailed":
+        "Discordからお気に入りをインポートできませんでした。",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, other {DiscordにアップロードされたGIFを#件コピーできませんでした。}}",
+    "messagesMediaSettings.discordRefreshServiceTitle": "Discord更新サービス",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "DiscordにアップロードされたGIFへのリンクは期限切れになります。これらも取り込むには、ご自身で運用している更新サービスのアドレスを入力してください(Zamのソースコードにある services/discord-refresh-proxy)。GIFはお使いのホームサーバーにアップロードされます。",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "https:// のアドレスを入力してください(http:// はこのコンピュータでのみ使用できます)。",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Discord更新サービスに接続できませんでした。",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Discord更新サービスはレート制限されています。しばらくしてから再試行してください。",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Discord更新サービスがエラーを返しました({status})。",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Discord更新サービスから、Zamが読み取れない応答が返されました。",
     "messagesMediaSettings.defaultTab": "既定のタブ",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "GIFピッカーが開くタブです。",
@@ -2110,20 +2203,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "最大",
     "screenShareQualityChips.bitrateCapHint":
         "これは上限であり目標値ではありません。共有は映像に必要な分と回線が運べる分だけを使い、最大でこの値までです。",
-    "screenShareQualityChips.bitrateOverridden":
-        "入力したアップロード速度 {upload} を使用しているため、最大 {max} まで上がります。",
+    "screenShareQualityChips.bitrateAuto": "自動",
+    "screenShareQualityChips.bitrateAutoHint":
+        "上限なし: 共有は現在の回線が扱える量を送信し、回線が混雑するか視聴者が遅れると送信量を下げます。",
+    "screenShareQualityChips.bitrateAutoNow":
+        "現在のアップロード速度は約 {upload} です。",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "映像を送信している間、アップロード速度をリアルタイムで確認します。",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "入力したアップロード速度 {upload} を上限にしています。",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "任意。アップロード速度を入力すると共有をその速度以下に抑えます。空欄の場合は回線に合わせます。",
     "screenShareQualityChips.uploadOverride": "アップロード速度 (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "自動",
-    "screenShareQualityChips.uploadOverrideHint":
-        "自動測定は実際の速度よりかなり低く出ることがあります。上限を上げたい場合はご自身の数値を入力してください。空欄にすると測定します。",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "アップロードの実測値は {upload} なので、最大 {max} まで上がります。",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "アップロードはまだ測定されていません。ビデオ送信中に測定されるため、当面は最大 {max} までです。",
-    "screenShareQualityChips.bitrateHighWarning":
-        "{safe} を超える値は手動での選択です。アップロード速度は確認されず、遅い回線や端末の視聴者にはカクつきやフリーズが起きることがあります。",
     "screenShareQualityChips.nativeCapture": "Windows キャプチャヘルパー",
     "screenShareQualityChips.nativeCaptureHint":
         "ブラウザの外で共有をキャプチャしてエンコードするため、負荷の高いゲーム中も映像がかくつきません。次の共有から適用されます。",
@@ -2486,6 +2580,29 @@ const messages: Partial<Record<MessageKey, string>> = {
         "デバイスの空き容量がほとんどありません（残り {free}）。早めに空きを確保してください。そうしないとZamはメッセージや暗号化キーを保存できません。",
     "storageBanner.checkAgain": "再確認",
     "storageBanner.dismissLowStorageWarning": "容量警告を閉じる",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "ホームサーバーが月間アクティブユーザー数の上限に達したため、現在このアカウントはメッセージの送信や同期ができません。",
+    "usageLimits.bannerDisabled":
+        "ホームサーバーが管理者によって無効化されたため、現在このアカウントはメッセージの送信や同期ができません。",
+    "usageLimits.bannerResource":
+        "このアカウントはホームサーバーの利用上限に達したため、現在一部の操作がブロックされています。",
+    "usageLimits.bannerMediaQuota":
+        "ホームサーバーのメディアアップロード枠を使い切りました。リセットされるとアップロードできるようになります。",
+    "usageLimits.canUpgrade":
+        "プランをアップグレードするとこの上限が引き上げられます。",
+    "usageLimits.learnMore": "詳細",
+    "usageLimits.contactAdmin": "サーバー管理者に連絡",
+    "usageLimits.dismiss": "利用上限の警告を閉じる",
+    "usageLimits.toastResource":
+        "利用上限に達したため、ホームサーバーがこのアカウントをブロックしています。",
+    "usageLimits.toastMediaQuota":
+        "アップロードに失敗しました: メディアのアップロード上限に達しています。",
+    "usageLimits.toastRateLimited":
+        "サーバーがメディア転送を制限しています。しばらくしてからもう一度お試しください。",
+    "usageLimits.toastRateLimitedFor":
+        "サーバーがメディア転送を制限しています。{seconds} 秒後にもう一度お試しください。",
     "updateBanner.dismissUpdateNotification": "更新通知を閉じる",
     "updateBanner.installFailed": "インストールに失敗しました",
     "userPicker.remove": "{userId} を削除",
@@ -2887,6 +3004,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "composerActionsMenu.recordVoiceMessage": "ボイスメッセージを録音",
     "composerActionsMenu.shareLocation": "位置情報を共有",
     "composerActionsMenu.createThread": "スレッドを作成",
+    "composerActionsMenu.insertTimestamp": "タイムスタンプを挿入",
+    "timestampPicker.title": "タイムスタンプを挿入",
+    "timestampPicker.dateAndTime": "日時",
+    "timestampPicker.format": "形式",
+    "timestampPicker.insert": "挿入",
+    "timestampPicker.cancel": "キャンセル",
+    "timestampPicker.styleShortTime": "短い時刻",
+    "timestampPicker.styleLongTime": "長い時刻",
+    "timestampPicker.styleShortDate": "短い日付",
+    "timestampPicker.styleLongDate": "長い日付",
+    "timestampPicker.styleShortDateTime": "短い日付と時刻",
+    "timestampPicker.styleLongDateTime": "長い日付と時刻",
+    "timestampPicker.styleRelative": "相対時刻",
     "composerActionsMenu.inviteToGame": "ゲームに招待",
     "gameInvite.title": "ゲームに招待",
     "gameInvite.game": "ゲーム",
@@ -3231,6 +3361,11 @@ const messages: Partial<Record<MessageKey, string>> = {
         "このリクエストを承認できませんでした。もう一度お試しください。",
     "voiceCall.couldnTLoadTheCallComponent":
         "通話コンポーネントを読み込めませんでした。接続を確認してから、ページを再読み込みしてお試しください。",
+    "voiceCall.rejoin": "再参加",
+    "voiceCall.rejoinVoicePrompt":
+        "{room} の音声通話に参加していました。再参加しますか？",
+    "voiceCall.rejoinVideoPrompt":
+        "{room} のビデオ通話に参加していました。再参加しますか？",
     "voiceCall.couldNotJoinTheVoiceCall": "音声通話に参加できませんでした",
     "voiceCall.joinedWithoutAMicrophone":
         "マイクを使用できません - 聞くことと画面共有はできます",
@@ -3628,6 +3763,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "settingsSearch.removeLocationAndMetadata":
         "アップロードから位置情報などのメタデータを削除",
     "settingsSearch.sendGifsAsAnimatedWebp": "GIFをアニメーションWebPで送信",
+    "settingsSearch.hideRecentEmoji": "最近使った絵文字のセクションを非表示",
     "settingsSearch.midiSoundBank": "MIDIサウンドバンク",
     "settingsSearch.holdToOpenMessageMenu": "長押しでメッセージメニューを開く",
     "settingsSearch.checkSpelling": "スペルチェック",
@@ -3762,6 +3898,12 @@ const messages: Partial<Record<MessageKey, string>> = {
     "updateStatus.openReleasePage": "リリースページを開く",
     "updateStatus.flatpakManualUpdate":
         "アップデートがあります{versionSuffix}。ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.flatpakNeedsPermissions":
+        "アップデートがあります{versionSuffix}。新しい権限が必要で、Flatpak はソフトウェアセンターか flatpak update でのみ許可します",
+    "updateStatus.flatpakUpdateDeclined":
+        "アップデートがあります{versionSuffix}。Flatpak の自動アップデートが拒否されたため、ソフトウェアセンターか flatpak update でインストールしてください",
+    "updateStatus.flatpakNoPortal":
+        "アップデートがあります{versionSuffix}。この Flatpak のバージョンはアプリ自身による更新に対応していません。ソフトウェアセンターか flatpak update でインストールしてください",
     "updateStatus.packageManagerUpdate":
         "アップデートがあります{versionSuffix}。{manager}で更新してください",
     "updateStatus.updateCheckFailed": "アップデートの確認に失敗しました",

@@ -1,9 +1,11 @@
 import { t } from "$lib/i18n";
+import { clearPrivateAccountDataLocal } from "$lib/utils/privateAccountDataStorage";
 import {
     groupReactionDetails,
     type ReactionDetailGroup,
 } from "$lib/utils/reactionDetails";
 import type { SoundPackContent } from "$lib/utils/soundboard";
+import type { RecentEmoji } from "$lib/utils/recentEmoji";
 import {
     createClient,
     ClientEvent,
@@ -153,6 +155,9 @@ import {
     type PowerLevelTags,
 } from "$lib/utils/powerLevelTags";
 import { requestPersistentStorage } from "$lib/utils/persistentStorage";
+import { bootMark, logBootTimeline } from "$lib/utils/bootTiming";
+import { startSlidingProbe } from "$lib/matrix/slidingProbe";
+import type { OwnKeysVerdict } from "$lib/utils/ownDeviceKeysCheck";
 import { reportStorageError } from "$lib/stores/storageHealth.svelte";
 import { parseLoginFlows, type LoginOptions } from "$lib/utils/loginFlows";
 import {
@@ -201,6 +206,18 @@ import {
 // Zami: the SDK's sync store, saved and restored a room at a time.
 import { SlicedIndexedDBStore } from "@-/com.leonsilicon.zami.persist";
 import { showErrorToast } from "$lib/stores/toasts.svelte";
+import {
+    limitWatchingFetch,
+    usageLimitNotice,
+    SERVER_NOTICE_TAG,
+    type UsageLimitSignal,
+} from "$lib/utils/usageLimits";
+import {
+    noteUsageOk,
+    reportUsageLimit,
+    resetUsageLimits,
+    setUsageLimitNotice,
+} from "$lib/stores/usageLimits.svelte";
 import { forgetSignInPassword } from "$lib/stores/onboarding.svelte";
 import {
     markSyncStoreFallback,
@@ -231,7 +248,6 @@ import {
 } from "$lib/utils/pendingEchoes";
 import { firstReusableDmRoom } from "$lib/utils/dmReuse";
 import { pickDmRoomVersion } from "$lib/utils/dmRoomVersion";
-import { pickFavouriteGifs } from "$lib/utils/favouriteGifs";
 import {
     countReactions,
     type ReactionAnnotation,
@@ -336,9 +352,19 @@ import {
     FILE_OFFER_EVENT,
     isFileOfferEventType,
 } from "$lib/utils/fileTransfer";
-import { hasUnreadMessages, isStaleLocalUnread } from "$lib/utils/roomUnread";
+import {
+    hasUnreadMessages,
+    isStaleLocalUnread,
+    receiptCoversEvent,
+} from "$lib/utils/roomUnread";
 import { localReadVerdict, type LocalReadMark } from "$lib/utils/localRead";
 import { callMemberSendersMissingMembership } from "$lib/utils/callMemberSenders";
+import {
+    CALL_KICK_EVENT_TYPE,
+    canDisconnectFromVoice,
+    type CallKickContent,
+} from "$lib/utils/callKick";
+import { isCallDeviceKicked } from "$lib/utils/callKickRegistry";
 import {
     isPollStartEventType,
     isPollResponseEventType,
@@ -366,6 +392,7 @@ import {
     getRoomNotificationSettingForClient,
     isHighlightAction,
     refreshCachedPushRules,
+    reconcileEncryptedMentionRulesForClient,
     setDefaultPushRuleLevelForClient,
     setRoomNotificationSettingForClient,
     type RoomNotificationSetting,
@@ -385,8 +412,9 @@ import {
     forgetOwnDeviceKey,
     initCrypto,
     isCryptoAvailable,
-    ownDeviceKeyMatchesRecord,
     ownDeviceKeysReplaced,
+    ownDeviceKeysCheckMode,
+    deferOwnDeviceKeysCheck,
     CryptoStoreLostError,
     SessionInUseError,
     getCryptoCallbacks,
@@ -394,8 +422,10 @@ import {
     releaseCryptoStoreLocks,
     restartCrypto,
     waitForCryptoEngineIdle,
+    getCachedDeviceDisplayNames,
     ENGINE_IDLE_TIMEOUT_MS,
 } from "$lib/matrix/crypto";
+export { getCachedDeviceDisplayNames };
 import { mxcToHttp, resetMediaUploadSizeLimit, sendFile } from "./media";
 import { getCryptoDbName } from "$lib/utils/cryptoStore";
 import { waitForRoomArrival } from "$lib/utils/roomArrival";
@@ -470,6 +500,7 @@ declare module "matrix-js-sdk" {
     interface AccountDataEvents {
         "moe.crafty.matrix.favourite_gifs": { gifs: FavouriteGif[] };
         "m.favourite_gifs": { gifs: FavouriteGif[] };
+        "moe.crafty.matrix.recent_emoji": { items: RecentEmoji[] };
         "moe.crafty.matrix.customization": ClientCustomization;
         "im.client.space_layout": SpaceLayout;
         "im.client.space_order": { order?: string[] };
@@ -695,6 +726,44 @@ function sliceDecryption(client: MatrixClient): void {
         return queue.add(() => decrypt(event, options), event.getTs());
     };
 }
+/**
+ * Dev only: a fetch that waits `localStorage["zam:devLatencyMs"]` ms before
+ * each request, to measure startup under WAN latency. Undefined in production
+ * builds (the body is dropped by the DEV guard).
+ */
+/** Identifies the client whose requests feed the usage-limit store. */
+let usageLimitOwner: object | null = null;
+
+function devLatencyFetch(): typeof fetch | undefined {
+    if (!import.meta.env.DEV) return undefined;
+    return (input, init) => {
+        let ms = 0;
+        try {
+            ms = Number(localStorage.getItem("zam:devLatencyMs"));
+        } catch {
+            // No storage: no injected latency.
+        }
+        if (!(ms > 0)) return fetch(input, init);
+        // Waits on a MessageChannel loop, not setTimeout: a page the browser
+        // treats as backgrounded during boot aligns timers to 1 s, which
+        // turned a 200 ms delay into about 1 s and skewed the measurement.
+        const t0 = performance.now();
+        return new Promise<void>((resolve) => {
+            const ch = new MessageChannel();
+            ch.port1.onmessage = () =>
+                performance.now() - t0 >= ms
+                    ? resolve()
+                    : ch.port2.postMessage(0);
+            ch.port2.postMessage(0);
+        }).then(() => fetch(input, init));
+    };
+}
+
+/** The background own-keys verdicts, read by startSync for the same client. */
+const deferredKeysVerdicts = new WeakMap<
+    MatrixClient,
+    Promise<OwnKeysVerdict>
+>();
 
 async function createAuthenticatedClient(opts: {
     baseUrl: string;
@@ -709,6 +778,7 @@ async function createAuthenticatedClient(opts: {
     // the running client, its stores or the network.
     if (!(await claimSessionOwnership(opts.userId, opts.deviceId)))
         throw new SessionInUseError();
+    bootMark("session-owned");
     matrixClient?.stopClient();
     // The slot below only changes several awaits later, and stopClient() does
     // NOT abort the predecessor's in-flight requests — so retire its ownership
@@ -776,6 +846,21 @@ async function createAuthenticatedClient(opts: {
         latestTokens.delete(opts.userId);
         delete clientOpts.refreshToken;
     }
+    const devFetch = devLatencyFetch();
+    // Every request goes through the usage-limit watch (UsageLimitBanner);
+    // a request still in flight from a client replaced since reports nothing.
+    resetUsageLimits();
+    const limitOwner = {};
+    usageLimitOwner = limitOwner;
+    const watchedFetch = limitWatchingFetch(
+        devFetch ?? ((input, init) => fetch(input, init)),
+        (signal, url) => {
+            if (usageLimitOwner === limitOwner) reportUsageLimit(signal, url);
+        },
+        (url, method) => {
+            if (usageLimitOwner === limitOwner) noteUsageOk(url, method);
+        },
+    );
     const commonOpts = {
         ...clientOpts,
         // The SDK refreshes on M_UNKNOWN_TOKEN (and shortly before a known
@@ -790,6 +875,7 @@ async function createAuthenticatedClient(opts: {
                   }) => handleTokenRefresh(opts.userId, tokens),
               }
             : {}),
+        fetchFn: watchedFetch,
         timelineSupport: true,
         verificationMethods: [
             VerificationMethod.Sas,
@@ -812,6 +898,7 @@ async function createAuthenticatedClient(opts: {
             markStartup("Opening the message cache");
             await store.startup();
             setMatrixStore(store);
+            bootMark("store-ready");
         } catch (err) {
             console.warn(
                 "[matrix] IndexedDB store startup failed; falling back to memory store",
@@ -827,6 +914,18 @@ async function createAuthenticatedClient(opts: {
     installClient(client);
     sliceDecryption(client);
 
+    // Warm the /versions cache. The SDK's getVersions keeps its promise
+    // (serverVersionsPromise), so startClient's await and doesServerSupportThread
+    // reuse this one request instead of making their own round trips.
+    // Failures are not kept by the SDK, so startClient simply retries.
+    void client.getVersions().catch(() => {});
+
+    // Start the sliding sync capability probe now as well, so its round trip
+    // overlaps initCrypto. Only for accounts that opted in (buildSlidingSync
+    // checks the same flag); the probe carries no extensions and consumes no
+    // server state (see slidingProbe.ts).
+    if (isSlidingSyncEnabled(opts.userId)) startSlidingProbe(client);
+
     // Initialise E2EE before the caller starts sync, so crypto is ready when
     // to-device / m.room.encrypted events arrive. Never throws — a crypto-init
     // failure degrades gracefully (unencrypted rooms keep working; encrypted
@@ -838,39 +937,51 @@ async function createAuthenticatedClient(opts: {
     // the old store is gone. Sign the device out (which takes its stale keys
     // off the server, so senders stop encrypting to them) rather than give
     // it new keys nobody's crypto will accept.
-    const signOutLostDevice = async (): Promise<void> => {
-        console.warn(
-            `[matrix] encryption data for ${opts.deviceId} is gone; signing it out`,
-        );
-        try {
-            await client.logout(true);
-        } catch (err) {
-            console.warn("[matrix] signing out the lost session failed", err);
-        }
-        forgetOwnDeviceKey(opts.userId, opts.deviceId);
-    };
-    // Zami: a store holding the key already recorded for this device isn't a
-    // fresh one, so the app doesn't wait for the server to say so: that request
-    // kept every launch on the splash for a round trip, or as long as a bad
-    // connection hangs. If the server does disagree, the session ends the way
-    // an expired one does.
+    // Zami: a phase name for the splash (@-/com.leonsilicon.zami.startup).
     markStartup("Checking device keys");
-    if (await ownDeviceKeyMatchesRecord(client)) {
-        void ownDeviceKeysReplaced(client)
-            .then(async (replaced) => {
-                if (!replaced || matrixClient !== client) return;
-                await signOutLostDevice();
-                client.emit(
-                    HttpApiEvent.SessionLoggedOut,
-                    new MatrixError({ errcode: "M_UNKNOWN_TOKEN" }),
+    if ((await ownDeviceKeysCheckMode(client)) === "background") {
+        // Routine boot: this device's recorded key matches the store. The
+        // server comparison runs without holding the shell, and outgoing
+        // crypto requests wait for its verdict (deferOwnDeviceKeysCheck).
+        bootMark("keys-check-deferred");
+        const owner = captureClient();
+        const verdict = deferOwnDeviceKeysCheck(client).then(async (result) => {
+            bootMark("keys-check-done");
+            if (result === "replaced" && ownedClient(owner)) {
+                console.warn(
+                    `[matrix] encryption data for ${opts.deviceId} is gone; signing it out`,
                 );
-            })
-            .catch((err: unknown) =>
-                console.warn("[matrix] checking our device keys failed", err),
+                try {
+                    await client.logout(true);
+                } catch (err) {
+                    console.warn(
+                        "[matrix] signing out the lost session failed",
+                        err,
+                    );
+                }
+                forgetOwnDeviceKey(opts.userId, opts.deviceId);
+            }
+            return result;
+        });
+        deferredKeysVerdicts.set(client, verdict);
+    } else {
+        bootMark("keys-check-start");
+        if (await ownDeviceKeysReplaced(client)) {
+            console.warn(
+                `[matrix] encryption data for ${opts.deviceId} is gone; signing it out`,
             );
-    } else if (await ownDeviceKeysReplaced(client)) {
-        await signOutLostDevice();
-        throw new CryptoStoreLostError();
+            try {
+                await client.logout(true);
+            } catch (err) {
+                console.warn(
+                    "[matrix] signing out the lost session failed",
+                    err,
+                );
+            }
+            forgetOwnDeviceKey(opts.userId, opts.deviceId);
+            throw new CryptoStoreLostError();
+        }
+        bootMark("keys-check-done");
     }
 
     // Ask the browser not to evict our IndexedDB (crypto + sync stores).
@@ -1684,6 +1795,7 @@ export async function startSync(
 ): Promise<() => void> {
     const owner = captureClient();
     const client = owner.client;
+    bootMark("sync-start");
 
     initialSyncComplete = false;
     resetLiveSyncDelivered();
@@ -1709,6 +1821,10 @@ export async function startSync(
                 markRoomListComplete(client);
             if (state === "SYNCING") void saveRoomListSnapshot(client);
             if (state === "PREPARED") {
+                if (!initialSyncComplete) {
+                    bootMark("first-sync");
+                    logBootTimeline();
+                }
                 initialSyncComplete = true;
                 seedStatelessRooms();
             }
@@ -1831,6 +1947,25 @@ export async function startSync(
         },
     );
     client.on(RoomEvent.Receipt as never, onOwnReceipt as never);
+    // A message decrypted after our receipt (older history paged in, or a cold
+    // room's newest event) is counted unread by the SDK, and no receipt follows
+    // to fix it. This listener runs after the SDK's own count fix-up, which is
+    // registered in the MatrixClient constructor.
+    const onDecryptedUnread = guardOwnership(
+        owner,
+        readOwner,
+        (event: MatrixEvent) => {
+            try {
+                const roomId = event.getRoomId();
+                const room = roomId ? client.getRoom(roomId) : null;
+                if (room && clearStaleEncryptedUnread(room))
+                    notifyLocalUnreadChange(room.roomId);
+            } catch {
+                // Never break the decryption fan-out to other listeners.
+            }
+        },
+    );
+    client.on(MatrixEventEvent.Decrypted as never, onDecryptedUnread as never);
     if (onLoggedOut) client.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
     let disposed = false;
@@ -1845,6 +1980,10 @@ export async function startSync(
         client.off(RoomStateEvent.Events, onMemberState);
         offTimelineMember();
         client.off(RoomEvent.Receipt as never, onOwnReceipt as never);
+        client.off(
+            MatrixEventEvent.Decrypted as never,
+            onDecryptedUnread as never,
+        );
         if (onLoggedOut) client.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         document.removeEventListener("visibilitychange", onHidden);
         document.removeEventListener("visibilitychange", onVisibleKick);
@@ -1906,6 +2045,7 @@ export async function startSync(
     // Paint the last known room list while sync catches up.
     markStartup("Loading saved chats");
     await hydrateRoomListCache(client, preferredRoomId);
+    bootMark("roomlist-hydrated");
     // A hidden page may never come back (mobile kills it): save on the way out.
     const onHidden = () => {
         if (document.visibilityState === "hidden")
@@ -1952,6 +2092,7 @@ export async function startSync(
         }
         await serveServerVersionsFromCache(client);
         deferSavedSyncUntilDrawn(client);
+        bootMark("startclient-start");
         await client.startClient({
             slidingSync: slidingSync,
             initialSyncLimit: 8,
@@ -1964,6 +2105,19 @@ export async function startSync(
             // thread filter in getTimelineMessages hides it from view entirely.
             threadSupport: true,
         });
+        bootMark("startclient-done");
+        // A background keys check (createAuthenticatedClient) that found this
+        // device replaced has signed it out already. End the session here the
+        // way an expiry does, as the blocking path does by throwing.
+        const keysVerdict = deferredKeysVerdicts.get(client);
+        if (keysVerdict) {
+            deferredKeysVerdicts.delete(client);
+            void keysVerdict.then((verdict) => {
+                if (verdict !== "replaced" || !ownedClient(owner)) return;
+                showErrorToast(t("crypto.encryptionDataLost"));
+                onSessionExpired?.();
+            });
+        }
     } catch (err) {
         // A rejected start must not leave four listeners bound to a client the
         // caller is about to throw away.
@@ -1991,12 +2145,6 @@ export function deleteFailedMessage(event: MatrixEvent): void {
     if (!matrixClient) return;
     matrixClient.cancelPendingEvent(event);
 }
-
-// Namespaced under the app's own reverse-DNS id so it no longer squats the
-// reserved `m.*` spec namespace. The old key is still READ (migration fallback)
-// but never written again — see loadFavouriteGifs / persistFavouriteGifs.
-const FAV_GIFS_KEY = "moe.crafty.matrix.favourite_gifs";
-const LEGACY_FAV_GIFS_KEY = "m.favourite_gifs";
 
 export interface FavouriteGif {
     url: string;
@@ -2043,69 +2191,54 @@ export interface PluginSyncAccountData {
     autoUpdate: boolean;
 }
 
-function gifsFromEvent(
-    event: MatrixEvent | null | undefined,
-): FavouriteGif[] | null {
-    if (!event) return null;
-    return (event.getContent()?.gifs as FavouriteGif[] | undefined) ?? [];
-}
-
-export function loadFavouriteGifs(): FavouriteGif[] {
-    if (!matrixClient) return [];
-    // Prefer the new key; fall back to the legacy key only when the new one was
-    // never written (pickFavouriteGifs treats a present-but-empty new key as
-    // authoritative, so a cleared list is never resurrected from the legacy blob).
-    return pickFavouriteGifs(
-        gifsFromEvent(matrixClient.getAccountData(FAV_GIFS_KEY)),
-        gifsFromEvent(matrixClient.getAccountData(LEGACY_FAV_GIFS_KEY)),
-    );
+/**
+ * Raw account data at `type` as the local sync copy holds it: the content, or
+ * null when there is no such event. Untrusted: callers validate it. Used for
+ * the encrypted private account data types (privateAccountData.svelte.ts) and their
+ * legacy plaintext predecessors.
+ */
+export function loadPrivateAccountData(type: string): unknown | null {
+    if (!matrixClient) return null;
+    const event = matrixClient.getAccountData(type as never);
+    return event ? event.getContent() : null;
 }
 
 /**
- * The favourites list as the homeserver currently has it, fetched over the
- * wire. Throws if the request fails, so callers can tell "the server says
- * there are none" (empty array) from "we couldn't ask" (throw).
+ * The same account data as the homeserver has it right now, fetched over the
+ * wire: the content, or null when the event was never set (404). Throws when
+ * the request fails, so callers can tell "none" from "we couldn't ask".
  *
- * Deliberately NOT client.getAccountDataFromServer(): despite the name, that
- * short-circuits to the local sync store once the initial sync has completed,
- * which returns exactly the possibly-stale data we are trying to look past.
+ * Deliberately NOT client.getAccountDataFromServer(): that short-circuits to the
+ * local sync store once the initial sync has completed, which is the stale data
+ * a read-modify-write must look past.
  */
-export async function fetchFavouriteGifsFromServer(): Promise<FavouriteGif[]> {
+export async function fetchPrivateAccountDataFromServer(
+    type: string,
+): Promise<unknown | null> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     const userId = matrixClient.getUserId();
     if (!userId) throw new Error(t("client.notLoggedIn"));
-    // Returns null when the key has never been set for this account (404), so
-    // the new key falling back to the legacy key is distinguishable from a key
-    // that is set to an empty list.
-    const fetchKey = async (key: string): Promise<FavouriteGif[] | null> => {
-        const path = `/user/${encodeURIComponent(userId)}/account_data/${key}`;
-        try {
-            const content = await matrixClient!.http.authedRequest<{
-                gifs?: FavouriteGif[];
-            }>(Method.Get, path);
-            return content?.gifs ?? [];
-        } catch (err) {
-            if ((err as MatrixError)?.errcode === "M_NOT_FOUND") return null;
-            throw err;
-        }
-    };
-    // Prefer the new key; fall back to the legacy key only when the new one is
-    // absent (the first write after migration copies the legacy list forward).
-    const current = await fetchKey(FAV_GIFS_KEY);
-    if (current !== null) return current;
-    return pickFavouriteGifs(current, await fetchKey(LEGACY_FAV_GIFS_KEY));
+    const path = `/user/${encodeURIComponent(userId)}/account_data/${encodeURIComponent(type)}`;
+    try {
+        return await matrixClient.http.authedRequest<unknown>(Method.Get, path);
+    } catch (err) {
+        if ((err as MatrixError)?.errcode === "M_NOT_FOUND") return null;
+        throw err;
+    }
 }
 
-export async function persistFavouriteGifs(
-    gifs: FavouriteGif[],
+/** Write account data at `type`. Callers pass an already-encrypted payload. */
+export async function persistPrivateAccountData(
+    type: string,
+    content: object,
 ): Promise<void> {
     if (!matrixClient) return;
-    await matrixClient.setAccountData(FAV_GIFS_KEY, { gifs });
+    await matrixClient.setAccountData(type as never, content as never);
 }
 
 // Namespaced under the app's own reverse-DNS id (the Android applicationId /
 // Electron appId) so it cannot collide with another client's account data —
-// same convention as FAV_GIFS_KEY above.
+// same convention as the private account data types (privateAccountData.svelte.ts).
 const CUSTOMIZATION_KEY = "moe.crafty.matrix.customization";
 
 /** Raw customization account data, or null when absent / not logged in. */
@@ -2121,6 +2254,22 @@ export async function persistCustomization(
 ): Promise<void> {
     if (!matrixClient) return;
     await matrixClient.setAccountData(CUSTOMIZATION_KEY, value);
+}
+
+// Recently used emoji (utils/recentEmoji.ts). Raw on read: the store validates
+// it with parseRecentEmoji, since account data is untrusted.
+const RECENT_EMOJI_KEY = "moe.crafty.matrix.recent_emoji";
+
+/** The synced recent-emoji items as stored, unvalidated, or null when absent. */
+export function loadRecentEmoji(): unknown {
+    if (!matrixClient) return null;
+    const event = matrixClient.getAccountData(RECENT_EMOJI_KEY);
+    return event?.getContent()?.items ?? null;
+}
+
+export async function persistRecentEmoji(items: RecentEmoji[]): Promise<void> {
+    if (!matrixClient) return;
+    await matrixClient.setAccountData(RECENT_EMOJI_KEY, { items });
 }
 
 export function onAccountData(callback: (type: string) => void): () => void {
@@ -2184,6 +2333,8 @@ export function onSyncReconnected(callback: () => void): () => void {
 
 export async function logout(): Promise<void> {
     forgetSignInPassword();
+    usageLimitOwner = null;
+    resetUsageLimits();
     const client = matrixClient;
     const owner = client ? captureOwnership(client, clientGeneration) : null;
     // Only release the module slot if we still own it — a successor account's
@@ -2205,6 +2356,9 @@ export async function logout(): Promise<void> {
     if (client) {
         const userId = client.getUserId();
         const deviceId = client.getDeviceId();
+        // The private account data key and its decrypted cache stay on this
+        // device only while the account is signed in here.
+        if (userId) clearPrivateAccountDataLocal(userId);
         // Remember the wipe BEFORE attempting it. `clearStores()` hangs forever
         // when another tab holds the crypto IndexedDB open (its `onblocked`
         // handler only logs), and AppShell's 4s window then reloads the page
@@ -3882,14 +4036,16 @@ export function getTimelineMessages(room: Room): MatrixEvent[] {
 
 /**
  * Let go of a room's older history (utils/historyTrim), keeping the newest
- * HISTORY_KEEP_VISIBLE rendered events and everything after the oldest of
- * them. Only for a room nobody is looking at (`canTrim`): its timeline is
+ * `keep` rendered events and everything after the oldest of them, when that
+ * drops at least `minDrop` events. Only for a room nobody is looking at (`canTrim`): its timeline is
  * rebuilt, which an open MessageArea would read as a gappy sync. Resolves
  * whether it trimmed.
  */
 export async function trimRoomHistory(
     roomId: string,
     canTrim: () => boolean,
+    keep?: number,
+    minDrop?: number,
 ): Promise<boolean> {
     if (!matrixClient) return false;
     const owner = captureOwnership(matrixClient, clientGeneration);
@@ -3899,7 +4055,7 @@ export async function trimRoomHistory(
     // counting them is cheap, building their rendered list isn't.
     let count = 0;
     for (const tl of liveTimelineChain(room)) count += tl.getEvents().length;
-    if (!mayCutHistory(count)) return false;
+    if (!mayCutHistory(count, keep, minDrop)) return false;
     const chain = liveChainEvents(room);
     // Zami: "show all events" read once for the room, not per event (a
     // settings proxy read on Hermes): with it on, everything renders.
@@ -3909,7 +4065,11 @@ export async function trimRoomHistory(
             : collapseCallEvents(chain.filter(isRenderableTimelineEvent))
         ).map((e) => e.getId()),
     );
-    const cut = historyTrimCut(chain.map((e) => shown.has(e.getId())));
+    const cut = historyTrimCut(
+        chain.map((e) => shown.has(e.getId())),
+        keep,
+        minDrop,
+    );
     if (cut === null) return false;
     const cutId = chain[cut].getId()!;
     // A token that continues history right before the oldest kept event.
@@ -5832,25 +5992,43 @@ export async function probeCallingSupport(): Promise<{
         configuredRtcFoci()
             .then((foci) => foci.length > 0)
             .catch(() => false),
-        Promise.all([
-            getServerVersions()
-                .then(({ unstableFeatures }) =>
-                    hasUnstableFeature(unstableFeatures, "org.matrix.msc4140"),
-                )
-                .catch(() => false),
-            getServerCapabilities()
-                .then((caps) =>
-                    ["m.delayed_events", "org.matrix.msc4140.delayed_events"]
-                        .map((name) => caps[name])
-                        .some((cap) => cap?.enabled === true),
-                )
-                .catch(() => false),
-        ]).then(
-            ([fromVersions, fromCapabilities]) =>
-                fromVersions || fromCapabilities,
-        ),
+        delayedEventsAdvertised(),
     ]);
     return { rtcFoci, delayedEvents };
+}
+
+/** Whether the homeserver advertises delayed events (MSC4140 or the spec
+ *  `m.delayed_events` capability). Failures count as false. */
+export async function delayedEventsAdvertised(): Promise<boolean> {
+    if (!matrixClient) return false;
+    return Promise.all([
+        getServerVersions()
+            .then(({ unstableFeatures }) =>
+                hasUnstableFeature(unstableFeatures, "org.matrix.msc4140"),
+            )
+            .catch(() => false),
+        getServerCapabilities()
+            .then((caps) =>
+                ["m.delayed_events", "org.matrix.msc4140.delayed_events"]
+                    .map((name) => caps[name])
+                    .some((cap) => cap?.enabled === true),
+            )
+            .catch(() => false),
+    ]).then(
+        ([fromVersions, fromCapabilities]) => fromVersions || fromCapabilities,
+    );
+}
+
+/** Whether the homeserver advertises sticky events (MSC4354) in `/versions`
+ *  `unstable_features`: the same flag matrix-js-sdk checks before it sends a
+ *  sticky event. Failures count as false. */
+export async function stickyEventsAdvertised(): Promise<boolean> {
+    if (!matrixClient) return false;
+    return getServerVersions()
+        .then(({ unstableFeatures }) =>
+            hasUnstableFeature(unstableFeatures, "org.matrix.msc4354"),
+        )
+        .catch(() => false);
 }
 
 // ── Device / session management ─────────────────────────────────────────────
@@ -6276,6 +6454,40 @@ function newestOtherNotificationTs(room: Room, userId: string): number | null {
     return null;
 }
 
+/** Newest timestamp among our own read receipts (public and private), or null when we have none. */
+function ownReceiptTs(
+    room: Room,
+    userId: string,
+    ignoreSynthesized = false,
+): number | null {
+    const receipts = [
+        room.getReadReceiptForUserId(userId, ignoreSynthesized),
+        room.getReadReceiptForUserId(
+            userId,
+            ignoreSynthesized,
+            "m.read.private" as any,
+        ),
+    ].filter((r) => r !== null);
+    return receipts.length
+        ? Math.max(...receipts.map((r) => r.data?.ts ?? 0))
+        : null;
+}
+
+/** Whether our read receipt covers `event`: the SDK's answer, with the receipt's timestamp as the fallback when it cannot place the receipt (see receiptCoversEvent). */
+function receiptCoversRoomEvent(
+    room: Room,
+    userId: string,
+    event: MatrixEvent,
+): boolean {
+    const eventId = event.getId();
+    return receiptCoversEvent({
+        sdkRead: eventId ? room.hasUserReadEvent(userId, eventId) : false,
+        receiptPlaced: room.getEventReadUpTo(userId) !== null,
+        receiptTs: ownReceiptTs(room, userId),
+        eventTs: event.getTs(),
+    });
+}
+
 /** Returns whether the room has any unread messages and whether any are highlights (mentions). */
 export function getRoomUnreadInfo(room: Room): {
     unread: boolean;
@@ -6323,24 +6535,10 @@ function computeTimelineUnread(room: Room, userId: string): boolean {
     // isn't loaded (the SDK rejects it via receiptPointsAtConsistentEvent);
     // hasUnreadMessages then goes by the receipts' own timestamps.
     const readUpToId = room.getEventReadUpTo(userId);
-    let receiptTs: number | null = null;
-    if (!readUpToId) {
-        const receipts = [
-            room.getReadReceiptForUserId(userId),
-            room.getReadReceiptForUserId(
-                userId,
-                false,
-                "m.read.private" as any,
-            ),
-        ].filter((r) => r !== null);
-        receiptTs = receipts.length
-            ? Math.max(...receipts.map((r) => r.data?.ts ?? 0))
-            : null;
-    }
     return hasUnreadEvents(
         room.getLiveTimeline().getEvents(),
         readUpToId,
-        receiptTs,
+        readUpToId ? null : ownReceiptTs(room, userId),
         unreadEventReader,
     );
 }
@@ -6366,9 +6564,8 @@ function clearStaleEncryptedUnread(room: Room): boolean {
             break;
         }
     }
-    const newestId = newest?.getId();
-    const newestNotificationRead = newestId
-        ? room.hasUserReadEvent(userId, newestId)
+    const newestNotificationRead = newest
+        ? receiptCoversRoomEvent(room, userId, newest)
         : null;
     if (
         !isStaleLocalUnread({
@@ -7035,6 +7232,26 @@ export async function ensureCallNotifyPushRule(): Promise<void> {
             // Already present or a transient failure — the rule is best-effort.
         }
     }
+}
+
+/**
+ * Give every "mentions only" room the rule that lets its encrypted messages
+ * reach the device's mention check (see utils/encryptedMentions), and drop the
+ * ones left over from rooms changed on another client. Best-effort, never
+ * throws; runs once push rules are loaded.
+ */
+export async function ensureEncryptedMentionRules(): Promise<void> {
+    if (!matrixClient) return;
+    const client = matrixClient;
+    return pushRuleWriteQueue.run(async () => {
+        try {
+            const changed =
+                await reconcileEncryptedMentionRulesForClient(client);
+            if (changed > 0) pushRulesState.revision++;
+        } catch {
+            // Best-effort: retried on the next start.
+        }
+    });
 }
 
 // ── Per-room notification settings ────────────────────────────────────────
@@ -7755,11 +7972,23 @@ export async function sendReadReceipt(event: MatrixEvent): Promise<void> {
     if (
         room &&
         myUserId &&
-        receiptAlreadySent(
+        (receiptAlreadySent(
             roomId,
             eventId,
             room.getEventReadUpTo(myUserId, true),
-        )
+        ) ||
+            // Our server receipt sits on an event the SDK cannot place (a
+            // reaction whose parent was not loaded when it arrived) and is not
+            // older than this event: it already covers it, and sending this
+            // one would move the receipt backwards. Server receipts only, and
+            // never the SDK's own answer: a synthetic receipt whose request
+            // failed must not block the retry.
+            receiptCoversEvent({
+                sdkRead: false,
+                receiptPlaced: room.getEventReadUpTo(myUserId, true) !== null,
+                receiptTs: ownReceiptTs(room, myUserId, true),
+                eventTs: event.getTs(),
+            }))
     ) {
         // Our receipt may already cover the newest message while the counts
         // still show it unread (see clearStaleEncryptedUnread). Opening the room
@@ -10324,8 +10553,49 @@ export function getUserEmotePack(): CustomPackImage[] {
     return roomEmoteContentToPackImages(getUserEmoteContent());
 }
 
+const USER_EMOTES_TYPE = "im.ponies.user_emotes";
+
+function userEmotesPath(client: MatrixClient): string {
+    return `/user/${encodeURIComponent(client.getSafeUserId())}/account_data/${encodeURIComponent(USER_EMOTES_TYPE)}`;
+}
+
+/**
+ * The user's pack as the server has it, for read-modify-write. The local copy
+ * only catches up when sync echoes a write back, so back-to-back writes (the
+ * Telegram importer adds one sticker at a time) would each start from stale
+ * content and drop the stickers written just before.
+ */
 async function fetchUserEmoteContent(): Promise<RoomEmoteContent> {
-    return getUserEmoteContent();
+    const client = matrixClient;
+    if (!client) return {};
+    try {
+        return (
+            (await client.http.authedRequest<RoomEmoteContent>(
+                Method.Get,
+                userEmotesPath(client),
+            )) ?? {}
+        );
+    } catch (err) {
+        if ((err as { errcode?: string }).errcode === "M_NOT_FOUND") return {};
+        throw err;
+    }
+}
+
+/**
+ * Writes the user's pack and applies it locally at once. The SDK's
+ * setAccountData instead waits, with no timeout, for the write to come back
+ * over sync; when that echo is late or missed the write never resolves, and
+ * the Telegram importer, whose writes are serial, stalled for good.
+ */
+async function writeUserEmoteContent(content: RoomEmoteContent): Promise<void> {
+    const client = matrixClient;
+    if (!client) throw new Error(t("client.notLoggedIn"));
+    await client.setAccountDataRaw(USER_EMOTES_TYPE, content);
+    if (matrixClient !== client) return;
+    const previous = client.getAccountData(USER_EMOTES_TYPE);
+    const event = new MatrixEvent({ type: USER_EMOTES_TYPE, content });
+    client.store.storeAccountDataEvents([event]);
+    client.emit(ClientEvent.AccountData, event, previous);
 }
 
 async function addUserPackImage(
@@ -10351,7 +10621,7 @@ async function addUserPackImage(
         ...(meta?.body ? { body: meta.body } : {}),
     };
 
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         pack: {
             ...(current.pack ?? {}),
@@ -10386,7 +10656,7 @@ export async function addUserEmote(
         ...(meta?.info ? { info: meta.info } : {}),
         ...(meta?.body ? { body: meta.body } : {}),
     };
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         pack: {
             ...(current.pack ?? {}),
@@ -10414,7 +10684,7 @@ export async function setUserEmoteUsage(
         ...existing,
         usage: withKnownUsage(existing.usage, nextUsage),
     };
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         images,
     });
@@ -10436,7 +10706,7 @@ async function removeUserPackImage(
         else delete images[normalized];
     }
 
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         images,
     });
@@ -10479,7 +10749,7 @@ export async function removeUserEmoteImage(shortcode: string): Promise<void> {
     const current = await fetchUserEmoteContent();
     const images = { ...(current.images ?? {}) };
     delete images[normalized];
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         images,
     });
@@ -10607,10 +10877,7 @@ export async function updateUserPackMeta(
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     const current = await fetchUserEmoteContent();
-    await matrixClient.setAccountData(
-        "im.ponies.user_emotes",
-        applyPackMeta(current, update),
-    );
+    await writeUserEmoteContent(applyPackMeta(current, update));
 }
 
 export interface ImportableImage {
@@ -10652,7 +10919,7 @@ export async function importImagesToUserPack(
         added.push(shortcode);
     }
     if (added.length === 0) return added;
-    await matrixClient.setAccountData("im.ponies.user_emotes", {
+    await writeUserEmoteContent({
         ...current,
         pack: {
             ...(current.pack ?? {}),
@@ -10960,6 +11227,106 @@ export function getRoomPowerLevels(room: Room): PowerLevels {
     const creatorId =
         state?.getStateEvents("m.room.create", "")?.getSender() ?? null;
     return normalizePowerLevels(content ?? null, creatorId);
+}
+
+/**
+ * Keep the usage-limit store in step with the server-notice room(s): rooms
+ * tagged m.server_notice, where Synapse pins an
+ * m.server_notice.usage_limit_reached notice while a limit applies and
+ * unpins it once lifted. Re-checked when sync is ready, when tags change and
+ * when such a room gets a new event or new pins. Returns an unsubscribe.
+ */
+export function watchServerNotices(): () => void {
+    const client = matrixClient;
+    if (!client) return () => {};
+    const owner = captureClient();
+    let running = false;
+    let again = false;
+
+    const noticeRooms = () =>
+        client
+            .getRooms()
+            .filter(
+                (r) =>
+                    r.getMyMembership() === "join" &&
+                    !!r.tags?.[SERVER_NOTICE_TAG],
+            );
+
+    async function check(): Promise<void> {
+        if (running) {
+            again = true;
+            return;
+        }
+        running = true;
+        try {
+            let found: UsageLimitSignal | null = null;
+            for (const room of noticeRooms()) {
+                let pinned = getPinnedEventIds(room);
+                if (
+                    !room.currentState.getStateEvents(
+                        "m.room.pinned_events",
+                        "",
+                    )
+                )
+                    pinned = await fetchPinnedEventIds(room.roomId);
+                if (!ownedClient(owner)) return;
+                // Newest pin last; the latest notice wins.
+                for (const id of [...pinned].reverse()) {
+                    const ev =
+                        room.findEventById(id) ??
+                        (await fetchSingleEvent(room.roomId, id));
+                    if (!ownedClient(owner)) return;
+                    const notice = usageLimitNotice(ev?.getContent());
+                    if (notice) {
+                        found = notice;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+            setUsageLimitNotice(found);
+        } catch (err) {
+            console.warn("[usage-limits] server notice check failed", err);
+        } finally {
+            running = false;
+            if (again && ownedClient(owner)) {
+                again = false;
+                void check();
+            }
+        }
+    }
+
+    const isNoticeRoom = (room: Room | undefined) =>
+        !!room?.tags?.[SERVER_NOTICE_TAG];
+    const onSync = (state: string) => {
+        if (state === "PREPARED") void check();
+    };
+    const onTags = () => void check();
+    const onTimeline = (
+        _ev: MatrixEvent,
+        room: Room | undefined,
+        toStartOfTimeline: boolean | undefined,
+    ) => {
+        if (!toStartOfTimeline && isNoticeRoom(room)) void check();
+    };
+    const onState = (ev: MatrixEvent) => {
+        if (
+            ev.getType() === "m.room.pinned_events" &&
+            isNoticeRoom(client.getRoom(ev.getRoomId() ?? "") ?? undefined)
+        )
+            void check();
+    };
+    client.on(ClientEvent.Sync, onSync as never);
+    client.on(RoomEvent.Tags as never, onTags as never);
+    client.on(RoomEvent.Timeline, onTimeline as never);
+    client.on(RoomStateEvent.Events, onState as never);
+    if (client.isInitialSyncComplete()) void check();
+    return () => {
+        client.off(ClientEvent.Sync, onSync as never);
+        client.off(RoomEvent.Tags as never, onTags as never);
+        client.off(RoomEvent.Timeline, onTimeline as never);
+        client.off(RoomStateEvent.Events, onState as never);
+    };
 }
 
 export function getPinnedEventIds(room: Room): string[] {
@@ -11299,6 +11666,75 @@ export async function kickUser(
 ): Promise<void> {
     if (!matrixClient) throw new Error(t("client.notLoggedIn"));
     await matrixClient.kick(roomId, userId, reason);
+}
+
+/** May we disconnect `userId` from the room's voice call? Our rank must meet
+ *  the room's kick level and outrank theirs. The receiving clients check the
+ *  same rule when they apply the kick. Never for ourselves or a non-member. */
+export function canDisconnectFromVoiceInRoom(
+    room: Room,
+    userId: string,
+): boolean {
+    if (userId === matrixClient?.getUserId()) return false;
+    if (!room.getMember(userId)) return false;
+    return canDisconnectFromVoice(
+        getMyPowerRank(room),
+        getUserPowerRank(room, userId),
+        getRoomPowerLevels(room).kick,
+    );
+}
+
+/** Disconnect a member from the room's voice call, without kicking them from
+ *  the room. Sends `com.zam.call.kick`, which every Zam client in the call
+ *  applies. Then clears the member's call state, best effort: a server usually
+ *  refuses writing another user's state key, and that refusal is ignored.
+ *
+ *  The kick is sent UNENCRYPTED on purpose, even in an encrypted room. The
+ *  server's default `.m.rule.encrypted` push rule would notify (and count) an
+ *  encrypted kick in a group room, and an undecryptable copy shows as a
+ *  placeholder. A plaintext custom type matches no default push rule, renders
+ *  nowhere (isSilentZamEvent), and needs no decryption. It carries nothing the
+ *  membership state does not already expose. So the send is a raw PUT: the
+ *  SDK's sendEvent would encrypt it. */
+export async function disconnectFromVoice(
+    roomId: string,
+    userId: string,
+    deviceId?: string,
+    reason?: string,
+): Promise<void> {
+    if (!matrixClient) throw new Error(t("client.notLoggedIn"));
+    const room = getRoom(roomId);
+    if (!room || !canDisconnectFromVoiceInRoom(room, userId)) {
+        throw new Error(t("callKick.notPermitted"));
+    }
+    const content: CallKickContent = { user_id: userId, call_id: "" };
+    if (deviceId) content.device_id = deviceId;
+    if (reason) content.reason = reason;
+    const txnId = `zam-kick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await matrixClient.http.authedRequest(
+        Method.Put,
+        `/rooms/${encodeURIComponent(roomId)}/send/${encodeURIComponent(CALL_KICK_EVENT_TYPE)}/${encodeURIComponent(txnId)}`,
+        undefined,
+        content,
+    );
+    const memberStates =
+        room.currentState.getStateEvents(EventType.GroupCallMemberPrefix) ?? [];
+    await Promise.allSettled(
+        memberStates
+            .filter((ev) => {
+                const key = ev.getStateKey();
+                if (!key || ev.getSender() !== userId) return false;
+                return !deviceId || ev.getContent().device_id === deviceId;
+            })
+            .map((ev) =>
+                matrixClient!.sendStateEvent(
+                    roomId,
+                    EventType.GroupCallMemberPrefix,
+                    {} as never,
+                    ev.getStateKey()!,
+                ),
+            ),
+    );
 }
 
 export async function banUser(
@@ -12796,8 +13232,14 @@ export function loadUnknownCallMembers(roomIds: string[]): void {
 export function getRoomCallMemberships(room: Room): VoiceMembership[] {
     const session = rtcSessionFor(room);
     if (!session) return [];
+    // A device a moderator disconnected stays out of the roster for the kick
+    // window, even while its membership state still exists.
     return session.memberships
-        .filter((m) => !m.isExpired())
+        .filter(
+            (m) =>
+                !m.isExpired() &&
+                !isCallDeviceKicked(room.roomId, m.userId, m.deviceId),
+        )
         .map((m) => ({
             userId: m.userId,
             deviceId: m.deviceId,
@@ -12826,6 +13268,19 @@ export function getCallParticipantCounts(): Map<string, number> {
         if (users.size > 0) counts.set(room.roomId, users.size);
     }
     return counts;
+}
+
+/** Whether we are joined to a room and who is in its call, for deciding a
+ *  rejoin prompt after a restart. Null when the room is unknown. */
+export function getRoomRejoinState(
+    roomId: string,
+): { joined: boolean; memberships: VoiceMembership[] } | null {
+    const room = getRoom(roomId);
+    if (!room) return null;
+    return {
+        joined: room.getMyMembership() === "join",
+        memberships: getRoomCallMemberships(room),
+    };
 }
 
 /** Fold call summaries from a set of ALREADY renderable-filtered events, keyed
