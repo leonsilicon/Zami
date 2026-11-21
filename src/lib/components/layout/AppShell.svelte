@@ -24,6 +24,11 @@
     import SpaceLandingPanel from "./SpaceLandingPanel.svelte";
     import IncomingCallCard from "$lib/components/layout/IncomingCallCard.svelte";
     import CallPipOverlay from "$lib/components/layout/CallPipOverlay.svelte";
+    import CallPoppedOutNotice from "$lib/components/layout/CallPoppedOutNotice.svelte";
+    import {
+        callPopoutState,
+        watchCallPopout,
+    } from "$lib/stores/callPopout.svelte";
     import VerificationModal from "$lib/components/layout/VerificationModal.svelte";
     import EncryptionSetupDialog from "$lib/components/layout/EncryptionSetupDialog.svelte";
     import {
@@ -208,6 +213,7 @@
         getDMPartnerId,
         logout,
         onRoomUpdate,
+        watchServerNotices,
         onAccountData,
         onLocalEchoUpdated,
         onThreadNameChange,
@@ -240,6 +246,7 @@
         clearServiceWorkerNotifications,
         ensureCallNotifyPushRule,
         ensureThreadNamePushRule,
+        ensureEncryptedMentionRules,
         sendNotificationQuickReply,
         resolveQuickReplyThreadRoot,
         markRoomAsRead,
@@ -1691,6 +1698,8 @@
     // Electron right-click "Save image as" (fetches with auth; see module).
     onMount(installDesktopSaveImage);
     onMount(installDesktopMessageMenu);
+    // Closes a call's pop-out window when that call ends.
+    onMount(watchCallPopout);
     // Keep the browser from evicting this origin's storage (crypto store,
     // account backup) when the disk runs low. See persistentStorage.ts.
     onMount(() => {
@@ -1791,6 +1800,9 @@
         if (client) ensureCallNotifyPushRule().catch(() => {});
         // Keep encrypted thread renames from notifying. Best-effort too.
         if (client) ensureThreadNamePushRule().catch(() => {});
+        // Let mentions in encrypted "mentions only" rooms reach this device's
+        // mention check (the server cannot see them). Best-effort too.
+        if (client) ensureEncryptedMentionRules().catch(() => {});
 
         // Mirror the session natively so the push service can enrich
         // notifications and read the active-session blob (off-native this is a
@@ -2583,6 +2595,7 @@
         const unsubRecentEmoji = initRecentEmoji();
         const unsubCustomization = initCustomizationSync();
         const unsubIgnored = initIgnoredUsers();
+        const unsubServerNotices = watchServerNotices();
         const unsubPresence = initPresence();
         const unsubVoice = initVoiceCall();
         const unsubIncoming = initIncomingCalls();
@@ -2713,6 +2726,7 @@
             unsubRecentEmoji();
             unsubCustomization();
             unsubIgnored();
+            unsubServerNotices();
             unsubPresence();
             unsubVoice();
             unsubIncoming();
@@ -3023,7 +3037,9 @@
                     bind:this={roomPaneEl}
                     class="flex flex-1 min-w-0 overflow-hidden"
                 >
-                    {#if interfaceState.callViewRoomId === activeRoom.roomId}
+                    {#if callPopoutState.open && callPopoutState.roomId === activeRoom.roomId}
+                        <CallPoppedOutNotice />
+                    {:else if interfaceState.callViewRoomId === activeRoom.roomId}
                         <CallView
                             room={activeRoom}
                             isMobile={interfaceState.isMobile}
@@ -3134,9 +3150,12 @@
     <ShareTargetSheet />
 {/if}
 
-<div class="contents" dir={uiDir}>
-    <CallPipOverlay />
-</div>
+<!-- The pop-out window already shows the whole call: no floating video too. -->
+{#if !callPopoutState.open}
+    <div class="contents" dir={uiDir}>
+        <CallPipOverlay />
+    </div>
+{/if}
 
 {#if incomingCallsState.ringing.length > 0 || verificationState.incoming.length > 0}
     <div class="fixed top-4 right-4 z-50 flex flex-col gap-2">

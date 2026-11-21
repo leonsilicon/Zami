@@ -274,6 +274,7 @@ export const en = {
     "callParticipantMenu.couldNotDisconnect": "Could not disconnect {name}",
     "callKick.notPermitted": "You cannot disconnect this member from voice",
     "callKick.removedFromVoice": "{name} removed you from the voice channel",
+    "callKick.removedByServer": "You were removed from the call",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -284,6 +285,14 @@ export const en = {
     "callEncryption.partialShort": "Partly encrypted",
     "callEncryption.notEncrypted":
         "Not end-to-end encrypted: the call server can see and hear this call. Calls in encrypted rooms are encrypted.",
+    "callPopout.blocked":
+        "Could not open the pop-out window. Allow pop-ups for this site and try again.",
+    "callPopout.bringBack": "Bring back",
+    "callPopout.focusWindow": "Show window",
+    "callPopout.inOtherWindow": "This call is open in a pop-out window.",
+    "callPopout.popOut": "Pop out call",
+    "callPopout.returnToMain": "Return to main window",
+    "callPopout.windowTitle": "{room} (call)",
     "callView.ringing": "Ringing…",
     "callView.showChat": "Show chat",
     "callView.noOneIsInThisCall": "No one is in this call",
@@ -293,8 +302,8 @@ export const en = {
     "callView.muted": "Muted",
     "callView.deafened": "Deafened",
     "callView.mutedForYou": "Muted for you",
-    "callView.joinedFromMultipleDevices": "Joined from multiple devices",
-    "callView.devices": "{value} devices",
+    "callView.deviceCountPill": "{count} devices",
+    "callView.thisDevice": "This device",
     "callView.enableAudio": "Enable audio",
     "callView.onHold": "On hold while another call is active",
     "callView.resume": "Resume",
@@ -968,6 +977,10 @@ export const en = {
         "Private data is locked on this device. Unlock encryption first.",
     "privateData.keySaveFailed":
         "Could not save the private data key to your account's secret storage. It will be retried the next time you unlock.",
+    "privateData.unlockToEncrypt":
+        "Encrypting your favourite GIFs needs your recovery key on this device, so other devices can read them.",
+    "privateData.unlockToDecrypt":
+        "Your favourite GIFs are encrypted. Enter your recovery key to read them on this device.",
     "settingsSearch.encryptFavouriteGifs": "Encrypt favourite GIFs",
     "privateData.toggleLabel": "Encrypt favourite GIFs",
     "privateData.toggleHelp":
@@ -1623,7 +1636,7 @@ export const en = {
     "messagesMediaSettings.discordImportTitle":
         "Import favourites from Discord",
     "messagesMediaSettings.discordImportDescription":
-        "Copies the GIFs favourited in the Discord desktop app on this computer. GIFs uploaded to Discord can't be imported.",
+        "Copies the GIFs favourited in the Discord desktop app on this computer. GIFs uploaded to Discord are copied only when a refresh service is set below.",
     "messagesMediaSettings.discordImportButton": "Import",
     "messagesMediaSettings.discordImportBusy": "Checking links...",
     "messagesMediaSettings.discordImportChecking":
@@ -1640,6 +1653,22 @@ export const en = {
         "No GIFs could be imported.",
     "messagesMediaSettings.discordImportFailed":
         "Couldn't import favourites from Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Couldn't copy # GIF uploaded to Discord.} other {Couldn't copy # GIFs uploaded to Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Discord refresh service",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Links to GIFs uploaded to Discord expire. To import those too, enter the address of a refresh service you run yourself (services/discord-refresh-proxy in Zam's source). The GIFs are then uploaded to your homeserver.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Enter an https:// address (http:// only works for this computer).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Couldn't reach the Discord refresh service.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "The Discord refresh service is rate limited. Try again later.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "The Discord refresh service returned an error ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "The Discord refresh service sent a reply Zam couldn't read.",
     "messagesMediaSettings.defaultTab": "Default tab",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "Which tab the GIF picker opens on.",
@@ -2408,20 +2437,21 @@ export const en = {
     "screenShareQualityChips.bitrateUpTo": "Up to",
     "screenShareQualityChips.bitrateCapHint":
         "A limit, not a target: the share uses only what the picture needs and your connection can carry, up to this.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Using the upload speed you entered, {upload}, so this goes up to {max}.",
+    "screenShareQualityChips.bitrateAuto": "Automatic",
+    "screenShareQualityChips.bitrateAutoHint":
+        "No limit: the share sends what your connection carries right now, and backs off when it fills up or a viewer falls behind.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Your upload carries about {upload} right now.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Your upload is followed live while you send video.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Held to the upload speed you entered, {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Optional. Enter your upload speed to keep the share under it; leave it empty to follow the connection.",
     "screenShareQualityChips.uploadOverride": "Upload speed (Mbps)",
     "screenShareQualityChips.uploadOverrideAuto": "Auto",
-    "screenShareQualityChips.uploadOverrideHint":
-        "The automatic measurement can read well under your real speed. Enter your own figure to raise the limit; leave it empty to measure.",
     "screenShareQualityChips.kbps": "{n} kbps",
     "screenShareQualityChips.mbps": "{n} Mbps",
-    "screenShareQualityChips.bitrateMeasured":
-        "Your upload measures {upload}, so this goes up to {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Your upload hasn't been measured yet. It's measured while you send video, so this goes up to {max} for now.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Above {safe} is your call: your upload isn't checked, and viewers on slower connections or devices may see stutter or freezes.",
     "screenShareQualityChips.nativeCapture": "Windows capture helper",
     "screenShareQualityChips.nativeCaptureHint":
         "Captures and encodes the share outside the browser, so a busy game doesn't stutter it. Applies to the next share.",
@@ -2810,6 +2840,28 @@ export const en = {
         "Your device is almost out of storage ({free} left). Free up space soon, or Zam won't be able to save messages or encryption keys.",
     "storageBanner.checkAgain": "Check again",
     "storageBanner.dismissLowStorageWarning": "Dismiss storage warning",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Your homeserver has reached its monthly active user limit, so your account can't send messages or sync right now.",
+    "usageLimits.bannerDisabled":
+        "Your homeserver has been disabled by its administrator, so your account can't send messages or sync right now.",
+    "usageLimits.bannerResource":
+        "Your account has reached a usage limit on your homeserver, so some actions are blocked right now.",
+    "usageLimits.bannerMediaQuota":
+        "You've used up your media upload allowance on your homeserver. Uploads will work again when it resets.",
+    "usageLimits.canUpgrade": "Upgrading your plan raises this limit.",
+    "usageLimits.learnMore": "Learn more",
+    "usageLimits.contactAdmin": "Contact the server admin",
+    "usageLimits.dismiss": "Dismiss usage limit warning",
+    "usageLimits.toastResource":
+        "Your homeserver is blocking this account because a usage limit was reached.",
+    "usageLimits.toastMediaQuota":
+        "Upload failed: you've reached your media upload limit.",
+    "usageLimits.toastRateLimited":
+        "The server is limiting media transfers. Try again in a moment.",
+    "usageLimits.toastRateLimitedFor":
+        "The server is limiting media transfers. Try again in {seconds} s.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification": "Dismiss update notification",

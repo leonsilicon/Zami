@@ -289,6 +289,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callKick.notPermitted":
         "Вы не можете отключить этого участника от голосового канала",
     "callKick.removedFromVoice": "{name} отключил вас от голосового канала",
+    "callKick.removedByServer": "Вас отключили от звонка",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -299,6 +300,14 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "Частично зашифровано",
     "callEncryption.notEncrypted":
         "Нет сквозного шифрования: сервер звонков может видеть и слышать этот звонок. Звонки в зашифрованных комнатах шифруются.",
+    "callPopout.blocked":
+        "Не удалось открыть окно вынесенного звонка. Разрешите всплывающие окна для этого сайта и попробуйте снова.",
+    "callPopout.bringBack": "Вернуть",
+    "callPopout.focusWindow": "Показать окно",
+    "callPopout.inOtherWindow": "Этот звонок открыт в отдельном окне.",
+    "callPopout.popOut": "Вынести звонок в окно",
+    "callPopout.returnToMain": "Вернуть в главное окно",
+    "callPopout.windowTitle": "{room} (звонок)",
     "callView.ringing": "Вызов…",
     "callView.showChat": "Показать чат",
     "callView.noOneIsInThisCall": "В этом звонке никого нет",
@@ -308,8 +317,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "Микрофон выключен",
     "callView.deafened": "Звук отключён",
     "callView.mutedForYou": "Заглушён для вас",
-    "callView.joinedFromMultipleDevices": "Подключился с нескольких устройств",
-    "callView.devices": "Устройств: {value}",
+    "callView.deviceCountPill": "Устройств: {count}",
+    "callView.thisDevice": "Это устройство",
     "callView.enableAudio": "Включить звук",
     "callView.onHold": "На удержании, пока идёт другой звонок",
     "callView.resume": "Продолжить",
@@ -998,6 +1007,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Личные данные заблокированы на этом устройстве. Сначала разблокируйте шифрование.",
     "privateData.keySaveFailed":
         "Не удалось сохранить ключ личных данных в секретном хранилище аккаунта. Попытка повторится при следующей разблокировке.",
+    "privateData.unlockToEncrypt":
+        "Чтобы зашифровать избранные GIF, на этом устройстве нужен ключ восстановления, чтобы другие ваши устройства могли их прочитать.",
+    "privateData.unlockToDecrypt":
+        "Ваши избранные GIF зашифрованы. Введите ключ восстановления, чтобы читать их на этом устройстве.",
     "settingsSearch.encryptFavouriteGifs": "Шифровать избранные GIF",
     "privateData.toggleLabel": "Шифровать избранные GIF",
     "privateData.toggleHelp":
@@ -1683,7 +1696,7 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Перекодировать отправляемые GIF в анимированный WebP без потерь, который обычно меньше и может воспроизводиться во время загрузки. Изображение не меняется. GIF, который не уменьшится, отправляется как есть.",
     "messagesMediaSettings.discordImportTitle": "Импорт избранного из Discord",
     "messagesMediaSettings.discordImportDescription":
-        "Копирует GIF, добавленные в избранное в настольном приложении Discord на этом компьютере. GIF, загруженные в Discord, импортировать нельзя.",
+        "Копирует GIF, добавленные в избранное в настольном приложении Discord на этом компьютере. GIF, загруженные в Discord, копируются только при настроенном сервисе обновления ниже.",
     "messagesMediaSettings.discordImportButton": "Импортировать",
     "messagesMediaSettings.discordImportBusy": "Проверка ссылок...",
     "messagesMediaSettings.discordImportChecking":
@@ -1700,6 +1713,22 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Не удалось импортировать ни одного GIF.",
     "messagesMediaSettings.discordImportFailed":
         "Не удалось импортировать избранное из Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Не удалось скопировать # GIF, загруженный в Discord.} few {Не удалось скопировать # GIF, загруженных в Discord.} many {Не удалось скопировать # GIF, загруженных в Discord.} other {Не удалось скопировать # GIF, загруженных в Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Сервис обновления Discord",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Ссылки на GIF, загруженные в Discord, со временем истекают. Чтобы импортировать и их, укажите адрес сервиса обновления, который вы запускаете сами (services/discord-refresh-proxy в исходном коде Zam). GIF будут загружены на ваш домашний сервер.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Укажите адрес https:// (http:// работает только на этом компьютере).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Не удалось подключиться к сервису обновления Discord.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Сервис обновления Discord ограничивает количество запросов. Попробуйте позже.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Сервис обновления Discord вернул ошибку ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Сервис обновления Discord отправил ответ, который Zam не смог прочитать.",
     "messagesMediaSettings.defaultTab": "Вкладка по умолчанию",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "На какой вкладке открывается выбор GIF.",
@@ -2491,20 +2520,21 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrateUpTo": "До",
     "screenShareQualityChips.bitrateCapHint":
         "Это предел, а не цель: демонстрация использует только то, что нужно картинке и что способно передать ваше соединение, не выше этого значения.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Используется введённая вами скорость отдачи, {upload}, поэтому предел поднимается до {max}.",
+    "screenShareQualityChips.bitrateAuto": "Автоматически",
+    "screenShareQualityChips.bitrateAutoHint":
+        "Без ограничения: трансляция отправляет столько, сколько сейчас тянет ваше соединение, и снижает поток, когда канал переполняется или зритель отстаёт.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Ваша отдача сейчас около {upload}.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Скорость отдачи отслеживается в реальном времени во время отправки видео.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Ограничено скоростью отдачи, которую вы указали: {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Необязательно. Укажите скорость отдачи, чтобы трансляция не превышала её; оставьте пустым, чтобы следовать за соединением.",
     "screenShareQualityChips.uploadOverride": "Скорость отдачи (Мбит/с)",
     "screenShareQualityChips.uploadOverrideAuto": "Авто",
-    "screenShareQualityChips.uploadOverrideHint":
-        "Автоматическое измерение может показывать значение заметно ниже вашей реальной скорости. Введите свою цифру, чтобы поднять предел; оставьте пустым для измерения.",
     "screenShareQualityChips.kbps": "{n} кбит/с",
     "screenShareQualityChips.mbps": "{n} Мбит/с",
-    "screenShareQualityChips.bitrateMeasured":
-        "Ваша скорость отдачи измерена как {upload}, поэтому предел поднимается до {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Скорость вашей отдачи ещё не измерена. Она измеряется, пока вы отправляете видео, поэтому пока предел поднимается до {max}.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Выше {safe}: на ваш страх и риск, скорость отдачи не проверяется, и у зрителей с медленным соединением или устройством возможны рывки и зависания.",
     "screenShareQualityChips.nativeCapture": "Помощник захвата Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Захватывает и кодирует трансляцию вне браузера, поэтому тяжелая игра её не подтормаживает. Применяется к следующей трансляции.",
@@ -2910,6 +2940,29 @@ const messages: Partial<Record<MessageKey, string>> = {
     "storageBanner.checkAgain": "Проверить снова",
     "storageBanner.dismissLowStorageWarning":
         "Скрыть предупреждение о нехватке места",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Ваш сервер достиг лимита ежемесячно активных пользователей, поэтому ваш аккаунт сейчас не может отправлять сообщения и синхронизироваться.",
+    "usageLimits.bannerDisabled":
+        "Ваш сервер отключён администратором, поэтому ваш аккаунт сейчас не может отправлять сообщения и синхронизироваться.",
+    "usageLimits.bannerResource":
+        "Ваш аккаунт достиг лимита использования на сервере, поэтому некоторые действия сейчас заблокированы.",
+    "usageLimits.bannerMediaQuota":
+        "Вы исчерпали квоту загрузки медиафайлов на сервере. Загрузка снова заработает после сброса квоты.",
+    "usageLimits.canUpgrade":
+        "Переход на более высокий тариф увеличит этот лимит.",
+    "usageLimits.learnMore": "Подробнее",
+    "usageLimits.contactAdmin": "Связаться с администратором сервера",
+    "usageLimits.dismiss": "Закрыть предупреждение о лимите",
+    "usageLimits.toastResource":
+        "Ваш сервер блокирует этот аккаунт, потому что достигнут лимит использования.",
+    "usageLimits.toastMediaQuota":
+        "Не удалось загрузить: достигнут лимит загрузки медиафайлов.",
+    "usageLimits.toastRateLimited":
+        "Сервер ограничивает передачу медиафайлов. Повторите попытку чуть позже.",
+    "usageLimits.toastRateLimitedFor":
+        "Сервер ограничивает передачу медиафайлов. Повторите попытку через {seconds} с.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification":

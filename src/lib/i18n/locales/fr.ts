@@ -277,6 +277,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callKick.notPermitted":
         "Vous ne pouvez pas déconnecter ce membre du vocal",
     "callKick.removedFromVoice": "{name} vous a retiré du salon vocal",
+    "callKick.removedByServer": "Vous avez été retiré de l'appel",
 
     // src/lib/components/layout/CallView.svelte
     "callEncryption.encrypted":
@@ -287,6 +288,15 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callEncryption.partialShort": "Partiellement chiffré",
     "callEncryption.notEncrypted":
         "Pas chiffré de bout en bout : le serveur d'appel peut voir et entendre cet appel. Les appels dans les salons chiffrés sont chiffrés.",
+    "callPopout.blocked":
+        "Impossible d'ouvrir la fenêtre détachée. Autorisez les pop-ups pour ce site et réessayez.",
+    "callPopout.bringBack": "Ramener",
+    "callPopout.focusWindow": "Afficher la fenêtre",
+    "callPopout.inOtherWindow":
+        "Cet appel est ouvert dans une fenêtre détachée.",
+    "callPopout.popOut": "Détacher l'appel",
+    "callPopout.returnToMain": "Revenir à la fenêtre principale",
+    "callPopout.windowTitle": "{room} (appel)",
     "callView.ringing": "Sonnerie…",
     "callView.showChat": "Afficher la discussion",
     "callView.noOneIsInThisCall": "Personne n'est dans cet appel",
@@ -296,8 +306,8 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callView.muted": "Micro coupé",
     "callView.deafened": "Son coupé",
     "callView.mutedForYou": "Rendu muet pour vous",
-    "callView.joinedFromMultipleDevices": "Connecté depuis plusieurs appareils",
-    "callView.devices": "{value} appareils",
+    "callView.deviceCountPill": "{count} appareils",
+    "callView.thisDevice": "Cet appareil",
     "callView.enableAudio": "Activer l'audio",
     "callView.onHold": "En attente pendant un autre appel",
     "callView.resume": "Reprendre",
@@ -887,6 +897,10 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Les données privées sont verrouillées sur cet appareil. Déverrouillez d'abord le chiffrement.",
     "privateData.keySaveFailed":
         "Impossible d'enregistrer la clé des données privées dans le stockage secret de votre compte. Une nouvelle tentative aura lieu au prochain déverrouillage.",
+    "privateData.unlockToEncrypt":
+        "Pour chiffrer vos GIF favoris, votre clé de récupération est nécessaire sur cet appareil, afin que vos autres appareils puissent les lire.",
+    "privateData.unlockToDecrypt":
+        "Vos GIF favoris sont chiffrés. Saisissez votre clé de récupération pour les lire sur cet appareil.",
     "settingsSearch.encryptFavouriteGifs": "Chiffrer les GIF favoris",
     "privateData.toggleLabel": "Chiffrer les GIF favoris",
     "privateData.toggleHelp":
@@ -1535,7 +1549,7 @@ const messages: Partial<Record<MessageKey, string>> = {
     "messagesMediaSettings.discordImportTitle":
         "Importer les favoris depuis Discord",
     "messagesMediaSettings.discordImportDescription":
-        "Copie les GIF ajoutés aux favoris dans l'application de bureau Discord de cet ordinateur. Les GIF envoyés sur Discord ne peuvent pas être importés.",
+        "Copie les GIF ajoutés aux favoris dans l'application de bureau Discord de cet ordinateur. Les GIF envoyés sur Discord ne sont copiés que si un service de rafraîchissement est configuré ci-dessous.",
     "messagesMediaSettings.discordImportButton": "Importer",
     "messagesMediaSettings.discordImportBusy": "Vérification des liens...",
     "messagesMediaSettings.discordImportChecking":
@@ -1552,6 +1566,22 @@ const messages: Partial<Record<MessageKey, string>> = {
         "Aucun GIF n'a pu être importé.",
     "messagesMediaSettings.discordImportFailed":
         "Impossible d'importer les favoris depuis Discord.",
+    "messagesMediaSettings.discordImportCopyFailed":
+        "{count, plural, one {Impossible de copier # GIF envoyé sur Discord.} other {Impossible de copier # GIF envoyés sur Discord.}}",
+    "messagesMediaSettings.discordRefreshServiceTitle":
+        "Service de rafraîchissement Discord",
+    "messagesMediaSettings.discordRefreshServiceDescription":
+        "Les liens vers les GIF envoyés sur Discord expirent. Pour importer aussi ces GIF, saisissez l'adresse d'un service de rafraîchissement que vous exploitez vous-même (services/discord-refresh-proxy dans le code source de Zam). Les GIF sont ensuite envoyés sur votre serveur d'accueil.",
+    "messagesMediaSettings.discordRefreshServiceInvalid":
+        "Saisissez une adresse https:// (http:// ne fonctionne que pour cet ordinateur).",
+    "messagesMediaSettings.discordRefreshUnreachable":
+        "Impossible de joindre le service de rafraîchissement Discord.",
+    "messagesMediaSettings.discordRefreshRateLimited":
+        "Le service de rafraîchissement Discord limite les requêtes. Réessayez plus tard.",
+    "messagesMediaSettings.discordRefreshHttpError":
+        "Le service de rafraîchissement Discord a renvoyé une erreur ({status}).",
+    "messagesMediaSettings.discordRefreshBadResponse":
+        "Le service de rafraîchissement Discord a envoyé une réponse que Zam n'a pas pu lire.",
     "messagesMediaSettings.defaultTab": "Onglet par défaut",
     "messagesMediaSettings.whichTabTheGifPickerOpens":
         "L'onglet sur lequel s'ouvre le sélecteur de GIF.",
@@ -2337,12 +2367,6 @@ const messages: Partial<Record<MessageKey, string>> = {
     "screenShareQualityChips.bitrate": "Débit",
     "screenShareQualityChips.kbps": "{n} kbit/s",
     "screenShareQualityChips.mbps": "{n} Mbit/s",
-    "screenShareQualityChips.bitrateMeasured":
-        "Votre débit montant mesure {upload}, donc ceci va jusqu'à {max}.",
-    "screenShareQualityChips.bitrateUnmeasured":
-        "Votre débit montant n'a pas encore été mesuré. Il l'est pendant que vous envoyez de la vidéo, donc ceci va jusqu'à {max} pour l'instant.",
-    "screenShareQualityChips.bitrateHighWarning":
-        "Au-delà de {safe}, c'est votre choix : votre débit montant n'est pas vérifié, et les spectateurs sur des connexions ou appareils plus lents peuvent voir des saccades ou des gels.",
     "screenShareQualityChips.nativeCapture": "Assistant de capture Windows",
     "screenShareQualityChips.nativeCaptureHint":
         "Capture et encode le partage hors du navigateur, pour qu'un jeu gourmand ne le saccade pas. S'applique au prochain partage.",
@@ -2843,6 +2867,29 @@ const messages: Partial<Record<MessageKey, string>> = {
     "storageBanner.checkAgain": "Vérifier à nouveau",
     "storageBanner.dismissLowStorageWarning":
         "Fermer l'avertissement de stockage",
+
+    // src/lib/components/layout/UsageLimitBanner.svelte, stores/usageLimits.svelte.ts
+    "usageLimits.bannerMau":
+        "Ton serveur a atteint sa limite d'utilisateurs actifs mensuels, ton compte ne peut donc pas envoyer de messages ni se synchroniser pour le moment.",
+    "usageLimits.bannerDisabled":
+        "Ton serveur a été désactivé par son administrateur, ton compte ne peut donc pas envoyer de messages ni se synchroniser pour le moment.",
+    "usageLimits.bannerResource":
+        "Ton compte a atteint une limite d'utilisation sur ton serveur, certaines actions sont donc bloquées pour le moment.",
+    "usageLimits.bannerMediaQuota":
+        "Tu as épuisé ton quota d'envoi de médias sur ton serveur. Les envois fonctionneront à nouveau quand il sera réinitialisé.",
+    "usageLimits.canUpgrade":
+        "Passer à une offre supérieure augmente cette limite.",
+    "usageLimits.learnMore": "En savoir plus",
+    "usageLimits.contactAdmin": "Contacter l'administrateur du serveur",
+    "usageLimits.dismiss": "Fermer l'avertissement de limite d'utilisation",
+    "usageLimits.toastResource":
+        "Ton serveur bloque ce compte car une limite d'utilisation a été atteinte.",
+    "usageLimits.toastMediaQuota":
+        "Échec de l'envoi : tu as atteint ta limite d'envoi de médias.",
+    "usageLimits.toastRateLimited":
+        "Le serveur limite les transferts de médias. Réessaie dans un instant.",
+    "usageLimits.toastRateLimitedFor":
+        "Le serveur limite les transferts de médias. Réessaie dans {seconds} s.",
 
     // src/lib/components/layout/UpdateBanner.svelte
     "updateBanner.dismissUpdateNotification":
@@ -4562,12 +4609,19 @@ const messages: Partial<Record<MessageKey, string>> = {
     "callParticipantMenu.muteShare": "Couper le son du partage d'écran",
     "screenShareQualityChips.bitrateCapHint":
         "Une limite, pas un objectif : le partage n'utilise que ce dont l'image a besoin et ce que votre connexion peut supporter, jusqu'à cette valeur.",
-    "screenShareQualityChips.bitrateOverridden":
-        "Utilise la vitesse d'envoi que vous avez saisie, {upload}, donc ceci va jusqu'à {max}.",
+    "screenShareQualityChips.bitrateAuto": "Automatique",
+    "screenShareQualityChips.bitrateAutoHint":
+        "Sans limite : le partage envoie ce que votre connexion permet à l'instant et ralentit quand elle se sature ou qu'un spectateur prend du retard.",
+    "screenShareQualityChips.bitrateAutoNow":
+        "Votre vitesse d'envoi permet environ {upload} en ce moment.",
+    "screenShareQualityChips.bitrateAutoUnknown":
+        "Votre vitesse d'envoi est suivie en direct pendant l'envoi de la vidéo.",
+    "screenShareQualityChips.bitrateAutoOverridden":
+        "Limité à la vitesse d'envoi que vous avez saisie, {upload}.",
+    "screenShareQualityChips.uploadOverrideCapHint":
+        "Facultatif. Saisissez votre vitesse d'envoi pour garder le partage en dessous ; laissez vide pour suivre la connexion.",
     "screenShareQualityChips.uploadOverride": "Vitesse d'envoi (Mbit/s)",
     "screenShareQualityChips.uploadOverrideAuto": "Automatique",
-    "screenShareQualityChips.uploadOverrideHint":
-        "La mesure automatique peut indiquer bien moins que votre vitesse réelle. Saisissez votre propre valeur pour relever la limite ; laissez vide pour mesurer.",
     "voiceAudioSettings.cannotWatch": "Vidéos que je ne peux pas voir",
     "voiceAudioSettings.cannotWatchHint":
         "Choisissez les codecs qui n'affichent rien (ou une image noire) sur cet appareil. Les autres participants de l'appel vous envoient alors du H.264 à la place. Zam les ajoute aussi lui-même quand un flux arrive et n'est jamais décodé.",

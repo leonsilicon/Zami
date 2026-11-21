@@ -72,7 +72,9 @@ import {
 } from "./client";
 import {
     CALL_KICK_EVENT_TYPE,
+    callMembershipRemovedBy,
     canDisconnectFromVoice,
+    isDeviceCallMemberStateKey,
     isLiveCallKick,
     parseCallKickContent,
 } from "$lib/utils/callKick";
@@ -159,6 +161,7 @@ import {
 } from "$lib/utils/soundboard";
 import {
     settingsState,
+    uploadOverride,
     setAudioInputDeviceId,
     setVideoInputDeviceId,
     setCallVideoCodec,
@@ -186,14 +189,19 @@ import {
 } from "$lib/utils/audioLossReport";
 import {
     availableOutgoingBitrate,
+    outgoingVideoLoss,
     summarizeTransport,
     type TransportSummary,
     type RawStat,
     type StreamOwner,
     type VideoTrackDebug,
 } from "$lib/utils/callStats";
-import { effectiveBitrate } from "$lib/utils/screenShareBitrate";
-import { uploadSampleBps } from "$lib/utils/uploadSample";
+import {
+    isAutoBitrate,
+    shareBitrateCap,
+    shareStartBitrate,
+} from "$lib/utils/screenShareBitrate";
+import { UplinkTracker } from "$lib/utils/uplinkTracker";
 import {
     codecsFromMimeTypes,
     codecFromMime,
@@ -219,7 +227,7 @@ import {
 import {
     clearLiveUploadEstimate,
     noteUploadEstimate,
-    screenShareBitrateCeiling,
+    uploadEstimate,
 } from "$lib/stores/uploadEstimate.svelte";
 import {
     createCallAudioGraph,
@@ -391,6 +399,13 @@ interface ActiveVoiceCall {
     audioGraph: CallAudioGraph | null | false;
     onMmError: (err: unknown) => void;
     onMyMembership: (room: Room, membership: string) => void;
+    /** Watches our own call membership state for a moderator emptying it. */
+    onMemberState: (event: MatrixEvent) => void;
+    /** Our membership state events as they stood at join: a removal that is
+     *  already there (an earlier kick) is not one of this call. */
+    memberStateAtJoin: Set<string>;
+    /** Remote SFUs that removed us (PARTICIPANT_REMOVED): not retried. */
+    remotesRemoved: Set<string>;
     /** What this device can send and decode (localVideoCodecs). */
     codecs: LocalVideoCodecs;
     /** End-to-end encryption, when the room is encrypted (setupCallE2EE). */
@@ -1572,6 +1587,27 @@ async function meshConnectionFailed(
     );
 }
 
+/** Ask for a remote screen share's layer by the size it is drawn at in
+ *  device pixels. LiveKit's adaptive stream measures tiles in CSS pixels
+ *  unless told otherwise (pixel density 1 below a devicePixelRatio of 2),
+ *  and the server serves the smallest layer at least 90% of the asked
+ *  height. So on a 1.25-2x display a share drawn 600-800 CSS pixels tall
+ *  got its half-size layer (540p of a 1080p share, 720p of 1440p), which
+ *  is what "shares arrive at low resolution" looked like: blurred text on
+ *  a link that carried the full layer fine. Cameras keep the default: for
+ *  faces CSS size is plenty and the bandwidth matters more. The setting is
+ *  private in LiveKit's types but read on every resize. */
+function sizeShareAtDevicePixels(track: object): void {
+    const t = track as {
+        adaptiveStreamSettings?: { pixelDensity?: number | "screen" };
+    };
+    if (!t.adaptiveStreamSettings) return;
+    t.adaptiveStreamSettings = {
+        ...t.adaptiveStreamSettings,
+        pixelDensity: "screen",
+    };
+}
+
 /** One LiveKit connection of `call` (publishing or listen-only): its media
  *  through the shared listener, and what only LiveKit reports. */
 function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
@@ -1642,6 +1678,13 @@ function wireCallMedia(call: ActiveVoiceCall, lkRoom: LivekitRoom): void {
     });
     lkRoom.on(lk.RoomEvent.AudioPlaybackStatusChanged, () =>
         refreshPlaybackBlocked(call),
+    );
+    lkRoom.on(
+        lk.RoomEvent.TrackSubscribed,
+        (track: object, pub: { source: unknown }) => {
+            if (pub.source === lk.Track.Source.ScreenShare)
+                sizeShareAtDevicePixels(track);
+        },
     );
     lkRoom.on(lk.RoomEvent.Disconnected, () => {
         pluginDataTracksRoomGone(lkRoom);
@@ -1863,6 +1906,63 @@ function scheduleKickRefresh(roomId: string, endTs: number): void {
     );
 }
 
+/** Calls already ending because we were removed, so one removal seen several
+ *  ways (the kick event, our emptied membership, the SFU) toasts once. */
+const removedCalls = new WeakSet<ActiveVoiceCall>();
+
+/** We were removed from the call (a moderator, or the SFU): end it for good
+ *  and say so. Final: leaving stops the SDK's membership manager, which would
+ *  otherwise re-send the membership the moderator emptied ("force re-join"),
+ *  and nothing reconnects LiveKit after a leave. */
+function endCallRemoved(call: ActiveVoiceCall, message: string): void {
+    if (activeVoice !== call || removedCalls.has(call)) return;
+    removedCalls.add(call);
+    void leaveVoiceCall()
+        .then(() => showToast(message))
+        .catch(() => {});
+}
+
+/** A call membership state event in the call's room: when another user
+ *  emptied ours (disconnectFromVoice does), we were removed. Covers a kick
+ *  event this device missed or has not seen yet. */
+function onOwnMemberStateEvent(
+    call: ActiveVoiceCall,
+    event: MatrixEvent,
+): void {
+    if (activeVoice !== call || !matrixClient) return;
+    if (event.getRoomId() !== call.roomId) return;
+    if (event.getType() !== EventType.GroupCallMemberPrefix) return;
+    const eventId = event.getId();
+    if (eventId && call.memberStateAtJoin.has(eventId)) return;
+    const me = matrixClient.getUserId();
+    const myDevice = matrixClient.getDeviceId();
+    if (!me || !myDevice) return;
+    const actor = callMembershipRemovedBy(
+        {
+            stateKey: event.getStateKey() ?? "",
+            sender: event.getSender() ?? "",
+            content: event.getContent(),
+            ts: event.getTs(),
+        },
+        me,
+        myDevice,
+        Date.now(),
+    );
+    if (!actor) return;
+    const room = matrixClient.getRoom(call.roomId);
+    if (!room) return;
+    const permitted = canDisconnectFromVoice(
+        getUserPowerRank(room, actor),
+        getUserPowerRank(room, me),
+        getRoomPowerLevels(room).kick,
+    );
+    if (!permitted) return;
+    endCallRemoved(
+        call,
+        t("callKick.removedFromVoice", { name: getMemberName(room, actor) }),
+    );
+}
+
 /** A `com.zam.call.kick` in the call's room. Applied only when it is live, and
  *  only when its sender met the kick bar at the moment it arrived. */
 function onCallKickEvent(event: MatrixEvent, room: Room): void {
@@ -1894,9 +1994,7 @@ function onCallKickEvent(event: MatrixEvent, room: Room): void {
         (!kick.device_id || kick.device_id === myDevice)
     ) {
         const name = getMemberName(room, actor);
-        void leaveVoiceCall()
-            .then(() => showToast(t("callKick.removedFromVoice", { name })))
-            .catch(() => {});
+        endCallRemoved(call, t("callKick.removedFromVoice", { name }));
         return;
     }
     const end = recordCallKick(room.roomId, kick.user_id, kick.device_id, now);
@@ -2094,7 +2192,11 @@ async function syncRemoteSfus(call: ActiveVoiceCall): Promise<void> {
         void lkRoom.disconnect().catch(() => {});
     }
     for (const [key, target] of wanted)
-        if (!call.remotes.has(key) && !call.remotesConnecting.has(key))
+        if (
+            !call.remotes.has(key) &&
+            !call.remotesConnecting.has(key) &&
+            !call.remotesRemoved.has(key)
+        )
             void connectRemoteSfu(call, key, target);
     applyKickedSubscriptions(call);
     syncMesh(
@@ -2386,15 +2488,20 @@ async function connectRemoteSfu(
         const { url, jwt } = await fetchSfuJwt(target);
         if (activeVoice !== call) return;
         wireCallMedia(call, lkRoom);
-        lkRoom.on(call.lk.RoomEvent.Disconnected, () => {
+        lkRoom.on(call.lk.RoomEvent.Disconnected, (reason) => {
             // Dropped by the SFU or the network (our own disconnects remove
-            // the entry first): forget it and try again shortly.
+            // the entry first): forget it and try again shortly. Removed by
+            // that SFU on purpose: stay away from it for the rest of the call.
             if (call.remotes.get(key) !== lkRoom) return;
             call.remotes.delete(key);
             dropLkTransport(call, lkRoom);
             notifyCallMutes(call);
             notifyCallVideo(call);
             notifyCallSpeakers(call);
+            if (reason === call.lk.DisconnectReason.PARTICIPANT_REMOVED) {
+                call.remotesRemoved.add(key);
+                return;
+            }
             setTimeout(() => void syncRemoteSfus(call), REMOTE_SFU_RETRY_MS);
         });
         await bypassProxyFor(url);
@@ -2705,6 +2812,7 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
         remotes: new Map(),
         remotesConnecting: new Set(),
         remoteFailuresNotified: new Set(),
+        remotesRemoved: new Set(),
         speakersByRoom: new Map(),
         onMembershipsChanged: () => void syncRemoteSfus(call),
         lk,
@@ -2714,6 +2822,23 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
         elByTrack: new Map(),
         onMmError,
         onMyMembership,
+        onMemberState: (event) => onOwnMemberStateEvent(call, event),
+        memberStateAtJoin: new Set(
+            (
+                room.currentState.getStateEvents(
+                    EventType.GroupCallMemberPrefix,
+                ) ?? []
+            )
+                .filter((ev) =>
+                    isDeviceCallMemberStateKey(
+                        ev.getStateKey() ?? "",
+                        userId,
+                        deviceId,
+                    ),
+                )
+                .map((ev) => ev.getId())
+                .filter((id): id is string => !!id),
+        ),
         codecs: localCodecs,
         e2ee,
         decryptErrors: new Map(),
@@ -2734,6 +2859,7 @@ export async function joinVoiceCall(roomId: string): Promise<void> {
     if (micFailure) notifyCallMicUnavailable(micFailure.err);
     session.on("membership_manager_error" as never, onMmError as never);
     matrixClient.on("Room.myMembership" as never, onMyMembership as never);
+    matrixClient.on("RoomState.events" as never, call.onMemberState as never);
     // Our own camera/screenshare tiles, whichever transport sends them.
     // Turning the camera off mutes it: an SFU room reports that as a
     // track event, standalone tracks through the mesh's view of them.
@@ -2892,13 +3018,19 @@ async function connectPublishingRoom(
         if (activeVoice !== call) return;
         notifyVoiceConnState("connected");
     });
-    lkRoom.on(lk.RoomEvent.Disconnected, () => {
+    lkRoom.on(lk.RoomEvent.Disconnected, (reason) => {
         // SFU kicked us or the connection died for good — tear down
         // fully and tell the user. User-initiated leaves null
         // activeVoice first, so this only fires on genuine drops.
         // LiveKit emits Disconnected while still Connecting when the
         // connect fails; the join's own catch reports that failure
         // exactly once, so only act here when we were connected.
+        if (reason === lk.DisconnectReason.PARTICIPANT_REMOVED) {
+            // Removed on purpose (a server-side kick): final, and said as such.
+            if (activeVoice?.lkRoom === lkRoom)
+                endCallRemoved(call, t("callKick.removedByServer"));
+            return;
+        }
         if (connected && activeVoice?.lkRoom === lkRoom) {
             for (const cb of voiceErrorSubscribers)
                 cb(t("client.voiceCallDisconnected"));
@@ -3156,6 +3288,10 @@ async function leaveVoiceCallInternal(): Promise<void> {
         matrixClient?.off(
             "Room.myMembership" as never,
             call.onMyMembership as never,
+        );
+        matrixClient?.off(
+            "RoomState.events" as never,
+            call.onMemberState as never,
         );
         call.session.off(
             "memberships_changed" as never,
@@ -3488,7 +3624,7 @@ function nativeSharePublishOptions() {
     const fps = Number(settingsState.screenShareFps);
     return {
         screenShareEncoding: {
-            maxBitrate: nativeSenderBitrate(screenShareBitrateNow()),
+            maxBitrate: nativeSenderBitrate(screenShareStartBitrate()),
             maxFramerate: fps * 2,
         },
         degradationPreference: "maintain-resolution" as const,
@@ -3730,6 +3866,12 @@ async function tuneNativeBitrate(n: NativeShareState): Promise<void> {
     // estimate at a constant bitrate, so without this it climbs into the
     // link's limit, crashes the estimate to the floor and climbs again.
     available = (n.uplink ??= new UplinkCeiling()).limit(available, Date.now());
+    // ...and under what got through while the server reports loss or the
+    // round trip swells (utils/uplinkTracker), which WebRTC's estimate only
+    // reflects later.
+    const held = uplinkTrackers.get(n.call)?.congestionHold(Date.now()) ?? null;
+    if (held !== null && (available === null || held < available))
+        available = held;
     if (n.published) {
         // Android: one layer, held under the viewers' cap as a whole.
         const target = nativeBitrateTarget(screenShareBitrateNow(), available);
@@ -3824,7 +3966,7 @@ export async function setScreenShareEnabled(on: boolean): Promise<boolean> {
                 if (track.kind === "video") await trimShareForGpu(track);
                 return {
                     screenShareEncoding: screenShareEncodingFor(
-                        screenShareBitrateNow(),
+                        screenShareStartBitrate(),
                         Number(settingsState.screenShareFps),
                     ),
                     degradationPreference: "maintain-resolution",
@@ -3932,7 +4074,9 @@ async function startAndroidShare(call: ActiveVoiceCall): Promise<boolean> {
     );
     const started = await startAndroidScreenShare({
         fps: res.frameRate,
-        bitrate: screenShareBitrateNow(),
+        // Low until WebRTC has an uplink estimate; tuneNativeBitrate then
+        // follows it up (an uncapped share would otherwise open at its cap).
+        bitrate: nativeBitrateTarget(screenShareBitrateNow(), null),
         maxWidth: res.width,
         maxHeight: res.height,
     });
@@ -4009,7 +4153,7 @@ async function startAndroidShare(call: ActiveVoiceCall): Promise<boolean> {
             source: call.lk.Track.Source.ScreenShare,
             // Same encoding as the Windows share (see nativeSharePublishOptions).
             screenShareEncoding: {
-                maxBitrate: nativeSenderBitrate(screenShareBitrateNow()),
+                maxBitrate: nativeSenderBitrate(screenShareStartBitrate()),
                 maxFramerate: res.frameRate * 2,
             },
             degradationPreference: "maintain-resolution",
@@ -4160,13 +4304,18 @@ function reapDeadTransceivers(
     setTimeout(tick, 500);
 }
 
-/** The picked screen-share bitrate: held under the measured upload (and
- *  8 Mbps) unless the user picked more than that by hand. */
+/** The screen share's cap: the user's pick as picked, or in automatic mode
+ *  none in practice (utils/screenShareBitrate shareBitrateCap). Congestion
+ *  control, not this, holds the share under the uplink. */
 function screenShareBitratePicked(): number {
-    return effectiveBitrate(
-        settingsState.screenShareBitrate,
-        screenShareBitrateCeiling(),
-    );
+    return shareBitrateCap(settingsState.screenShareBitrate, uploadOverride());
+}
+
+/** What a share is published at: its cap, or a sane start when uncapped
+ *  (LiveKit hints WebRTC's estimator to start at 90% of it). The top layer
+ *  goes to the full cap right after publishing (retargetShareEncodings). */
+function screenShareStartBitrate(): number {
+    return shareStartBitrate(screenShareBitrateNow());
 }
 
 /** What the share sends now: the pick, held under what its viewers say
@@ -5480,7 +5629,7 @@ async function republishVideo(
     const options = { ...pub.options, ...codecOptions, source };
     if (source === call.lk.Track.Source.ScreenShare) {
         options.screenShareEncoding = screenShareEncodingFor(
-            screenShareBitrateNow(),
+            screenShareStartBitrate(),
             Number(settingsState.screenShareFps),
         );
     }
@@ -5512,10 +5661,10 @@ async function republishVideo(
     }
 }
 
-// Upload bandwidth for the screen-share bitrate slider
-// (stores/uploadEstimate.svelte): WebRTC's estimate on the publishing
-// connection, sampled only while we send video, since with just a microphone
-// it barely probes and reads far too low.
+// Viewer health and redundancy run every UPLOAD_SAMPLE_MS. The upload itself
+// (stores/uploadEstimate.svelte, utils/uplinkTracker) is followed every
+// second, only while we send video, since with just a microphone WebRTC
+// barely probes and reads far too low.
 const UPLOAD_SAMPLE_MS = 3000;
 
 function startUploadSampling(call: ActiveVoiceCall): void {
@@ -5526,6 +5675,7 @@ function startUploadSampling(call: ActiveVoiceCall): void {
             return;
         }
         void holdShareLayers(call);
+        void sampleUpload(call);
     }, 1000);
     const timer = setInterval(() => {
         if (activeVoice !== call) {
@@ -5533,7 +5683,6 @@ function startUploadSampling(call: ActiveVoiceCall): void {
             clearLiveUploadEstimate();
             return;
         }
-        void sampleUpload(call);
         void checkDecodeHealth(call);
         void sampleAudioRedundancy(call);
         void reportShareHealth(call);
@@ -5600,15 +5749,28 @@ function applyShareLayers(params: RTCRtpSendParameters): boolean {
 /** Re-apply the share's encodings as Zam sets them (utils/screenShareEncoding:
  *  the low simulcast layer held to what a slow link carries). LiveKit builds
  *  the first encodings itself on every publish, with a low layer at a quarter
- *  of the top, which didn't fit the links it is there for. */
+ *  of the top, which didn't fit the links it is there for. It also lifts the
+ *  top layer from the start bitrate it was published at to the full cap. */
 function retargetShareEncodings(call: ActiveVoiceCall): void {
     screenShareQualityChain = screenShareQualityChain.then(async () => {
         if (activeVoice !== call) return;
         const track = call.local.getTrack(call.lk.Track.Source.ScreenShare);
-        if (!track || isNativeShareTrack(track)) return;
+        if (!track) return;
         const sender = track.sender;
         const params = sender?.getParameters();
-        if (!sender || !params || !applyShareLayers(params)) return;
+        if (!sender || !params) return;
+        if (isNativeShareTrack(track)) {
+            // Published at the start bitrate (see screenShareStartBitrate);
+            // the sender's cap now goes to the full one, so WebRTC's
+            // estimate, which the helper follows, isn't held under it.
+            if (
+                !applyScreenShareEncoding(params, {
+                    maxBitrate: nativeSenderBitrate(screenShareBitrateNow()),
+                    maxFramerate: Number(settingsState.screenShareFps) * 2,
+                })
+            )
+                return;
+        } else if (!applyShareLayers(params)) return;
         params.degradationPreference = "maintain-resolution";
         await sender.setParameters(params).catch((err: unknown) => {
             console.warn("[share] couldn't set the share's layers:", err);
@@ -5757,6 +5919,17 @@ async function reportShareHealth(call: ActiveVoiceCall): Promise<void> {
     }
 }
 
+/** The bitrate a one-layer share's viewer cap cuts down from: the pick, or
+ *  in automatic mode (no cap of its own) what the uplink carries now, so the
+ *  first cut lands under what is actually sent rather than a third off
+ *  SHARE_AUTO_MAX_BPS. */
+function shareCapReference(): number {
+    const picked = screenShareBitratePicked();
+    if (!isAutoBitrate(settingsState.screenShareBitrate)) return picked;
+    const live = uploadEstimate.live;
+    return live !== null ? Math.min(picked, live) : shareStartBitrate(picked);
+}
+
 /** As a sharer: hold the share's bitrate under what its viewers take. A
  *  share sent as one layer (H.264, every native share) leaves the call server
  *  nothing lighter for a viewer who can't keep up, so without this it pauses
@@ -5778,7 +5951,7 @@ function applyShareRateCap(call: ActiveVoiceCall): void {
               Math.floor(screenShareBitratePicked() / 4),
               SHARE_LOW_LAYER_MAX_BPS,
           )
-        : screenShareBitratePicked();
+        : shareCapReference();
     const after = cap.update(reference, Date.now());
     if (after === before) return;
     console.info(
@@ -5977,6 +6150,9 @@ async function republishMicRed(
     }
 }
 
+/** Each call's uplink, followed while it sends video. */
+const uplinkTrackers = new WeakMap<ActiveVoiceCall, UplinkTracker>();
+
 async function sampleUpload(call: ActiveVoiceCall): Promise<void> {
     if (!call.lkRoom) return;
     const lp = call.lkRoom.localParticipant;
@@ -5987,7 +6163,17 @@ async function sampleUpload(call: ActiveVoiceCall): Promise<void> {
         const pub = lp.getTrackPublication(source);
         return !!pub?.track && !pub.isMuted;
     });
-    if (!sendingVideo) return;
+    let tracker = uplinkTrackers.get(call);
+    if (!sendingVideo) {
+        // Audio alone says nothing about the uplink; a later share starts
+        // from a fresh reading.
+        if (tracker?.current() != null) {
+            tracker.reset();
+            lastPublisherSample.delete(call);
+            if (activeVoice === call) noteUploadEstimate(null);
+        }
+        return;
+    }
     const pcm = (
         call.lkRoom.engine as
             | {
@@ -6000,25 +6186,28 @@ async function sampleUpload(call: ActiveVoiceCall): Promise<void> {
             | undefined
     )?.pcManager;
     const stats = await reportValues(pcm?.publisher?.getStats());
-    if (!stats) return;
-    // WebRTC's estimate only climbs as far as the sender gives it reason to,
-    // so it can sit well under the line's speed. What went out proves at
-    // least that much fits, unless our own share cap bounded it (see
-    // utils/uploadSample).
+    if (!stats || activeVoice !== call) return;
+    const now = Date.now();
     const summary = summarizeTransport(
         stats,
-        Date.now(),
+        now,
         lastPublisherSample.get(call) ?? null,
     );
     lastPublisherSample.set(call, summary);
-    const sharing = !!lp.getTrackPublication(call.lk.Track.Source.ScreenShare)
-        ?.track;
-    const bps = uploadSampleBps(
-        availableOutgoingBitrate(stats),
-        summary.sendKbps === null ? null : summary.sendKbps * 1000,
-        sharing ? screenShareBitrateNow() : null,
+    if (!tracker) {
+        tracker = new UplinkTracker();
+        uplinkTrackers.set(call, tracker);
+    }
+    const bps = tracker.sample(
+        {
+            available: availableOutgoingBitrate(stats),
+            sent: summary.sendKbps === null ? null : summary.sendKbps * 1000,
+            loss: outgoingVideoLoss(stats),
+            rttMs: summary.mediaRttMs,
+        },
+        now,
     );
-    if (bps > 0 && activeVoice === call) noteUploadEstimate(bps);
+    noteUploadEstimate(bps);
 }
 
 /** The previous publisher-transport sample of a call, for send rates. */
