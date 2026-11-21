@@ -6,6 +6,7 @@ appId: com.leonsilicon.zami
     element:
       text: ".*Advanced options.*"
     direction: DOWN
+    centerElement: true
 - tapOn:
     text: ".*Advanced options.*"
     retryTapIfNoChange: false
@@ -48,6 +49,7 @@ appId: com.leonsilicon.zami
           element:
             id: sliding-sync
           direction: DOWN
+          centerElement: true
       - assertNotVisible: { id: sliding-sync, checked: true }
       - tapOn: { id: sliding-sync, retryTapIfNoChange: false }
       - assertVisible: { id: sliding-sync, checked: true }
