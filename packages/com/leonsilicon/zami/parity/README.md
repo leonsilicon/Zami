@@ -15,6 +15,24 @@ It needs Docker (for the homeserver), Xcode with an iOS simulator runtime, and a
 simulator build of the app (`--build` makes one from this checkout; without one it uses
 the newest build of any checkout, or `--app <path>`).
 
+## On a phone
+
+```sh
+vpx _parity --device <name or UDID> --build   # the first time; makes the phone's build
+vpx _parity --device <name or UDID> drawer    # later runs reuse that build
+```
+
+A cabled iPhone, driven through Argent, runs both sides in turn: each view is shown
+in Zam, then in Zami. The app is the `parity` variant (`com.leonsilicon.zami.parity`,
+"(P) Zami"), so a run can't wipe the sign-in of a real Zami on that phone. The phone
+reaches this Mac's Metro, homeserver, runner and Zam build over the local network
+(`--host` overrides the address), so it must be on the same one, unlocked, with Local
+Network allowed when iOS asks; answer any other permission prompt on the phone.
+`baseline.json` describes the simulators' screen, so a phone run reports every
+difference and can't update it. Zam's page comes from `http://<address>` there, which
+isn't a secure context, so `settings-voice` shows differences that aren't Zami's (WebKit
+has no `navigator.mediaDevices` on such a page).
+
 ## How a run works
 
 1. **The reference.** It exports upstream Zam at the commit `zami-ports.lock.json` says

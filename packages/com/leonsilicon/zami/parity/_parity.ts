@@ -5,7 +5,9 @@
 //   vpx _parity room settings-*       only these views (a trailing * matches a prefix)
 //
 //   --build                           build the app from this checkout first
-//   --app <path>                      install this simulator build of the app
+//   --app <path>                      install this build of the app
+//   --device <name or UDID>           run on this cabled iPhone instead of two simulators
+//   --host <address>                  this Mac's address as the apps see it (phone default: its LAN one)
 //   --update-baseline                 record this run's differences as the known ones
 //   --strict                          fail on any difference, not only new ones
 //   --keep                            leave Metro and the homeserver running afterwards
@@ -18,6 +20,8 @@ const { values, positionals } = parseArgs({
   options: {
     build: { type: "boolean", default: false },
     app: { type: "string" },
+    device: { type: "string" },
+    host: { type: "string" },
     "update-baseline": { type: "boolean", default: false },
     strict: { type: "boolean", default: false },
     keep: { type: "boolean", default: false },
@@ -37,6 +41,11 @@ function port(name: keyof typeof values): number {
   return value;
 }
 
+if (values.device !== undefined && values["update-baseline"]) {
+  console.error("error: --update-baseline records the simulators' differences, not a phone's");
+  process.exit(2);
+}
+
 try {
   process.exitCode = await runParity({
     views: positionals,
@@ -46,6 +55,8 @@ try {
     homeserverPort: port("homeserver-port"),
     build: values.build,
     app: values.app,
+    device: values.device,
+    host: values.host,
     updateBaseline: values["update-baseline"],
     strict: values.strict,
     keep: values.keep,

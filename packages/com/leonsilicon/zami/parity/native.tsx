@@ -592,7 +592,7 @@ export function ParityReference(): ReactNode {
       <StatusBar barStyle="light-content" />
       <WebView
         source={{ uri: launchArg(LAUNCH_ARGS.referenceUrl) }}
-        style={webStyle}
+        style={{ flex: 1, backgroundColor: "transparent" }}
         containerStyle={webStyle}
         injectedJavaScriptBeforeContentLoaded={`window.__ZAMI_PARITY__ = ${JSON.stringify(config)}; true;`}
         onMessage={(event) => {

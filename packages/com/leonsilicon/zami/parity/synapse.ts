@@ -41,8 +41,12 @@ export function stopSynapse(): void {
   spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
 }
 
-/** Starts a new homeserver (`server_name` localhost) on `port`; resolves with its URL. */
-export async function startSynapse(port: number, dataDir: string): Promise<string> {
+/** Starts a new homeserver (`server_name` localhost) on `port`; resolves with its URL at `host`. */
+export async function startSynapse(
+  port: number,
+  dataDir: string,
+  host = "localhost",
+): Promise<string> {
   if (spawnSync("docker", ["info"], { stdio: "ignore" }).status !== 0) {
     throw new Error("Docker isn't running: the parity run needs it for its homeserver");
   }
@@ -70,7 +74,7 @@ export async function startSynapse(port: number, dataDir: string): Promise<strin
   ]);
   appendFileSync(
     join(dataDir, "homeserver.yaml"),
-    `${CONFIG}public_baseurl: http://localhost:${port}/\n`,
+    `${CONFIG}public_baseurl: http://${host}:${port}/\n`,
   );
   docker([
     "run",
@@ -85,7 +89,7 @@ export async function startSynapse(port: number, dataDir: string): Promise<strin
     IMAGE,
   ]);
 
-  const url = `http://localhost:${port}`;
+  const url = `http://${host}:${port}`;
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
     try {

@@ -27,11 +27,14 @@ export class AgentServer {
   private nextId = 1;
   readonly logs: string[] = [];
 
-  private constructor(server: WebSocketServer) {
+  private constructor(server: WebSocketServer, token: string) {
     this.server = server;
     server.on("connection", (socket, request) => {
-      const side = new URL(request.url ?? "/", "http://localhost").searchParams.get("side");
-      if (side !== "zam" && side !== "zami") {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      const side = url.searchParams.get("side");
+      // An app left running by an earlier run keeps retrying this port, and mustn't pass for
+      // one this run launched.
+      if (url.pathname !== `/${token}` || (side !== "zam" && side !== "zami")) {
         socket.close();
         return;
       }
@@ -46,10 +49,11 @@ export class AgentServer {
     });
   }
 
-  static listen(port: number): Promise<AgentServer> {
+  /** Serves agents that connect to `/<token>`, the path this run launches them with. */
+  static listen(port: number, token: string): Promise<AgentServer> {
     return new Promise((resolve, reject) => {
       const server = new WebSocketServer({ port });
-      server.once("listening", () => resolve(new AgentServer(server)));
+      server.once("listening", () => resolve(new AgentServer(server, token)));
       server.once("error", reject);
     });
   }
