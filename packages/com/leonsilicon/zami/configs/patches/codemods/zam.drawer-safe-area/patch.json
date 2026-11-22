@@ -1,4 +1,0 @@
-{
-  "source": "repos/com/github/az4521/Zam",
-  "bundles": [{ "path": "src/lib/components/layout/AppShell.svelte", "language": "html" }]
-}
