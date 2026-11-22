@@ -1,8 +1,8 @@
 {
-  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.drawer-safe-area",
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area",
   "version": "0.0.0",
   "private": true,
-  "description": "Continue the mobile drawer background below the profile footer in Zami.",
+  "description": "Continue mobile drawer and bottom sheet backgrounds into Zami's safe area.",
   "type": "module",
   "imports": {
     "#*": "./*.ts"

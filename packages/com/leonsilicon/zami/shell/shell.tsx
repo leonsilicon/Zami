@@ -24,7 +24,7 @@ import { createBrowserPlugin } from "#browser-plugin";
 import { createShellDebug, receiveDebug } from "#debug";
 import { ZamiShellNative } from "#native";
 import { createPreferencesPlugin } from "#preferences-plugin";
-import { parsePageMessage, type DrawerMessage } from "#protocol";
+import { parsePageMessage, type BottomInsetMessage } from "#protocol";
 import { createPushNotificationsPlugin } from "#push-notifications-plugin";
 import { createUnifiedPushPlugin } from "#unified-push-plugin";
 import { createZamiPlugin } from "#zami-plugin";
@@ -104,7 +104,7 @@ export function ZamiShell() {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const [theme, setTheme] = useState(DEFAULT_THEME);
-  const [drawer, setDrawer] = useState<DrawerMessage | null>(null);
+  const [bottomInsetSurfaces, setBottomInsetSurfaces] = useState<BottomInsetMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
   const canGoBack = useRef(false);
   const source = useMemo(webAppSource, []);
@@ -153,9 +153,14 @@ export function ZamiShell() {
     if (message === null) return;
     if (message.type === "capacitor") void bridge.call(message);
     else if (message.event === "theme") setTheme(message.color);
-    else if (message.event === "drawer")
-      setDrawer(message.width > 0 && processColor(message.color) != null ? message : null);
-    else if (debug !== null) receiveDebug(debug, message);
+    else if (message.event === "bottomInset") {
+      const visible =
+        message.width > 0 && message.opacity > 0 && processColor(message.color) != null;
+      setBottomInsetSurfaces((surfaces) => {
+        const remaining = surfaces.filter((surface) => surface.id !== message.id);
+        return visible ? [...remaining, message] : remaining;
+      });
+    } else if (debug !== null) receiveDebug(debug, message);
   }
 
   // The app's own pages and what they embed load here; any other page opens in its app.
@@ -208,7 +213,7 @@ export function ZamiShell() {
           onLoadStart={(event) => {
             if (origin !== null && event.nativeEvent.url.startsWith(origin)) {
               bridge.reset();
-              setDrawer(null);
+              setBottomInsetSurfaces([]);
             }
           }}
           onLoadEnd={() => setLoaded(true)}
@@ -263,19 +268,29 @@ export function ZamiShell() {
           applicationNameForUserAgent="Zami"
         />
       </View>
-      {drawer && insets.bottom > 0 && keyboardHeight <= insets.bottom ? (
+      {bottomInsetSurfaces.length > 0 && insets.bottom > 0 && keyboardHeight <= insets.bottom ? (
         <View
           pointerEvents="none"
           style={[
-            styles.drawerInset,
-            {
-              left: insets.left,
-              width: drawer.width,
-              height: insets.bottom,
-              backgroundColor: drawer.color,
-            },
+            styles.bottomInset,
+            { left: insets.left, right: insets.right, height: insets.bottom },
           ]}
-        />
+        >
+          {bottomInsetSurfaces.map((surface) => (
+            <View
+              key={surface.id}
+              style={[
+                styles.bottomInsetSurface,
+                {
+                  width: surface.width,
+                  backgroundColor: surface.color,
+                  opacity: surface.opacity,
+                  zIndex: surface.kind === "drawer" ? 0 : surface.id,
+                },
+              ]}
+            />
+          ))}
+        </View>
       ) : null}
       {loaded ? null : <View style={[StyleSheet.absoluteFill, { backgroundColor: theme }]} />}
     </View>
@@ -286,6 +301,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: 24 },
   web: { flex: 1, backgroundColor: "transparent" },
-  drawerInset: { position: "absolute", bottom: 0 },
+  bottomInset: { position: "absolute", bottom: 0, overflow: "hidden" },
+  bottomInsetSurface: { position: "absolute", top: 0, bottom: 0, left: 0 },
   message: { color: "#dbdee1", fontSize: 16, textAlign: "center" },
 });
