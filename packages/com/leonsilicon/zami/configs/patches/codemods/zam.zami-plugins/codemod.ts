@@ -46,6 +46,49 @@ export default function codemod(root: SgRoot): string | null {
     ]);
   }
 
+  if (filename.endsWith("/src/lib/components/settings/PluginsSettings.svelte")) {
+    return editNodes(root, [
+      {
+        kinds: [String(root.root().kind())],
+        contains: "<!-- Installed -->",
+        from: `            <p
+                class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide mb-3"
+            >
+                {t("pluginsSettings.installed")}
+            </p>`,
+        to: `            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs font-semibold text-zam-textMuted uppercase tracking-wide">
+                    {t("pluginsSettings.installed")}
+                </p>
+                <button
+                    type="button"
+                    onclick={() => window.location.reload()}
+                    disabled={localBusy !== null || Object.values(updateBusy).some(Boolean)}
+                    class="inline-flex min-h-11 items-center gap-2 rounded px-3 py-2 text-sm font-semibold text-zam-textPrimary bg-zam-backgroundTertiary hover:bg-zam-messageHover transition-colors disabled:opacity-50"
+                >
+                    <RefreshCw size={16} aria-hidden="true" />
+                    {t("pluginsSettings.refreshZami")}
+                </button>
+            </div>`,
+        marker: 't("pluginsSettings.refreshZami")',
+      },
+    ]);
+  }
+
+  if (filename.endsWith("/src/lib/i18n/en.ts")) {
+    return editNodes(root, [
+      {
+        kinds: ["program"],
+        contains: '"pluginsSettings.installed":',
+        from: '    "pluginsSettings.installed": "Installed",\n',
+        to:
+          '    "pluginsSettings.installed": "Installed",\n' +
+          '    "pluginsSettings.refreshZami": "Refresh Zami",\n',
+        marker: '"pluginsSettings.refreshZami":',
+      },
+    ]);
+  }
+
   if (filename.endsWith("/src/lib/plugins/loader.ts")) {
     return editNodes(root, [
       {
@@ -165,6 +208,31 @@ function loadPluginAtStartup(plugin: LoadablePlugin, enable: typeof loader.enabl
         from: "    void loader.bootLoad(toBoot);",
         to: "    void loader.bootLoad(toBoot, loadPluginAtStartup).finally(finishStartupPluginChecks);",
         marker: "bootLoad(toBoot, loadPluginAtStartup)",
+      },
+      {
+        kinds: ["program"],
+        contains: "function loadLocalPlugin(",
+        from: "        if (wasLoaded) await disablePlugin(id);",
+        to:
+          "        // Keep the saved enabled flag so a fresh startup can retry the new bundle.\n" +
+          "        if (wasLoaded) await loader.disable(id);",
+        marker: "if (wasLoaded) await loader.disable(id);",
+      },
+      {
+        kinds: ["program"],
+        contains: "function updateRepoPlugin(",
+        from: "        persisted.manifest = manifest;\n",
+        to: "        persisted.manifest = manifest;\n        persisted.enabled = wasEnabled;\n",
+        marker: "persisted.enabled = wasEnabled;",
+      },
+      {
+        kinds: ["program"],
+        contains: "function updateRepoPlugin(",
+        from: "        if (wasLoaded) await disablePlugin(pluginId);",
+        to:
+          "        // Keep the saved enabled flag so a fresh startup can retry the new bundle.\n" +
+          "        if (wasLoaded) await loader.disable(pluginId);",
+        marker: "if (wasLoaded) await loader.disable(pluginId);",
       },
     ]);
   }

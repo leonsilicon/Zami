@@ -2,6 +2,8 @@
   "source": "repos/com/github/az4521/Zam",
   "bundles": [
     "src/hooks.client.ts",
+    { "path": "src/lib/components/settings/PluginsSettings.svelte", "language": "html" },
+    "src/lib/i18n/en.ts",
     "src/lib/plugins/hostApi.ts",
     "src/lib/plugins/loader.ts",
     "src/lib/plugins/pluginBoot.ts"
