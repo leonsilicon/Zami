@@ -31,12 +31,15 @@ export interface ThemeMessage {
   color: string;
 }
 
-/** The visible width and footer color of the web drawer. */
-export interface DrawerMessage {
+/** The visible paint from one web panel along the bottom edge. */
+export interface BottomInsetMessage {
   type: "zami";
-  event: "drawer";
+  event: "bottomInset";
+  id: number;
+  kind: "drawer" | "sheet";
   width: number;
   color: string;
+  opacity: number;
 }
 
 /** The result of code a debug build evaluated in the page (debug.ts). */
@@ -48,7 +51,7 @@ export interface DebugMessage {
   error?: string;
 }
 
-export type PageMessage = CapacitorCall | ThemeMessage | DrawerMessage | DebugMessage;
+export type PageMessage = CapacitorCall | ThemeMessage | BottomInsetMessage | DebugMessage;
 
 export interface CallError {
   message: string;
@@ -109,13 +112,28 @@ export function parsePageMessage(raw: string): PageMessage | null {
   }
   if (
     record.type === "zami" &&
-    record.event === "drawer" &&
+    record.event === "bottomInset" &&
+    typeof record.id === "number" &&
+    Number.isSafeInteger(record.id) &&
+    record.id > 0 &&
+    (record.kind === "drawer" || record.kind === "sheet") &&
     typeof record.width === "number" &&
     Number.isFinite(record.width) &&
     record.width >= 0 &&
-    typeof record.color === "string"
+    typeof record.color === "string" &&
+    typeof record.opacity === "number" &&
+    record.opacity >= 0 &&
+    record.opacity <= 1
   ) {
-    return { type: "zami", event: "drawer", width: record.width, color: record.color };
+    return {
+      type: "zami",
+      event: "bottomInset",
+      id: record.id,
+      kind: record.kind,
+      width: record.width,
+      color: record.color,
+      opacity: record.opacity,
+    };
   }
   return null;
 }

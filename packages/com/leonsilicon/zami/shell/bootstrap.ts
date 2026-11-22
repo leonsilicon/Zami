@@ -125,22 +125,35 @@ const SOURCE = String.raw`(function (config) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchTheme);
   else watchTheme();
 
-  // Mirror the visible edge of the drawer into the native bottom inset. Track the
-  // actual transform during a drag or transition, and stop sampling when it settles.
-  function watchDrawer(drawer) {
+  // Mirror each visible panel into the native bottom inset. The WebView keeps its
+  // safe-area layout, so the native paint follows the panel's animated edge.
+  var nextSurfaceId = 1;
+  function watchBottomInset(element, kind) {
+    var id = nextSurfaceId++;
     var frame = 0;
     var lastWidth = 0;
     var lastColor = "";
+    var lastOpacity = 0;
+    function postPaint(width, color, opacity) {
+      if (width === lastWidth && color === lastColor && opacity === lastOpacity) return;
+      lastWidth = width;
+      lastColor = color;
+      lastOpacity = opacity;
+      post({ type: "zami", event: "bottomInset", id: id, kind: kind, width: width, color: color, opacity: opacity });
+    }
     function report() {
       frame = 0;
-      var width = Math.max(0, Math.min(drawer.getBoundingClientRect().right, window.innerWidth));
-      var color = width ? getComputedStyle(drawer).getPropertyValue("--zam-bg-tertiary").trim() : "";
-      if (width !== lastWidth || color !== lastColor) {
-        lastWidth = width;
-        lastColor = color;
-        post({ type: "zami", event: "drawer", width: width, color: color });
+      var rect = element.getBoundingClientRect();
+      var bottom = window.innerHeight - 0.5;
+      var width = Math.min(rect.right, window.innerWidth);
+      if (width > 0.5 && rect.top < bottom && rect.bottom >= bottom) {
+        var style = getComputedStyle(element);
+        var color = kind === "drawer" ? style.getPropertyValue("--zam-bg-tertiary").trim() : style.backgroundColor;
+        postPaint(width, color, Number(style.opacity));
+      } else {
+        postPaint(0, "", 0);
       }
-      if (drawer.getAnimations().some(function (animation) { return animation.playState === "running"; })) {
+      if (element.getAnimations().some(function (animation) { return animation.pending || animation.playState === "running"; })) {
         schedule();
       }
     }
@@ -148,18 +161,22 @@ const SOURCE = String.raw`(function (config) {
       if (!frame) frame = requestAnimationFrame(report);
     }
     var attributes = new MutationObserver(schedule);
-    attributes.observe(drawer, { attributes: true, attributeFilter: ["style"] });
+    attributes.observe(element, { attributes: true, attributeFilter: ["style"] });
     attributes.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
     var size = new ResizeObserver(schedule);
-    size.observe(drawer);
+    size.observe(element);
+    element.addEventListener("introstart", schedule);
+    element.addEventListener("outrostart", schedule);
     window.addEventListener("resize", schedule);
     schedule();
     return function () {
       cancelAnimationFrame(frame);
       attributes.disconnect();
       size.disconnect();
+      element.removeEventListener("introstart", schedule);
+      element.removeEventListener("outrostart", schedule);
       window.removeEventListener("resize", schedule);
-      if (lastWidth) post({ type: "zami", event: "drawer", width: 0, color: "" });
+      postPaint(0, "", 0);
     };
   }
 
@@ -167,7 +184,7 @@ const SOURCE = String.raw`(function (config) {
     platform: config.platform,
     appId: config.appId,
     plugins: config.headers.map(function (h) { return h.name; }),
-    watchDrawer: watchDrawer,
+    watchBottomInset: watchBottomInset,
   };
 })`;
 
