@@ -31,6 +31,14 @@ export interface ThemeMessage {
   color: string;
 }
 
+/** The visible width and footer color of the web drawer. */
+export interface DrawerMessage {
+  type: "zami";
+  event: "drawer";
+  width: number;
+  color: string;
+}
+
 /** The result of code a debug build evaluated in the page (debug.ts). */
 export interface DebugMessage {
   type: "zami";
@@ -40,7 +48,7 @@ export interface DebugMessage {
   error?: string;
 }
 
-export type PageMessage = CapacitorCall | ThemeMessage | DebugMessage;
+export type PageMessage = CapacitorCall | ThemeMessage | DrawerMessage | DebugMessage;
 
 export interface CallError {
   message: string;
@@ -98,6 +106,16 @@ export function parsePageMessage(raw: string): PageMessage | null {
   }
   if (record.type === "zami" && record.event === "theme" && typeof record.color === "string") {
     return { type: "zami", event: "theme", color: record.color };
+  }
+  if (
+    record.type === "zami" &&
+    record.event === "drawer" &&
+    typeof record.width === "number" &&
+    Number.isFinite(record.width) &&
+    record.width >= 0 &&
+    typeof record.color === "string"
+  ) {
+    return { type: "zami", event: "drawer", width: record.width, color: record.color };
   }
   return null;
 }

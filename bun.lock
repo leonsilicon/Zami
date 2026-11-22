@@ -107,6 +107,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.drawer-safe-area": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.drawer-safe-area",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies",
       "version": "0.0.0",
@@ -318,6 +328,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview": ["@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/react-native-webview"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.drawer-safe-area": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.drawer-safe-area@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.drawer-safe-area"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
 

@@ -8,6 +8,7 @@ import {
   Keyboard,
   Linking,
   Platform,
+  processColor,
   StyleSheet,
   Text,
   View,
@@ -23,7 +24,7 @@ import { createBrowserPlugin } from "#browser-plugin";
 import { createShellDebug, receiveDebug } from "#debug";
 import { ZamiShellNative } from "#native";
 import { createPreferencesPlugin } from "#preferences-plugin";
-import { parsePageMessage } from "#protocol";
+import { parsePageMessage, type DrawerMessage } from "#protocol";
 import { createPushNotificationsPlugin } from "#push-notifications-plugin";
 import { createUnifiedPushPlugin } from "#unified-push-plugin";
 import { createZamiPlugin } from "#zami-plugin";
@@ -103,6 +104,7 @@ export function ZamiShell() {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const [theme, setTheme] = useState(DEFAULT_THEME);
+  const [drawer, setDrawer] = useState<DrawerMessage | null>(null);
   const [loaded, setLoaded] = useState(false);
   const canGoBack = useRef(false);
   const source = useMemo(webAppSource, []);
@@ -151,6 +153,8 @@ export function ZamiShell() {
     if (message === null) return;
     if (message.type === "capacitor") void bridge.call(message);
     else if (message.event === "theme") setTheme(message.color);
+    else if (message.event === "drawer")
+      setDrawer(message.width > 0 && processColor(message.color) != null ? message : null);
     else if (debug !== null) receiveDebug(debug, message);
   }
 
@@ -202,7 +206,10 @@ export function ZamiShell() {
           {...(source.bundled ? {} : { injectedJavaScriptBeforeContentLoaded: script })}
           onMessage={onMessage}
           onLoadStart={(event) => {
-            if (origin !== null && event.nativeEvent.url.startsWith(origin)) bridge.reset();
+            if (origin !== null && event.nativeEvent.url.startsWith(origin)) {
+              bridge.reset();
+              setDrawer(null);
+            }
           }}
           onLoadEnd={() => setLoaded(true)}
           onError={(event) => {
@@ -256,6 +263,20 @@ export function ZamiShell() {
           applicationNameForUserAgent="Zami"
         />
       </View>
+      {drawer && insets.bottom > 0 && keyboardHeight <= insets.bottom ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.drawerInset,
+            {
+              left: insets.left,
+              width: drawer.width,
+              height: insets.bottom,
+              backgroundColor: drawer.color,
+            },
+          ]}
+        />
+      ) : null}
       {loaded ? null : <View style={[StyleSheet.absoluteFill, { backgroundColor: theme }]} />}
     </View>
   );
@@ -265,5 +286,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: 24 },
   web: { flex: 1, backgroundColor: "transparent" },
+  drawerInset: { position: "absolute", bottom: 0 },
   message: { color: "#dbdee1", fontSize: 16, textAlign: "center" },
 });
