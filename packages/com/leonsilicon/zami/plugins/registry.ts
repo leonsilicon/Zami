@@ -93,13 +93,15 @@ export function moduleIdOf(value: unknown): string | undefined {
 export function localName(id: string, name: string): string | undefined {
   const accessor = accessors().get(id);
   if (!accessor) return undefined;
-  return accessor.exports[name] ?? (accessor.names.includes(name) ? name : undefined);
+  if (Object.hasOwn(accessor.exports, name)) return accessor.exports[name];
+  return accessor.names.includes(name) ? name : undefined;
 }
 
 export function readName(id: string, name: string): unknown {
+  const namespace = namespaces.get(id);
+  if (namespace && Object.hasOwn(namespace, name)) return namespace[name];
   const local = localName(id, name);
-  if (local !== undefined) return accessors().get(id)?.get(local);
-  return namespaces.get(id)?.[name];
+  return local === undefined ? undefined : accessors().get(id)?.get(local);
 }
 
 export function writeName(id: string, name: string, value: unknown): void {
@@ -144,7 +146,9 @@ export async function importModule(specifier: string): Promise<Record<string, un
   const id = normalizeId(specifier);
   const path = paths.get(id);
   if (path === undefined) throw new Error(`Zam has no module ${id}`);
-  if (!isLoaded(id)) {
+  // An instrumented module can already be running while its ES module namespace is still
+  // missing here. The namespace supplies re-exports the accessor doesn't declare locally.
+  if (!namespaces.has(id)) {
     const load = loaders[path];
     if (load) namespaces.set(id, await load());
   }
