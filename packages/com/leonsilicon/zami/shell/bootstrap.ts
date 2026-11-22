@@ -125,10 +125,49 @@ const SOURCE = String.raw`(function (config) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchTheme);
   else watchTheme();
 
+  // Mirror the visible edge of the drawer into the native bottom inset. Track the
+  // actual transform during a drag or transition, and stop sampling when it settles.
+  function watchDrawer(drawer) {
+    var frame = 0;
+    var lastWidth = 0;
+    var lastColor = "";
+    function report() {
+      frame = 0;
+      var width = Math.max(0, Math.min(drawer.getBoundingClientRect().right, window.innerWidth));
+      var color = width ? getComputedStyle(drawer).getPropertyValue("--zam-bg-tertiary").trim() : "";
+      if (width !== lastWidth || color !== lastColor) {
+        lastWidth = width;
+        lastColor = color;
+        post({ type: "zami", event: "drawer", width: width, color: color });
+      }
+      if (drawer.getAnimations().some(function (animation) { return animation.playState === "running"; })) {
+        schedule();
+      }
+    }
+    function schedule() {
+      if (!frame) frame = requestAnimationFrame(report);
+    }
+    var attributes = new MutationObserver(schedule);
+    attributes.observe(drawer, { attributes: true, attributeFilter: ["style"] });
+    attributes.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
+    var size = new ResizeObserver(schedule);
+    size.observe(drawer);
+    window.addEventListener("resize", schedule);
+    schedule();
+    return function () {
+      cancelAnimationFrame(frame);
+      attributes.disconnect();
+      size.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (lastWidth) post({ type: "zami", event: "drawer", width: 0, color: "" });
+    };
+  }
+
   window.__zamiShell = {
     platform: config.platform,
     appId: config.appId,
     plugins: config.headers.map(function (h) { return h.name; }),
+    watchDrawer: watchDrawer,
   };
 })`;
 
