@@ -413,6 +413,14 @@ const PREFERRED_DECRYPT_WAIT_MS = 500;
 const roomListCacheEdits = [
   {
     kinds: ["program"],
+    contains: 'import type { SpaceChildInfo } from "./client";',
+    from: 'import type { SpaceChildInfo } from "./client";',
+    to: `import type { SpaceChildInfo } from "./client";
+import { latestMessage } from "$lib/utils/roomPreview";`,
+    marker: 'import { latestMessage } from "$lib/utils/roomPreview";',
+  },
+  {
+    kinds: ["program"],
     contains: "function loadSnapshot(",
     from: "return snap && snap.v === SNAPSHOT_VERSION ? snap : null;",
     to: `return snap?.v === SNAPSHOT_VERSION &&
@@ -433,7 +441,7 @@ const roomListCacheEdits = [
 // neutral "decrypting" row, never the missing-keys copy.
 `,
     to: `// Keep a cached conversation per room. Encrypted events are saved in wire
-// form. During startup, only the newest event is needed for the room list.
+// form. During startup, load the newest room preview and its timeline tail.
 `,
     marker: "// Keep a cached conversation per room.",
   },
@@ -447,6 +455,14 @@ export function materializeSnapshot(
 ): MaterializedCache {
 `,
     to: `const deferredTimelines = new WeakMap<Room, Partial<IEvent>[]>();
+
+function hasCachedPreview(raw: Partial<IEvent>): boolean {
+    try {
+        return latestMessage([new MatrixEvent(raw)]) !== null;
+    } catch {
+        return false;
+    }
+}
 
 /** Add the rest of a cached room's history when its timeline is opened. */
 export function restoreCachedTimeline(room: Room): void {
@@ -481,7 +497,9 @@ export function materializeSnapshot(
                     });
                 }`,
     to: `                const events = cached.timeline;
-                const first = deferTimelines ? events.length - 1 : 0;
+                // A reaction or edit can follow the newest displayable message.
+                const preview = deferTimelines ? events.findLastIndex(hasCachedPreview) : 0;
+                const first = preview < 0 ? events.length - 1 : preview;
                 if (first > 0) deferredTimelines.set(room, events.slice(0, first));
                 for (let i = first; i < events.length; i++) {
                     timeline.addEvent(toEvent(events[i]), {
@@ -489,7 +507,7 @@ export function materializeSnapshot(
                         addToState: false,
                     });
                 }`,
-    marker: "                const first = deferTimelines",
+    marker: "const preview = deferTimelines",
   },
 ];
 
