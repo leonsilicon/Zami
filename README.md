@@ -57,6 +57,10 @@ and names the codemod, instead of shipping the file unpatched. See that package'
 
 ## What Zami changes
 
+Zami Paper is the default theme. It moves the space switcher above the room list and
+uses its own sign-in layout, palette, and conversation styling. The iOS release keeps
+Paper enabled and runs only built-in plugins. See the [App Store review notes](docs/app-store-review.md).
+
 Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami's own code:
 
 - **Plugins: `zam.zami`** (`zam.zami-plugins`, `@-/com.leonsilicon.zami.plugins`). Zam's
@@ -125,6 +129,10 @@ vpx _patches check && vpx _web build
 `vpx _testflight` builds the app for the App Store and uploads it to TestFlight (see
 `packages/com/leonsilicon/zami/dev`); the workflows build `trunk` nightly as "(S) Zami"
 (staging) and `production` as "Zami".
+
+Set the release version in `apps/zami/app.json` and `apps/zami/package.json` to
+`1.YYYYMMDD.PATCH` using the UTC release date. Start at patch `0` and increment it
+for another release on the same date. Run `bun install` to update the lockfile.
 
 ## License
 

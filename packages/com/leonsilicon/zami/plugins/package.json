@@ -9,6 +9,8 @@
     "#around": "./around.svelte",
     "#launch-splash": "./launch-splash.svelte",
     "#runes.svelte": "./runes.svelte.ts",
+    "#safety.svelte": "./safety.svelte.ts",
+    "#paper-css": "./paper.css",
     "#*": "./*.ts"
   },
   "exports": {

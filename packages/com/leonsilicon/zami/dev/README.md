@@ -31,8 +31,9 @@ The key can also come as its contents, in `ASC_KEY_P8`, as CI passes it.
 2. It runs `expo prebuild` and signs the app target's Release configuration by hand with
    that certificate and profile. Signing by hand needs no Xcode account and no
    development certificate, so it runs the same here and on CI.
-3. It stamps the build number with the time (`YYYYMMDD.HHMM`, UTC, so each upload is
-   newer), archives the Release configuration and exports or uploads it with xcodebuild.
+3. It stamps the build number as `1.YYYYMMDD.PATCH`, using the current UTC time (`HHMM`)
+   as the numeric patch. It archives the Release configuration and exports or uploads it
+   with xcodebuild.
 
 The app record (bundle ID `com.leonsilicon.zami`, team `M76P5G9HXK`) must already exist in
 App Store Connect; Apple's API can't create one. `app.json` declares the app's encryption

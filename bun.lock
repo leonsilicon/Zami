@@ -31,7 +31,7 @@
     },
     "apps/zami": {
       "name": "@-apps/zami",
-      "version": "0.1.0",
+      "version": "1.20261123.1",
       "dependencies": {
         "@-/com.leonsilicon.zami.shell": "workspace:*",
         "expo": "catalog:",
@@ -97,6 +97,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.app-store": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.app-store",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.bottom-safe-area": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area",
       "version": "0.0.0",
@@ -129,6 +139,16 @@
     },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.paper-theme": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.paper-theme",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -337,6 +357,8 @@
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview": ["@-/com.leonsilicon.zami.configs.patches.codemods.react-native-webview@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/react-native-webview"],
 
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.app-store": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.app-store@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.app-store"],
+
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.bottom-safe-area"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
@@ -344,6 +366,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.paper-theme": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.paper-theme@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.paper-theme"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.push-on-every-native-platform"],
 

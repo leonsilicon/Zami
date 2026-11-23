@@ -4,6 +4,8 @@
 import { createZamiApi } from "#api";
 import { bootEarlyPlugins } from "#early";
 import { startLaunch } from "#launch";
+import { preparePaperTheme } from "#paper";
+import { appStoreBuild } from "#store-build";
 import { watchStartupPluginErrors } from "#startup";
 
 declare global {
@@ -18,7 +20,8 @@ globalThis.__zamiHost = {
 
 /** Before the app's first render (Zam's `init` hook). */
 export async function zamiInit(): Promise<void> {
+  preparePaperTheme();
   watchStartupPluginErrors();
   await startLaunch();
-  await bootEarlyPlugins();
+  if (!appStoreBuild) await bootEarlyPlugins();
 }

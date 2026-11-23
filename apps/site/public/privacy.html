@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy policy · Zami</title>
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p><a href="/">Zami</a></p>
+        <h1>Privacy policy</h1>
+      </header>
+      <section>
+        <h2>Your Matrix account</h2>
+        <p>
+          Zami is a Matrix client. Your selected homeserver manages your account, sign-in, rooms,
+          messages, files and reports. Your homeserver and other homeservers that participate in
+          your rooms process data according to their own policies. End-to-end encryption protects
+          message content in encrypted rooms. Room membership and other routing information can
+          still be visible to servers.
+        </p>
+        <p>
+          Zami stores credentials, encryption keys, preferences and cached conversations on your
+          device to keep you signed in and make conversations available offline. Zami sends your
+          account credentials to the homeserver or sign-in provider you select.
+        </p>
+      </section>
+      <section>
+        <h2>Optional notifications</h2>
+        <p>
+          If you enable notifications, Zami registers a device push token with your homeserver. The
+          homeserver sends the Zami push gateway that token, your Matrix user ID, room and event
+          identifiers, and notification counts when needed. Zami sends this information through Expo
+          and Apple Push Notification service or Firebase Cloud Messaging to deliver the alert and
+          open the right conversation. Zami uses a generic message alert.
+        </p>
+        <p>
+          The gateway processes push requests as they arrive and does not maintain a notification
+          database. Its application logs record delivery counts and error codes. Cloudflare hosts
+          the gateway and processes requests and operational metadata. Turn off push in Zami’s
+          notification settings or revoke notification permission in your device settings.
+        </p>
+      </section>
+      <section>
+        <h2>Calls, location and external services</h2>
+        <p>
+          Zami requests camera and microphone access for features you choose, including calls,
+          recording voice messages and scanning a sign-in code. Calls may connect to the calling
+          infrastructure configured by your homeserver. When you choose to send or share your
+          location, it is sent to the room and may be visible to its members. Viewing a map can
+          contact its tile provider. Opening an external link takes you to the linked provider.
+        </p>
+        <p>Zami does not sell personal data or use it for advertising or cross-app tracking.</p>
+      </section>
+      <section>
+        <h2>Deleting data</h2>
+        <p>
+          Use <a href="/support.html#account-deletion">Delete account</a> in Zami’s Account settings
+          to request deletion from your homeserver. Your homeserver controls server-side deletion
+          and retention. Federated servers and conversation participants may retain their own
+          copies. Signing out removes the local session. Removing the app clears its local storage.
+        </p>
+        <p>
+          <a href="/support.html">Contact Zami support</a> for questions about data Zami handles.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

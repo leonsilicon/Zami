@@ -33,11 +33,11 @@ export function ascKeyFromEnv(env: Record<string, string | undefined> = process.
   return { id, issuer, path: keyPath };
 }
 
-/** A build number that only grows: the time, as YYYYMMDD.HHMM (UTC). */
+/** A calendar build number with the UTC time (HHMM) as its patch. */
 export function buildNumber(now = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const date = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`;
-  return `${date}.${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}`;
+  const date = now.toISOString().slice(0, 10).replaceAll("-", "");
+  const patch = now.getUTCHours() * 100 + now.getUTCMinutes();
+  return `1.${date}.${patch}`;
 }
 
 type PlistValue = string | boolean | { [key: string]: PlistValue };

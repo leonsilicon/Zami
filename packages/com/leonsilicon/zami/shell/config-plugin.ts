@@ -25,6 +25,7 @@ function shellQuote(value: string): string {
 
 interface ShellScriptPhase {
   name?: string;
+  shellScript?: string;
   alwaysOutOfDate?: number;
 }
 
@@ -43,7 +44,7 @@ const withWebAppIos: ConfigPlugin = (config) =>
     const iosDir = config.modRequest.platformProjectRoot;
     const { bin, out } = webPaths(config.modRequest.projectRoot);
     const quotedName = JSON.stringify(PHASE_NAME);
-    if (phases(project).some((phase) => phase.name === quotedName)) return config;
+    const existing = phases(project).find((phase) => phase.name === quotedName);
     const script = [
       "set -e",
       // The Node that builds the JS bundle (expo prebuild writes .xcode.env).
@@ -51,12 +52,17 @@ const withWebAppIos: ConfigPlugin = (config) =>
       'if [ -f "$PROJECT_DIR/.xcode.env.local" ]; then . "$PROJECT_DIR/.xcode.env.local"; fi',
       'NODE="${NODE_BINARY:-$(command -v node)}"',
       'export PATH="$(dirname "$NODE"):$PATH"',
+      'if [ "$CONFIGURATION" = "Release" ]; then export VITE_ZAMI_APP_STORE=true; fi',
       `"$NODE" "$PROJECT_DIR"/${shellQuote(relative(iosDir, bin))} build >/dev/null`,
       `SRC="$PROJECT_DIR"/${shellQuote(relative(iosDir, out))}/zami-web`,
       'DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/zami-web"',
       'mkdir -p "$DEST"',
       'rsync -a --delete "$SRC/" "$DEST/"',
     ].join("\n");
+    if (existing) {
+      existing.shellScript = JSON.stringify(script);
+      return config;
+    }
     project.addBuildPhase(
       [],
       "PBXShellScriptBuildPhase",

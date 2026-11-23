@@ -21,15 +21,14 @@ const signing: ExportSigning = {
 };
 
 describe("buildNumber", () => {
-  test("is the UTC time as YYYYMMDD.HHMM", () => {
-    expect(buildNumber(new Date("2026-11-08T03:07:00Z"))).toBe("20261108.0307");
+  test("uses a UTC date and a numeric HHMM patch", () => {
+    expect(buildNumber(new Date("2026-11-08T03:07:00Z"))).toBe("1.20261108.307");
   });
 
-  test("grows with time, as App Store Connect requires", () => {
-    const earlier = buildNumber(new Date("2026-11-08T09:59:00Z"));
-    const later = buildNumber(new Date("2026-11-08T10:00:00Z"));
-    const [a, b] = [earlier, later].map((n) => n.split(".").map(Number));
-    expect(a![0] < b![0] || (a![0] === b![0] && a![1]! < b![1]!)).toBe(true);
+  test("advances the patch within the same UTC day and resets it at midnight", () => {
+    expect(buildNumber(new Date("2026-11-08T23:58:00Z"))).toBe("1.20261108.2358");
+    expect(buildNumber(new Date("2026-11-08T23:59:00Z"))).toBe("1.20261108.2359");
+    expect(buildNumber(new Date("2026-11-09T00:00:00Z"))).toBe("1.20261109.0");
   });
 });
 
