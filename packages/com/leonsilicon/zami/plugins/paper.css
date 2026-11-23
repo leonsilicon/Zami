@@ -1,0 +1,310 @@
+:root[data-zami-paper] {
+  --brand-500: #31776d;
+  --brand-530: #2a6d64;
+  --brand-560: #28685e;
+  --brand-600: #205249;
+  --brand-500-rgb: 49 119 109;
+  --brand-530-rgb: 42 109 100;
+  --brand-560-rgb: 40 104 94;
+  --brand-600-rgb: 32 82 73;
+  --paper-display: Georgia, Cambria, "Times New Roman", serif;
+  --paper-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root[data-zami-paper][data-theme="light"] {
+  --zam-bg: #fbf8ef;
+  --zam-bg-secondary: #fffdf7;
+  --zam-bg-tertiary: #f3ede0;
+  --zam-bg-dark: #e9e2d2;
+  --zam-bg-hover: #eee9da;
+  --zam-bg-selected: #ddebe3;
+  --zam-bg-rgb: 251 248 239;
+  --zam-bg-secondary-rgb: 255 253 247;
+  --zam-text-primary: #21312d;
+  --zam-text-secondary: #3f514a;
+  --zam-text-muted: #55665d;
+  --zam-accent-text: #28685e;
+  --zam-accent-text-rgb: 40 104 94;
+  --zam-link: var(--zam-accent-text);
+  --zam-link-rgb: var(--zam-accent-text-rgb);
+  --zam-mention-highlight-rgb: 169 109 39;
+  --zam-divider: #ddd5c3;
+  --paper-nav: #f3ede0;
+}
+
+:root[data-zami-paper]:not([data-theme="light"]) {
+  --zam-bg: #172624;
+  --zam-bg-secondary: #223330;
+  --zam-bg-tertiary: #111f1d;
+  --zam-bg-dark: #101c1a;
+  --zam-bg-hover: #293d38;
+  --zam-bg-selected: #334c45;
+  --zam-bg-rgb: 23 38 36;
+  --zam-bg-secondary-rgb: 34 51 48;
+  --zam-text-primary: #f2f2e7;
+  --zam-text-secondary: #d3ded2;
+  --zam-text-muted: #acc2b7;
+  --zam-accent-text: #a1d8c8;
+  --zam-accent-text-rgb: 161 216 200;
+  --zam-link: var(--zam-accent-text);
+  --zam-link-rgb: var(--zam-accent-text-rgb);
+  --zam-mention-highlight-rgb: 155 111 46;
+  --zam-divider: #3c514b;
+  --paper-nav: #172624;
+}
+
+:root[data-zami-paper][data-theme="amoled"] {
+  --zam-bg: #000;
+  --zam-bg-secondary: #121916;
+  --zam-bg-tertiary: #060c0a;
+  --zam-bg-rgb: 0 0 0;
+  --zam-bg-secondary-rgb: 18 25 22;
+  --paper-nav: #060c0a;
+}
+
+:root[data-zami-paper] body {
+  font-family: var(--paper-body);
+  background-color: var(--paper-nav);
+}
+
+:root[data-zami-paper] [data-zam-region="app"] {
+  background: var(--paper-nav);
+}
+
+:root[data-zami-paper] .zami-sidebar {
+  background: var(--paper-nav);
+  border-inline-end: 1px solid var(--zam-divider);
+}
+
+:root[data-zami-paper] .zami-sidebar.zami-sidebar-desktop {
+  width: var(--zami-conversation-width);
+}
+
+:root[data-zami-paper] .zami-sidebar-body {
+  flex-direction: column;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] {
+  width: 100%;
+  flex-direction: row;
+  min-height: 56px;
+  gap: 6px;
+  padding: 6px 10px;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  background: var(--paper-nav);
+  border-block-end: 1px solid var(--zam-divider);
+  touch-action: pan-x;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] > .h-px {
+  width: 1px;
+  height: 25px;
+  margin-inline: 2px;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-root-id],
+:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-folder-inner] {
+  flex-direction: row;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-folder-inner] {
+  width: max-content;
+  padding: 0 4px;
+}
+
+:root[data-zami-paper]
+  [data-zam-region="space-sidebar"]
+  button:is([data-drag-id], [data-nav-space]),
+:root[data-zami-paper] [data-zam-region="space-sidebar"] > button {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] button[aria-current="true"] {
+  box-shadow: inset 0 0 0 2px var(--zam-accent);
+  background-color: var(--zam-bg-selected);
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""] {
+  background-color: var(--zam-accent-fill);
+  color: white;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""] svg {
+  color: inherit;
+}
+
+:root[data-zami-paper]
+  [data-zam-region="space-sidebar"]
+  button[data-nav-space]
+  > :first-child:is(div, span) {
+  max-width: 30px;
+  max-height: 30px;
+  border-radius: 8px;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] .-translate-x-3 {
+  inset: auto auto 0 50%;
+  width: 12px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 4px;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] :is(.-top-\[5px\], .-bottom-\[5px\]) {
+  inset: 3px auto;
+  width: 2px;
+  height: auto;
+  transform: none;
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] .-top-\[5px\] {
+  left: -3px;
+}
+:root[data-zami-paper] [data-zam-region="space-sidebar"] .-bottom-\[5px\] {
+  right: -3px;
+}
+
+:root[data-zami-paper] [data-zam-region="room-list"] {
+  background: var(--paper-nav);
+}
+
+:root[data-zami-paper] [data-zam-region="room-list"] > :first-child,
+:root[data-zami-paper] [data-zam-region="room-header"] {
+  min-height: 60px;
+  box-shadow: none;
+}
+
+:root[data-zami-paper] [data-zam-region="room-header"] {
+  background: var(--zam-bg-secondary);
+}
+
+:root[data-zami-paper] :is([data-zam-region="room-list"], [data-zam-region="room-header"]) h2 {
+  font: 700 1.35rem/1.25 var(--paper-display);
+}
+
+:root[data-zami-paper] [data-zam-region="timeline"] {
+  background: var(--zam-bg);
+}
+
+:root[data-zami-paper] .own-bubble {
+  border-radius: 16px 16px 4px 16px;
+}
+
+:root[data-zami-paper] .other-bubble,
+:root[data-zami-paper] .own-bubble-start {
+  border-radius: 16px 16px 16px 4px;
+}
+
+:root[data-zami-paper] .other-bubble {
+  background-color: var(--zam-bg-secondary);
+  border: 1px solid var(--zam-divider);
+}
+
+:root[data-zami-paper] .input-box {
+  border: 1px solid var(--zam-divider);
+  border-radius: 20px;
+  padding-inline: 12px;
+  box-shadow: 0 2px 6px rgb(18 47 39 / 6%);
+}
+
+:root[data-zami-paper] .input-box:focus-within {
+  border-color: var(--zam-accent);
+}
+
+:root[data-zami-paper] .zami-login {
+  display: block;
+  padding: clamp(1rem, 4vw, 3rem);
+  background: var(--paper-nav);
+}
+
+:root[data-zami-paper] .zami-login > div {
+  margin: 0 auto;
+  max-width: 30rem;
+}
+
+:root[data-zami-paper] .zami-login-card {
+  border: 1px solid var(--zam-divider);
+  border-radius: 24px;
+  padding: clamp(1.35rem, 5vw, 2.5rem);
+  box-shadow: 0 12px 36px rgb(18 47 39 / 7%);
+  background: var(--zam-bg-secondary);
+}
+
+:root[data-zami-paper] .zami-login-heading {
+  text-align: start;
+  padding-block-end: 1.25rem;
+  margin-block-end: 1.5rem;
+  border-block-end: 1px solid var(--zam-divider);
+}
+
+:root[data-zami-paper] .zami-login-heading h1 {
+  margin-block-start: 1.125rem;
+  font: 700 clamp(2rem, 6vw, 2.65rem)/1.05 var(--paper-display);
+  letter-spacing: -0.03em;
+}
+
+.zami-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--zam-text-primary);
+  font: 700 1.1rem/1 var(--paper-body, system-ui);
+}
+
+.zami-wordmark-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--zam-accent-fill);
+  color: white;
+}
+
+.zami-wordmark-mark::before {
+  content: "";
+  grid-area: 1 / 1;
+  width: 22px;
+  height: 16px;
+  border-radius: 50% 50% 3px 50%;
+  background: currentColor;
+}
+
+.zami-wordmark-mark::after {
+  content: "";
+  grid-area: 1 / 1;
+  width: 3px;
+  height: 7px;
+  margin-inline-end: 7px;
+  border-radius: 3px;
+  background: var(--zam-accent-fill);
+  box-shadow: 7px 0 var(--zam-accent-fill);
+}
+
+:root[data-zami-paper] .zami-login form :is(input:not([type="checkbox"]), button[type="submit"]) {
+  border-radius: 11px;
+  min-height: 44px;
+}
+
+:root[data-zami-paper] .zami-login input:not([type="checkbox"]) {
+  background: var(--zam-bg);
+}
+
+:root[data-zami-paper] :is(.zami-login, [data-zam-region="app"]) :focus-visible {
+  outline-color: var(--zam-accent);
+}
+
+.zami-sidebar-desktop {
+  width: calc(4.5rem + var(--zami-conversation-width));
+}
+
+:root[data-zami-paper] .zami-login form input:not([type="checkbox"]) {
+  font-size: 1rem;
+}
+
+:root[data-zami-paper] .text-zam-accent {
+  color: var(--zam-accent-text);
+}

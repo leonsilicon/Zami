@@ -1,0 +1,58 @@
+{
+  "source": "repos/com/github/az4521/Zam",
+  "bundles": [
+    "svelte.config.js",
+    "src/lib/plugins/pluginBoot.ts",
+    {
+      "path": "src/lib/components/settings/PluginsSettings.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/layout/LoginView.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/settings/PrivacySafetySettings.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/settings/AccountSettings.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/messages/MessageItem.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/messages/MessageInput.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/messages/MessageReportAction.svelte",
+      "language": "html"
+    },
+    "src/lib/i18n/en.ts",
+    "src/lib/i18n/locales/de.ts",
+    "src/lib/i18n/locales/es.ts",
+    "src/lib/i18n/locales/fr.ts",
+    "src/lib/i18n/locales/ja.ts",
+    "src/lib/i18n/locales/pt.ts",
+    "src/lib/i18n/locales/ru.ts",
+    "src/lib/i18n/locales/uk.ts",
+    "src/lib/i18n/locales/zh.ts",
+    "src/lib/links.ts",
+    {
+      "path": "src/lib/components/ui/GifPicker.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/settings/MessagesMediaSettings.svelte",
+      "language": "html"
+    },
+    {
+      "path": "src/lib/components/settings/AboutSettings.svelte",
+      "language": "html"
+    },
+    "src/lib/utils/settingsSearch.ts"
+  ]
+}

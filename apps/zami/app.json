@@ -5,10 +5,10 @@
     "icon": "./assets/icon.png",
     "owner": "improvelabs",
     "scheme": ["zami", "com.leonsilicon.zami"],
-    "version": "1.20261123.0",
+    "version": "1.20261123.1",
     "orientation": "default",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#202225",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#f3ede0",
     "ios": {
       "bundleIdentifier": "com.leonsilicon.zami",
       "supportsTablet": true,
@@ -22,6 +22,35 @@
         "NSLocationWhenInUseUsageDescription": "Zami shares your location only when you choose to send it.",
         "NSPhotoLibraryAddUsageDescription": "Zami saves the images and videos you choose to your photo library.",
         "UIBackgroundModes": ["audio", "remote-notification"]
+      },
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyCollectedDataTypes": [
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeUserID",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeDeviceID",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          },
+          {
+            "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeOtherDataTypes",
+            "NSPrivacyCollectedDataTypeLinked": true,
+            "NSPrivacyCollectedDataTypeTracking": false,
+            "NSPrivacyCollectedDataTypePurposes": [
+              "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+            ]
+          }
+        ]
       }
     },
     "android": {

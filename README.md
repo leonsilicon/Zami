@@ -57,6 +57,10 @@ and names the codemod, instead of shipping the file unpatched. See that package'
 
 ## What Zami changes
 
+Zami Paper is the default theme. It moves the space switcher above the room list and
+uses its own sign-in layout, palette, and conversation styling. The iOS release keeps
+Paper enabled and runs only built-in plugins. See the [App Store review notes](docs/app-store-review.md).
+
 Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami's own code:
 
 - **Plugins: `zam.zami`** (`zam.zami-plugins`, `@-/com.leonsilicon.zami.plugins`). Zam's

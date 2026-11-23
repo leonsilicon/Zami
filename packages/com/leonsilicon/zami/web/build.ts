@@ -42,7 +42,7 @@ export const WEB_DIR_NAME = "zami-web";
  * Bump to rebuild every cached web build: anything here that changes what a build contains
  * without changing its inputs.
  */
-const BUILD_FORMAT = 1;
+const BUILD_FORMAT = 2;
 const VITE_CONFIG_FILENAME = "vite.webview.config.ts";
 
 /** `zam.zami` (@-/com.leonsilicon.zami.plugins), whose Vite plugin the build adds. */
@@ -231,7 +231,13 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
     );
   }
   const codemods = sourceCodemods(ZAM_PATH);
+  const { version: appVersion } = JSON.parse(
+    readFileSync(join(root, "apps/zami/package.json"), "utf8"),
+  ) as {
+    version: string;
+  };
   const settings = buildEnv();
+  settings.VITE_ZAMI_VERSION = appVersion;
   const config = viteConfig();
   const version = hash(
     String(BUILD_FORMAT),
@@ -315,6 +321,13 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
   rmSync(target, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   cpSync(join(src, "build"), target, { recursive: true });
+  cpSync(join(src, "LICENSE"), join(target, "LICENSE.txt"));
+  cpSync(join(src, "THIRD_PARTY_NOTICES.md"), join(target, "THIRD_PARTY_NOTICES.txt"));
+  if (settings.VITE_ZAMI_APP_STORE === "true") {
+    for (const directory of ["flash-sandbox", "ruffle"]) {
+      rmSync(join(target, directory), { recursive: true, force: true });
+    }
+  }
   writeFileSync(targetMarker, version);
   log(`Zam's web app is in ${target}`);
   return { dir: target, version, built: true };

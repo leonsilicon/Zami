@@ -29,8 +29,8 @@ import { createPushNotificationsPlugin } from "#push-notifications-plugin";
 import { createUnifiedPushPlugin } from "#unified-push-plugin";
 import { createZamiPlugin } from "#zami-plugin";
 
-/** Zam's own background (its <meta name="theme-color">), until the page says otherwise. */
-const DEFAULT_THEME = "#313338";
+/** Zami Paper’s initial color, until the page reports the saved appearance. */
+const DEFAULT_THEME = "#f3ede0";
 
 /**
  * No links made of phone numbers and addresses (Zam makes its own). An array, as Android
@@ -117,8 +117,8 @@ export function ZamiShell() {
         createBrowserPlugin({ onRedirect: (url) => app.openUrl(url) }),
         createPreferencesPlugin(),
         createPushNotificationsPlugin(),
-        // `zam.zami.native`: the app's native side, for Zam's plugins.
-        createZamiPlugin(),
+        // Public iOS builds load only built-ins and have no general-purpose native bridge.
+        ...(Platform.OS === "ios" && !__DEV__ ? [] : [createZamiPlugin()]),
         // Only Zam's Android code asks it (where Capacitor's platform is "android").
         ...(Platform.OS === "android" ? [createUnifiedPushPlugin()] : []),
       ],
@@ -261,7 +261,7 @@ export function ZamiShell() {
           allowsPictureInPictureMediaPlayback
           allowsAirPlayForMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          mediaCapturePermissionGrantType="grant"
+          mediaCapturePermissionGrantType="prompt"
           allowsProtectedMedia
           geolocationEnabled
           webviewDebuggingEnabled={INSPECTABLE}

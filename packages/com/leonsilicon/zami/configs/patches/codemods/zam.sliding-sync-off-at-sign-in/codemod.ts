@@ -28,7 +28,7 @@ export default function codemod(root: SgRoot): string | null {
         '    style="min-height: 100vh; min-height: 100dvh;"\n' +
         '>\n    <div class="w-full max-w-md">',
       to:
-        'class="flex flex-col items-center overflow-y-auto bg-zam-backgroundTertiary p-4"\n' +
+        'class="zami-login flex flex-col items-center overflow-y-auto bg-zam-backgroundTertiary p-4"\n' +
         '    style="height: 100vh; height: 100dvh;"\n' +
         '>\n    <div class="my-auto w-full max-w-md shrink-0">',
       marker: 'class="my-auto w-full max-w-md shrink-0"',

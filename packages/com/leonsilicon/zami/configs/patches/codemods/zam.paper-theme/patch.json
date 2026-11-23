@@ -1,0 +1,12 @@
+{
+  "source": "repos/com/github/az4521/Zam",
+  "bundles": [
+    "src/lib/plugins/builtins/index.ts",
+    "src/lib/plugins/pluginBoot.ts",
+    "src/lib/stores/settings.svelte.ts",
+    "src/lib/utils/theme.ts",
+    { "path": "src/lib/components/layout/AppShell.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/SpaceSidebar.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/LoginView.svelte", "language": "html" }
+  ]
+}
