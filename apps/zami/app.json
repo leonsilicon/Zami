@@ -5,7 +5,7 @@
     "icon": "./assets/icon.png",
     "owner": "improvelabs",
     "scheme": ["zami", "com.leonsilicon.zami"],
-    "version": "0.1.0",
+    "version": "1.20261123.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#202225",

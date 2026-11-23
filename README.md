@@ -126,6 +126,10 @@ vpx _patches check && vpx _web build
 `packages/com/leonsilicon/zami/dev`); the workflows build `trunk` nightly as "(S) Zami"
 (staging) and `production` as "Zami".
 
+Set the release version in `apps/zami/app.json` and `apps/zami/package.json` to
+`1.YYYYMMDD.PATCH` using the UTC release date. Start at patch `0` and increment it
+for another release on the same date. Run `bun install` to update the lockfile.
+
 ## License
 
 GPL-3.0-or-later, as Zam is ([LICENSE](LICENSE)).
