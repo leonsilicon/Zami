@@ -1,8 +1,5 @@
-// `zam.zami.app.home`: the page the app opens on. A plugin registers a room as an account's
-// home, and from the next launch on the app lands there instead of where it was left: the
-// launch page (launch.ts) shows the home as it last looked while the session starts, and Zam
-// itself opens the room, because the registration is written where Zam keeps the last
-// place it was (its rooms store reads that when it starts).
+// `zam.zami.app.home`: a plugin registers the room an account opens on at its next
+// launch. We write the registered home where Zam's rooms store reads its last location.
 
 /** What a plugin registers. */
 export interface HomeOptions {

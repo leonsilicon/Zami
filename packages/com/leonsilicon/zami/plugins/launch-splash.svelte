@@ -1,7 +1,6 @@
 <!--
-  Zam's splash without its "Restoring session…": a spinner on the same background, shown
-  only when there's no launch page to draw over it (launch.ts). A splash with a message of
-  its own (the session is open in another tab) is Zam's.
+  Show a spinner while the session opens. Let Zam display its message when the
+  session is already open in another tab.
 -->
 <script>
     let { Original, label, props } = $props();

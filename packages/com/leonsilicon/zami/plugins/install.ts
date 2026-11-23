@@ -1,7 +1,6 @@
 // Puts `zam.zami` where Zam's plugin host finds it: the `zam.zami-plugins` codemod makes
-// Zam's host build it from `globalThis.__zamiHost` for each plugin, and Zam's `init` hook
-// call zamiInit (drawing the launch page, then loading the early plugins) before the app's
-// first render.
+// Zam's host build it from `globalThis.__zamiHost` for each plugin. Zam's `init` hook
+// prepares session restore and loads early plugins before the app's first render.
 import { createZamiApi } from "#api";
 import { bootEarlyPlugins } from "#early";
 import { startLaunch } from "#launch";

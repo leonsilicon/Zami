@@ -239,9 +239,8 @@ export function createZamiApi(options: ZamiApiOptions) {
       loadEarly: (early = true) => setEarly(pluginId, early),
       reload: () => location.reload(),
       /**
-       * The page the app opens on, for the account that's signed in: from the next launch
-       * on, the app shows that room at once (as it last looked, while the session starts)
-       * and lands in it. It stays until the plugin clears it or unloads, or `until` passes.
+       * The room the app opens on from the next launch for the account that's signed in.
+       * It stays until the plugin clears it or unloads, or `until` passes.
        */
       home: {
         /** Registers a room as the home; false when no account is signed in. */
