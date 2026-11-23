@@ -15,7 +15,8 @@
   },
   "exports": {
     ".": "./+.ts",
-    "./web": "./+web.ts"
+    "./web": "./+web.ts",
+    "./screenshots": "./+screenshots.ts"
   },
   "devDependencies": {
     "@-/com.leonsilicon.zami.paths": "workspace:*",

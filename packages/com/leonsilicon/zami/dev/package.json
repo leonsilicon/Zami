@@ -4,6 +4,7 @@
   "private": true,
   "description": "`vpx _dev`: build, install and run the Zami app with its dev server; `vpx _testflight`: upload it to TestFlight.",
   "bin": {
+    "_create-screenshots": "./_create-screenshots.ts",
     "_dev": "./_dev.ts",
     "_testflight": "./_testflight.ts"
   },
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@-/com.leonsilicon.zami.paths": "workspace:*",
+    "@-/com.leonsilicon.zami.plugins": "workspace:*",
     "@-/com.leonsilicon.zami.web": "workspace:*",
     "expo": "catalog:"
   },

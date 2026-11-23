@@ -126,6 +126,9 @@ vpx _patches check && vpx _web build
 
 ## Releases
 
+Capture App Store images with `vpx _create-screenshots`. The command runs scripted scenes
+in a simulator with sample Matrix data. See the [screenshot setup](packages/com/leonsilicon/zami/dev/README.md#app-store-screenshots).
+
 `vpx _testflight` builds the app for the App Store and uploads it to TestFlight (see
 `packages/com/leonsilicon/zami/dev`); the workflows build `trunk` nightly as "(S) Zami"
 (staging) and `production` as "Zami".

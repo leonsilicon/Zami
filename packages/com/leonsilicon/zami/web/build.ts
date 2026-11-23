@@ -203,6 +203,8 @@ export interface BuildWebOptions {
   outDir?: string;
   /** Rebuild even if nothing changed. */
   force?: boolean;
+  /** App Store assets with an isolated synthetic Matrix session for simulator capture. */
+  screenshots?: boolean;
   log?: (line: string) => void;
 }
 
@@ -238,6 +240,8 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
   };
   const settings = buildEnv();
   settings.VITE_ZAMI_VERSION = appVersion;
+  settings.VITE_ZAMI_SCREENSHOTS = options.screenshots ? "true" : "false";
+  if (options.screenshots) settings.VITE_ZAMI_APP_STORE = "true";
   const config = viteConfig();
   const version = hash(
     String(BUILD_FORMAT),

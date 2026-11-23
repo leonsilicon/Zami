@@ -20,6 +20,13 @@ globalThis.__zamiHost = {
 
 /** Before the app's first render (Zam's `init` hook). */
 export async function zamiInit(): Promise<void> {
+  if (
+    (import.meta as ImportMeta & { env: { VITE_ZAMI_SCREENSHOTS?: string } }).env
+      .VITE_ZAMI_SCREENSHOTS === "true"
+  ) {
+    const { startScreenshotMode } = await import("#screenshot-mode");
+    await startScreenshotMode();
+  }
   preparePaperTheme();
   watchStartupPluginErrors();
   await startLaunch();
