@@ -44,3 +44,29 @@ and PBKDF2).
 The workflow `.github/workflows/zami-testflight.yml` runs it on every push to `main` (and on
 demand) on a GitHub-hosted Mac, with the key and a distribution certificate from the
 repository's secrets.
+
+## App Store screenshots
+
+Run from the Zami checkout on macOS with Xcode, iOS simulators, and Argent available.
+
+```sh
+vpx _create-screenshots
+vpx _create-screenshots ipad --out ~/Desktop/zami-screenshots
+vpx _create-screenshots iphone --app /path/to/Release-iphonesimulator/Zami.app
+```
+
+With no device arguments, the command captures both an iPhone 18 Pro or 17 Pro and a
+13-inch iPad Pro (M5 or M4). Use portrait orientation and an English simulator locale.
+Use `--iphone-device` or `--ipad-device` to select a compatible simulator by name or UDID. It builds the release simulator
+app if you omit `--app`. It installs a copy as **Zami Screenshots** under its own bundle ID
+and deep-link scheme, leaving your regular Zami installation and its accounts alone.
+
+The capture build seeds a synthetic Matrix account and renders the real conversation,
+space, and Privacy & Safety screens. The [scene list](../plugins/screenshot-scenes.ts)
+defines capture order, deep links, and readiness checks. Edit the
+[sample Matrix events](../plugins/screenshot-fixture.ts) to refresh the sample rooms and
+conversation.
+
+Each attempt writes a new dated folder under `apps/zami/.build/screenshots` (or under
+`--out`) with separate iPhone and iPad folders. Files are opaque JPEGs at native
+resolution. iPhone uses 1206 × 2622 pixels and iPad uses 2064 × 2752 pixels.
