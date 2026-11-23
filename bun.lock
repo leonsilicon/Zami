@@ -157,6 +157,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.warm-room-startup": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.warm-room-startup",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.zami-oauth-client": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.zami-oauth-client",
       "version": "0.0.0",
@@ -338,6 +348,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.push-on-every-native-platform"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.sliding-sync-off-at-sign-in"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.warm-room-startup": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.warm-room-startup@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.warm-room-startup"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.zami-oauth-client": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.zami-oauth-client@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.zami-oauth-client"],
 
