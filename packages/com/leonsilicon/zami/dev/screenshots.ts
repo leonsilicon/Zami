@@ -85,8 +85,6 @@ function buildSimulatorApp(appDir: string): string {
     "Release",
     "-destination",
     "generic/platform=iOS Simulator",
-    "-arch",
-    process.arch === "arm64" ? "arm64" : "x86_64",
     "-derivedDataPath",
     derivedData,
     "CODE_SIGNING_ALLOWED=NO",
@@ -179,6 +177,7 @@ async function captureOnDevice(
   console.log(`Installing Zami Screenshots on ${device.name}`);
   await argent("reinstall-app", { udid, bundleId: SCREENSHOT_APP_ID, appPath: app });
   try {
+    await argent("launch-app", { udid, bundleId: SCREENSHOT_APP_ID });
     for (const [index, scene] of screenshotScenes.entries()) {
       console.log(`Opening ${scene.id} on ${target}`);
       await argent("open-url", { udid, url: screenshotLink(scene.id) });
