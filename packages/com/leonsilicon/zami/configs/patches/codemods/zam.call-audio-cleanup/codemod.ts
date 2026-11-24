@@ -41,8 +41,8 @@ export default function codemod(root: SgRoot): string | null {
 
   return editNodes(root, [
     {
-      kinds: ["program"],
-      contains: "function ensureContext()",
+      kinds: ["lexical_declaration"],
+      contains: "let sinkId: string | null",
       from: "let sinkId: string | null = null;",
       to: `let sinkId: string | null = null;
 const pendingTones = new Map<OscillatorNode, boolean>();
