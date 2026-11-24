@@ -1,0 +1,9 @@
+{
+  "source": "repos/com/github/az4521/Zam",
+  "bundles": [
+    { "path": "src/lib/components/layout/MessageArea.svelte", "language": "html" },
+    { "path": "src/lib/components/messages/MessageInput.svelte", "language": "html" },
+    "src/lib/matrix/client.ts",
+    "src/lib/stores/outbox.svelte.ts"
+  ]
+}
