@@ -22,6 +22,7 @@ import { bootstrapScript } from "#bootstrap";
 import { Bridge, resultScript } from "#bridge";
 import { createBrowserPlugin } from "#browser-plugin";
 import { createShellDebug, receiveDebug } from "#debug";
+import { readLaunchPage, saveLaunchPage } from "#launch-store";
 import { ZamiShellNative } from "#native";
 import { createPreferencesPlugin } from "#preferences-plugin";
 import { parsePageMessage, type BottomInsetMessage } from "#protocol";
@@ -30,7 +31,7 @@ import { createUnifiedPushPlugin } from "#unified-push-plugin";
 import { createZamiPlugin } from "#zami-plugin";
 
 /** Zami Paper’s initial color, until the page reports the saved appearance. */
-const DEFAULT_THEME = "#f3ede0";
+const DEFAULT_THEME = "#ffffff";
 
 /**
  * No links made of phone numbers and addresses (Zam makes its own). An array, as Android
@@ -109,7 +110,7 @@ export function ZamiShell() {
   const canGoBack = useRef(false);
   const source = useMemo(webAppSource, []);
 
-  const { bridge, script } = useMemo(() => {
+  const { bridge, script, config } = useMemo(() => {
     const app = createAppPlugin({ canGoBack: () => canGoBack.current });
     const bridge = new Bridge(
       [
@@ -124,14 +125,16 @@ export function ZamiShell() {
       ],
       (result) => webView.current?.injectJavaScript(resultScript(result)),
     );
-    const script = bootstrapScript({
+    const config = {
       platform: Platform.OS,
       appId: Application.applicationId,
       headers: bridge.headers,
-    });
+    };
+    // With the app as it last looked, which the page draws before its own code has loaded.
+    const script = bootstrapScript({ ...config, launchPage: readLaunchPage() });
     // Served to the bundled web app's pages before anything else they run.
     ZamiShellNative.setStartScript(script);
-    return { bridge, script };
+    return { bridge, script, config };
   }, []);
 
   useEffect(() => bridge.start(), [bridge]);
@@ -153,6 +156,13 @@ export function ZamiShell() {
     if (message === null) return;
     if (message.type === "capacitor") void bridge.call(message);
     else if (message.event === "theme") setTheme(message.color);
+    else if (message.event === "launchPage") {
+      saveLaunchPage(message.page);
+      // A page that loads again in this run (a reload, a new web process) opens on it too.
+      ZamiShellNative.setStartScript(bootstrapScript({ ...config, launchPage: message.page }));
+    }
+    // The launch frame is on screen: show it, without waiting for the page to finish loading.
+    else if (message.event === "launchDrawn") setLoaded(true);
     else if (message.event === "bottomInset") {
       const visible =
         message.width > 0 && message.opacity > 0 && processColor(message.color) != null;

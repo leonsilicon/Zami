@@ -28,6 +28,28 @@ Zam's CSP allows same-origin scripts but not inline ones. In a debug build,
 `EXPO_PUBLIC_ZAMI_WEB_URL` loads the web app from elsewhere (`vpx _web serve`), with the
 bootstrap as a document-start script instead.
 
+## The launch frame
+
+The first thing a launch paints is the app as it last looked, with a composer that takes
+typing, before any of the web app's code has loaded:
+
+1. As the app is left (and a moment after it changes), the page sends a copy of its DOM,
+   the launch page (`launch.ts` in `@-/com.leonsilicon.zami.plugins`).
+2. The shell keeps it natively (`launch-store.ts`, expo-sqlite's key-value store), reads it
+   as it starts, and puts it in the script every page runs first, after the bootstrap
+   (`launch-frame.ts`).
+3. That script draws the page as soon as the document has a body, if this launch opens on
+   what it shows: the same account, build and width, with the same home registered. It
+   tells the shell once it has painted, and the shell shows the web view then, without
+   waiting for the page to finish loading.
+4. The app takes the frame off once its own shell shows a composer underneath. What was
+   typed goes to the real composer, with the keyboard, and is sent if the frame's send
+   button was pressed.
+
+The launch page is the last screen as it was shown, so it holds what was on it (names,
+and messages if a conversation was open) outside Zam's own storage, in the app's sandbox.
+It's replaced as the app is used and deleted when the account signs out.
+
 ## Capacitor's native side
 
 Zam reaches native code only through Capacitor. The bootstrap (`bootstrap.ts`) defines
@@ -69,4 +91,5 @@ instead of scrolling away. Links to other sites open in their apps.
 ## Tests
 
 `__tests__/bridge.test.ts` runs the bootstrap in a sandboxed `window` with the real
-`@capacitor/core` and the bridge carrying its messages.
+`@capacitor/core` and the bridge carrying its messages. `__tests__/launch-frame.test.ts`
+runs the launch frame the same way: which launches it draws the saved page on.

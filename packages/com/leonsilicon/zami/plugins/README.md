@@ -113,8 +113,15 @@ toast offers to reload. `app.loadEarly(false)` opts out, `app.loadEarly()` opts 
 
 ### Home and startup
 
-While restoring a session, Zami shows a spinner until the live interface is ready. If the room
-cache is available, the room list and cached conversation are interactive while Matrix reconnects.
+A launch opens on the **launch frame**: the app as it last looked, which the shell draws
+before any of the app's code has loaded (`@-/com.leonsilicon.zami.shell`). Its composer
+takes typing. Once the app's own shell shows a composer underneath, the frame comes off and
+what was typed is in the real composer (and is sent, if the frame's send button was
+pressed). From then the room list and the conversation saved on the device are live while
+Matrix reconnects, and a message sent before sync has delivered its room waits in Zam's
+outbox above the composer (the `zam.send-before-sync` codemod). A launch with no frame to
+show (the first after signing in, after an update, or after the home changed) shows a
+spinner until the shell is up.
 
 By default, Zami reopens where it was left. A plugin can register a **home** room for the
 app to open on the next launch.
@@ -131,6 +138,20 @@ zami.app.home.clear();
 day would greet the next day's launch). It's per account, and one plugin's at a time: the
 last to register. It goes when the plugin clears it or is turned off. A home is where the
 app _opens_; taking the user there while the app runs is the plugin's own doing.
+
+The launch frame of a home is saved while the app shows that room (as the app is left, and
+shortly after it changes), and kept while the user is elsewhere. A plugin that shows a home
+room in more than one way marks the app's root (`[data-zam-region="app"]`) with
+`data-zami-launch-skip` while it shows what a launch doesn't open on, and nothing is saved
+then.
+
+How it works (`launch.ts`, `launch-page.ts`): the page is a copy of the app's DOM, with
+images as data: URLs and everything that wasn't drawn left out. Zam's regions in it are
+named `data-zami-launch-region`, so a plugin looking for `[data-zam-region="app"]` finds the
+app's own, not the copy. `<html>`'s `data-` attributes and the page's `<style>` elements are
+saved with it, so a plugin's styles apply to the copy before the plugin has loaded.
+`performance.getEntriesByType("mark")` has `zami-launch:drawn`, `:shell`, `:ready`,
+`:handoff` and `:saved` next to Zam's own `zam-boot:` marks.
 
 ### Stores and runes
 
@@ -162,6 +183,9 @@ Zam's CSP allows; it allows no inline scripts or `eval`, in the page or in a con
 - The `zam.zami-plugins` codemod (`@-/com.leonsilicon.zami.configs.patches`) imports the
   runtime into Zam's `src/hooks.client.ts`, calls `zamiInit()` in its `init` hook, and has
   Zam's plugin host build `zam.zami` from `globalThis.__zamiHost`.
-- `zamiInit()` applies the registered home before session restore and loads early plugins
-  before the first render.
+- `zamiInit()` applies the registered home before session restore, starts loading the
+  encryption module while the app loads, and loads early plugins before the first render.
+- The modules the app loads as it starts are built into a few chunks (`chunks.ts`). Left to
+  the bundler, every module a plugin can import would be a chunk of its own, and a launch
+  would load some 860 of them, a request each.
 - `__tests__/instrument.test.ts` runs instrumented modules as real ES modules.

@@ -1,6 +1,6 @@
 {
   "name": "@-apps/zami",
-  "version": "1.20261124.0",
+  "version": "1.20261124.1",
   "private": true,
   "description": "The Zami Expo app: upstream Zam's web app in a native shell (@-/com.leonsilicon.zami.shell).",
   "type": "module",

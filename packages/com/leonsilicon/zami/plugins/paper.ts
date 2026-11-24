@@ -6,19 +6,25 @@ export const paperThemeId = "com.leonsilicon.zami.paper";
 function activate(active: boolean): void {
   const root = document.documentElement;
   root.toggleAttribute("data-zami-paper", active);
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  const base = root.dataset.theme;
-  if (meta) {
-    meta.content =
-      paperThemeColor(base) ??
-      (base === "light" ? "#f2f3f5" : base === "amoled" ? "#000000" : "#313338");
+  if (active) syncPaperThemeColor();
+  else {
+    const base = root.dataset.theme;
+    const color = base === "light" ? "#f2f3f5" : base === "amoled" ? "#000000" : "#313338";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", color);
   }
 }
 
-export function paperThemeColor(base?: string): string | undefined {
+export function paperThemeStyles(): CSSStyleDeclaration | undefined {
   if (typeof document === "undefined") return;
-  if (!document.documentElement.hasAttribute("data-zami-paper")) return;
-  return base === "amoled" ? "#000000" : base === "dark" ? "#172624" : "#f3ede0";
+  const root = document.documentElement;
+  if (!root.hasAttribute("data-zami-paper")) return;
+  return getComputedStyle(root);
+}
+
+/** The native status bar and the web header share the resolved header surface. */
+export function syncPaperThemeColor(): void {
+  const color = paperThemeStyles()?.getPropertyValue("--zami-header").trim();
+  if (color) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", color);
 }
 
 // The sign-in screen renders before Zam starts its plugin loader. Read the same device
@@ -43,7 +49,8 @@ export const paperTheme = {
     id: paperThemeId,
     name: "Zami Paper",
     version: "1.0.0",
-    description: "Zami’s conversation layout with a horizontal space switcher and message bubbles.",
+    description:
+      "Zami’s conversation layout with a compact sidebar and neutral light and dark palettes.",
     author: "Zami",
     entry: "builtin",
     capabilities: [],

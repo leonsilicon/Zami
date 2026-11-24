@@ -7,6 +7,7 @@ import { zamDir } from "@-/com.leonsilicon.zami.paths";
 import { test } from "vite-plus/test";
 import {
   clearHome,
+  homeKey,
   landOnHome,
   pruneHomes,
   readHome,
@@ -103,4 +104,20 @@ test("Zam still keeps its last place where landOnHome writes it", () => {
   assert.ok(rooms.includes("removeScoped(SPACE_KEY, auth.userId);"));
   const scoped = source("src/lib/utils/scopedStorage.ts");
   assert.ok(scoped.includes("return userId ? `${base}:${userId}` : base;"));
+});
+
+test("a launch page is saved with the home as storage has it", () => {
+  const { storage, values } = memoryStorage();
+  // (The shell's launch frame reads the same key the same way: launch-frame.ts.)
+  assert.equal(homeKey(storage, "@alice:example.org"), "null");
+  writeHome(storage, "@alice:example.org", "leon", { roomId: "!today:example.org", until: 5000 });
+  const key = homeKey(storage, "@alice:example.org");
+  const homes = JSON.parse(values.get("zami_home")!) as Record<string, unknown>;
+  assert.equal(key, JSON.stringify(homes["@alice:example.org"]));
+  // Past its time it's still there, so it's still the same key: the page's `until` ends it.
+  assert.equal(readHome(storage, "@alice:example.org", 6000), null);
+  assert.equal(homeKey(storage, "@alice:example.org"), key);
+  writeHome(storage, "@alice:example.org", "leon", { roomId: "!tomorrow:example.org" });
+  assert.notEqual(homeKey(storage, "@alice:example.org"), key);
+  assert.equal(homeKey(storage, "@bob:example.org"), "null");
 });

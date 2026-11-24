@@ -57,9 +57,10 @@ and names the codemod, instead of shipping the file unpatched. See that package'
 
 ## What Zami changes
 
-Zami Paper is the default theme. It moves the space switcher above the room list and
-uses its own sign-in layout, palette, and conversation styling. The iOS release keeps
-Paper enabled and runs only built-in plugins. See the [App Store review notes](docs/app-store-review.md).
+Zami Paper is the default theme. Its Linear-inspired design pairs a compact workspace sidebar
+with a framed conversation pane on desktop and full-width views on phones. It uses neutral
+light, dark, and AMOLED palettes with an indigo accent. The iOS release keeps Paper enabled
+and runs only built-in plugins. See the [App Store review notes](docs/app-store-review.md).
 
 Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami's own code:
 
@@ -74,6 +75,11 @@ Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami'
 - **Push** through Zami's gateway on iOS and Android (`zam.push-on-every-native-platform`,
   `zam.zami-pusher`): the app's own id, "Zami" on "iOS (…)" or "Android (…)", and the alert
   the OS shows.
+- **Starting at once**: a launch paints the app as it last looked, with a composer that
+  takes typing, before the web app has loaded (the shell's launch frame). The app then shows
+  the rooms saved on the device while Matrix reconnects (`zam.warm-room-startup`), and a
+  message sent before sync has delivered its room waits in the outbox, which survives a
+  restart (`zam.send-before-sync`). The web app's startup code is a few chunks, not hundreds.
 - **No Zam updates** (`zam.no-zam-updates`): Zam's Android updater would offer Zam's own
   APKs and web bundles; Zami's builds come from the App Store and TestFlight.
 - **react-native-webview** (`react-native-webview`, a bun patch): hooks the shell needs to

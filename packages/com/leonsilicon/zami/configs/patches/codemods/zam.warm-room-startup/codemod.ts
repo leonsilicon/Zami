@@ -201,7 +201,13 @@ const clientEdits = [
             // The SDK marks the client as running before it awaits /versions.
             // Wait outside startClient so a logout or background release can
             // cancel this launch before the SDK creates a new sync loop.
-            const versions = client.getVersions();
+            // The server's answer from the last launch stands in for this
+            // one's, so the saved rooms load without waiting for the network;
+            // the SDK keeps the live answer for everything it asks later.
+            const live = client.getVersions();
+            void live.then((answer) => saveServerVersions(client, answer), () => {});
+            const saved = savedServerVersions(client);
+            const versions = saved ? Promise.resolve(saved) : live;
             await versions.catch(() => {});
             if (!canStart()) return;
             // Reuse the settled result even on failure, so startClient can
@@ -315,16 +321,62 @@ const clientEdits = [
 `,
     to: `const pendingRoomLists = new WeakMap<MatrixClient, ReturnType<typeof loadSnapshot>>();
 
+/** How long sync waits for Zami's launch frame to hand over to the app. */
+const LAUNCH_FRAME_WAIT_MS = 1500;
+
 function afterCachedRoomPaint(): Promise<void> {
     return new Promise((resolve) => {
-        const fallback = window.setTimeout(resolve, 100);
+        const started = performance.now();
+        const painted = () => {
+            // Replaying the saved sync holds the main thread. Zami's launch
+            // frame (drawn before this code loaded) may have the keyboard:
+            // let it hand what was typed to the app's composer first.
+            const frame = (globalThis as { __zamiLaunch?: unknown }).__zamiLaunch;
+            if (frame && performance.now() - started < LAUNCH_FRAME_WAIT_MS)
+                window.setTimeout(painted, 16);
+            else resolve();
+        };
+        const fallback = window.setTimeout(painted, 100);
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 window.clearTimeout(fallback);
-                resolve();
+                painted();
             });
         });
     });
+}
+
+const SERVER_VERSIONS_KEY = "zami_server_versions";
+
+type ServerVersions = Awaited<ReturnType<MatrixClient["getVersions"]>>;
+
+/** What the homeserver answered /versions with at the last launch. */
+function savedServerVersions(client: MatrixClient): ServerVersions | null {
+    try {
+        const saved = JSON.parse(
+            localStorage.getItem(SERVER_VERSIONS_KEY) ?? "null",
+        );
+        return saved?.baseUrl === client.baseUrl &&
+            Array.isArray(saved.versions?.versions)
+            ? saved.versions
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveServerVersions(
+    client: MatrixClient,
+    versions: ServerVersions,
+): void {
+    try {
+        localStorage.setItem(
+            SERVER_VERSIONS_KEY,
+            JSON.stringify({ baseUrl: client.baseUrl, versions }),
+        );
+    } catch {
+        // Storage is full or off: the next launch asks the server first.
+    }
 }
 
 async function hydrateRoomListCache(client: MatrixClient): Promise<void> {

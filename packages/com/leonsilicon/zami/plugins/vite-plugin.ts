@@ -3,9 +3,13 @@
 // - every module under Zam's `src/` gets an accessor for its top-level names (instrument.ts);
 // - `@-/com.leonsilicon.zami.plugins/web`, which the `zam.zami-plugins` codemod imports
 //   into Zam's code, resolves to this package's runtime;
-// - `svelte` resolves to Zam's own copy for this package's code too, so there is one Svelte.
+// - `svelte` and the encryption module resolve to Zam's own copies for this package's code
+//   too, so there is one of each;
+// - the modules the app loads as it starts are built into a few chunks (chunks.ts), not one
+//   each, which the accessors' `import()` of every module would otherwise make them.
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { manualStartupChunks } from "#chunks";
 import { instrument, moduleIdForPath, type EstreeNode } from "#instrument";
 
 // (Not import.meta.dirname: Vite bundles this into its config, and keeps only import.meta.url.)
@@ -33,7 +37,7 @@ export function zamiPluginsVite(): ZamiVitePlugin {
     config() {
       return {
         resolve: {
-          dedupe: ["svelte"],
+          dedupe: ["svelte", "@matrix-org/matrix-sdk-crypto-wasm"],
           alias: [
             {
               find: /^@-\/com\.leonsilicon\.zami\.plugins\/web$/,
@@ -42,6 +46,7 @@ export function zamiPluginsVite(): ZamiVitePlugin {
           ],
         },
         server: { fs: { allow: [PACKAGE_DIR] } },
+        build: { rollupOptions: { output: { manualChunks: manualStartupChunks() } } },
       };
     },
     configResolved(config) {

@@ -73,6 +73,26 @@ function sourceFiles(dir: string): string[] {
   return files.toSorted();
 }
 
+/**
+ * The most chunks a build may have. `zam.zami` groups the modules the app loads as it starts
+ * into a few (chunks.ts in @-/com.leonsilicon.zami.plugins); ungrouped, each of some 900
+ * modules is a chunk of its own, and a launch loads most of them, a request each.
+ */
+const MAX_CHUNKS = 250;
+
+/** Fails a build whose startup modules weren't grouped: it would start many times slower. */
+function checkChunks(buildDir: string): void {
+  const chunks = join(buildDir, "_app/immutable/chunks");
+  const count = existsSync(chunks) ? readdirSync(chunks).length : 0;
+  if (count === 0 || count > MAX_CHUNKS) {
+    throw new Error(
+      `The web app was built into ${count} chunks (${chunks}), not the few its startup modules ` +
+        `are grouped into. SvelteKit or the bundler changed how they name entries or pass ` +
+        `the module graph: update chunks.ts in @-/com.leonsilicon.zami.plugins.`,
+    );
+  }
+}
+
 /** Where the homeserver sends this device's pushes: Zami's own gateway. */
 export const DEFAULT_PUSH_GATEWAY_URL = "https://zami-push.leonsilicon.com/_matrix/push/v1/notify";
 
@@ -319,6 +339,7 @@ export function buildWeb(options: BuildWebOptions = {}): BuildWebResult {
     // other platforms (Android's push decryption) or need a service worker, which
     // WKWebView doesn't run for an app's own scheme.
     run(process.execPath, ["scripts/pack-twemoji.mjs"], src, env, log);
+    checkChunks(join(src, "build"));
     writeFileSync(buildMarker, version);
   }
 

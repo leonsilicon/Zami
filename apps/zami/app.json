@@ -5,10 +5,10 @@
     "icon": "./assets/icon.png",
     "owner": "improvelabs",
     "scheme": ["zami", "com.leonsilicon.zami"],
-    "version": "1.20261124.0",
+    "version": "1.20261124.1",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#f3ede0",
+    "backgroundColor": "#ffffff",
     "ios": {
       "bundleIdentifier": "com.leonsilicon.zami",
       "supportsTablet": true,

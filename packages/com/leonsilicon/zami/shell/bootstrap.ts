@@ -8,6 +8,7 @@
 //
 // It's plain ES2017 in a string: it runs in the page, and Hermes can't turn a function back
 // into its source. __tests__/bootstrap.test.ts runs it against the real @capacitor/core.
+import { launchFrameScript } from "#launch-frame";
 import type { PluginHeader } from "#protocol";
 
 export interface BootstrapConfig {
@@ -16,6 +17,8 @@ export interface BootstrapConfig {
   /** The app's id (com.leonsilicon.zami, or .staging), for codemods that need it. */
   appId: string | null;
   headers: PluginHeader[];
+  /** The saved launch page (its JSON), which the page draws before its own code loads. */
+  launchPage?: string | null;
 }
 
 const SOURCE = String.raw`(function (config) {
@@ -189,6 +192,6 @@ const SOURCE = String.raw`(function (config) {
 })`;
 
 /** The bootstrap for `config`, ready to run in the page. */
-export function bootstrapScript(config: BootstrapConfig): string {
-  return `${SOURCE}(${JSON.stringify(config)});`;
+export function bootstrapScript({ launchPage = null, ...config }: BootstrapConfig): string {
+  return `${SOURCE}(${JSON.stringify(config)});${launchFrameScript(launchPage)}`;
 }
