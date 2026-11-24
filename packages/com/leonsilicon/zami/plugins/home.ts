@@ -87,6 +87,15 @@ export function writeHome(
   return home;
 }
 
+/**
+ * The account's home as storage has it, expired or not. A launch page is saved with it, and
+ * the shell's launch frame shows the page only while it's still the same (launch-frame.ts
+ * in @-/com.leonsilicon.zami.shell reads the same key the same way).
+ */
+export function homeKey(storage: HomeStorage, userId: string): string {
+  return JSON.stringify(readJson(storage, HOMES_KEY)[userId] ?? null);
+}
+
 /** Removes the account's home; with `pluginId`, only if that plugin registered it. */
 export function clearHome(storage: HomeStorage, userId: string, pluginId?: string): boolean {
   const homes = readJson(storage, HOMES_KEY);

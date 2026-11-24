@@ -74,6 +74,11 @@ Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami'
 - **Push** through Zami's gateway on iOS and Android (`zam.push-on-every-native-platform`,
   `zam.zami-pusher`): the app's own id, "Zami" on "iOS (…)" or "Android (…)", and the alert
   the OS shows.
+- **Starting at once**: a launch paints the app as it last looked, with a composer that
+  takes typing, before the web app has loaded (the shell's launch frame). The app then shows
+  the rooms saved on the device while Matrix reconnects (`zam.warm-room-startup`), and a
+  message sent before sync has delivered its room waits in the outbox, which survives a
+  restart (`zam.send-before-sync`). The web app's startup code is a few chunks, not hundreds.
 - **No Zam updates** (`zam.no-zam-updates`): Zam's Android updater would offer Zam's own
   APKs and web bundles; Zami's builds come from the App Store and TestFlight.
 - **react-native-webview** (`react-native-webview`, a bun patch): hooks the shell needs to

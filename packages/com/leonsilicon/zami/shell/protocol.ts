@@ -51,7 +51,26 @@ export interface DebugMessage {
   error?: string;
 }
 
-export type PageMessage = CapacitorCall | ThemeMessage | BottomInsetMessage | DebugMessage;
+/** The app as it looks now, for the next launch to open on (launch-frame.ts); null forgets it. */
+export interface LaunchPageMessage {
+  type: "zami";
+  event: "launchPage";
+  page: string | null;
+}
+
+/** The launch frame has painted: the web view has something to show before the app has loaded. */
+export interface LaunchDrawnMessage {
+  type: "zami";
+  event: "launchDrawn";
+}
+
+export type PageMessage =
+  | CapacitorCall
+  | ThemeMessage
+  | BottomInsetMessage
+  | DebugMessage
+  | LaunchPageMessage
+  | LaunchDrawnMessage;
 
 export interface CallError {
   message: string;
@@ -106,6 +125,16 @@ export function parsePageMessage(raw: string): PageMessage | null {
       value: record.value,
       ...(typeof record.error === "string" ? { error: record.error } : {}),
     };
+  }
+  if (
+    record.type === "zami" &&
+    record.event === "launchPage" &&
+    (typeof record.page === "string" || record.page === null)
+  ) {
+    return { type: "zami", event: "launchPage", page: record.page };
+  }
+  if (record.type === "zami" && record.event === "launchDrawn") {
+    return { type: "zami", event: "launchDrawn" };
   }
   if (record.type === "zami" && record.event === "theme" && typeof record.color === "string") {
     return { type: "zami", event: "theme", color: record.color };
