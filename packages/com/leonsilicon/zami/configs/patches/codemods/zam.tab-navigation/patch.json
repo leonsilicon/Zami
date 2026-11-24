@@ -1,0 +1,25 @@
+{
+  "source": "repos/com/github/az4521/Zam",
+  "bundles": [
+    { "path": "src/lib/components/layout/AppShell.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/AppSettings.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/MessageArea.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/NotificationsPanel.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/ProfileFooter.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/SpaceSidebar.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/ThreadPanel.svelte", "language": "html" },
+    { "path": "src/lib/components/settings/AccountSettings.svelte", "language": "html" },
+    "src/lib/i18n/en.ts",
+    "src/lib/i18n/locales/de.ts",
+    "src/lib/i18n/locales/es.ts",
+    "src/lib/i18n/locales/fr.ts",
+    "src/lib/i18n/locales/ja.ts",
+    "src/lib/i18n/locales/pt.ts",
+    "src/lib/i18n/locales/ru.ts",
+    "src/lib/i18n/locales/uk.ts",
+    "src/lib/i18n/locales/zh.ts",
+    "src/lib/matrix/client.ts",
+    "src/lib/stores/interface.svelte.ts",
+    "src/lib/stores/rooms.svelte.ts"
+  ]
+}

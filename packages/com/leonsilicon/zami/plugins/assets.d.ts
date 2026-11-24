@@ -5,3 +5,4 @@ declare module "#paper-css";
 declare module "@matrix-org/matrix-sdk-crypto-wasm" {
   export function initAsync(): Promise<void>;
 }
+declare module "#navigation-css";

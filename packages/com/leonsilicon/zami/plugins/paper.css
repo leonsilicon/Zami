@@ -73,10 +73,6 @@
   background: var(--zami-nav);
 }
 
-:root[data-zami-paper] .zami-sidebar-desktop {
-  width: var(--zami-conversation-width);
-}
-
 :root[data-zami-paper] .zami-sidebar:not(.zami-sidebar-desktop) {
   width: min(19.5rem, calc(100% - 2rem));
 }
@@ -89,98 +85,6 @@
 
 :root[data-zami-paper] .zami-sidebar-body {
   flex-direction: column;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] {
-  width: 100%;
-  flex-direction: row;
-  min-height: 52px;
-  gap: 6px;
-  padding: 6px 10px;
-  overflow: auto hidden;
-  overscroll-behavior-x: contain;
-  background: var(--zami-nav);
-  border-block-end: 1px solid var(--zam-divider);
-  touch-action: pan-x;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] > .h-px {
-  width: 1px;
-  height: 25px;
-  margin-inline: 2px;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-root-id],
-:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-folder-inner] {
-  flex-direction: row;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] [data-folder-inner] {
-  width: max-content;
-  padding: 0 4px;
-}
-
-:root[data-zami-paper]
-  [data-zam-region="space-sidebar"]
-  button:is([data-drag-id], [data-nav-space]),
-:root[data-zami-paper] [data-zam-region="space-sidebar"] > button {
-  width: var(--zami-space-target, 38px);
-  height: var(--zami-space-target, 38px);
-  border-radius: 8px;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] button[aria-current="true"] {
-  background-color: var(--zami-nav-selection);
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""] {
-  background-color: var(--zam-bg-hover);
-  color: var(--zam-text-secondary);
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""][aria-current] {
-  background-color: var(--zam-accent-fill);
-  color: white;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""] svg {
-  color: inherit;
-}
-
-:root[data-zami-paper]
-  [data-zam-region="space-sidebar"]
-  button[data-nav-space]
-  > :first-child:is(div, span) {
-  max-width: 28px;
-  max-height: 28px;
-  border-radius: 8px;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] .-translate-x-3 {
-  inset: auto auto 0 50%;
-  width: 12px;
-  height: 3px;
-  transform: translateX(-50%);
-  border-radius: 4px;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] :is(.-top-\[5px\], .-bottom-\[5px\]) {
-  inset: 3px auto;
-  width: 2px;
-  height: auto;
-  transform: none;
-}
-
-:root[data-zami-paper] [data-zam-region="space-sidebar"] .-top-\[5px\] {
-  left: -3px;
-}
-:root[data-zami-paper] [data-zam-region="space-sidebar"] .-bottom-\[5px\] {
-  right: -3px;
-}
-
-:root[data-zami-paper] .zami-sidebar:not(.zami-sidebar-desktop) [data-zam-region="space-sidebar"] {
-  --zami-space-target: 44px;
-  background: var(--zami-header);
 }
 
 :root[data-zami-paper] [data-zam-region="room-list"] {

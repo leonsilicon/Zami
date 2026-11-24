@@ -13,7 +13,6 @@
     { "path": "src/lib/components/layout/LoginView.svelte", "language": "html" },
     { "path": "src/lib/components/layout/RoomList.svelte", "language": "html" },
     { "path": "src/lib/components/layout/SpaceLandingPanel.svelte", "language": "html" },
-    { "path": "src/lib/components/layout/SpaceSidebar.svelte", "language": "html" },
     { "path": "src/lib/components/settings/ThemeColorEditor.svelte", "language": "html" }
   ]
 }

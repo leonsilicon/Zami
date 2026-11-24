@@ -10,6 +10,7 @@
     "#launch-splash": "./launch-splash.svelte",
     "#runes.svelte": "./runes.svelte.ts",
     "#safety.svelte": "./safety.svelte.ts",
+    "#navigation-css": "./navigation.css",
     "#paper-css": "./paper.css",
     "#*": "./*.ts"
   },
