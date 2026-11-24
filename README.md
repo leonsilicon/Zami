@@ -57,10 +57,14 @@ and names the codemod, instead of shipping the file unpatched. See that package'
 
 ## What Zami changes
 
-Zami Paper is the default theme. Its Linear-inspired design pairs a compact workspace sidebar
-with a framed conversation pane on desktop and full-width views on phones. It uses neutral
-light, dark, and AMOLED palettes with an indigo accent. The iOS release keeps Paper enabled
-and runs only built-in plugins. See the [App Store review notes](docs/app-store-review.md).
+Zami’s bottom bar opens Home, Notifications, Servers, Settings and Profile. Home holds
+conversations, and Notifications collects recent synced messages across rooms. Servers
+lists your Matrix spaces, and Profile is where you edit your display name, avatar and
+supported profile fields.
+
+Zami Paper is the default theme. It uses neutral light, dark, and AMOLED palettes with
+an indigo accent. The iOS release keeps Paper enabled and runs only built-in plugins.
+See the [App Store review notes](docs/app-store-review.md).
 
 Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami's own code:
 

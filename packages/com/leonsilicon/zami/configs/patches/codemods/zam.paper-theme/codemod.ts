@@ -192,66 +192,18 @@ export default function codemod(root: SgRoot): string | null {
       ],
       [
         'class="fixed inset-y-0 left-0 z-40 flex flex-col w-[19.5rem]"',
-        'class="zami-sidebar fixed inset-y-0 left-0 z-40 flex flex-col w-[19.5rem]"',
-        'class="zami-sidebar fixed',
+        'class="zami-sidebar absolute inset-y-0 left-0 z-40 flex flex-col w-[19.5rem]"',
+        'class="zami-sidebar absolute',
       ],
       [
         'style="width: calc(4.5rem + {roomListWidth}px);"\n            >\n                <div class="flex flex-1 min-h-0 overflow-hidden">',
-        'style:--zami-conversation-width={roomListWidth + "px"}\n            >\n                <div class="zami-sidebar-body flex flex-1 min-h-0 overflow-hidden">',
-        "style:--zami-conversation-width",
+        'style="width: {roomListWidth}px;"\n            >\n                <div class="zami-sidebar-body flex flex-1 min-h-0 overflow-hidden">',
+        'style="width: {roomListWidth}px;"',
       ],
       [
         'aria-hidden={leftDrawerClosed ? "true" : undefined}\n            >\n                <div class="flex flex-1 min-h-0 overflow-hidden">',
         'aria-hidden={leftDrawerClosed ? "true" : undefined}\n            >\n                <div class="zami-sidebar-body flex flex-1 min-h-0 overflow-hidden">',
         'aria-hidden={leftDrawerClosed ? "true" : undefined}\n            >\n                <div class="zami-sidebar-body',
-      ],
-      [
-        "            !interfaceState.isMobile ||\n            isDragging ||",
-        "            !interfaceState.isMobile ||\n            (e.target instanceof Element && e.target.closest('[data-zami-paper] [data-zam-region=\"space-sidebar\"]')) ||\n            isDragging ||",
-        "e.target.closest('[data-zami-paper]",
-      ],
-    ]);
-  }
-
-  if (file.endsWith("/SpaceSidebar.svelte")) {
-    return edits([
-      [
-        "        const rel = (e.clientY - rect.top) / rect.height;",
-        "        const rel = spaceDropPosition(e.clientX, e.clientY, rect);",
-        "spaceDropPosition(e.clientX",
-      ],
-      [
-        "    function rootTargetAt(clientY: number): typeof dropTarget {",
-        `    function spaceDropPosition(x: number, y: number, rect: DOMRect): number {
-        return document.documentElement.hasAttribute("data-zami-paper")
-            ? (x - rect.left) / rect.width
-            : (y - rect.top) / rect.height;
-    }
-
-    function rootTargetAt(clientX: number, clientY: number): typeof dropTarget {`,
-        "function spaceDropPosition",
-      ],
-      [
-        "if (clientY < r.top + r.height / 2)",
-        "if (spaceDropPosition(clientX, clientY, r) < 0.5)",
-        "spaceDropPosition(clientX, clientY, r)",
-      ],
-      ["rootTargetAt(e.clientY)", "rootTargetAt(e.clientX, e.clientY)", "rootTargetAt(e.clientX"],
-      ["rootTargetAt(t.clientY)", "rootTargetAt(t.clientX, t.clientY)", "rootTargetAt(t.clientX"],
-      [
-        "const rel = (t.clientY - rect.top) / rect.height;",
-        "const rel = spaceDropPosition(t.clientX, t.clientY, rect);",
-        "spaceDropPosition(t.clientX",
-      ],
-      [
-        'aria-label={t("spaceSidebar.home")}',
-        'aria-label={t("spaceSidebar.home")}\n        aria-current={roomsState.activeSpaceId === null ? "true" : undefined}',
-        "aria-current={roomsState.activeSpaceId === null",
-      ],
-      [
-        "aria-label={spaceName}",
-        'aria-label={spaceName}\n                aria-current={isActive ? "true" : undefined}',
-        "aria-current={isActive",
       ],
     ]);
   }

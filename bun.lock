@@ -31,7 +31,7 @@
     },
     "apps/zami": {
       "name": "@-apps/zami",
-      "version": "1.20261124.1",
+      "version": "1.20261124.2",
       "dependencies": {
         "@-/com.leonsilicon.zami.shell": "workspace:*",
         "expo": "catalog:",
@@ -189,6 +189,16 @@
     },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.sliding-sync-off-at-sign-in": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.tab-navigation": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.tab-navigation",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -398,6 +408,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.send-before-sync": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.send-before-sync@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.send-before-sync"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.sliding-sync-off-at-sign-in@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.sliding-sync-off-at-sign-in"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.tab-navigation": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.tab-navigation@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.tab-navigation"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.warm-room-startup": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.warm-room-startup@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.warm-room-startup"],
 

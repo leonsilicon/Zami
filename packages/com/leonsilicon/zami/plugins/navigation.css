@@ -1,0 +1,193 @@
+.zami-tab-bar {
+  z-index: 41;
+  flex: none;
+  padding: 4px max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom))
+    max(4px, env(safe-area-inset-left));
+  background: var(--zam-bg);
+  border-block-start: 1px solid var(--zam-divider);
+}
+
+.zami-tab-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  max-width: 34rem;
+  margin-inline: auto;
+}
+
+.zami-tab-buttons button {
+  display: flex;
+  min-height: 3.25rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 3px 1px;
+  border-radius: 10px;
+  color: var(--zam-text-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.zami-tab-buttons button:hover {
+  color: var(--zam-text-primary);
+  background: var(--zam-bg-secondary);
+}
+
+.zami-tab-buttons button[aria-current="page"] {
+  color: var(--zam-accent-text, var(--zam-text-primary));
+}
+
+.zami-tab-icon {
+  display: grid;
+  width: min(2.75rem, 100%);
+  min-height: 1.625rem;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.zami-tab-buttons button[aria-current="page"] .zami-tab-icon {
+  background: var(--zam-bg-selected);
+}
+
+.zami-tab-buttons button:focus-visible,
+.zami-server-list button:focus-visible {
+  outline: 2px solid var(--zam-accent);
+  outline-offset: -2px;
+}
+
+.zami-tab-page,
+.zami-settings-page,
+.zami-recent-messages {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--zam-bg);
+  color: var(--zam-text-primary);
+}
+
+.zami-tab-heading {
+  display: flex;
+  min-height: 3.25rem;
+  flex: none;
+  align-items: center;
+  padding-inline: max(1rem, calc((100% - 44rem) / 2 + 1rem));
+  border-block-end: 1px solid var(--zam-divider);
+}
+
+.zami-tab-heading h2 {
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+
+.zami-tab-scroll,
+.zami-server-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.zami-profile-editor,
+.zami-recent-list,
+.zami-settings-page {
+  width: min(100%, 44rem);
+  margin-inline: auto;
+}
+
+.zami-profile-editor {
+  padding: 20px 16px;
+}
+
+.zami-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px max(1rem, calc((100% - 44rem) / 2 + 1rem)) 20px;
+}
+
+.zami-server-list > .h-px {
+  width: 100%;
+}
+
+.zami-server-list > button,
+.zami-server-list [data-root-id] > button,
+.zami-server-list [data-folder-inner] > button {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 3.25rem;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--zam-bg-secondary);
+  color: var(--zam-text-primary);
+  text-align: start;
+}
+
+.zami-server-list div[data-root-id] {
+  align-items: stretch;
+  min-width: 0;
+}
+
+.zami-server-list [data-folder-inner] {
+  width: auto;
+  margin-inline-start: 18px;
+  align-items: stretch;
+}
+
+.zami-server-list button:is(:hover, [aria-current="true"]) {
+  background-color: var(--zam-bg-selected);
+}
+
+.zami-server-list > button > svg {
+  flex: none;
+  margin-inline: 10px;
+  color: var(--zam-text-secondary);
+}
+
+.zami-server-list .-translate-x-3 {
+  transform: translateY(-50%);
+}
+
+.zami-server-list .-end-1\.5 {
+  inset-inline-end: 12px;
+  bottom: 8px;
+}
+
+.zami-server-name {
+  min-width: 0;
+  padding-inline-end: 22px;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zami-recent-list {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px 20px;
+}
+
+.zami-recent-list .zami-notification-row {
+  padding: 10px 12px;
+  background: var(--zam-bg-secondary);
+  border-color: var(--zam-accent);
+}
+
+.zami-recent-list .zami-notification-row:is(:hover, :focus-visible) {
+  background: var(--zam-bg-hover);
+}
+
+.zami-recent-list .zami-notification-row.opacity-60 {
+  border-color: transparent;
+  opacity: 1;
+}
