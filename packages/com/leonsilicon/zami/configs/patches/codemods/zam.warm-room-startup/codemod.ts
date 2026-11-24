@@ -228,21 +228,24 @@ const clientEdits = [
         if (!warm) watchKeysVerdict();
     };
 
-    const roomPainted = roomListCache ? afterCachedRoomPaint() : null;
-    if (roomPainted) {
+    if (roomListCache) {
         const cache = roomListCache;
-        void roomPainted.then(() => {
-            if (cache && canStart() && roomListCache === cache)
+        // Let Svelte commit and the WebView paint the cached list before
+        // bulk decryption can take over the event loop.
+        void afterCachedRoomPaint().then(() => {
+            if (canStart() && roomListCache === cache)
                 return decryptCachedEvents(client, cache, preferredRoomId);
         });
     }
 
-    if (warm && roomPainted) {
+    if (warm) {
         watchKeysVerdict();
         onStateChange("RECONNECTING");
-        // Let Svelte commit and the WebView paint the cached list before SDK
-        // sync replay or bulk decryption can take over the event loop.
-        void roomPainted.then(startLiveSync).catch((err) => {
+        // The saved sync replays in the turn the shell is drawn in, not
+        // after it: what the server has since (asked for as the page
+        // started, by Zami's shell) can then follow it at once, so the
+        // first frame of the app is already connected.
+        void startLiveSync().catch((err) => {
             if (!canStart()) return;
             console.warn("[matrix] cached launch could not start sync", err);
             onStateChange("ERROR");
@@ -321,16 +324,16 @@ const clientEdits = [
 `,
     to: `const pendingRoomLists = new WeakMap<MatrixClient, ReturnType<typeof loadSnapshot>>();
 
-/** How long sync waits for Zami's launch frame to hand over to the app. */
+/** How long decrypting the saved rooms waits for Zami's launch frame to hand over to the app. */
 const LAUNCH_FRAME_WAIT_MS = 1500;
 
 function afterCachedRoomPaint(): Promise<void> {
     return new Promise((resolve) => {
         const started = performance.now();
         const painted = () => {
-            // Replaying the saved sync holds the main thread. Zami's launch
-            // frame (drawn before this code loaded) may have the keyboard:
-            // let it hand what was typed to the app's composer first.
+            // Decrypting keeps the main thread busy. Zami's launch frame
+            // (drawn before this code loaded) may have the keyboard: let it
+            // hand what was typed to the app's composer first.
             const frame = (globalThis as { __zamiLaunch?: unknown }).__zamiLaunch;
             if (frame && performance.now() - started < LAUNCH_FRAME_WAIT_MS)
                 window.setTimeout(painted, 16);
@@ -436,10 +439,13 @@ const PREFERRED_DECRYPT_WAIT_MS = 500;
     to: `    preferredRoomId?: string | null,
 ): Promise<void> {
     const preferred = preferredRoomId ? cache.rooms.get(preferredRoomId) : undefined;
-    if (preferred) await decryptRoomEvents(client, preferred);
+    // A room the SDK has by now is shown from there, not from its saved
+    // stand-in: the SDK decrypts its own.
+    const shown = (room: Room): boolean => !client.getRoom(room.roomId);
+    if (preferred && shown(preferred)) await decryptRoomEvents(client, preferred);
     for (const room of cache.rooms.values()) {
         if (roomListCache !== cache || matrixClient !== client || backgroundReleased) return;
-        if (room !== preferred) await decryptRoomEvents(client, room);
+        if (room !== preferred && shown(room)) await decryptRoomEvents(client, room);
     }`,
     marker: "    const preferred = preferredRoomId ? cache.rooms.get(preferredRoomId) : undefined;",
   },

@@ -31,7 +31,7 @@
     },
     "apps/zami": {
       "name": "@-apps/zami",
-      "version": "1.20261124.2",
+      "version": "1.20261124.3",
       "dependencies": {
         "@-/com.leonsilicon.zami.shell": "workspace:*",
         "expo": "catalog:",
@@ -137,8 +137,38 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.connect-at-launch": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.connect-at-launch",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.defer-replay-crypto": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.keep-sync-cache": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -169,6 +199,16 @@
     },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.push-on-every-native-platform": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.quiet-sync-replay": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.quiet-sync-replay",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -397,13 +437,21 @@
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
 
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.connect-at-launch": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.connect-at-launch@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.connect-at-launch"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.defer-replay-crypto"],
+
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.keep-sync-cache"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.paper-theme": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.paper-theme@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.paper-theme"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.push-on-every-native-platform@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.push-on-every-native-platform"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.quiet-sync-replay": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.quiet-sync-replay@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.quiet-sync-replay"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.send-before-sync": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.send-before-sync@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.send-before-sync"],
 

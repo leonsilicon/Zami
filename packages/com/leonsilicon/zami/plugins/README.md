@@ -146,7 +146,10 @@ room in more than one way marks the app's root (`[data-zam-region="app"]`) with
 then.
 
 How it works (`launch.ts`, `launch-page.ts`): the page is a copy of the app's DOM, with
-images as data: URLs and everything that wasn't drawn left out. Zam's regions in it are
+images as data: URLs and everything that wasn't drawn left out. A region that's off to a
+side of the screen (the room list at a phone's width, while its drawer is closed) keeps its
+box and loses its contents: a launch reads the whole page before it can load the app, and
+that drawer was most of it. Zam's regions in it are
 named `data-zami-launch-region`, so a plugin looking for `[data-zam-region="app"]` finds the
 app's own, not the copy. `<html>`'s `data-` attributes and the page's `<style>` elements are
 saved with it, so a plugin's styles apply to the copy before the plugin has loaded.

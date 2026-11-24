@@ -1,0 +1,4 @@
+{
+  "source": "repos/com/github/az4521/Zam",
+  "bundles": ["src/lib/matrix/client.ts"]
+}

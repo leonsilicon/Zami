@@ -84,6 +84,14 @@ Each is a codemod in `configs/patches/codemods/` (its README says why), or Zami'
   the rooms saved on the device while Matrix reconnects (`zam.warm-room-startup`), and a
   message sent before sync has delivered its room waits in the outbox, which survives a
   restart (`zam.send-before-sync`). The web app's startup code is a few chunks, not hundreds.
+- **Connecting at once**: the launch's first requests to the homeserver go out as the page
+  starts, before the web app has loaded, and their answers are handed to the SDK as it asks
+  (the shell's launch requests, `zam.connect-at-launch`). The sync saved on the device
+  replays without running the app's handlers for every event in it
+  (`zam.quiet-sync-replay`), and without waiting for the crypto store for each encrypted
+  room or decrypting every saved message (`zam.defer-replay-crypto`). It also survives a
+  launch (`zam.keep-sync-cache`): upstream, every other launch lost it and started from a
+  full sync.
 - **No Zam updates** (`zam.no-zam-updates`): Zam's Android updater would offer Zam's own
   APKs and web bundles; Zami's builds come from the App Store and TestFlight.
 - **react-native-webview** (`react-native-webview`, a bun patch): hooks the shell needs to

@@ -7,5 +7,8 @@ The SDK's older cache can fill in live room objects during startup. The room
 list snapshot stays available until the first live sync.
 
 Loading the saved sync doesn't wait for the network: the homeserver's `/versions` answer
-from the last launch stands in for this one's while the SDK starts. It also waits for
-Zami's launch frame to hand over to the app, since it holds the main thread while it runs.
+from the last launch stands in for this one's while the SDK starts. It doesn't wait for the
+shell to be painted either: it replays in the turn the shell is drawn in, so what the
+server has since can follow at once (`zam.connect-at-launch`) and the app's first frame is
+already connected. Only decrypting the saved rooms waits, for the paint and for Zami's
+launch frame to hand over to the app, and it skips the rooms the SDK has by then.

@@ -3,8 +3,8 @@
 // launch-frame.ts), over the session restore, and launch.ts takes it off once the app's own
 // shell has drawn the same thing underneath. It's a copy of the app's DOM (Zam's stylesheets
 // style it as they did the original), with what a copy can't keep made static: images
-// become data: URLs, what was hidden is left out, and nothing in it does anything except
-// the composer, which takes typing, and its send button.
+// become data: URLs, what was hidden or off to a side of the screen is left out, and
+// nothing in it does anything except the composer, which takes typing, and its send button.
 
 /** A saved launch page: what the shell's launch frame reads. */
 export interface LaunchPage {
@@ -137,6 +137,20 @@ function copyElement(element: Element, state: CaptureState, inSvg: boolean): Ele
     copy.setAttribute(LAUNCH_REGION, region);
   }
   if (element instanceof HTMLElement) {
+    // A region that's off to a side of the screen (a closed drawer) isn't in a launch's
+    // first frame. Its box is kept, so nothing around it moves, without what's in it: at a
+    // phone's width the room list is most of the page, and the launch reads all of it
+    // before it can load the app.
+    if (region !== null) {
+      const rect = element.getBoundingClientRect();
+      const offToASide = rect.right <= 0 || rect.left >= state.viewport.width;
+      if (offToASide && rect.width > 0 && rect.height > 0) {
+        const box = copy as HTMLElement;
+        box.style.width = `${rect.width}px`;
+        box.style.height = `${rect.height}px`;
+        return copy;
+      }
+    }
     const { scrollTop, scrollLeft, scrollHeight, clientHeight } = element;
     if (scrollTop !== 0 || scrollLeft !== 0 || region === "timeline") {
       const atEnd = scrollHeight - clientHeight - scrollTop < 8;
