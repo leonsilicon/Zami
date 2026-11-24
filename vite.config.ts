@@ -47,7 +47,7 @@ export default defineConfig({
     ],
   },
   fmt: {
-    ignorePatterns: [...upstream, ...generated],
+    ignorePatterns: [...upstream, ...generated, ".claude/settings.local.json"],
   },
   test: {
     include: [
