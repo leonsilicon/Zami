@@ -1,83 +1,90 @@
 :root[data-zami-paper] {
-  --brand-500: #31776d;
-  --brand-530: #2a6d64;
-  --brand-560: #28685e;
-  --brand-600: #205249;
-  --brand-500-rgb: 49 119 109;
-  --brand-530-rgb: 42 109 100;
-  --brand-560-rgb: 40 104 94;
-  --brand-600-rgb: 32 82 73;
-  --paper-display: Georgia, Cambria, "Times New Roman", serif;
-  --paper-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --brand-500: #6265cb;
+  --brand-530: #5558bc;
+  --brand-560: #5356bd;
+  --brand-600: #474aa8;
+  --brand-500-rgb: 98 101 203;
+  --brand-530-rgb: 85 88 188;
+  --brand-560-rgb: 83 86 189;
+  --brand-600-rgb: 71 74 168;
+
+  --zam-bg: #18191d;
+  --zam-bg-secondary: #222329;
+  --zam-bg-tertiary: #111216;
+  --zam-bg-dark: #0d0e12;
+  --zam-bg-hover: #282930;
+  --zam-bg-selected: #2c2d39;
+  --zam-bg-rgb: 24 25 29;
+  --zam-bg-secondary-rgb: 34 35 41;
+  --zam-text-primary: #eeeef3;
+  --zam-text-secondary: #c0c1cd;
+  --zam-text-muted: #999ba9;
+  --zam-accent-text: #a7a9ff;
+  --zam-accent-text-rgb: 167 169 255;
+  --zam-link: var(--zam-accent-text);
+  --zam-link-rgb: var(--zam-accent-text-rgb);
+  --zam-mention-highlight-rgb: 125 126 220;
+  --zam-divider: #31323b;
+
+  --zami-header: var(--zam-bg);
+  --zami-nav-selection: var(--zam-bg-selected);
+  --zami-nav-indicator: var(--zami-nav-selection);
+  --zami-nav: var(--zam-bg-tertiary);
 }
 
 :root[data-zami-paper][data-theme="light"] {
-  --zam-bg: #fbf8ef;
-  --zam-bg-secondary: #fffdf7;
-  --zam-bg-tertiary: #f3ede0;
-  --zam-bg-dark: #e9e2d2;
-  --zam-bg-hover: #eee9da;
-  --zam-bg-selected: #ddebe3;
-  --zam-bg-rgb: 251 248 239;
-  --zam-bg-secondary-rgb: 255 253 247;
-  --zam-text-primary: #21312d;
-  --zam-text-secondary: #3f514a;
-  --zam-text-muted: #55665d;
-  --zam-accent-text: #28685e;
-  --zam-accent-text-rgb: 40 104 94;
-  --zam-link: var(--zam-accent-text);
-  --zam-link-rgb: var(--zam-accent-text-rgb);
-  --zam-mention-highlight-rgb: 169 109 39;
-  --zam-divider: #ddd5c3;
-  --paper-nav: #f3ede0;
-}
-
-:root[data-zami-paper]:not([data-theme="light"]) {
-  --zam-bg: #172624;
-  --zam-bg-secondary: #223330;
-  --zam-bg-tertiary: #111f1d;
-  --zam-bg-dark: #101c1a;
-  --zam-bg-hover: #293d38;
-  --zam-bg-selected: #334c45;
-  --zam-bg-rgb: 23 38 36;
-  --zam-bg-secondary-rgb: 34 51 48;
-  --zam-text-primary: #f2f2e7;
-  --zam-text-secondary: #d3ded2;
-  --zam-text-muted: #acc2b7;
-  --zam-accent-text: #a1d8c8;
-  --zam-accent-text-rgb: 161 216 200;
-  --zam-link: var(--zam-accent-text);
-  --zam-link-rgb: var(--zam-accent-text-rgb);
-  --zam-mention-highlight-rgb: 155 111 46;
-  --zam-divider: #3c514b;
-  --paper-nav: #172624;
+  --zam-bg: #ffffff;
+  --zam-bg-secondary: #f8f8fb;
+  --zam-bg-tertiary: #f2f2f6;
+  --zam-bg-dark: #e7e7ee;
+  --zam-bg-hover: #eaeaef;
+  --zam-bg-selected: #e6e6f1;
+  --zam-bg-rgb: 255 255 255;
+  --zam-bg-secondary-rgb: 248 248 251;
+  --zam-text-primary: #1c1d24;
+  --zam-text-secondary: #454754;
+  --zam-text-muted: #626474;
+  --zam-accent-text: #5355b6;
+  --zam-accent-text-rgb: 83 85 182;
+  --zam-mention-highlight-rgb: 112 116 213;
+  --zam-divider: #e2e2eb;
 }
 
 :root[data-zami-paper][data-theme="amoled"] {
-  --zam-bg: #000;
-  --zam-bg-secondary: #121916;
-  --zam-bg-tertiary: #060c0a;
+  --zam-bg: #000000;
+  --zam-bg-secondary: #121217;
+  --zam-bg-tertiary: #09090d;
   --zam-bg-rgb: 0 0 0;
-  --zam-bg-secondary-rgb: 18 25 22;
-  --paper-nav: #060c0a;
+  --zam-bg-secondary-rgb: 18 18 23;
+  --zam-divider: #292a33;
+}
+
+:root[data-zami-paper] {
+  font-family: var(--zam-font-family, "Inter", system-ui, sans-serif);
 }
 
 :root[data-zami-paper] body {
-  font-family: var(--paper-body);
-  background-color: var(--paper-nav);
+  font-family: inherit;
+  background: var(--zami-header);
 }
 
-:root[data-zami-paper] [data-zam-region="app"] {
-  background: var(--paper-nav);
-}
-
+:root[data-zami-paper] [data-zam-region="app"],
 :root[data-zami-paper] .zami-sidebar {
-  background: var(--paper-nav);
-  border-inline-end: 1px solid var(--zam-divider);
+  background: var(--zami-nav);
 }
 
-:root[data-zami-paper] .zami-sidebar.zami-sidebar-desktop {
+:root[data-zami-paper] .zami-sidebar-desktop {
   width: var(--zami-conversation-width);
+}
+
+:root[data-zami-paper] .zami-sidebar:not(.zami-sidebar-desktop) {
+  width: min(19.5rem, calc(100% - 2rem));
+}
+
+:root[data-zami-paper] .zami-sidebar-desktop ~ main {
+  margin: 8px 8px 8px 0;
+  border: 1px solid var(--zam-divider);
+  border-radius: 12px;
 }
 
 :root[data-zami-paper] .zami-sidebar-body {
@@ -87,12 +94,12 @@
 :root[data-zami-paper] [data-zam-region="space-sidebar"] {
   width: 100%;
   flex-direction: row;
-  min-height: 56px;
+  min-height: 52px;
   gap: 6px;
   padding: 6px 10px;
   overflow: auto hidden;
   overscroll-behavior-x: contain;
-  background: var(--paper-nav);
+  background: var(--zami-nav);
   border-block-end: 1px solid var(--zam-divider);
   touch-action: pan-x;
 }
@@ -117,17 +124,21 @@
   [data-zam-region="space-sidebar"]
   button:is([data-drag-id], [data-nav-space]),
 :root[data-zami-paper] [data-zam-region="space-sidebar"] > button {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: var(--zami-space-target, 38px);
+  height: var(--zami-space-target, 38px);
+  border-radius: 8px;
 }
 
 :root[data-zami-paper] [data-zam-region="space-sidebar"] button[aria-current="true"] {
-  box-shadow: inset 0 0 0 2px var(--zam-accent);
-  background-color: var(--zam-bg-selected);
+  background-color: var(--zami-nav-selection);
 }
 
 :root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""] {
+  background-color: var(--zam-bg-hover);
+  color: var(--zam-text-secondary);
+}
+
+:root[data-zami-paper] [data-zam-region="space-sidebar"] button[data-nav-space=""][aria-current] {
   background-color: var(--zam-accent-fill);
   color: white;
 }
@@ -140,8 +151,8 @@
   [data-zam-region="space-sidebar"]
   button[data-nav-space]
   > :first-child:is(div, span) {
-  max-width: 30px;
-  max-height: 30px;
+  max-width: 28px;
+  max-height: 28px;
   border-radius: 8px;
 }
 
@@ -167,35 +178,56 @@
   right: -3px;
 }
 
-:root[data-zami-paper] [data-zam-region="room-list"] {
-  background: var(--paper-nav);
+:root[data-zami-paper] .zami-sidebar:not(.zami-sidebar-desktop) [data-zam-region="space-sidebar"] {
+  --zami-space-target: 44px;
+  background: var(--zami-header);
 }
 
-:root[data-zami-paper] [data-zam-region="room-list"] > :first-child,
-:root[data-zami-paper] [data-zam-region="room-header"] {
-  min-height: 60px;
+:root[data-zami-paper] [data-zam-region="room-list"] {
+  background: var(--zami-nav);
+}
+
+:root[data-zami-paper] .zami-room-list-header,
+:root[data-zami-paper] :is(.zami-view-header, [data-zam-region="room-header"]) {
   box-shadow: none;
 }
 
-:root[data-zami-paper] [data-zam-region="room-header"] {
-  background: var(--zam-bg-secondary);
+:root[data-zami-paper] :is(.zami-view-header, [data-zam-region="room-header"]) {
+  background: var(--zami-header);
 }
 
-:root[data-zami-paper] :is([data-zam-region="room-list"], [data-zam-region="room-header"]) h2 {
-  font: 700 1.35rem/1.25 var(--paper-display);
+:root[data-zami-paper]
+  :is(.zami-room-list-header, .zami-view-header, [data-zam-region="room-header"])
+  h2 {
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
-:root[data-zami-paper] [data-zam-region="timeline"] {
-  background: var(--zam-bg);
+:root[data-zami-paper] .zami-room-list-scroll {
+  padding: 8px;
 }
 
-:root[data-zami-paper] .own-bubble {
-  border-radius: 16px 16px 4px 16px;
+:root[data-zami-paper] .zami-room-list-scroll :is([data-room-id], .zami-nav-row),
+:root[data-zami-paper] .zami-room-list-scroll [data-room-id] > div > button {
+  border-radius: 6px;
 }
 
-:root[data-zami-paper] .other-bubble,
-:root[data-zami-paper] .own-bubble-start {
-  border-radius: 16px 16px 16px 4px;
+:root[data-zami-paper] .zami-sidebar-desktop .zami-room-list-scroll [data-room-id] button {
+  font-size: 0.8125rem;
+}
+
+:root[data-zami-paper] .zami-sidebar:not(.zami-sidebar-desktop) .zami-nav-row,
+:root[data-zami-paper]
+  .zami-sidebar:not(.zami-sidebar-desktop)
+  [data-room-id]
+  button:first-of-type {
+  min-height: 44px;
+}
+
+:root[data-zami-paper] .own-bubble,
+:root[data-zami-paper] .own-bubble-start,
+:root[data-zami-paper] .other-bubble {
+  border-radius: 10px;
 }
 
 :root[data-zami-paper] .other-bubble {
@@ -204,46 +236,53 @@
 }
 
 :root[data-zami-paper] .input-box {
+  background-color: var(--zam-bg-secondary);
   border: 1px solid var(--zam-divider);
-  border-radius: 20px;
-  padding-inline: 12px;
-  box-shadow: 0 2px 6px rgb(18 47 39 / 6%);
+  border-radius: 10px;
+  box-shadow: none;
 }
 
 :root[data-zami-paper] .input-box:focus-within {
   border-color: var(--zam-accent);
 }
 
+:root[data-zami-paper] .input-box .composer-editor:focus-visible {
+  outline: none;
+}
+
 :root[data-zami-paper] .zami-login {
-  display: block;
-  padding: clamp(1rem, 4vw, 3rem);
-  background: var(--paper-nav);
+  display: flex;
+  align-items: stretch;
+  padding: clamp(1rem, 5vw, 3rem);
+  background: var(--zami-header);
 }
 
 :root[data-zami-paper] .zami-login > div {
-  margin: 0 auto;
-  max-width: 30rem;
+  margin: auto;
+  width: 100%;
+  max-width: 26rem;
 }
 
 :root[data-zami-paper] .zami-login-card {
   border: 1px solid var(--zam-divider);
-  border-radius: 24px;
-  padding: clamp(1.35rem, 5vw, 2.5rem);
-  box-shadow: 0 12px 36px rgb(18 47 39 / 7%);
+  border-radius: 12px;
+  padding: clamp(1.25rem, 5vw, 2rem);
+  box-shadow: none;
   background: var(--zam-bg-secondary);
 }
 
 :root[data-zami-paper] .zami-login-heading {
   text-align: start;
-  padding-block-end: 1.25rem;
-  margin-block-end: 1.5rem;
+  padding-block-end: 1.125rem;
+  margin-block-end: 1.125rem;
   border-block-end: 1px solid var(--zam-divider);
 }
 
 :root[data-zami-paper] .zami-login-heading h1 {
-  margin-block-start: 1.125rem;
-  font: 700 clamp(2rem, 6vw, 2.65rem)/1.05 var(--paper-display);
-  letter-spacing: -0.03em;
+  margin-block-start: 1rem;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: -0.035em;
 }
 
 .zami-wordmark {
@@ -251,7 +290,8 @@
   align-items: center;
   gap: 9px;
   color: var(--zam-text-primary);
-  font: 700 1.1rem/1 var(--paper-body, system-ui);
+  font-size: 1rem;
+  font-weight: 650;
 }
 
 .zami-wordmark-mark {
@@ -259,7 +299,7 @@
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 11px;
+  border-radius: 8px;
   background: var(--zam-accent-fill);
   color: white;
 }
@@ -285,12 +325,13 @@
 }
 
 :root[data-zami-paper] .zami-login form :is(input:not([type="checkbox"]), button[type="submit"]) {
-  border-radius: 11px;
+  border-radius: 8px;
   min-height: 44px;
 }
 
-:root[data-zami-paper] .zami-login input:not([type="checkbox"]) {
+:root[data-zami-paper] .zami-login form input:not([type="checkbox"]) {
   background: var(--zam-bg);
+  font-size: 1rem;
 }
 
 :root[data-zami-paper] :is(.zami-login, [data-zam-region="app"]) :focus-visible {
@@ -299,10 +340,6 @@
 
 .zami-sidebar-desktop {
   width: calc(4.5rem + var(--zami-conversation-width));
-}
-
-:root[data-zami-paper] .zami-login form input:not([type="checkbox"]) {
-  font-size: 1rem;
 }
 
 :root[data-zami-paper] .text-zam-accent {

@@ -31,7 +31,7 @@ import { createUnifiedPushPlugin } from "#unified-push-plugin";
 import { createZamiPlugin } from "#zami-plugin";
 
 /** Zami Paper’s initial color, until the page reports the saved appearance. */
-const DEFAULT_THEME = "#f3ede0";
+const DEFAULT_THEME = "#ffffff";
 
 /**
  * No links made of phone numbers and addresses (Zam makes its own). An array, as Android

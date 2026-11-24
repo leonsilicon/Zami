@@ -5,8 +5,15 @@
     "src/lib/plugins/pluginBoot.ts",
     "src/lib/stores/settings.svelte.ts",
     "src/lib/utils/theme.ts",
+    { "path": "src/lib/components/layout/AppSettings.svelte", "language": "html" },
     { "path": "src/lib/components/layout/AppShell.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/CallView.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/DraftDmView.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/InboxPanel.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/LoginView.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/RoomList.svelte", "language": "html" },
+    { "path": "src/lib/components/layout/SpaceLandingPanel.svelte", "language": "html" },
     { "path": "src/lib/components/layout/SpaceSidebar.svelte", "language": "html" },
-    { "path": "src/lib/components/layout/LoginView.svelte", "language": "html" }
+    { "path": "src/lib/components/settings/ThemeColorEditor.svelte", "language": "html" }
   ]
 }

@@ -31,7 +31,7 @@
     },
     "apps/zami": {
       "name": "@-apps/zami",
-      "version": "1.20261124.0",
+      "version": "1.20261124.1",
       "dependencies": {
         "@-/com.leonsilicon.zami.shell": "workspace:*",
         "expo": "catalog:",
