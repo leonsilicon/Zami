@@ -137,6 +137,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.defer-replay-crypto": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies",
       "version": "0.0.0",
@@ -416,6 +426,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.call-audio-cleanup"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.defer-replay-crypto@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.defer-replay-crypto"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
 
