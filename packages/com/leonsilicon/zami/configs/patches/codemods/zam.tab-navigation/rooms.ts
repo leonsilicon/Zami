@@ -2,6 +2,11 @@ import type { Change } from "#codemod";
 
 export const roomsChanges: Change[] = [
   [
+    "    if (spaceId === roomsState.activeSpaceId) return;",
+    '    interfaceState.zamiTab = "home";\n    if (spaceId === roomsState.activeSpaceId) return;',
+    'interfaceState.zamiTab = "home";\n    if (spaceId === roomsState.activeSpaceId)',
+  ],
+  [
     "pendingJump: null as { roomId: string; eventId: string } | null,",
     "pendingJump: null as { roomId: string; eventId: string; threadRootId?: string } | null,",
     "eventId: string; threadRootId?: string } | null",
