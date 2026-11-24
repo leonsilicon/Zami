@@ -147,6 +147,16 @@
         "@codemod.com/jssg-types": "catalog:",
       },
     },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.keep-sync-cache": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates",
       "version": "0.0.0",
@@ -398,6 +408,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.encrypted-thread-replies@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.encrypted-thread-replies"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.keep-sync-cache@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.keep-sync-cache"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.no-zam-updates@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.no-zam-updates"],
 
