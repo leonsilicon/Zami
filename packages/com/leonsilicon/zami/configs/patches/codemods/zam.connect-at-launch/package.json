@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.connect-at-launch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Keep the token of Zam's saved sync where Zami's shell can ask the server what changed since as a launch starts.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:"
+  }
+}

@@ -50,6 +50,32 @@ The launch page is the last screen as it was shown, so it holds what was on it (
 and messages if a conversation was open) outside Zam's own storage, in the app's sandbox.
 It's replaced as the app is used and deleted when the account signs out.
 
+## Connecting as the page starts
+
+Reconnecting to the homeserver waits for three answers: the account's push rules, its sync
+filter, then the sync for what changed since the app last ran. The SDK asks for them one
+after the other, and only once the web app has loaded, opened its stores and replayed the
+sync it saved. So the script every page runs first sends them itself, together, before
+anything else (`launch-requests.ts`):
+
+1. It reads the account the launch restores from Zam's registry in `localStorage`, the
+   requests the launch before made (`zami_launch_requests`, which this script records as
+   the app connects), and the token of the sync the app has saved (`zami_saved_sync_token`,
+   which the `zam.connect-at-launch` codemod writes whenever the SDK's store saves).
+2. It sends those requests with the account's access token, to the account's homeserver
+   only.
+3. When the app asks for exactly one of them (the same URL, with the same access token), it
+   is handed that answer, which is usually there already. The text is given without waiting
+   for a turn of the event loop, so the SDK goes from its saved sync straight on to what's
+   new.
+
+A request the app never asks for is never used, and neither is one that failed or was
+refused: the app then asks the server itself, and handles what it says as before. That
+covers a sync from a token the store doesn't have (the app was closed between a sync and
+its save), an access token that was refreshed, and an account using sliding sync. An
+unused sync answer isn't acknowledged, since only the next sync's token does that: the
+server sends what was in it again.
+
 ## Capacitor's native side
 
 Zam reaches native code only through Capacitor. The bootstrap (`bootstrap.ts`) defines
@@ -93,3 +119,6 @@ instead of scrolling away. Links to other sites open in their apps.
 `__tests__/bridge.test.ts` runs the bootstrap in a sandboxed `window` with the real
 `@capacitor/core` and the bridge carrying its messages. `__tests__/launch-frame.test.ts`
 runs the launch frame the same way: which launches it draws the saved page on.
+`__tests__/launch-requests.test.ts` runs the launch's first requests against a stand-in
+page: which are sent, when an answer is handed over, and when the app asks the server
+itself.
