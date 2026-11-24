@@ -23,6 +23,9 @@ needs running by hand.
    changed.
 4. It builds with Zam's own Vite config (`vite build`), then packs the emoji images as Zam's
    `build` script does. Zam's other build steps are for other platforms.
+5. It checks that the modules the app loads as it starts were built into a few chunks
+   (`chunks.ts` in `@-/com.leonsilicon.zami.plugins`), and fails if they weren't: a launch
+   would load hundreds of files.
 
 A build is cached by Zam's files, the codemods and the settings, so an unchanged build is
 instant.
