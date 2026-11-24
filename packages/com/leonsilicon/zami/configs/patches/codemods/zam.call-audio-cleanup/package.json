@@ -1,0 +1,19 @@
+{
+  "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Release call audio resources when they are no longer in use.",
+  "type": "module",
+  "imports": {
+    "#*": "./*.ts"
+  },
+  "exports": {
+    ".": "./+.ts"
+  },
+  "dependencies": {
+    "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "catalog:"
+  }
+}

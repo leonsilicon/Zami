@@ -31,7 +31,7 @@
     },
     "apps/zami": {
       "name": "@-apps/zami",
-      "version": "1.20261123.2",
+      "version": "1.20261124.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.shell": "workspace:*",
         "expo": "catalog:",
@@ -109,6 +109,16 @@
     },
     "packages/com/leonsilicon/zami/configs/patches/codemods/zam.bottom-safe-area": {
       "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area",
+      "version": "0.0.0",
+      "dependencies": {
+        "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
+      },
+      "devDependencies": {
+        "@codemod.com/jssg-types": "catalog:",
+      },
+    },
+    "packages/com/leonsilicon/zami/configs/patches/codemods/zam.call-audio-cleanup": {
+      "name": "@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup",
       "version": "0.0.0",
       "dependencies": {
         "@-/com.leonsilicon.zami.configs.patches.codemods": "workspace:*",
@@ -362,6 +372,8 @@
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.app-store": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.app-store@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.app-store"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.bottom-safe-area@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.bottom-safe-area"],
+
+    "@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.call-audio-cleanup@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.call-audio-cleanup"],
 
     "@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill": ["@-/com.leonsilicon.zami.configs.patches.codemods.zam.compact-reconnect-pill@workspace:packages/com/leonsilicon/zami/configs/patches/codemods/zam.compact-reconnect-pill"],
 
